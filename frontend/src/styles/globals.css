@@ -1,0 +1,731 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+/* Tailwind CSS directives - these are valid and processed by Tailwind */
+/* @tailwind directives are processed by PostCSS/Tailwind during build */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* Mint Cream Theme - Primary Colors */
+  --mint-50: #E8FAF0; /* Backgrounds, subtle sections */
+  --mint-100: #C9F4D4; /* PRIMARY BRAND COLOR - Cards, buttons, main elements */
+  --mint-200: #B0EFC0; /* Hover states, interactions */
+  --mint-300: #9DE8B0; /* Active/pressed states */
+  --mint-400: #A8E8BC; /* Borders, dividers */
+  
+  /* Mint Cream Theme - Text Colors */
+  --text-primary: #1E5A3B; /* Body text, headings - WCAG AAA compliant (8.2:1) */
+  --text-secondary: #2D7A52; /* Subheadings, labels - WCAG AA compliant (5.8:1) */
+  --text-subtle: #4A9A6A; /* Captions, metadata - Large text only (3.5:1) */
+  
+  /* Mint Cream Theme - Complementary Colors */
+  --blush-pink: #FFE5EC; /* Romantic, gentle accent */
+  --butter-yellow: #FFFEC0; /* Warm, cheerful highlights */
+  --powder-blue: #D4E4F7; /* Cool, professional balance */
+  --warm-beige: #F5F1E8; /* Natural, earthy grounding */
+  
+  /* Background & Surface Colors */
+  --background: #ffffff; /* Main background - white for clean look */
+  --surface: #ffffff;
+  --surface-elevated: #ffffff;
+  --background-subtle: var(--mint-50); /* Subtle sections */
+  
+  /* Border Colors */
+  --border: var(--mint-400);
+  --border-light: var(--mint-50);
+  
+  /* Status Colors (preserved for alerts, notifications) */
+  --success: #10b981;
+  --error: #ef4444;
+  --warning: #f59e0b;
+  --info: #3b82f6;
+  
+  /* Legacy support (deprecated - use Mint Cream colors instead) */
+  --brand-purple: var(--mint-100);
+  --brand-purple-dark: var(--mint-200);
+  --brand-purple-light: var(--mint-300);
+  --text-tertiary: var(--text-subtle);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  padding: 0;
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', Roboto, sans-serif;
+  background-color: var(--background);
+  color: var(--text-primary);
+  line-height: 1.7; /* Improved readability for body text */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Typography Scale - Mint Cream Theme */
+h1 {
+  font-size: 40px;
+  font-weight: 700;
+  letter-spacing: -0.3px;
+  line-height: 1.2;
+  color: var(--text-primary);
+}
+
+h2 {
+  font-size: 32px;
+  font-weight: 600;
+  letter-spacing: normal;
+  line-height: 1.3;
+  color: var(--text-primary);
+}
+
+h3 {
+  font-size: 24px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+h4 {
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.display-text {
+  font-size: 48px;
+  font-weight: 700;
+  letter-spacing: -0.5px;
+  line-height: 1.1;
+  color: var(--text-primary);
+}
+
+/* Hero Section Enhancements */
+.hero-headline {
+  font-size: clamp(48px, 8vw, 84px);
+  line-height: 1.05;
+  letter-spacing: -0.03em;
+}
+
+.gradient-text {
+  background: linear-gradient(135deg, #9DE8B0 0%, #6ABB8C 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.hero-organic-shape {
+  background: linear-gradient(135deg, rgba(201, 244, 212, 0.4) 0%, rgba(157, 232, 176, 0.3) 100%);
+  filter: blur(40px);
+  border-radius: 30% 70% 70% 30% / 30% 30% 70% 70%;
+}
+
+.hero-3d-object {
+  filter: drop-shadow(0 20px 60px rgba(157, 232, 176, 0.3));
+  animation: glow-pulse 3s ease-in-out infinite;
+}
+
+.hero-3d-container {
+  width: 100%;
+  height: 500px;
+  position: relative;
+  filter: drop-shadow(0 20px 60px rgba(157, 232, 176, 0.3));
+  animation: glow-pulse 3s ease-in-out infinite;
+}
+
+.hero-3d-container canvas {
+  width: 100% !important;
+  height: 100% !important;
+}
+
+@media (min-width: 768px) {
+  .hero-3d-container {
+    height: 600px;
+  }
+}
+
+@keyframes glow-pulse {
+  0%, 100% { 
+    filter: drop-shadow(0 20px 60px rgba(157, 232, 176, 0.3)); 
+  }
+  50% { 
+    filter: drop-shadow(0 25px 80px rgba(157, 232, 176, 0.5)); 
+  }
+}
+
+
+html {
+  scroll-behavior: smooth;
+}
+
+/* Smooth scroll with offset for sticky header */
+@media (prefers-reduced-motion: no-preference) {
+  html {
+    scroll-behavior: smooth;
+  }
+  
+  /* Smooth scroll to anchors with header offset */
+  section[id] {
+    scroll-margin-top: 100px;
+  }
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+button {
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.container {
+  max-width: 90%;
+  width: 90%;
+  margin: 0 auto;
+  padding: 2rem 1.5rem;
+}
+
+/* Desktop: 80-90% width */
+@media (min-width: 1024px) {
+  .container {
+    max-width: 85%;
+    width: 85%;
+  }
+}
+
+/* Large Desktop: Keep it reasonable */
+@media (min-width: 1440px) {
+  .container {
+    max-width: 80%;
+    width: 80%;
+  }
+}
+
+/* Mint Cream Theme - Card Components */
+.card {
+  background-color: var(--surface);
+  border-radius: 12px; /* Updated to match brand guidelines */
+  box-shadow: 0 2px 8px rgba(201, 244, 212, 0.15); /* Mint-themed shadow */
+  padding: 2rem;
+  border: 1px solid var(--mint-400);
+  transition: all 0.3s ease;
+}
+
+.card:hover {
+  box-shadow: 0 4px 12px rgba(201, 244, 212, 0.25);
+  border-color: var(--mint-300);
+}
+
+.card-elevated {
+  background-color: var(--surface-elevated);
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(201, 244, 212, 0.2);
+  padding: 2rem;
+  border: 1px solid var(--mint-400);
+  transition: all 0.3s ease;
+}
+
+.card-elevated:hover {
+  box-shadow: 0 8px 16px rgba(201, 244, 212, 0.3);
+  transform: translateY(-2px);
+}
+
+/* Mint Cream Theme - Form Inputs */
+input,
+select,
+textarea {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  margin-top: 0.5rem;
+  border-radius: 8px;
+  border: 1px solid var(--mint-400);
+  background-color: var(--surface);
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 1rem;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  outline: none;
+  border-color: var(--mint-200);
+  box-shadow: 0 0 0 3px rgba(201, 244, 212, 0.2); /* Mint-themed focus ring */
+}
+
+input:hover,
+select:hover,
+textarea:hover {
+  border-color: var(--mint-300);
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: var(--text-subtle);
+}
+
+label {
+  display: block;
+  font-weight: 600;
+  margin-top: 1rem;
+  color: var(--text-secondary); /* Using secondary for labels */
+  font-size: 0.9375rem;
+}
+
+/* Mint Cream Theme - Primary Button */
+.btn-primary {
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+  background-color: var(--mint-100); /* PRIMARY BRAND COLOR */
+  color: var(--text-primary); /* WCAG AAA compliant contrast */
+  border: none;
+  border-radius: 8px;
+  padding: 12px 24px; /* Updated to match brand guidelines */
+  margin-top: 1.5rem;
+  font-weight: 600;
+  font-size: 0.9375rem;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 4px rgba(201, 244, 212, 0.2);
+}
+
+.btn-primary:hover {
+  background-color: var(--mint-200); /* Hover state */
+  box-shadow: 0 4px 8px rgba(201, 244, 212, 0.3);
+  transform: translateY(-1px);
+}
+
+.btn-primary:active {
+  background-color: var(--mint-300); /* Active/pressed state */
+  transform: translateY(0);
+}
+
+.btn-primary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* Mint Cream Theme - Secondary Button */
+.btn-secondary {
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+  background-color: transparent;
+  color: var(--text-secondary);
+  border: 2px solid var(--mint-200);
+  border-radius: 8px;
+  padding: 12px 24px;
+  font-weight: 600;
+  font-size: 0.9375rem;
+  transition: all 0.2s ease;
+}
+
+.btn-secondary:hover {
+  background-color: var(--mint-50); /* Subtle background on hover */
+  border-color: var(--mint-300);
+  transform: translateY(-1px);
+}
+
+.btn-secondary:active {
+  background-color: var(--mint-100);
+  transform: translateY(0);
+}
+
+/* Mint Cream Theme - Accent Button (alias for primary) */
+.btn-accent {
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+  background-color: var(--mint-100);
+  color: var(--text-primary);
+  border: none;
+  border-radius: 8px;
+  padding: 12px 24px;
+  font-weight: 600;
+  font-size: 0.9375rem;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 4px rgba(201, 244, 212, 0.2);
+}
+
+.btn-accent:hover {
+  background-color: var(--mint-200);
+  box-shadow: 0 4px 8px rgba(201, 244, 212, 0.3);
+  transform: translateY(-1px);
+}
+
+.alert {
+  padding: 1rem 1.25rem;
+  border-radius: 0.5rem;
+  margin-top: 1rem;
+  font-weight: 500;
+  border-left: 4px solid;
+}
+
+.alert-success {
+  background-color: #dcfce7;
+  color: #166534;
+  border-left-color: var(--success);
+}
+
+.alert-error {
+  background-color: #fee2e2;
+  color: #991b1b;
+  border-left-color: var(--error);
+}
+
+.alert-warning {
+  background-color: #fef3c7;
+  color: #92400e;
+  border-left-color: var(--warning);
+}
+
+.alert-info {
+  background-color: #dbeafe;
+  color: #1e40af;
+  border-left-color: var(--info);
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.375rem 0.75rem;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+/* Mint Cream Theme - Badges */
+.badge-mint {
+  background-color: var(--mint-50);
+  color: var(--text-primary);
+}
+
+.badge-mint-light {
+  background-color: rgba(201, 244, 212, 0.2);
+  color: var(--text-secondary);
+}
+
+.badge-blush {
+  background-color: var(--blush-pink);
+  color: var(--text-primary);
+}
+
+.badge-butter {
+  background-color: var(--butter-yellow);
+  color: var(--text-primary);
+}
+
+/* Legacy badge support */
+.badge-purple {
+  background-color: var(--mint-50);
+  color: var(--text-primary);
+}
+
+.badge-yellow {
+  background-color: var(--butter-yellow);
+  color: var(--text-primary);
+}
+
+.badge-beige {
+  background-color: var(--warm-beige);
+  color: var(--text-primary);
+}
+
+/* Mint Cream Theme - Header Styles */
+.enterprise-header {
+  background: linear-gradient(135deg, var(--mint-100) 0%, var(--mint-200) 100%);
+  color: var(--text-primary);
+  height: 64px;
+  display: flex;
+  align-items: center;
+  box-shadow: 0 2px 4px rgba(201, 244, 212, 0.2);
+}
+
+.enterprise-header-content {
+  max-width: 1200px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 0 1.5rem 0 0.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 100%;
+}
+
+/* Mint Cream Theme - Section Dividers */
+.section-divider {
+  height: 1px;
+  background: linear-gradient(to right, transparent, var(--mint-400), transparent);
+  margin: 2rem 0;
+}
+
+/* Mint Cream Theme - Card Hover Effects */
+.card-hover {
+  transition: all 0.3s ease;
+}
+
+.card-hover:hover {
+  box-shadow: 0 10px 15px -3px rgba(201, 244, 212, 0.2), 0 4px 6px -2px rgba(201, 244, 212, 0.1);
+  transform: translateY(-2px);
+  border-color: var(--mint-300);
+}
+
+/* Loading Spinner */
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.spinner {
+  animation: spin 1s linear infinite;
+  display: inline-block;
+}
+
+/* Mint Cream Theme - Gradient Text */
+.gradient-text {
+  background: linear-gradient(135deg, var(--mint-200) 0%, var(--mint-300) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Mint Cream Theme - Focus Visible for Accessibility */
+*:focus-visible {
+  outline: 2px solid var(--mint-200);
+  outline-offset: 2px;
+}
+
+/* Scrollbar Styling */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--mint-50);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--mint-300);
+  border-radius: 5px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--mint-200);
+}
+
+/* Responsive Design - Mobile First Approach */
+
+/* Mobile Devices (up to 640px) */
+@media (max-width: 640px) {
+  .container {
+    max-width: 100%;
+    width: 100%;
+    padding: 1rem;
+  }
+  
+  .card {
+    padding: 1rem;
+    border-radius: 0.5rem;
+  }
+  
+  .card-elevated {
+    padding: 1rem;
+    border-radius: 0.5rem;
+  }
+  
+  h1 {
+    font-size: 1.75rem;
+    line-height: 1.2;
+  }
+  
+  h2 {
+    font-size: 1.5rem;
+    line-height: 1.3;
+  }
+  
+  h3 {
+    font-size: 1.25rem;
+  }
+  
+  .btn-primary,
+  .btn-secondary,
+  .btn-accent {
+    padding: 0.75rem 1rem;
+    font-size: 0.875rem;
+    min-height: 44px; /* Minimum touch target size */
+    width: 100%;
+    margin-top: 1rem;
+  }
+  
+  /* Ensure buttons in flex containers are full width on mobile */
+  [style*="display: flex"] button.btn-primary,
+  [style*="display: flex"] button.btn-secondary,
+  [style*="display: flex"] button.btn-accent {
+    width: 100%;
+  }
+  
+  .enterprise-header {
+    height: 56px;
+  }
+  
+  .enterprise-header-content {
+    padding: 0 1rem;
+  }
+  .enterprise-header-content img {
+    max-width: 150px !important;
+    max-height: 75px !important;
+    margin-left: 4rem !important;
+  }
+  
+  input,
+  select,
+  textarea {
+    padding: 0.75rem;
+    font-size: 0.9375rem;
+    min-height: 44px; /* Minimum touch target size */
+  }
+  
+  label {
+    font-size: 0.875rem;
+    margin-top: 0.75rem;
+  }
+  
+  .alert {
+    padding: 0.75rem 1rem;
+    font-size: 0.875rem;
+  }
+  
+  .badge {
+    font-size: 0.6875rem;
+    padding: 0.25rem 0.5rem;
+  }
+}
+
+/* Tablet Devices (641px to 768px) */
+@media (min-width: 641px) and (max-width: 768px) {
+  .container {
+    max-width: 95%;
+    width: 95%;
+    padding: 1.5rem 1rem;
+  }
+  
+  .card {
+    padding: 1.5rem;
+  }
+  
+  h1 {
+    font-size: 2rem;
+  }
+  
+  h2 {
+    font-size: 1.75rem;
+  }
+  
+  .btn-primary,
+  .btn-secondary,
+  .btn-accent {
+    padding: 0.75rem 1.25rem;
+  }
+  .enterprise-header-content img {
+    max-width: 150px !important;
+    max-height: 75px !important;
+    margin-left: 4rem !important;
+  }
+}
+
+/* Small Desktop (769px to 1024px) */
+@media (min-width: 769px) and (max-width: 1024px) {
+  .container {
+    max-width: 90%;
+    width: 90%;
+    padding: 2rem 1.25rem;
+  }
+  .enterprise-header-content img {
+    max-width: 150px !important;
+    max-height: 75px !important;
+    margin-left: 4rem !important;
+  }
+}
+
+/* Utility Classes for Responsive Layouts */
+.mobile-hidden {
+  display: block;
+}
+
+.mobile-visible {
+  display: none;
+}
+
+@media (max-width: 640px) {
+  .mobile-hidden {
+    display: none;
+  }
+  
+  .mobile-visible {
+    display: block;
+  }
+  
+  /* Stack flex containers on mobile */
+  .flex-mobile-column {
+    flex-direction: column;
+  }
+  
+  /* Full width on mobile */
+  .w-full-mobile {
+    width: 100%;
+  }
+  
+  /* Remove gaps on mobile */
+  .gap-mobile-0 {
+    gap: 0;
+  }
+  
+  /* Make grids single column on mobile */
+  .grid-mobile-1 {
+    grid-template-columns: 1fr !important;
+  }
+  
+  /* Stack flex items on mobile */
+  .flex-mobile-stack {
+    flex-direction: column !important;
+  }
+  
+}
+
+/* Screen reader only class for accessibility */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
+}
+
+/* Responsive Grid Utilities */
+@media (max-width: 640px) {
+  /* Make all auto-fit grids single column on mobile */
+  [style*="gridTemplateColumns"] {
+    grid-template-columns: 1fr !important;
+  }
+  
+  /* Stack flex containers */
+  [style*="display: flex"]:not([style*="flex-direction: column"]) {
+    flex-wrap: wrap;
+  }
+}

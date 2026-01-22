@@ -1,0 +1,2 @@
+"""Exception handlers module."""
+

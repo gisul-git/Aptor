@@ -1,0 +1,208 @@
+version: '3.8'
+
+services:
+  # MongoDB
+  mongo:
+    image: mongo:7.0
+    container_name: gisul-mongo
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    environment:
+      - MONGO_INITDB_DATABASE=ai_assessment
+    networks:
+      - microservices-network
+
+  # Redis
+  redis:
+    image: redis:7-alpine
+    container_name: gisul-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - microservices-network
+
+  # API Gateway
+  api-gateway:
+    build:
+      context: ./services/api-gateway
+      dockerfile: Dockerfile
+    container_name: gisul-api-gateway
+    ports:
+      - "80:80"
+    environment:
+      - PORT=80
+      - AUTH_SERVICE_URL=http://auth-service:4000
+      - AI_ASSESSMENT_SERVICE_URL=http://ai-assessment-service:3001
+      - CUSTOM_MCQ_SERVICE_URL=http://custom-mcq-service:3002
+      - AIML_SERVICE_URL=http://aiml-service:3003
+      - DSA_SERVICE_URL=http://dsa-service:3004
+      - PROCTORING_SERVICE_URL=http://proctoring-service:3005
+      - SUPER_ADMIN_SERVICE_URL=http://super-admin-service:3006
+      - CORS_ORIGINS=http://localhost:3000,http://localhost:3001
+    depends_on:
+      - auth-service
+    networks:
+      - microservices-network
+    restart: unless-stopped
+
+  # Auth Service
+  auth-service:
+    build:
+      context: ./services/auth-service
+      dockerfile: Dockerfile
+    container_name: gisul-auth-service
+    ports:
+      - "4000:4000"
+    environment:
+      - MONGO_URI=mongodb://mongo:27017
+      - MONGO_DB=auth_db
+      - JWT_SECRET=${JWT_SECRET}
+      - JWT_ALGORITHM=HS256
+      - JWT_EXP_MINUTES=60
+      - JWT_REFRESH_EXP_DAYS=30
+      - CORS_ORIGINS=http://localhost:3000
+      - EMAIL_PROVIDER=sendgrid
+      - SENDGRID_API_KEY=${SENDGRID_API_KEY}
+      - SENDGRID_FROM_EMAIL=${SENDGRID_FROM_EMAIL}
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
+    depends_on:
+      - mongo
+    networks:
+      - microservices-network
+    restart: unless-stopped
+
+  # AI Assessment Service
+  ai-assessment-service:
+    build:
+      context: ./services/ai-assessment-service
+      dockerfile: Dockerfile
+    container_name: gisul-ai-assessment-service
+    ports:
+      - "3001:3001"
+    environment:
+      - MONGO_URI=mongodb://mongo:27017
+      - MONGO_DB=ai_assessment_db
+      - REDIS_URL=redis://redis:6379/0
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - CORS_ORIGINS=http://localhost:3000
+    depends_on:
+      - mongo
+      - redis
+    networks:
+      - microservices-network
+    restart: unless-stopped
+    # Note: Service routes need to be copied from backend/app/api/v1/assessments/*
+
+  # Custom MCQ Service
+  custom-mcq-service:
+    build:
+      context: ./services/custom-mcq-service
+      dockerfile: Dockerfile
+    container_name: gisul-custom-mcq-service
+    ports:
+      - "3002:3002"
+    environment:
+      - MONGO_URI=mongodb://mongo:27017
+      - MONGO_DB=custom_mcq_db
+      - CORS_ORIGINS=http://localhost:3000
+    depends_on:
+      - mongo
+    networks:
+      - microservices-network
+    restart: unless-stopped
+
+  # AIML Service
+  aiml-service:
+    build:
+      context: ./services/aiml-service
+      dockerfile: Dockerfile
+    container_name: gisul-aiml-service
+    ports:
+      - "3003:3003"
+      - "8889:8889"  # WebSocket agent port
+    environment:
+      - MONGO_URI=mongodb://mongo:27017
+      - MONGO_DB=aiml_db
+      - CORS_ORIGINS=http://localhost:3000
+    depends_on:
+      - mongo
+    networks:
+      - microservices-network
+    restart: unless-stopped
+
+  # DSA Service
+  dsa-service:
+    build:
+      context: ./services/dsa-service
+      dockerfile: Dockerfile
+    container_name: gisul-dsa-service
+    ports:
+      - "3004:3004"
+    environment:
+      - MONGO_URI=mongodb://mongo:27017
+      - MONGO_DB=dsa_db
+      - JUDGE0_URL=${JUDGE0_URL}
+      - JUDGE0_API_KEY=${JUDGE0_API_KEY}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - CORS_ORIGINS=http://localhost:3000
+    depends_on:
+      - mongo
+    networks:
+      - microservices-network
+    restart: unless-stopped
+
+  # Proctoring Service
+  proctoring-service:
+    build:
+      context: ./services/proctoring-service
+      dockerfile: Dockerfile
+    container_name: gisul-proctoring-service
+    ports:
+      - "3005:3005"
+    environment:
+      - MONGO_URI=mongodb://mongo:27017
+      - MONGO_DB=proctoring_db
+      - REDIS_URL=redis://redis:6379/1
+      - CORS_ORIGINS=http://localhost:3000
+    depends_on:
+      - mongo
+      - redis
+    networks:
+      - microservices-network
+    restart: unless-stopped
+
+  # Super Admin Service
+  super-admin-service:
+    build:
+      context: ./services/super-admin-service
+      dockerfile: Dockerfile
+    container_name: gisul-super-admin-service
+    ports:
+      - "3006:3006"
+    environment:
+      - MONGO_URI=mongodb://mongo:27017
+      - MONGO_DB=auth_db
+      - JWT_SECRET=${JWT_SECRET}
+      - JWT_ALGORITHM=HS256
+      - JWT_EXP_MINUTES=60
+      - JWT_REFRESH_EXP_DAYS=30
+      - CORS_ORIGINS=http://localhost:3000
+    depends_on:
+      - mongo
+    networks:
+      - microservices-network
+    restart: unless-stopped
+
+volumes:
+  mongo_data:
+  redis_data:
+
+networks:
+  microservices-network:
+    driver: bridge
+
