@@ -3162,9 +3162,9 @@ export default function CreateNewAssessmentPage() {
           assessmentTitle: finalTitle.trim() || undefined, // Include title if provided
         });
 
-        if (response.data?.success) {
+        if (response?.success) {
           // Only update topic cards - don't touch selectedSkills (manual skills are preserved)
-          setTopicCards(response.data.data.cards || []);
+          setTopicCards(response.data?.cards || []);
         } else {
           setError("Failed to generate topic cards");
         }
@@ -3212,8 +3212,8 @@ export default function CreateNewAssessmentPage() {
       // In a full migration, we'd use questionsData directly from the hook
       const response = { data: { success: true, data: questionsData as any } };
       
-      if (response.data?.success && response.data?.data) {
-        const responseData: any = response.data.data;
+      if (response?.success && response.data) {
+        const responseData: any = response.data;
         // The backend returns assessment in responseData.assessment, but also check if it's directly in responseData
         const assessment = (responseData?.assessment || responseData) as any;
         
@@ -3322,8 +3322,8 @@ export default function CreateNewAssessmentPage() {
               experienceMode: assessment.experienceMode || "corporate",
               assessmentTitle: assessment.title || undefined,
             });
-            if (topicCardsResponse.data?.success) {
-              setTopicCards(topicCardsResponse.data.data.cards || []);
+            if (topicCardsResponse?.success) {
+              setTopicCards(topicCardsResponse.data?.cards || []);
             }
           } catch (err: any) {
             console.error("Error loading topic cards for draft:", err);
@@ -3787,6 +3787,14 @@ export default function CreateNewAssessmentPage() {
     setError(null);
 
     try {
+      console.log('🔵 [Component] handleGenerateTopicCards - Starting request:', {
+        jobDesignation: jobDesignation.trim(),
+        experienceMin,
+        experienceMax,
+        experienceMode,
+        assessmentTitle: finalTitle.trim() || undefined,
+      });
+
       const response = await generateTopicCardsMutation.mutateAsync({
         jobDesignation: jobDesignation.trim(),
         experienceMin: experienceMin,
@@ -3795,13 +3803,46 @@ export default function CreateNewAssessmentPage() {
         assessmentTitle: finalTitle.trim() || undefined,
       });
 
-      if (response.data?.success) {
-        setTopicCards(response.data.data.cards || []);
+      console.log('🟢 [Component] handleGenerateTopicCards - Response received:', {
+        response,
+        responseType: typeof response,
+        responseKeys: response ? Object.keys(response) : null,
+        hasData: 'data' in (response || {}),
+        responseData: response?.data,
+        dataType: typeof response?.data,
+        dataKeys: response?.data ? Object.keys(response?.data) : null,
+        hasSuccess: response?.data ? 'success' in response.data : false,
+        successValue: response?.data?.success,
+        hasDataData: response?.data ? 'data' in response.data : false,
+        dataData: response?.data?.data,
+        hasCards: response?.data?.data ? 'cards' in response.data.data : false,
+        cards: response?.data?.data?.cards,
+        cardsType: typeof response?.data?.data?.cards,
+        cardsIsArray: Array.isArray(response?.data?.data?.cards),
+        cardsLength: Array.isArray(response?.data?.data?.cards) ? response.data.data.cards.length : null,
+      });
+
+      if (response?.success) {
+        console.log('✅ [Component] handleGenerateTopicCards - Success path, setting cards:', response.data?.cards);
+        setTopicCards(response.data?.cards || []);
       } else {
+        console.warn('⚠️ [Component] handleGenerateTopicCards - Success check failed:', {
+          hasResponse: !!response,
+          successValue: response?.success,
+          fullResponse: response,
+        });
         setError("Failed to generate topic cards");
       }
     } catch (err: any) {
-      console.error("Error generating topic cards:", err);
+      console.error("🔴 [Component] handleGenerateTopicCards - Error caught:", {
+        error: err,
+        message: err?.message,
+        response: err?.response,
+        responseStatus: err?.response?.status,
+        responseData: err?.response?.data,
+        responseDataKeys: err?.response?.data ? Object.keys(err.response.data) : null,
+        stack: err?.stack,
+      });
       setError(err.response?.data?.message || err.message || "Failed to generate topic cards");
     } finally {
       setLoadingCards(false);
@@ -4013,8 +4054,8 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
         url: url,
       });
 
-      if (response.data?.success && response.data?.data?.summary) {
-        const summary = response.data.data.summary;
+      if (response?.success && response.data?.summary) {
+        const summary = response.data.summary;
         setRequirementsSummary(summary);
         lastProcessedUrlRef.current = url;
         
@@ -4262,8 +4303,8 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
         experienceMode: experienceMode,
       });
 
-      if (response.data?.success) {
-        let generatedTopics = response.data.data.topics || [];
+      if (response?.success) {
+        let generatedTopics = response.data?.topics || [];
         
         // Filter out topics that have coding questions but are not supported by Judge0
         generatedTopics = filterTopicsWithCoding(generatedTopics);
@@ -4284,7 +4325,7 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
         });
         setTopicInputValues(initialTopicInputValues);
         
-        setAssessmentId(response.data.data.assessmentId || assessmentId);
+        setAssessmentId(response.data?.assessmentId || assessmentId);
         setFullTopicRegenLocked(false);
         setAllQuestionsGenerated(false);
         setHasVisitedConfigureStation(true);
@@ -4320,8 +4361,8 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
         requirements: csvData
       });
       
-      if (response.data?.success) {
-        const generatedTopics = response.data.data.topics || [];
+      if (response?.success) {
+        const generatedTopics = response.data?.topics || [];
         
         // Update topics_v2 with CSV-generated topics
         setTopicsV2(generatedTopics);
@@ -4343,12 +4384,12 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
             experienceMode: experienceMode
           });
           
-          if (createResponse.data?.success) {
-            setAssessmentId(createResponse.data.data.assessmentId);
+          if (createResponse?.success) {
+            setAssessmentId(createResponse.data?.assessmentId);
             // Override with CSV-generated topics
             setTopicsV2(generatedTopics);
             await updateDraftMutation.mutateAsync({
-              assessmentId: createResponse.data.data.assessmentId,
+              assessmentId: createResponse.data?.assessmentId,
               topics_v2: generatedTopics
             });
           }
@@ -4394,9 +4435,9 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
         });
         
         // If a new assessment was created, use its ID; otherwise keep the existing one
-        if (response.data?.success) {
-          const data = response.data.data;
-          const newAssessmentId = data.assessment._id || data.assessment.id;
+        if (response?.success) {
+          const data = response.data;
+          const newAssessmentId = data?.assessment?._id || data?.assessment?.id;
           // Only update if we got a different ID (shouldn't happen, but safety check)
           if (newAssessmentId !== assessmentId) {
             setAssessmentId(newAssessmentId);
@@ -4505,9 +4546,9 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
         experienceMode: experienceMode,
       });
       
-      if (topicsResponse.data?.success) {
-        const topicsData = topicsResponse.data.data;
-        const returnedAssessmentId = topicsData.assessmentId;
+      if (topicsResponse?.success) {
+        const topicsData = topicsResponse.data;
+        const returnedAssessmentId = topicsData?.assessmentId;
         
         // Update assessmentId if we got one back (new draft created or existing found)
         if (returnedAssessmentId && returnedAssessmentId !== assessmentId) {
@@ -4515,7 +4556,7 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
         }
         
         // Update topics_v2 in the assessment
-        if (topicsData.topics) {
+        if (topicsData?.topics) {
           setTopicsV2(topicsData.topics);
           
           // ⭐ CRITICAL FIX: Initialize topicInputValues with topic labels
@@ -4608,8 +4649,8 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
         experienceMode: experienceMode,
       });
       
-      if (response.data?.success) {
-        let generatedTopics = response.data.data.topics || [];
+      if (response?.success) {
+        let generatedTopics = response.data?.topics || [];
         
         // Filter out topics that have coding questions but are not supported by Judge0
         generatedTopics = filterTopicsWithCoding(generatedTopics);
@@ -4728,9 +4769,9 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
         skillMetadataProvided: skillMetadataProvided,
       });
       
-      if (response.data?.success) {
-        const responseData = response.data.data;
-        const updatedTopicLabel = responseData.updatedTopicLabel || responseData.topic?.label;
+      if (response?.success) {
+        const responseData = response.data;
+        const updatedTopicLabel = responseData?.updatedTopicLabel || responseData?.topic?.label;
         
         // Check if the updated topic has coding questions and is supported by Judge0
         if (updatedTopicLabel) {
@@ -4869,9 +4910,9 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
             additionalRequirements: row.additionalRequirements || undefined,
           });
       
-      if (response.data?.success) {
-        const updatedRow = response.data.data.row;
-        const updatedTopic = response.data.data.topic;
+      if (response?.success) {
+        const updatedRow = response.data?.row;
+        const updatedTopic = response.data?.topic;
         
         // Step 4 & 5: Replace old question and update UI immediately
         const finalTopics = updatedTopics.map(t => {
@@ -5043,8 +5084,8 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
                     additionalRequirements: row.additionalRequirements || undefined,
                   });
 
-                  if (response.data?.success) {
-                    return { success: true, topic, rowId, row, response: response.data };
+                  if (response?.success) {
+                    return { success: true, topic, rowId, row, response: response };
                   } else {
                     throw new Error(`Failed to generate questions for topic ${topic.label}, row ${rowId}`);
                   }
@@ -5387,8 +5428,8 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
         combinedSkills: combinedSkills.length > 0 ? combinedSkills : undefined,
       });
       
-      if (response.data?.success) {
-        let updatedTopics = response.data.data.topics || topicsV2;
+      if (response?.success) {
+        let updatedTopics = response.data?.topics || topicsV2;
         
         // Filter out topics that have coding questions but are not supported by Judge0
         updatedTopics = filterTopicsWithCoding(updatedTopics);
@@ -5451,8 +5492,8 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
         category: category
       });
       
-      if (response.data?.success && response.data?.data?.suggestedQuestionType) {
-        return response.data.data.suggestedQuestionType as "MCQ" | "Subjective";
+      if (response?.success && response.data?.suggestedQuestionType) {
+        return response.data.suggestedQuestionType as "MCQ" | "Subjective";
       }
     } catch (err) {
       console.error("Error getting suggested question type:", err);
@@ -5531,8 +5572,8 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
         category: category,
       });
       
-      if (response.data?.success && response.data?.data) {
-        const validationResult = response.data.data;
+      if (response?.success && response.data) {
+        const validationResult = response.data;
         if (validationResult.valid) {
           setIsTopicValid(true);
           setTopicValidationError(null);
@@ -5582,8 +5623,8 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
         topic: topic.trim()
       });
       
-      if (response.data?.success && response.data?.data) {
-        return response.data.data.isTechnical || false;
+      if (response?.success && response.data) {
+        return response.data.isTechnical || false;
       }
       return false; // Default to false on API error
     } catch (err: any) {
@@ -5673,8 +5714,8 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
           category: finalCategory,
         });
         
-        if (validationResponse.data?.success && validationResponse.data?.data) {
-          const validationResult = validationResponse.data.data;
+        if (validationResponse?.success && validationResponse.data) {
+          const validationResult = validationResponse.data;
           if (!validationResult.valid) {
             const errorMsg = validationResult.error || "Invalid topic for selected category. Please enter only aptitude/communication/logical reasoning topics.";
             resetUIOnValidationFailure(errorMsg);
@@ -5710,8 +5751,8 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
         category: finalCategory
       });
       
-      if (response.data?.success && response.data?.data) {
-        contextData = response.data.data;
+      if (response?.success && response.data) {
+        contextData = response.data;
         defaultQuestionType = contextData.suggestedQuestionType || "MCQ";
         contextSummary = contextData.contextSummary;
       }
@@ -5826,8 +5867,8 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
           input: value.trim()
         });
         
-        if (response.data?.success && response.data?.data) {
-          const result = response.data.data;
+        if (response?.success && response.data) {
+          const result = response.data;
           setAiValidationResult(result);
           
           if (result.isValid && result.suggestions.length > 0) {
@@ -5875,7 +5916,7 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
         topicName: topicName
       });
       
-      if (response.data?.success) {
+      if (response?.success) {
         // Refresh topics list
         if (assessmentId) {
           await refetchAssessment();
@@ -5950,8 +5991,8 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
           topic: topicName
         });
         
-        if (response.data?.success && response.data?.data) {
-          const classification = response.data.data;
+        if (response?.success && response.data) {
+          const classification = response.data;
           defaultQuestionType = classification.questionType as "MCQ" | "Subjective" | "PseudoCode" | "Coding" | "SQL" | "AIML";
           canUseJudge0 = classification.canUseJudge0 || false;
           codingSupported = classification.coding_supported || false; // Get coding_supported from classification
@@ -6125,8 +6166,8 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
         topicName: topicName.trim()
       });
       
-      if (response.data?.success && response.data?.data?.category) {
-        return response.data.data.category;
+      if (response?.success && response.data?.category) {
+        return response.data.category;
       }
     } catch (err) {
       console.error("Error detecting category:", err);
@@ -6150,8 +6191,8 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
         category: category
       });
       
-      if (response.data?.success && response.data?.data?.suggestions) {
-        setTopicSuggestions(response.data.data.suggestions);
+      if (response?.success && response.data?.suggestions) {
+        setTopicSuggestions(response.data.suggestions);
       } else {
         setTopicSuggestions([]);
       }
@@ -6220,9 +6261,9 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
         
         console.log("fetchAiTopicSuggestions: API response", response.data); // Debug
         
-        if (response.data?.success && response.data?.data?.suggestions) {
+        if (response?.success && response.data?.suggestions) {
           // Filter out technical topics on frontend using OpenAI (async, but we'll do it in parallel)
-          const suggestions = response.data.data.suggestions;
+          const suggestions = response.data.suggestions;
           console.log("fetchAiTopicSuggestions: Raw suggestions", suggestions); // Debug
           
           // Check all suggestions in parallel for better performance (limit to first 10 for performance)
@@ -6273,8 +6314,8 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
         category: category
       });
       
-      if (response.data?.success && response.data?.data) {
-        const { contextSummary, suggestedQuestionType } = response.data.data;
+      if (response?.success && response.data) {
+        const { contextSummary, suggestedQuestionType } = response.data;
         
         setTopicsV2(prev => prev.map(t => {
           if (t.id === topicId) {
@@ -6347,10 +6388,10 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
                 topics_v2: updatedTopics,
               });
               
-              if (saveResponse.data?.success) {
+              if (saveResponse?.success) {
                 console.log(`✅ Category "${detectedCategory}" saved successfully for topic: ${value}`);
               } else {
-                console.warn("Category save response indicates failure:", saveResponse.data);
+                console.warn("Category save response indicates failure:", saveResponse);
                 setError(`Failed to save category update. Please try saving the assessment manually.`);
               }
               
@@ -6458,8 +6499,8 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
         topics_v2: topicsV2,
       });
       
-      if (!saveResponse.data?.success) {
-        console.warn("Draft save response indicates failure:", saveResponse.data);
+      if (!saveResponse?.success) {
+        console.warn("Draft save response indicates failure:", saveResponse);
       }
       
       // Small delay to ensure database write completes
@@ -6482,9 +6523,9 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
       
       console.log("Add question row response:", response.data);
       
-      if (response.data?.success) {
-        const updatedTopic = response.data.data.topic;
-        const updatedRow = response.data.data.row;
+      if (response?.success) {
+        const updatedTopic = response.data?.topic;
+        const updatedRow = response.data?.row;
         
         // Update state with the new row
         setTopicsV2(prev => prev.map(t => {
@@ -6643,8 +6684,8 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
         feedback: regenerateQuestionFeedback || undefined,
       });
       
-      if (response.data?.success) {
-        const updatedQuestion = response.data.data.question;
+      if (response?.success) {
+        const updatedQuestion = response.data?.question;
         
         // Update state - preserve timer and score
         setTopicsV2(prev => prev.map(t => {
@@ -6822,8 +6863,8 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
         rowId: rowId,
       });
       
-      if (response.data?.success) {
-        const updatedTopic = response.data.data.topic;
+      if (response?.success) {
+        const updatedTopic = response.data?.topic;
         setTopicsV2(prev => prev.map(t => t.id === topicId ? updatedTopic : t));
       }
     } catch (err: any) {
@@ -6947,7 +6988,7 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
         canUseJudge0: canUseJudge0,
       });
       
-      if (response.data?.success) {
+      if (response?.success) {
         // Update local state to reflect the change
         setTopicsV2(prev => prev.map(t => {
           if (t.id === topicId) {
@@ -7253,9 +7294,9 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
         assessmentId: assessmentId || undefined,
       });
 
-      if (response.data?.success) {
-        const data = response.data.data;
-        const questionType = data.questionType || "MCQ";
+      if (response?.success) {
+        const data = response.data;
+        const questionType = data?.questionType || "MCQ";
         const isCoding = questionType === "coding";
         const autoLanguage = isCoding ? getLanguageFromTopic(topicName) : undefined;
 
@@ -7419,9 +7460,9 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
         assessmentId: assessmentId || undefined,
       });
 
-      if (response.data?.success) {
-        const data = response.data.data;
-        const newTopicName = data.topic || topic.topic; // Use new topic name if provided
+      if (response?.success) {
+        const data = response.data;
+        const newTopicName = data?.topic || topic.topic; // Use new topic name if provided
         const questionType = data.questionType || "MCQ";
         const isCoding = questionType === "coding";
         const autoLanguage = isCoding ? getLanguageFromTopic(newTopicName) : undefined; // Use new topic name for language detection
@@ -7496,13 +7537,13 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
             topics: flattenedTopic,
           });
 
-          if (generateResponse.data?.success) {
+          if (generateResponse?.success) {
             // Update questions state - remove old questions for this topic and add new ones
             const newQuestions: any[] = [];
             
             // Collect all questions from all topics in the response
-            if (generateResponse.data.data.topics && Array.isArray(generateResponse.data.data.topics)) {
-              generateResponse.data.data.topics.forEach((t: any) => {
+            if (generateResponse.data?.topics && Array.isArray(generateResponse.data.topics)) {
+              generateResponse.data.topics.forEach((t: any) => {
                 if (t.questions && Array.isArray(t.questions) && t.questions.length > 0) {
                   // Ensure each question has the correct topic name (use newTopicName in case it changed)
                   const questionsWithTopic = t.questions.map((q: any) => ({
@@ -7516,10 +7557,10 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
 
             console.log(`[Topic Regeneration] Backend returned ${newQuestions.length} new questions for topic '${newTopicName}'`);
             console.log(`[Topic Regeneration] Response structure:`, {
-              hasData: !!generateResponse.data.data,
-              hasTopics: !!generateResponse.data.data.topics,
-              topicsCount: generateResponse.data.data.topics?.length || 0,
-              totalQuestions: generateResponse.data.data.totalQuestions || 0,
+              hasData: !!generateResponse.data,
+              hasTopics: !!generateResponse.data?.topics,
+              topicsCount: generateResponse.data?.topics?.length || 0,
+              totalQuestions: generateResponse.data?.totalQuestions || 0,
             });
             console.log(`[Topic Regeneration] New questions breakdown:`, newQuestions.map((q: any, idx: number) => ({
               index: idx,
@@ -7587,9 +7628,9 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
           experienceMode: experienceMode,
         });
 
-        if (response.data?.success) {
-          const data = response.data.data;
-          const isAptitude = data.assessment?.isAptitudeAssessment || false;
+        if (response?.success) {
+          const data = response.data;
+          const isAptitude = data?.assessment?.isAptitudeAssessment || false;
           setTopics(data.assessment.topics.map((t: any) => t.topic));
           setAvailableQuestionTypes(data.questionTypes || QUESTION_TYPES);
           const newAssessmentId = data.assessment._id || data.assessment.id;
@@ -7751,9 +7792,9 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
           topics: flattenedTopics,
         });
 
-        if (response.data?.success) {
+        if (response?.success) {
           const allQuestions: any[] = [];
-          response.data.data.topics.forEach((topic: any) => {
+          response.data?.topics?.forEach((topic: any) => {
             if (topic.questions && topic.questions.length > 0) {
               allQuestions.push(...topic.questions);
             }
@@ -7787,9 +7828,9 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
             topics: flattenedTopics,
           });
 
-          if (response.data?.success) {
+          if (response?.success) {
             const allQuestions: any[] = [];
-            response.data.data.topics.forEach((topic: any) => {
+            response.data?.topics?.forEach((topic: any) => {
               if (topic.questions && topic.questions.length > 0) {
                 allQuestions.push(...topic.questions);
               }
@@ -8251,7 +8292,7 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
       
       console.log("[FRONTEND] Finalize response:", response.data);
 
-      if (response.data?.success) {
+      if (response?.success) {
         // SINGLE DRAFT: No need to clear localStorage - backend maintains single draft
         setCurrentStation(4);
       } else {
@@ -10626,8 +10667,8 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
                                     questionIndex: qData.questionIndex,
                                     question: editingReviewQuestion.question,
                                   });
-                                  if (response.data?.success) {
-                                    const updatedRow = response.data.data.row;
+                                  if (response?.success) {
+                                    const updatedRow = response.data?.row;
                                     setTopicsV2((prev) => prev.map(t => {
                                       if (t.id === qData.topicId) {
                                         return {
@@ -11813,7 +11854,7 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
                                           template: invitationTemplate,
                                           forceResend: true, // Allow resending to already-invited candidates
                                         });
-                                        if (response.data?.success) {
+                                        if (response?.success) {
                                           // Update invite timestamp
                                           const updatedCandidates = candidates.map(c => 
                                             c.email.toLowerCase() === candidate.email.toLowerCase()
@@ -12064,9 +12105,9 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
                           candidates: candidatesToInvite.map(c => ({ email: c.email, name: c.name })),
                           template: invitationTemplate,
                         });
-                        if (response.data?.success) {
+                        if (response?.success) {
                           setError(null);
-                          const data = response.data.data || {};
+                          const data = response.data || {};
                           const sentCount = data.sentCount || 0;
                           const skippedCount = data.skippedCount || 0;
                           

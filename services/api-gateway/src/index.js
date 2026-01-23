@@ -349,7 +349,60 @@ const proxyOptions = {
       statusMessage: proxyRes.statusMessage,
       url: req.originalUrl,
       headers: Object.keys(proxyRes.headers),
+      contentType: proxyRes.headers['content-type'],
+      contentLength: proxyRes.headers['content-length'],
     });
+    
+    // Capture response body for logging (only for generate-topic-cards endpoint)
+    if (req.originalUrl && req.originalUrl.includes('generate-topic-cards')) {
+      let responseBody = '';
+      const chunks = [];
+      
+      // Store original methods
+      const originalWrite = res.write.bind(res);
+      const originalEnd = res.end.bind(res);
+      
+      // Override write to capture chunks
+      res.write = function(chunk) {
+        if (chunk) {
+          chunks.push(chunk);
+        }
+        return originalWrite(chunk);
+      };
+      
+      // Override end to log body
+      res.end = function(chunk) {
+        if (chunk) {
+          chunks.push(chunk);
+        }
+        
+        // Combine all chunks
+        const buffer = Buffer.concat(chunks);
+        try {
+          responseBody = buffer.toString('utf8');
+          const parsed = JSON.parse(responseBody);
+          console.log('🔵 [API Gateway] generate-topic-cards Response Body:', {
+            bodyLength: responseBody.length,
+            parsed: parsed,
+            hasSuccess: 'success' in (parsed || {}),
+            successValue: parsed?.success,
+            hasData: 'data' in (parsed || {}),
+            dataKeys: parsed?.data ? Object.keys(parsed.data) : null,
+            hasCards: parsed?.data ? 'cards' in parsed.data : false,
+            cardsCount: Array.isArray(parsed?.data?.cards) ? parsed.data.cards.length : null,
+          });
+        } catch (e) {
+          console.log('🔵 [API Gateway] generate-topic-cards Response Body (raw):', {
+            bodyLength: responseBody.length,
+            preview: responseBody.substring(0, 500),
+            parseError: e.message,
+          });
+        }
+        
+        return originalEnd(chunk);
+      };
+    }
+    
     // Add correlation ID to response
     proxyRes.headers['X-Correlation-ID'] = req.correlationId;
     
