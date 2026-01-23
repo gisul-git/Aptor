@@ -8,7 +8,6 @@ import Link from "next/link";
 import fastApiClient from "../../lib/fastapi";
 import { sortedCountryCodes, getCountryNameFromCode } from "../../lib/countryCodes";
 import { validateEmailWithCommonTypos } from "../../lib/validation/email";
-import { isValidPassword } from "../../lib/validators";
 
 // Phone number validation based on country code
 const validatePhoneNumber = (phone: string, countryCode: string): { valid: boolean; error?: string } => {
@@ -126,8 +125,6 @@ export default function SignupPage({ providers }: SignupPageProps) {
   const [codeExpired, setCodeExpired] = useState(false);
   const [isEmailVerified, setIsEmailVerified] = useState(false);
   const [verifiedEmail, setVerifiedEmail] = useState<string>("");
-  const [passwordErrors, setPasswordErrors] = useState<string[]>([]);
-  const [showPasswordRequirements, setShowPasswordRequirements] = useState(false);
 
   const googleProvider = providers ? providers["google"] : undefined;
   const microsoftProvider = providers ? providers["azure-ad"] ?? providers["azuread"] : undefined;
@@ -310,15 +307,6 @@ export default function SignupPage({ providers }: SignupPageProps) {
       return;
     }
     
-    // Validate password strength
-    const passwordValidation = isValidPassword(password);
-    if (!passwordValidation.valid) {
-      setPasswordErrors(passwordValidation.errors);
-      setShowPasswordRequirements(true);
-      showMessage("error", "Password does not meet requirements. Please check the requirements below.");
-      return;
-    }
-
     if (password !== confirmPassword) {
       showMessage("error", "Passwords do not match");
       return;
@@ -349,27 +337,7 @@ export default function SignupPage({ providers }: SignupPageProps) {
       setTimeRemaining(60);
       setCodeExpired(false);
     } catch (error: any) {
-      // Check if it's a password validation error
-      const errorData = error?.response?.data;
-      if (errorData?.password_errors && Array.isArray(errorData.password_errors)) {
-        setPasswordErrors(errorData.password_errors);
-        setShowPasswordRequirements(true);
-        showMessage("error", "Password does not meet requirements. Please check the requirements below.");
-      } else if (errorData?.detail && Array.isArray(errorData.detail)) {
-        // Extract password errors from validation detail
-        const pwdErrors = errorData.detail
-          .filter((err: any) => err.loc && err.loc.some((loc: string) => loc.toString().toLowerCase() === "password"))
-          .map((err: any) => err.msg || "Invalid password");
-        if (pwdErrors.length > 0) {
-          setPasswordErrors(pwdErrors);
-          setShowPasswordRequirements(true);
-          showMessage("error", "Password does not meet requirements. Please check the requirements below.");
-        } else {
-          showMessage("error", errorData?.message ?? error?.message ?? "Signup failed");
-        }
-      } else {
-        showMessage("error", errorData?.message ?? error?.message ?? "Signup failed");
-      }
+      showMessage("error", error?.response?.data?.message ?? error?.message ?? "Signup failed");
     } finally {
       setLoading(false);
     }
@@ -433,89 +401,17 @@ export default function SignupPage({ providers }: SignupPageProps) {
                   style={{ marginBottom: "0.5rem", padding: "0.5rem 0.75rem", fontSize: "0.875rem" }}
                 />
 
-                <div style={{ marginBottom: "0.5rem" }}>
-                  <label htmlFor="password" style={{ fontSize: "0.8125rem", marginTop: 0, marginBottom: "0.25rem", display: "block" }}>
-                    Password
-                  </label>
-                  <input
-                    id="password"
-                    type="password"
-                    required
-                    value={password}
-                    onChange={(event) => {
-                      setPassword(event.target.value);
-                      // Validate on change
-                      const validation = isValidPassword(event.target.value);
-                      if (event.target.value.length > 0) {
-                        setPasswordErrors(validation.errors);
-                        setShowPasswordRequirements(validation.errors.length > 0);
-                      } else {
-                        setPasswordErrors([]);
-                        setShowPasswordRequirements(false);
-                      }
-                    }}
-                    onFocus={() => {
-                      if (password.length > 0) {
-                        const validation = isValidPassword(password);
-                        setPasswordErrors(validation.errors);
-                        setShowPasswordRequirements(true);
-                      }
-                    }}
-                    style={{ 
-                      width: "100%",
-                      marginBottom: "0.25rem", 
-                      padding: "0.5rem 0.75rem", 
-                      fontSize: "0.875rem",
-                      border: passwordErrors.length > 0 ? "1px solid #ef4444" : "1px solid #e8e0d0",
-                      borderRadius: "0.5rem",
-                    }}
-                  />
-                  {showPasswordRequirements && (
-                    <div
-                      style={{
-                        marginTop: "0.5rem",
-                        padding: "0.75rem",
-                        backgroundColor: "#fef2f2",
-                        border: "1px solid #fecaca",
-                        borderRadius: "0.5rem",
-                        fontSize: "0.8125rem",
-                      }}
-                    >
-                      <div style={{ fontWeight: 600, marginBottom: "0.5rem", color: "#991b1b" }}>
-                        Password Requirements:
-                      </div>
-                      <ul style={{ margin: 0, paddingLeft: "1.25rem", color: "#7f1d1d" }}>
-                        <li style={{ marginBottom: "0.25rem", color: password.length >= 8 ? "#16a34a" : "#dc2626" }}>
-                          At least 8 characters long
-                        </li>
-                        <li style={{ marginBottom: "0.25rem", color: /[A-Z]/.test(password) ? "#16a34a" : "#dc2626" }}>
-                          At least one uppercase letter (A-Z)
-                        </li>
-                        <li style={{ marginBottom: "0.25rem", color: /[a-z]/.test(password) ? "#16a34a" : "#dc2626" }}>
-                          At least one lowercase letter (a-z)
-                        </li>
-                        <li style={{ marginBottom: "0.25rem", color: /[0-9]/.test(password) ? "#16a34a" : "#dc2626" }}>
-                          At least one number (0-9)
-                        </li>
-                        <li style={{ marginBottom: "0.25rem", color: /[!@#$%^&*(),.?":{}|<>]/.test(password) ? "#16a34a" : "#dc2626" }}>
-                          At least one special character (!@#$%^&*(),.?":{}|&lt;&gt;)
-                        </li>
-                      </ul>
-                      {passwordErrors.length > 0 && (
-                        <div style={{ marginTop: "0.5rem", paddingTop: "0.5rem", borderTop: "1px solid #fecaca" }}>
-                          <div style={{ fontWeight: 600, marginBottom: "0.25rem", color: "#991b1b" }}>
-                            Current Issues:
-                          </div>
-                          <ul style={{ margin: 0, paddingLeft: "1.25rem", color: "#dc2626" }}>
-                            {passwordErrors.map((error, idx) => (
-                              <li key={idx} style={{ marginBottom: "0.125rem" }}>{error}</li>
-                            ))}
-                          </ul>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
+                <label htmlFor="password" style={{ fontSize: "0.8125rem", marginTop: 0, marginBottom: "0.25rem" }}>
+                  Password
+                </label>
+                <input
+                  id="password"
+                  type="password"
+                  required
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                  style={{ marginBottom: "0.5rem", padding: "0.5rem 0.75rem", fontSize: "0.875rem" }}
+                />
 
                 <label htmlFor="confirmPassword" style={{ fontSize: "0.8125rem", marginTop: 0, marginBottom: "0.25rem" }}>
                   Confirm Password

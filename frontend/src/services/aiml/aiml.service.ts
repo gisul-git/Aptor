@@ -346,7 +346,7 @@ export const aimlService = {
     difficulty: string;
     dataset_format?: string;
   }): Promise<ApiResponse<any>> => {
-    const response = await apiClient.post<ApiResponse<any>>('/api/v1/aiml/questions/generate-ai', data);
+    const response = await apiClient.post<ApiResponse<any>>('/api/v1/aiml/questions/generate', data);
     return response.data;
   },
 };
