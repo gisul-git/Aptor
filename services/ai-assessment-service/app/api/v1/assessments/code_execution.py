@@ -263,6 +263,16 @@ async def run_code(request: RunCodeRequest):
             status_description = status_value
             status_id = res.get("status_id", 0)
         
+        # Ensure stderr and compile_output are strings (not objects)
+        stderr_value = res.get("stderr", "")
+        compile_output_value = res.get("compile_output", "")
+        
+        # Convert to string if it's not already
+        if stderr_value is not None and not isinstance(stderr_value, str):
+            stderr_value = str(stderr_value)
+        if compile_output_value is not None and not isinstance(compile_output_value, str):
+            compile_output_value = str(compile_output_value)
+        
         public_results.append({
             "id": tc["id"],
             "test_number": i + 1,
@@ -274,8 +284,8 @@ async def run_code(request: RunCodeRequest):
             "time": res.get("time"),
             "memory": res.get("memory"),
             "passed": passed,
-            "stderr": res.get("stderr"),
-            "compile_output": res.get("compile_output"),
+            "stderr": stderr_value or "",
+            "compile_output": compile_output_value or "",
         })
     
     # Calculate summary
@@ -504,6 +514,16 @@ async def submit_code(request: SubmitCodeRequest):
             status_value = res.get("status", "Unknown")
             status_id = res.get("status_id", 0)
             
+            # Ensure stderr and compile_output are strings (not objects)
+            stderr_value = res.get("stderr", "")
+            compile_output_value = res.get("compile_output", "")
+            
+            # Convert to string if it's not already
+            if stderr_value is not None and not isinstance(stderr_value, str):
+                stderr_value = str(stderr_value)
+            if compile_output_value is not None and not isinstance(compile_output_value, str):
+                compile_output_value = str(compile_output_value)
+            
             public_results.append({
                 "id": tc["id"],
                 "test_number": public_index + 1,
@@ -515,8 +535,8 @@ async def submit_code(request: SubmitCodeRequest):
                 "time": res.get("time"),
                 "memory": res.get("memory"),
                 "passed": passed,
-                "stderr": res.get("stderr"),
-                "compile_output": res.get("compile_output"),
+                "stderr": stderr_value or "",
+                "compile_output": compile_output_value or "",
             })
             public_index += 1
     

@@ -157,7 +157,7 @@ export default function QuestionsPage() {
         description: finalDescription.trim() || undefined,
       });
 
-      if (response.data?.success) {
+      if (response?.success) {
         setSuccess("Assessment finalized successfully!");
         setTimeout(() => {
           router.push("/dashboard");
