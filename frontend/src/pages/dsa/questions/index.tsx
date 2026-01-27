@@ -5,7 +5,7 @@ import { useRouter } from 'next/router'
 import { Card, CardContent, CardHeader, CardTitle } from '../../../components/dsa/ui/card'
 import { Button } from '../../../components/dsa/ui/button'
 import dsaApi from '../../../lib/dsa/api'
-import { Plus, Trash2, Edit, FileText, Copy } from 'lucide-react'
+import { Plus, Trash2, Edit, FileText } from 'lucide-react'
 import Link from 'next/link'
 
 interface Question {
@@ -24,7 +24,6 @@ export default function QuestionsListPage() {
   const [questions, setQuestions] = useState<Question[]>([])
   const [loading, setLoading] = useState(true)
   const [deletingId, setDeletingId] = useState<string | null>(null)
-  const [cloningId, setCloningId] = useState<string | null>(null)
 
   useEffect(() => {
     const fetchQuestions = async () => {
@@ -84,27 +83,6 @@ export default function QuestionsListPage() {
       )
     } catch (error: any) {
       alert(error.response?.data?.detail || 'Failed to update publish status')
-    }
-  }
-
-  const handleClone = async (questionId: string) => {
-    setCloningId(questionId)
-    try {
-      const response = await dsaApi.post(`/questions/${questionId}/clone`)
-      // Prepend new cloned question to list for immediate feedback
-      const created = response.data
-      if (created?.id) {
-        setQuestions([created as any, ...questions])
-      } else {
-        // Fallback: refetch
-        const refreshed = await dsaApi.get('/questions')
-        setQuestions(refreshed.data)
-      }
-      alert('Question cloned successfully!')
-    } catch (error: any) {
-      alert(error.response?.data?.detail || 'Failed to clone question')
-    } finally {
-      setCloningId(null)
     }
   }
 
@@ -230,16 +208,6 @@ export default function QuestionsListPage() {
                           Edit
                         </Button>
                       </Link>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleClone(question.id)}
-                        disabled={cloningId === question.id}
-                        title="Clone this question"
-                      >
-                        <Copy className="h-4 w-4 mr-2" />
-                        {cloningId === question.id ? 'Cloning...' : 'Clone'}
-                      </Button>
                       <Button
                         variant="destructive"
                         size="sm"

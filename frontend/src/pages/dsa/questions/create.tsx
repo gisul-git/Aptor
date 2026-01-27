@@ -15,7 +15,7 @@ import { Sparkles, Loader2, Code, Database, Table2 } from 'lucide-react'
 type QuestionType = 'coding' | 'sql'
 
 type Testcase = {
-  input: string
+  input: string | any  // Can be string or object (object will be formatted for display)
   expected_output?: string  // Optional for AI-generated questions
 }
 
@@ -39,6 +39,60 @@ const getExpectedOutputPlaceholder = (returnType: string) => {
 
 const getStdinPlaceholder = () => {
   return 'Raw stdin only (no variable names, no JSON arrays like [1,2,3])'
+}
+
+// Helper function to safely convert input to string for display
+const formatTestcaseInput = (input: any): string => {
+  if (input === null || input === undefined) {
+    return ''
+  }
+  if (typeof input === 'string') {
+    return input
+  }
+  if (typeof input === 'object') {
+    // Convert object to JSON string with proper formatting
+    try {
+      return JSON.stringify(input, null, 2)
+    } catch (e) {
+      return String(input)
+    }
+  }
+  return String(input)
+}
+
+// Helper function to parse testcase input back to object if it's valid JSON, otherwise keep as string
+const parseTestcaseInput = (input: string): any => {
+  if (!input || !input.trim()) {
+    return input
+  }
+  // Try to parse as JSON object
+  try {
+    const parsed = JSON.parse(input.trim())
+    // If it's an object, return it; otherwise return the original string
+    if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)) {
+      return parsed
+    }
+    // If it's an array or primitive, return original string (legacy format)
+    return input
+  } catch (e) {
+    // Not valid JSON, return as string (legacy stdin format)
+    return input
+  }
+}
+
+// Helper function to safely check if testcase input is non-empty (handles both string and object)
+const isTestcaseInputNonEmpty = (input: any): boolean => {
+  if (!input) {
+    return false
+  }
+  if (typeof input === 'string') {
+    return input.trim().length > 0
+  }
+  if (typeof input === 'object') {
+    // For objects, check if it has any properties
+    return Object.keys(input).length > 0
+  }
+  return false
 }
 
 // DSA (Data Structures & Algorithms) supported languages
@@ -207,13 +261,23 @@ export default function QuestionCreatePage() {
     if (type === 'public') {
       setPublicTestcases((prev) => {
         const copy = [...prev]
-        copy[idx] = { ...copy[idx], [field]: value }
+        // Ensure input is always stored as string
+        if (field === 'input') {
+          copy[idx] = { ...copy[idx], [field]: value }
+        } else {
+          copy[idx] = { ...copy[idx], [field]: value }
+        }
         return copy
       })
     } else {
       setHiddenTestcases((prev) => {
         const copy = [...prev]
-        copy[idx] = { ...copy[idx], [field]: value }
+        // Ensure input is always stored as string
+        if (field === 'input') {
+          copy[idx] = { ...copy[idx], [field]: value }
+        } else {
+          copy[idx] = { ...copy[idx], [field]: value }
+        }
         return copy
       })
     }
@@ -246,6 +310,12 @@ export default function QuestionCreatePage() {
       return
     }
 
+    // For coding questions, ensure at least one language is selected
+    if (questionType === 'coding' && languages.length === 0) {
+      setError('Please select at least one language for starter code generation')
+      return
+    }
+
     setGenerating(true)
     setError(null)
 
@@ -259,6 +329,8 @@ export default function QuestionCreatePage() {
         difficulty: aiDifficulty,
         topic: aiTopic || undefined,
         concepts: aiConcepts || undefined,
+        // Only pass languages for coding questions (not SQL)
+        ...(questionType === 'coding' && languages.length > 0 ? { languages } : {}),
       })
 
       const data = response.data
@@ -279,7 +351,12 @@ export default function QuestionCreatePage() {
         setOrderSensitive(data.evaluation?.order_sensitive || false)
       } else {
         // Coding-specific fields
-      setLanguages(data.languages || ['python'])
+        // Preserve user's selected languages (don't override from response)
+        // The backend generates starter code for the languages we sent in the request
+        // If no languages were selected, use the response languages as fallback
+        if (languages.length === 0 && data.languages && data.languages.length > 0) {
+          setLanguages(data.languages)
+        }
       
       // Set examples (LeetCode style)
       if (data.examples && data.examples.length > 0) {
@@ -295,16 +372,18 @@ export default function QuestionCreatePage() {
         setConstraints(data.constraints)
       }
       
-      // Set starter code for all languages
+      // Set starter code only for selected languages
       if (data.starter_code) {
         const newStarterCode: Record<string, string> = {}
-        SUPPORTED_LANGUAGES.forEach(lang => {
-          newStarterCode[lang] = data.starter_code[lang] || ''
+        // Only include starter code for languages that were selected and generated
+        languages.forEach(lang => {
+          newStarterCode[lang] = data.starter_code[lang] || DEFAULT_STARTER_CODE[lang] || ''
         })
         setStarterCode(newStarterCode)
       } else {
+        // Fallback: use default starter code for selected languages only
         const newStarterCode: Record<string, string> = {}
-        SUPPORTED_LANGUAGES.forEach(lang => {
+        languages.forEach(lang => {
           newStarterCode[lang] = DEFAULT_STARTER_CODE[lang] || ''
         })
         setStarterCode(newStarterCode)
@@ -320,23 +399,31 @@ export default function QuestionCreatePage() {
           setSecureMode(true)
       }
 
-      // Set public testcases
+      // Set public testcases - ensure input is always a string
       if (data.public_testcases && data.public_testcases.length > 0) {
         setPublicTestcases(
-          data.public_testcases.map((tc: any) => ({
-            input: tc.input || '',
-            expected_output: tc.expected_output ?? undefined,
-          }))
+          data.public_testcases.map((tc: any) => {
+            // Always convert input to string for state storage
+            const inputStr = typeof tc.input === 'string' ? tc.input : formatTestcaseInput(tc.input)
+            return {
+              input: inputStr,
+              expected_output: tc.expected_output ?? undefined,
+            }
+          })
         )
       }
 
-      // Set hidden testcases
+      // Set hidden testcases - ensure input is always a string
       if (data.hidden_testcases && data.hidden_testcases.length > 0) {
         setHiddenTestcases(
-          data.hidden_testcases.map((tc: any) => ({
-            input: tc.input || '',
-            expected_output: tc.expected_output ?? undefined,
-          }))
+          data.hidden_testcases.map((tc: any) => {
+            // Always convert input to string for state storage
+            const inputStr = typeof tc.input === 'string' ? tc.input : formatTestcaseInput(tc.input)
+            return {
+              input: inputStr,
+              expected_output: tc.expected_output ?? undefined,
+            }
+          })
         )
         }
       }
@@ -456,20 +543,80 @@ export default function QuestionCreatePage() {
         difficulty,
         languages,
         starter_code: starterCode,
-        public_testcases: publicTestcases
-          .filter((tc) => tc.input.trim() || (tc.expected_output && tc.expected_output.trim()))
-          .map((tc) => ({
-            input: tc.input,
-            ...(tc.expected_output ? { expected_output: tc.expected_output } : {}),
-            is_hidden: false,
-          })),
-        hidden_testcases: hiddenTestcases
-          .filter((tc) => tc.input.trim() || (tc.expected_output && tc.expected_output.trim()))
-          .map((tc) => ({
-            input: tc.input,
-            ...(tc.expected_output ? { expected_output: tc.expected_output } : {}),
-            is_hidden: true,
-          })),
+        public_testcases: (() => {
+          // Filter out empty testcases - only store testcases with actual data
+          const nonEmptyTestcases = publicTestcases.filter((tc) => {
+            const hasInput = isTestcaseInputNonEmpty(tc.input)
+            const hasExpectedOutput = tc.expected_output && typeof tc.expected_output === 'string' && tc.expected_output.trim()
+            return hasInput || hasExpectedOutput
+          })
+          
+          // For AI-generated questions, omit expected_output from ALL testcases
+          // For manual questions, include expected_output for ALL testcases (backend will validate it's not empty)
+          if (isAiGenerated) {
+            return nonEmptyTestcases.map((tc) => {
+              // Ensure input is always a string, default to empty string if missing
+              const inputStr = tc.input 
+                ? (typeof tc.input === 'string' ? tc.input : formatTestcaseInput(tc.input))
+                : ''
+              return {
+                input: parseTestcaseInput(inputStr),
+                // Omit expected_output for AI-generated
+                is_hidden: false,
+              }
+            })
+          } else {
+            // Manual questions - include expected_output for all (even if empty, backend will validate)
+            return nonEmptyTestcases.map((tc) => {
+              // Ensure input is always a string, default to empty string if missing
+              const inputStr = tc.input 
+                ? (typeof tc.input === 'string' ? tc.input : formatTestcaseInput(tc.input))
+                : ''
+              return {
+                input: parseTestcaseInput(inputStr),
+                expected_output: tc.expected_output || '', // Always include, backend will validate it's not empty
+                is_hidden: false,
+              }
+            })
+          }
+        })(),
+        hidden_testcases: (() => {
+          // Filter out empty testcases - only store testcases with actual data
+          const nonEmptyTestcases = hiddenTestcases.filter((tc) => {
+            const hasInput = isTestcaseInputNonEmpty(tc.input)
+            const hasExpectedOutput = tc.expected_output && typeof tc.expected_output === 'string' && tc.expected_output.trim()
+            return hasInput || hasExpectedOutput
+          })
+          
+          // For AI-generated questions, omit expected_output from ALL testcases
+          // For manual questions, include expected_output for ALL testcases (backend will validate it's not empty)
+          if (isAiGenerated) {
+            return nonEmptyTestcases.map((tc) => {
+              // Ensure input is always a string, default to empty string if missing
+              const inputStr = tc.input 
+                ? (typeof tc.input === 'string' ? tc.input : formatTestcaseInput(tc.input))
+                : ''
+              return {
+                input: parseTestcaseInput(inputStr),
+                // Omit expected_output for AI-generated
+                is_hidden: true,
+              }
+            })
+          } else {
+            // Manual questions - include expected_output for all (even if empty, backend will validate)
+            return nonEmptyTestcases.map((tc) => {
+              // Ensure input is always a string, default to empty string if missing
+              const inputStr = tc.input 
+                ? (typeof tc.input === 'string' ? tc.input : formatTestcaseInput(tc.input))
+                : ''
+              return {
+                input: parseTestcaseInput(inputStr),
+                expected_output: tc.expected_output || '', // Always include, backend will validate it's not empty
+                is_hidden: true,
+              }
+            })
+          }
+        })(),
         function_signature: functionSignature,
         secure_mode: secureMode,
         is_published: isPublished,
@@ -481,8 +628,20 @@ export default function QuestionCreatePage() {
       alert(`${typeLabel} Question created successfully!`)
       router.push('/dsa/questions')
     } catch (err: any) {
-      console.error(err)
-      setError(err.response?.data?.detail || 'Failed to create question')
+      console.error('Error creating question:', err)
+      console.error('Error response:', err.response?.data)
+      console.error('Error status:', err.response?.status)
+      
+      let errorMessage = 'Failed to create question'
+      if (err.response?.data?.detail) {
+        errorMessage = err.response.data.detail
+      } else if (err.response?.data?.message) {
+        errorMessage = err.response.data.message
+      } else if (err.message) {
+        errorMessage = `Error: ${err.message}`
+      }
+      
+      setError(errorMessage)
     } finally {
       setSaving(false)
     }
@@ -686,6 +845,35 @@ export default function QuestionCreatePage() {
                 </select>
               </div>
             </div>
+
+            {/* Language Selection - Only for Coding Questions */}
+            {questionType === 'coding' && (
+              <div>
+                <label className="text-sm font-medium mb-2 block">
+                  Select Languages for Starter Code *
+                </label>
+                <p className="text-xs text-muted-foreground mb-2">
+                  AI will generate starter code only for the selected languages
+                </p>
+                <div className="flex flex-wrap gap-4 p-3 border border-input rounded-md bg-background/50">
+                  {SUPPORTED_LANGUAGES.map((lang) => (
+                    <label key={lang} className="flex items-center gap-2 text-sm cursor-pointer">
+                      <Checkbox
+                        checked={languages.includes(lang)}
+                        onCheckedChange={() => toggleLanguage(lang)}
+                        disabled={generating}
+                      />
+                      <span className="capitalize">{lang}</span>
+                    </label>
+                  ))}
+                </div>
+                {languages.length === 0 && (
+                  <p className="text-xs text-destructive mt-1">
+                    Please select at least one language
+                  </p>
+                )}
+              </div>
+            )}
 
             <Button
               onClick={handleGenerateWithAI}
@@ -1405,7 +1593,7 @@ export default function QuestionCreatePage() {
             ))}
             {isAiGenerated && (
               <p className="text-xs text-muted-foreground mt-2">
-                ℹ️ Starter code is AI-generated and cannot be modified. All 10 languages have been generated.
+                ℹ️ Starter code is AI-generated and cannot be modified. Generated for {languages.length} selected language{languages.length !== 1 ? 's' : ''}: {languages.join(', ')}.
               </p>
             )}
           </CardContent>
@@ -1450,7 +1638,7 @@ export default function QuestionCreatePage() {
                     <Textarea
                       rows={3}
                       className="font-mono text-sm"
-                      value={tc.input}
+                      value={formatTestcaseInput(tc.input)}
                       onChange={(e) =>
                         updateTestcase(idx, 'public', 'input', e.target.value)
                       }
@@ -1525,7 +1713,7 @@ export default function QuestionCreatePage() {
                     <Textarea
                       rows={3}
                       className="font-mono text-sm"
-                      value={tc.input}
+                      value={formatTestcaseInput(tc.input)}
                       onChange={(e) =>
                         updateTestcase(idx, 'hidden', 'input', e.target.value)
                       }

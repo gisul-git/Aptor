@@ -15,7 +15,9 @@ from typing import Any, Dict, List, Optional
 
 import httpx
 
-from ..config import JUDGE0_URL, JUDGE0_POLL_INTERVAL, JUDGE0_MAX_POLLS, JUDGE0_TIMEOUT
+from ..config import JUDGE0_URL, JUDGE0_POLL_INTERVAL, JUDGE0_MAX_POLLS, JUDGE0_TIMEOUT, USE_CUSTOM_ENGINE
+from ..models.question import FunctionSignature
+from ..services.custom_execution_service import execute_batch, CustomExecutionError
 
 logger = logging.getLogger("backend")
 
@@ -365,15 +367,71 @@ async def run_all_test_cases(
     cpu_time_limit: float = 2.0,
     memory_limit: int = 128000,
     stop_on_compilation_error: bool = True,
+    function_signature: Optional[FunctionSignature] = None,
 ) -> Dict[str, Any]:
     """
-    Run all test cases for a question sequentially.
-    Returns aggregated results with score calculation.
+    Run all test cases for a question.
+    Uses custom execution engine for Java/Python (batch execution).
+    Falls back to Judge0 for other languages (sequential execution).
     
     This function is LANGUAGE-AGNOSTIC.
     
     test_cases should have: stdin, expected_output, is_hidden, points, id (optional)
+    function_signature: Required for Java/Python to use custom engine
     """
+    # Check if we should use custom engine for Java/Python
+    language = get_language_name(language_id)
+    
+    if (USE_CUSTOM_ENGINE and 
+        language in ["java", "python"] and 
+        function_signature is not None):
+        # Use custom execution engine (batch execution)
+        try:
+            logger.info(f"Using custom execution engine for {language}")
+            time_limit_ms = int(cpu_time_limit * 1000)
+            memory_limit_mb = memory_limit // 1024
+            
+            result = await execute_batch(
+                code=source_code,  # Raw code, no wrapping needed
+                language=language,
+                function_signature=function_signature,
+                test_cases=test_cases,
+                time_limit_ms=time_limit_ms,
+                memory_limit_mb=memory_limit_mb
+            )
+            
+            # Result is already in Judge0-compatible format
+            return result
+            
+        except CustomExecutionError as e:
+            logger.error(f"Custom engine execution failed: {e}")
+            # Fall through to Judge0 as fallback, or return error
+            # For now, we'll return an error structure
+            return {
+                "passed": 0,
+                "total": len(test_cases),
+                "score": 0,
+                "max_score": len(test_cases),
+                "compilation_error": True,
+                "results": [{
+                    "test_case_id": tc.get("id", f"tc_{i}"),
+                    "is_hidden": tc.get("is_hidden", False),
+                    "passed": False,
+                    "status": "Execution Error",
+                    "status_id": 13,
+                    "time": None,
+                    "memory": None,
+                    "stdout": "",
+                    "stderr": str(e),
+                    "compile_output": str(e),
+                } for i, tc in enumerate(test_cases)]
+            }
+        except Exception as e:
+            logger.error(f"Unexpected error in custom engine: {e}")
+            # Fall through to Judge0
+    
+    # Fallback to Judge0 (sequential execution for other languages or if custom engine fails)
+    logger.info(f"Using Judge0 for {language or language_id}")
     results = []
     total_score = 0
     max_score = 0

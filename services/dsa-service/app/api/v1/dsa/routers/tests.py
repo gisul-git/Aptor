@@ -1929,6 +1929,20 @@ async def process_question_evaluation_background(
         cpu_time_limit = 2.0
         memory_limit = 128000
         
+        # Get function signature for custom engine
+        function_signature = None
+        func_sig_data = question.get("function_signature")
+        if func_sig_data:
+            from ..models.question import FunctionSignature, FunctionParameter
+            function_signature = FunctionSignature(
+                name=func_sig_data.get("name"),
+                parameters=[
+                    FunctionParameter(name=p.get("name"), type=p.get("type"))
+                    for p in func_sig_data.get("parameters", [])
+                ],
+                return_type=func_sig_data.get("return_type")
+            )
+        
         results = await run_all_test_cases(
             source_code=prepared_code,
             language_id=language_id,
@@ -1936,6 +1950,7 @@ async def process_question_evaluation_background(
             cpu_time_limit=cpu_time_limit,
             memory_limit=memory_limit,
             stop_on_compilation_error=True,
+            function_signature=function_signature,
         )
         
         # Process results
@@ -2492,6 +2507,20 @@ async def final_submit_test(
         cpu_time_limit = 2.0
         memory_limit = 128000
         
+        # Get function signature for custom engine
+        function_signature = None
+        func_sig_data = question.get("function_signature")
+        if func_sig_data:
+            from ..models.question import FunctionSignature, FunctionParameter
+            function_signature = FunctionSignature(
+                name=func_sig_data.get("name"),
+                parameters=[
+                    FunctionParameter(name=p.get("name"), type=p.get("type"))
+                    for p in func_sig_data.get("parameters", [])
+                ],
+                return_type=func_sig_data.get("return_type")
+            )
+        
         # Run ALL test cases with prepared code
         results = await run_all_test_cases(
             source_code=prepared_code,
@@ -2500,6 +2529,7 @@ async def final_submit_test(
             cpu_time_limit=cpu_time_limit,
             memory_limit=memory_limit,
             stop_on_compilation_error=True,
+            function_signature=function_signature,
         )
         
         # Process test case results

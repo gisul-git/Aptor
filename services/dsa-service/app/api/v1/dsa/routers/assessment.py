@@ -195,9 +195,13 @@ async def prepare_code_for_execution(
     """
     Prepare user code for execution.
     
+    For Java/Python with custom engine: Returns raw code (no wrapping needed).
+    For other languages with Judge0: Wraps code as before.
+    
     Hybrid approach:
-    1. If secure_mode=False → pass code as-is (legacy mode)
-    2. If secure_mode=True:
+    1. If custom engine (Java/Python) → return raw code
+    2. If secure_mode=False → pass code as-is (legacy mode)
+    3. If secure_mode=True:
        a. Validate code for forbidden I/O patterns
        b. Check for hardcoding
        c. Use wrapper_template if defined by admin
@@ -206,6 +210,8 @@ async def prepare_code_for_execution(
     Returns:
         (prepared_code, error_message, warnings_list)
     """
+    from ..config import USE_CUSTOM_ENGINE
+    
     warnings = []
     secure_mode = question.get("secure_mode", False)
     
@@ -226,6 +232,12 @@ async def prepare_code_for_execution(
     if not is_valid_boilerplate:
         warnings.extend(boilerplate_warnings)
     
+    # For custom engine (Java/Python), return raw code - no wrapping needed
+    if USE_CUSTOM_ENGINE and language in ["java", "python"]:
+        logger.info(f"Using custom engine for {language} - returning raw code (no wrapping)")
+        return source_code, None, warnings
+    
+    # For Judge0 (other languages or when custom engine is disabled)
     if not secure_mode:
         # Legacy mode - still try auto-wrap for common languages
         # This ensures Java function-only code works even without secure_mode
@@ -396,6 +408,20 @@ async def run_code(request: RunCodeRequest):
     cpu_time_limit = 2.0
     memory_limit = 128000
     
+    # Get function signature for custom engine
+    function_signature = None
+    func_sig_data = question.get("function_signature")
+    if func_sig_data:
+        from ..models.question import FunctionSignature, FunctionParameter
+        function_signature = FunctionSignature(
+            name=func_sig_data.get("name"),
+            parameters=[
+                FunctionParameter(name=p.get("name"), type=p.get("type"))
+                for p in func_sig_data.get("parameters", [])
+            ],
+            return_type=func_sig_data.get("return_type")
+        )
+    
     # Run public test cases only with prepared code
     results = await run_all_test_cases(
         source_code=prepared_code,
@@ -404,6 +430,7 @@ async def run_code(request: RunCodeRequest):
         cpu_time_limit=cpu_time_limit,
         memory_limit=memory_limit,
         stop_on_compilation_error=True,
+        function_signature=function_signature,
     )
     
     # Format public results with full details
@@ -517,6 +544,20 @@ async def submit_code(
     cpu_time_limit = 2.0
     memory_limit = 128000
     
+    # Get function signature for custom engine
+    function_signature = None
+    func_sig_data = question.get("function_signature")
+    if func_sig_data:
+        from ..models.question import FunctionSignature, FunctionParameter
+        function_signature = FunctionSignature(
+            name=func_sig_data.get("name"),
+            parameters=[
+                FunctionParameter(name=p.get("name"), type=p.get("type"))
+                for p in func_sig_data.get("parameters", [])
+            ],
+            return_type=func_sig_data.get("return_type")
+        )
+    
     # Run ALL test cases with prepared code
     results = await run_all_test_cases(
         source_code=prepared_code,
@@ -525,6 +566,7 @@ async def submit_code(
         cpu_time_limit=cpu_time_limit,
         memory_limit=memory_limit,
         stop_on_compilation_error=True,
+        function_signature=function_signature,
     )
     
     # Separate results into public and hidden
