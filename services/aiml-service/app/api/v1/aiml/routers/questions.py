@@ -6,7 +6,7 @@ import logging
 from ..database import get_aiml_database as get_database
 from ..models.question import Question, QuestionCreate, QuestionUpdate
 from ..services.ai_question_generator import generate_aiml_question, generate_topic_suggestions, generate_topic_suggestions
-from app.core.dependencies import get_current_user, require_editor
+from app.core.dependencies import get_current_user, get_current_user_context, require_editor
 from fastapi import Body
 
 logger = logging.getLogger("backend")
@@ -281,6 +281,44 @@ async def create_question(
     if "created_at" in question_dict and isinstance(question_dict.get("created_at"), datetime):
         question_dict["created_at"] = question_dict["created_at"].isoformat()
     return question_dict
+
+@router.post("/suggest-topics", response_model=dict)
+async def suggest_topics(
+    request: Dict[str, Any] = Body(...),
+    current_user: Dict[str, Any] = Depends(get_current_user_context)
+):
+    """
+    Generate AI-suggested topics based on skill and difficulty level.
+    """
+    try:
+        skill = request.get("skill")
+        difficulty = request.get("difficulty", "medium")
+        
+        if not skill:
+            raise HTTPException(status_code=400, detail="Skill is required")
+        
+        if difficulty not in ["easy", "medium", "hard"]:
+            raise HTTPException(status_code=400, detail="Difficulty must be easy, medium, or hard")
+        
+        logger.info(f"Generating topic suggestions for skill={skill}, difficulty={difficulty}")
+        
+        # Generate topics using AI
+        topics = await generate_topic_suggestions(
+            skill=skill,
+            difficulty=difficulty
+        )
+        
+        return {
+            "skill": skill,
+            "difficulty": difficulty,
+            "topics": topics
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception(f"Error generating topic suggestions: {exc}")
+        raise HTTPException(status_code=500, detail=f"Failed to generate topic suggestions: {str(exc)}")
 
 @router.put("/{question_id}", response_model=dict)
 async def update_question(
@@ -562,45 +600,6 @@ async def generate_ai_question(
     except Exception as exc:
         logger.exception(f"Error generating AI question: {exc}")
         raise HTTPException(status_code=500, detail=f"Failed to generate question: {str(exc)}")
-
-
-@router.post("/suggest-topics", response_model=dict)
-async def suggest_topics(
-    request: Dict[str, Any] = Body(...),
-    current_user: Dict[str, Any] = Depends(get_current_user)
-):
-    """
-    Generate AI-suggested topics based on skill and difficulty level.
-    """
-    try:
-        skill = request.get("skill")
-        difficulty = request.get("difficulty", "medium")
-        
-        if not skill:
-            raise HTTPException(status_code=400, detail="Skill is required")
-        
-        if difficulty not in ["easy", "medium", "hard"]:
-            raise HTTPException(status_code=400, detail="Difficulty must be easy, medium, or hard")
-        
-        logger.info(f"Generating topic suggestions for skill={skill}, difficulty={difficulty}")
-        
-        # Generate topics using AI
-        topics = await generate_topic_suggestions(
-            skill=skill,
-            difficulty=difficulty
-        )
-        
-        return {
-            "skill": skill,
-            "difficulty": difficulty,
-            "topics": topics
-        }
-        
-    except HTTPException:
-        raise
-    except Exception as exc:
-        logger.exception(f"Error generating topic suggestions: {exc}")
-        raise HTTPException(status_code=500, detail=f"Failed to generate topic suggestions: {str(exc)}")
 
 
 @router.get("/{question_id}/dataset-preview", response_model=dict)

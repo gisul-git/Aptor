@@ -161,29 +161,57 @@ export default function AIMLQuestionCreatePage() {
     }
     
     const fetchTopics = async () => {
+      console.log('🟡 [Create Page] Starting fetchTopics:', {
+        skill,
+        aiDifficulty,
+        isAiGenerated,
+        timestamp: new Date().toISOString(),
+      });
+      
       setLoadingTopics(true)
       setTopicsError(null)
       setTopic('') // Reset topic when fetching new suggestions
       
       try {
+        console.log('🟡 [Create Page] Calling aimlService.suggestTopics...');
         const response = await aimlService.suggestTopics({
           skill: skill,
           difficulty: aiDifficulty
         })
         
+        console.log('🟢 [Create Page] suggestTopics response received:', {
+          hasResponse: !!response,
+          hasData: !!response.data,
+          hasTopics: !!response.data?.topics,
+          topicsCount: response.data?.topics?.length || 0,
+          response: response,
+        });
+        
         if (response.data && response.data.topics) {
+          console.log('🟢 [Create Page] Setting available topics:', response.data.topics);
           setAvailableTopics(response.data.topics)
-    } else {
+        } else {
+          console.warn('⚠️ [Create Page] Response missing topics, using fallback');
           // Fallback to static topics if API fails
           setAvailableTopics(SKILL_TOPICS[skill] || [])
         }
       } catch (err: any) {
-        console.error('Error fetching topic suggestions:', err)
+        console.error('🔴 [Create Page] Error fetching topic suggestions:', {
+          error: err,
+          message: err?.message,
+          code: err?.code,
+          status: err?.response?.status,
+          statusText: err?.response?.statusText,
+          responseData: err?.response?.data,
+          stack: err?.stack,
+          errorType: err?.constructor?.name,
+        });
         setTopicsError('Failed to load topic suggestions')
         // Fallback to static topics
         setAvailableTopics(SKILL_TOPICS[skill] || [])
       } finally {
         setLoadingTopics(false)
+        console.log('🟡 [Create Page] fetchTopics completed');
       }
     }
     
@@ -265,7 +293,20 @@ export default function AIMLQuestionCreatePage() {
         dataset_format: datasetFormat,
       })
 
-      const data = response.data
+      console.log('🟢 [Create Page] generateAIQuestion response:', {
+        response: response,
+        hasAssessment: !!response?.assessment,
+        hasQuestion: !!response?.question,
+        responseKeys: response ? Object.keys(response) : [],
+      })
+
+      // The service returns the data directly (GenerateAIQuestionResponse)
+      const data = response
+      
+      // Validate data exists
+      if (!data) {
+        throw new Error('No data received from server')
+      }
       
       // Handle new response format
       if (data.assessment && data.question) {
@@ -292,12 +333,13 @@ export default function AIMLQuestionCreatePage() {
       alert('Question generated and saved successfully!')
       router.push('/aiml/questions')
       } else {
-        // Legacy format response (backward compatibility)
-        setTitle(data.title || assessmentTitle)
-        setDescription(data.description || '')
-        setDifficulty(data.difficulty || aiDifficulty)
+        // Fallback: if response doesn't have expected structure
+        console.warn('Unexpected response format:', data)
+        setTitle(assessmentTitle)
+        setDescription('')
+        setDifficulty(aiDifficulty)
         setRequiresDataset(false)
-        alert('Question generated and saved successfully!')
+        alert('Question generated but response format was unexpected. Please check the question in the list.')
         router.push('/aiml/questions')
       }
     } catch (err: any) {

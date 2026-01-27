@@ -240,15 +240,36 @@ const proxyOptions = {
     '^/api': '/api', // Keep /api prefix
   },
   onProxyReq: (proxyReq, req, res) => {
+    const targetUrl = proxyReq.path;
+    const targetHost = proxyReq.getHeader('host');
+    const isAIMLRequest = req.originalUrl?.includes('/api/v1/aiml');
+    
     console.log('🟢 [API Gateway] Proxy request:', {
       method: req.method,
       originalUrl: req.originalUrl,
-      target: proxyReq.path,
-      targetHost: proxyReq.getHeader('host'),
+      target: targetUrl,
+      targetHost: targetHost,
+      targetFullURL: `http://${targetHost}${targetUrl}`,
       headers: Object.keys(req.headers),
       hasBody: !!req.body,
       contentType: req.headers['content-type'],
+      isAIMLRequest: isAIMLRequest,
+      timestamp: new Date().toISOString(),
     });
+    
+    // Additional logging for AIML requests
+    if (isAIMLRequest) {
+      console.log('🧠 [API Gateway] AIML Proxy Request Details:', {
+        originalPath: req.path,
+        originalUrl: req.originalUrl,
+        targetService: SERVICES.aiml,
+        targetPath: targetUrl,
+        targetHost: targetHost,
+        method: req.method,
+        body: req.body ? JSON.stringify(req.body).substring(0, 200) : 'none',
+        correlationId: req.correlationId,
+      });
+    }
     
     // Forward correlation ID
     proxyReq.setHeader('X-Correlation-ID', req.correlationId);
@@ -274,6 +295,7 @@ const proxyOptions = {
       console.log('🔵 [API Gateway] Writing parsed body to proxy:', {
         bodyLength: bodyData.length,
         bodyPreview: bodyData.substring(0, 100),
+        isAIMLRequest: isAIMLRequest,
       });
     }
   },
@@ -282,40 +304,50 @@ const proxyOptions = {
     const path = req.originalUrl || req.url || '';
     let serviceName = 'Unknown Service';
     let targetHost = req.headers.host || 'unknown';
+    let targetServiceUrl = '';
     
     // Try to extract target from the proxy request if available
     if (req.socket && req.socket.remoteAddress) {
       targetHost = req.socket.remoteAddress;
     }
     
-    // Map paths to service names
+    // Map paths to service names and URLs
     if (path.includes('/api/v1/assessments') || path.includes('/api/v1/assessment')) {
       serviceName = 'AI Assessment Service';
       targetHost = 'localhost:3001';
+      targetServiceUrl = SERVICES.aiAssessment;
     } else if (path.includes('/api/v1/custom-mcq')) {
       serviceName = 'Custom MCQ Service';
       targetHost = 'localhost:3002';
+      targetServiceUrl = SERVICES.customMcq;
     } else if (path.includes('/api/v1/aiml')) {
       serviceName = 'AIML Service';
       targetHost = 'localhost:3003';
+      targetServiceUrl = SERVICES.aiml;
     } else if (path.includes('/api/v1/dsa')) {
       serviceName = 'DSA Service';
       targetHost = 'localhost:3004';
+      targetServiceUrl = SERVICES.dsa;
     } else if (path.includes('/api/v1/proctor')) {
       serviceName = 'Proctoring Service';
       targetHost = 'localhost:3005';
+      targetServiceUrl = SERVICES.proctoring;
     } else if (path.includes('/api/v1/users')) {
       serviceName = 'Users Service (Auth Service)';
       targetHost = 'localhost:4000';  // Users endpoints are in auth service
+      targetServiceUrl = SERVICES.auth;
     } else if (path.includes('/api/v1/super-admin')) {
       serviceName = 'Super Admin Service';
       targetHost = 'localhost:3007';
+      targetServiceUrl = SERVICES.superAdmin;
     } else if (path.includes('/api/v1/employees')) {
       serviceName = 'Employee Service';
       targetHost = 'localhost:4005';
+      targetServiceUrl = SERVICES.employee;
     } else if (path.includes('/api/v1/auth')) {
       serviceName = 'Auth Service';
       targetHost = 'localhost:4000';
+      targetServiceUrl = SERVICES.auth;
     }
     
     // Provide better error message when err.message is empty
@@ -326,14 +358,41 @@ const proxyOptions = {
       errorMessage = `Connection timeout - ${serviceName} did not respond in time`;
     }
     
-    console.error('🔴 [API Gateway] Proxy error:', {
+    // Enhanced error logging
+    console.error('🔴 [API Gateway] Proxy error - DETAILED:', {
+      timestamp: new Date().toISOString(),
       service: serviceName,
-      target: targetHost,
-      code: err.code,
-      message: errorMessage,
-      url: req.originalUrl,
-      method: req.method,
+      targetHost: targetHost,
+      targetServiceUrl: targetServiceUrl,
+      errorCode: err.code,
+      errorMessage: err.message,
+      errorStack: err.stack,
+      errorName: err.name,
+      errorSyscall: err.syscall,
+      errorAddress: err.address,
+      errorPort: err.port,
+      requestMethod: req.method,
+      requestUrl: req.originalUrl,
+      requestPath: req.path,
+      requestHeaders: {
+        'user-agent': req.headers['user-agent'],
+        'content-type': req.headers['content-type'],
+        'authorization': req.headers['authorization'] ? 'Bearer ***' : 'none',
+        'x-correlation-id': req.correlationId,
+      },
+      requestBody: req.body ? JSON.stringify(req.body).substring(0, 200) : 'none',
+      clientIP: req.ip || req.connection?.remoteAddress,
     });
+    
+    // Log connection attempt details for ECONNREFUSED
+    if (err.code === 'ECONNREFUSED') {
+      console.error('🔴 [API Gateway] Connection Refused Details:', {
+        attemptedURL: targetServiceUrl,
+        attemptedHost: targetHost,
+        serviceName: serviceName,
+        suggestion: `Please ensure ${serviceName} is running on ${targetHost}. Check if the service is started.`,
+      });
+    }
     
     res.status(503).json({
       success: false,
@@ -341,6 +400,8 @@ const proxyOptions = {
       detail: errorMessage,
       service: serviceName,
       target: targetHost,
+      errorCode: err.code,
+      timestamp: new Date().toISOString(),
     });
   },
   onProxyRes: (proxyRes, req, res) => {
@@ -349,7 +410,60 @@ const proxyOptions = {
       statusMessage: proxyRes.statusMessage,
       url: req.originalUrl,
       headers: Object.keys(proxyRes.headers),
+      contentType: proxyRes.headers['content-type'],
+      contentLength: proxyRes.headers['content-length'],
     });
+    
+    // Capture response body for logging (only for generate-topic-cards endpoint)
+    if (req.originalUrl && req.originalUrl.includes('generate-topic-cards')) {
+      let responseBody = '';
+      const chunks = [];
+      
+      // Store original methods
+      const originalWrite = res.write.bind(res);
+      const originalEnd = res.end.bind(res);
+      
+      // Override write to capture chunks
+      res.write = function(chunk) {
+        if (chunk) {
+          chunks.push(chunk);
+        }
+        return originalWrite(chunk);
+      };
+      
+      // Override end to log body
+      res.end = function(chunk) {
+        if (chunk) {
+          chunks.push(chunk);
+        }
+        
+        // Combine all chunks
+        const buffer = Buffer.concat(chunks);
+        try {
+          responseBody = buffer.toString('utf8');
+          const parsed = JSON.parse(responseBody);
+          console.log('🔵 [API Gateway] generate-topic-cards Response Body:', {
+            bodyLength: responseBody.length,
+            parsed: parsed,
+            hasSuccess: 'success' in (parsed || {}),
+            successValue: parsed?.success,
+            hasData: 'data' in (parsed || {}),
+            dataKeys: parsed?.data ? Object.keys(parsed.data) : null,
+            hasCards: parsed?.data ? 'cards' in parsed.data : false,
+            cardsCount: Array.isArray(parsed?.data?.cards) ? parsed.data.cards.length : null,
+          });
+        } catch (e) {
+          console.log('🔵 [API Gateway] generate-topic-cards Response Body (raw):', {
+            bodyLength: responseBody.length,
+            preview: responseBody.substring(0, 500),
+            parseError: e.message,
+          });
+        }
+        
+        return originalEnd(chunk);
+      };
+    }
+    
     // Add correlation ID to response
     proxyRes.headers['X-Correlation-ID'] = req.correlationId;
     
@@ -432,11 +546,35 @@ app.use(
 );
 
 // Route: AIML Service
+console.log('🔵 [API Gateway] Setting up AIML service proxy:', {
+  route: '/api/v1/aiml',
+  target: SERVICES.aiml,
+});
+
 app.use(
   '/api/v1/aiml',
+  (req, res, next) => {
+    console.log('🟡 [API Gateway] AIML service route matched:', {
+      method: req.method,
+      url: req.url,
+      originalUrl: req.originalUrl,
+      path: req.path,
+      target: SERVICES.aiml,
+      timestamp: new Date().toISOString(),
+    });
+    next();
+  },
   createProxyMiddleware({
     ...proxyOptions,
     target: SERVICES.aiml,
+    logLevel: 'debug',
+    logProvider: () => ({
+      log: (msg) => console.log('🟡 [HPM-AIML]', msg),
+      debug: (msg) => console.log('🔵 [HPM-AIML]', msg),
+      info: (msg) => console.log('🟢 [HPM-AIML]', msg),
+      warn: (msg) => console.warn('🟠 [HPM-AIML]', msg),
+      error: (msg) => console.error('🔴 [HPM-AIML]', msg),
+    }),
   })
 );
 

@@ -72,8 +72,15 @@ export const assessmentService = {
    * Get assessment by ID
    */
   getById: async (id: string): Promise<ApiResponse<Assessment>> => {
-    const response = await apiClient.get<ApiResponse<Assessment>>(`/api/v1/assessments/${id}`);
-    return response.data;
+    const response = await apiClient.get<ApiResponse<{ assessment: Assessment }>>(`/api/v1/assessments/${id}/questions`);
+    // Extract assessment from nested structure
+    if (response.data && (response.data as any).assessment) {
+      return {
+        ...response.data,
+        data: (response.data as any).assessment,
+      } as ApiResponse<Assessment>;
+    }
+    return response.data as ApiResponse<Assessment>;
   },
 
   /**
@@ -199,15 +206,43 @@ export const assessmentService = {
     experienceMode?: string;
     assessmentTitle?: string;
   }): Promise<ApiResponse<any>> => {
-    const response = await apiClient.post<ApiResponse<any>>('/api/assessments/generate-topic-cards', data);
-    return response.data;
+    console.log('🔵 [Assessment Service] generateTopicCards - Request:', {
+      url: '/api/v1/assessments/generate-topic-cards',
+      data,
+    });
+    try {
+      const response = await apiClient.post<ApiResponse<any>>('/api/v1/assessments/generate-topic-cards', data);
+      console.log('🟢 [Assessment Service] generateTopicCards - Response:', {
+        status: response.status,
+        statusText: response.statusText,
+        headers: response.headers,
+        data: response.data,
+        dataType: typeof response.data,
+        dataKeys: response.data ? Object.keys(response.data) : null,
+        hasSuccess: 'success' in (response.data || {}),
+        successValue: response.data?.success,
+        hasData: 'data' in (response.data || {}),
+        dataData: response.data?.data,
+      });
+      return response.data;
+    } catch (error: any) {
+      console.error('🔴 [Assessment Service] generateTopicCards - Error:', {
+        message: error?.message,
+        response: error?.response,
+        responseStatus: error?.response?.status,
+        responseData: error?.response?.data,
+        responseHeaders: error?.response?.headers,
+        stack: error?.stack,
+      });
+      throw error;
+    }
   },
 
   /**
    * Fetch and summarize URL
    */
   fetchAndSummarizeUrl: async (data: { url: string }): Promise<ApiResponse<any>> => {
-    const response = await apiClient.post<ApiResponse<any>>('/api/assessments/fetch-and-summarize-url', data);
+    const response = await apiClient.post<ApiResponse<any>>('/api/v1/assessments/fetch-and-summarize-url', data);
     return response.data;
   },
 
@@ -221,7 +256,7 @@ export const assessmentService = {
     skills?: string[];
     [key: string]: any;
   }): Promise<ApiResponse<any>> => {
-    const response = await apiClient.post<ApiResponse<any>>('/api/assessments/generate-topics-v2', data);
+    const response = await apiClient.post<ApiResponse<any>>('/api/v1/assessments/generate-topics', data);
     return response.data;
   },
 
@@ -246,7 +281,7 @@ export const assessmentService = {
     jobDesignation?: string;
     [key: string]: any;
   }): Promise<ApiResponse<any>> => {
-    const response = await apiClient.post<ApiResponse<any>>('/api/assessments/generate-topics', data);
+    const response = await apiClient.post<ApiResponse<any>>('/api/v1/assessments/generate-topics', data);
     return response.data;
   },
 
@@ -262,7 +297,7 @@ export const assessmentService = {
     assessmentTitle?: string;
     [key: string]: any;
   }): Promise<ApiResponse<any>> => {
-    const response = await apiClient.post<ApiResponse<any>>('/api/assessments/create-from-job-designation', data);
+    const response = await apiClient.post<ApiResponse<any>>('/api/v1/assessments/create-from-job-designation', data);
     return response.data;
   },
 
@@ -274,7 +309,7 @@ export const assessmentService = {
     topicId: string;
     [key: string]: any;
   }): Promise<ApiResponse<any>> => {
-    const response = await apiClient.post<ApiResponse<any>>('/api/assessments/improve-topic', data);
+    const response = await apiClient.post<ApiResponse<any>>('/api/v1/assessments/improve-topic', data);
     return response.data;
   },
 
@@ -286,7 +321,7 @@ export const assessmentService = {
     topicId: string;
     [key: string]: any;
   }): Promise<ApiResponse<any>> => {
-    const response = await apiClient.post<ApiResponse<any>>('/api/assessments/generate-question', data);
+    const response = await apiClient.post<ApiResponse<any>>('/api/v1/assessments/generate-question', data);
     return response.data;
   },
 
@@ -298,7 +333,7 @@ export const assessmentService = {
     experienceMode?: string;
     [key: string]: any;
   }): Promise<ApiResponse<any>> => {
-    const response = await apiClient.post<ApiResponse<any>>('/api/assessments/improve-all-topics', data);
+    const response = await apiClient.post<ApiResponse<any>>('/api/v1/assessments/improve-all-topics', data);
     return response.data;
   },
 
@@ -310,7 +345,7 @@ export const assessmentService = {
     category: string;
     [key: string]: any;
   }): Promise<ApiResponse<any>> => {
-    const response = await apiClient.post<ApiResponse<any>>('/api/assessments/generate-topic-context', data);
+    const response = await apiClient.post<ApiResponse<any>>('/api/v1/assessments/generate-topic-context', data);
     return response.data;
   },
 
@@ -322,7 +357,7 @@ export const assessmentService = {
     category: string;
     [key: string]: any;
   }): Promise<ApiResponse<any>> => {
-    const response = await apiClient.post<ApiResponse<any>>('/api/assessments/validate-topic-category', data);
+    const response = await apiClient.post<ApiResponse<any>>('/api/v1/assessments/validate-topic-category', data);
     return response.data;
   },
 
@@ -330,7 +365,7 @@ export const assessmentService = {
    * Check technical topic
    */
   checkTechnicalTopic: async (data: { topic: string }): Promise<ApiResponse<any>> => {
-    const response = await apiClient.post<ApiResponse<any>>('/api/assessments/check-technical-topic', data);
+    const response = await apiClient.post<ApiResponse<any>>('/api/v1/assessments/check-technical-topic', data);
     return response.data;
   },
 
@@ -342,7 +377,7 @@ export const assessmentService = {
     query?: string;
     [key: string]: any;
   }): Promise<ApiResponse<any>> => {
-    const response = await apiClient.post<ApiResponse<any>>('/api/assessments/suggest-topics', data);
+    const response = await apiClient.post<ApiResponse<any>>('/api/v1/assessments/suggest-topics', data);
     return response.data;
   },
 
@@ -354,7 +389,7 @@ export const assessmentService = {
     topicName: string;
     [key: string]: any;
   }): Promise<ApiResponse<any>> => {
-    const response = await apiClient.post<ApiResponse<any>>('/api/assessments/topics/add-custom', data);
+    const response = await apiClient.post<ApiResponse<any>>('/api/v1/assessments/topics/add-custom', data);
     return response.data;
   },
 
@@ -362,7 +397,7 @@ export const assessmentService = {
    * Classify technical topic
    */
   classifyTechnicalTopic: async (data: { topic: string }): Promise<ApiResponse<any>> => {
-    const response = await apiClient.post<ApiResponse<any>>('/api/assessments/classify-technical-topic', data);
+    const response = await apiClient.post<ApiResponse<any>>('/api/v1/assessments/classify-technical-topic', data);
     return response.data;
   },
 
@@ -370,7 +405,7 @@ export const assessmentService = {
    * Detect topic category
    */
   detectTopicCategory: async (data: { topicName: string }): Promise<ApiResponse<any>> => {
-    const response = await apiClient.post<ApiResponse<any>>('/api/assessments/detect-topic-category', data);
+    const response = await apiClient.post<ApiResponse<any>>('/api/v1/assessments/detect-topic-category', data);
     return response.data;
   },
 
@@ -382,7 +417,7 @@ export const assessmentService = {
     category: string;
     [key: string]: any;
   }): Promise<ApiResponse<any>> => {
-    const response = await apiClient.post<ApiResponse<any>>('/api/assessments/suggest-topic-contexts', data);
+    const response = await apiClient.post<ApiResponse<any>>('/api/v1/assessments/suggest-topic-contexts', data);
     return response.data;
   },
 
@@ -407,7 +442,7 @@ export const assessmentService = {
     rowId: string;
     [key: string]: any;
   }): Promise<ApiResponse<any>> => {
-    const response = await apiClient.post<ApiResponse<any>>('/api/assessments/regenerate-question', data);
+    const response = await apiClient.post<ApiResponse<any>>('/api/v1/assessments/regenerate-question', data);
     return response.data;
   },
 
@@ -420,7 +455,7 @@ export const assessmentService = {
     topicId?: string;
     [key: string]: any;
   }): Promise<ApiResponse<any>> => {
-    const response = await apiClient.post<ApiResponse<any>>('/api/assessments/regenerate-single-topic', data);
+    const response = await apiClient.post<ApiResponse<any>>('/api/v1/assessments/regenerate-single-topic', data);
     return response.data;
   },
 
@@ -431,7 +466,7 @@ export const assessmentService = {
     assessmentId: string;
     topicId: string;
   }): Promise<ApiResponse<any>> => {
-    const response = await apiClient.delete<ApiResponse<any>>('/api/assessments/remove-topic', { data });
+    const response = await apiClient.delete<ApiResponse<any>>('/api/v1/assessments/remove-topic', { data });
     return response.data;
   },
 
@@ -442,7 +477,7 @@ export const assessmentService = {
     assessmentId: string;
     [key: string]: any;
   }): Promise<ApiResponse<any>> => {
-    const response = await apiClient.post<ApiResponse<any>>('/api/assessments/finalize', data);
+    const response = await apiClient.post<ApiResponse<any>>('/api/v1/assessments/finalize', data);
     return response.data;
   },
 
@@ -454,7 +489,7 @@ export const assessmentService = {
     questions: any[];
     [key: string]: any;
   }): Promise<ApiResponse<any>> => {
-    const response = await apiClient.post<ApiResponse<any>>('/api/assessments/update-questions', data);
+    const response = await apiClient.post<ApiResponse<any>>('/api/v1/assessments/update-questions', data);
     return response.data;
   },
 
@@ -465,7 +500,7 @@ export const assessmentService = {
     assessmentId: string;
     [key: string]: any;
   }): Promise<ApiResponse<any>> => {
-    const response = await apiClient.post<ApiResponse<any>>('/api/assessments/update-schedule-and-candidates', data);
+    const response = await apiClient.post<ApiResponse<any>>('/api/v1/assessments/update-schedule-and-candidates', data);
     return response.data;
   },
 
@@ -477,7 +512,7 @@ export const assessmentService = {
     questionId: string;
     [key: string]: any;
   }): Promise<ApiResponse<any>> => {
-    const response = await apiClient.put<ApiResponse<any>>('/api/assessments/update-single-question', data);
+    const response = await apiClient.put<ApiResponse<any>>('/api/v1/assessments/update-single-question', data);
     return response.data;
   },
 
@@ -489,7 +524,7 @@ export const assessmentService = {
     topics: any[];
     [key: string]: any;
   }): Promise<ApiResponse<any>> => {
-    const response = await apiClient.post<ApiResponse<any>>('/api/assessments/generate-questions-from-config', data);
+    const response = await apiClient.post<ApiResponse<any>>('/api/v1/assessments/generate-questions-from-config', data);
     return response.data;
   },
 
@@ -500,7 +535,7 @@ export const assessmentService = {
     category: string;
     input: string;
   }): Promise<ApiResponse<any>> => {
-    const response = await apiClient.post<ApiResponse<any>>('/api/assessments/ai/topic-suggestion', data);
+    const response = await apiClient.post<ApiResponse<any>>('/api/v1/assessments/ai/topic-suggestion', data);
     return response.data;
   },
 
@@ -539,7 +574,7 @@ export const assessmentService = {
     assessmentId: string;
     topic?: string;
   }): Promise<ApiResponse<any>> => {
-    const response = await apiClient.post<ApiResponse<any>>('/api/assessments/delete-topic-questions', data);
+    const response = await apiClient.post<ApiResponse<any>>('/api/v1/assessments/delete-topic-questions', data);
     return response.data;
   },
 
@@ -553,7 +588,7 @@ export const assessmentService = {
     template?: any;
     [key: string]: any;
   }): Promise<ApiResponse<any>> => {
-    const response = await apiClient.post<ApiResponse<any>>('/api/assessments/send-invitations', data);
+    const response = await apiClient.post<ApiResponse<any>>('/api/v1/assessments/send-invitations', data);
     return response.data;
   },
 
@@ -561,7 +596,7 @@ export const assessmentService = {
    * Get candidate results
    */
   getCandidateResults: async (assessmentId: string): Promise<ApiResponse<any>> => {
-    const response = await apiClient.get<ApiResponse<any>>(`/api/assessments/get-candidate-results?assessmentId=${assessmentId}`);
+    const response = await apiClient.get<ApiResponse<any>>(`/api/v1/assessments/${assessmentId}/candidate-results`);
     return response.data;
   },
 
@@ -574,7 +609,7 @@ export const assessmentService = {
     candidateName: string;
   }): Promise<ApiResponse<any>> => {
     const response = await apiClient.get<ApiResponse<any>>(
-      `/api/assessments/get-answer-logs?assessmentId=${data.assessmentId}&candidateEmail=${encodeURIComponent(data.candidateEmail)}&candidateName=${encodeURIComponent(data.candidateName)}`
+      `/api/v1/assessments/${data.assessmentId}/answer-logs?candidateEmail=${encodeURIComponent(data.candidateEmail)}&candidateName=${encodeURIComponent(data.candidateName)}`
     );
     return response.data;
   },
@@ -588,7 +623,7 @@ export const assessmentService = {
     candidateName: string;
   }): Promise<ApiResponse<any>> => {
     const response = await apiClient.get<ApiResponse<any>>(
-      `/api/assessments/${data.assessmentId}/candidate/${encodeURIComponent(data.candidateEmail)}/detailed-results?candidate_name=${encodeURIComponent(data.candidateName)}`
+      `/api/v1/assessments/${data.assessmentId}/candidate/${encodeURIComponent(data.candidateEmail)}/detailed-results?candidate_name=${encodeURIComponent(data.candidateName)}`
     );
     return response.data;
   },
@@ -598,13 +633,15 @@ export const assessmentService = {
    */
   getAssessmentFull: async (assessmentId: string, token: string): Promise<ApiResponse<any>> => {
     const response = await apiClient.get<ApiResponse<any>>(
-      `/api/assessment/get-assessment-full?assessmentId=${assessmentId}&token=${token}`
+      `/api/v1/candidate/get-assessment-full?assessmentId=${assessmentId}&token=${token}`
     );
     return response.data;
   },
 
   /**
-   * Save answer
+   * Save answer (during attempt - answers are saved locally and submitted at the end)
+   * Note: There's no backend endpoint for saving answers during attempts.
+   * Answers are only saved when submitting via submitAnswers endpoint.
    */
   saveAnswer: async (data: {
     attemptId: string;
@@ -613,8 +650,13 @@ export const assessmentService = {
     section?: string;
     timeRemaining?: number;
   }): Promise<ApiResponse<any>> => {
-    const response = await apiClient.post<ApiResponse<any>>('/api/v1/attempts/save-answer', data);
-    return response.data;
+    // No backend endpoint exists for saving answers during attempts
+    // Answers are stored locally and submitted via submitAnswers endpoint
+    return {
+      success: true,
+      message: 'Answer saved locally',
+      data: null,
+    };
   },
 
   /**
@@ -638,7 +680,7 @@ export const assessmentService = {
     answers?: any;
     [key: string]: any;
   }): Promise<ApiResponse<any>> => {
-    const response = await apiClient.post<ApiResponse<any>>('/api/assessment/submit-answers', data);
+    const response = await apiClient.post<ApiResponse<any>>('/api/v1/candidate/submit-answers', data);
     return response.data;
   },
 
@@ -651,7 +693,14 @@ export const assessmentService = {
     sourceCode: string;
     languageId: string;
   }): Promise<ApiResponse<any>> => {
-    const response = await apiClient.post<ApiResponse<any>>('/api/assessment/run-code', data);
+    // Convert to snake_case and ensure language_id is an integer
+    const requestData = {
+      question_id: data.questionId,
+      source_code: data.sourceCode,
+      language_id: parseInt(data.languageId, 10),
+      assessment_id: data.assessmentId,
+    };
+    const response = await apiClient.post<ApiResponse<any>>('/api/v1/assessment/run', requestData);
     return response.data;
   },
 
@@ -663,7 +712,7 @@ export const assessmentService = {
     questionId: string;
     sqlQuery: string;
   }): Promise<ApiResponse<any>> => {
-    const response = await apiClient.post<ApiResponse<any>>('/api/assessment/run-sql', data);
+    const response = await apiClient.post<ApiResponse<any>>('/api/v1/assessment/run-sql', data);
     return response.data;
   },
 
@@ -676,7 +725,7 @@ export const assessmentService = {
     sqlQuery: string;
     attemptId: string;
   }): Promise<ApiResponse<any>> => {
-    const response = await apiClient.post<ApiResponse<any>>('/api/assessment/submit-sql', data);
+    const response = await apiClient.post<ApiResponse<any>>('/api/v1/assessment/submit-sql', data);
     return response.data;
   },
 
