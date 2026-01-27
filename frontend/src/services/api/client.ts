@@ -220,6 +220,20 @@ apiClient.interceptors.response.use(
     // Extract error message from different possible response structures
     let message = error.message;
     
+    // Enhanced error logging
+    console.error('🔴 [API Client] Request Error:', {
+      url: error.config?.url,
+      method: error.config?.method,
+      baseURL: error.config?.baseURL,
+      status: error.response?.status,
+      statusText: error.response?.statusText,
+      responseData: error.response?.data,
+      errorCode: error.code,
+      errorMessage: error.message,
+      requestHeaders: error.config?.headers,
+      responseHeaders: error.response?.headers,
+    });
+    
     if (error.response?.data) {
       // Try different possible error message fields
       message = (error.response.data as any).detail || 
@@ -232,6 +246,24 @@ apiClient.interceptors.response.use(
       if (Array.isArray(message)) {
         message = message.join(', ');
       }
+      
+      console.error('🔴 [API Client] Extracted error message:', {
+        originalMessage: error.message,
+        extractedMessage: message,
+        responseData: error.response.data,
+      });
+    }
+    
+    // Log connection errors specifically
+    if (error.code === 'ECONNREFUSED' || error.code === 'ETIMEDOUT' || !error.response) {
+      console.error('🔴 [API Client] Connection Error:', {
+        code: error.code,
+        message: error.message,
+        url: error.config?.url,
+        baseURL: error.config?.baseURL,
+        fullURL: error.config?.baseURL ? `${error.config.baseURL}${error.config.url}` : error.config?.url,
+        isNetworkError: !error.response,
+      });
     }
     
     return Promise.reject(new Error(message || 'An error occurred. Please try again.'));

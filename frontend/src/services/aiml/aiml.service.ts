@@ -68,6 +68,29 @@ export interface ExecuteNotebookDto {
   kernelId?: string;
 }
 
+export interface GenerateAIQuestionResponse {
+  id: string;
+  assessment: {
+    title: string;
+    skill: string;
+    topic?: string;
+    difficulty: string;
+    libraries: string[];
+    selected_dataset_format: string;
+  };
+  question: {
+    type: string;
+    execution_environment: string;
+    description: string;
+    tasks: string[];
+    constraints: string[];
+  };
+  dataset?: any;
+  ai_generated: boolean;
+  requires_dataset: boolean;
+  created_at: string;
+}
+
 export const aimlService = {
   /**
    * List all AIML tests
@@ -332,8 +355,31 @@ export const aimlService = {
     skill: string;
     difficulty: string;
   }): Promise<ApiResponse<{ topics: string[] }>> => {
-    const response = await apiClient.post<ApiResponse<{ topics: string[] }>>('/api/v1/aiml/questions/suggest-topics', data);
-    return response.data;
+    console.log('🟡 [AIML Service] Calling suggestTopics:', {
+      skill: data.skill,
+      difficulty: data.difficulty,
+      endpoint: '/api/v1/aiml/questions/suggest-topics',
+      baseURL: (apiClient.defaults as any).baseURL || 'relative',
+    });
+    
+    try {
+      const response = await apiClient.post<ApiResponse<{ topics: string[] }>>('/api/v1/aiml/questions/suggest-topics', data);
+      console.log('🟢 [AIML Service] suggestTopics success:', {
+        status: response.status,
+        hasData: !!response.data,
+        topicsCount: response.data?.data?.topics?.length || 0,
+      });
+      return response.data;
+    } catch (error: any) {
+      console.error('🔴 [AIML Service] suggestTopics error:', {
+        message: error.message,
+        code: error.code,
+        status: error.response?.status,
+        responseData: error.response?.data,
+        stack: error.stack,
+      });
+      throw error;
+    }
   },
 
   /**
@@ -345,8 +391,9 @@ export const aimlService = {
     topic?: string;
     difficulty: string;
     dataset_format?: string;
-  }): Promise<ApiResponse<any>> => {
-    const response = await apiClient.post<ApiResponse<any>>('/api/v1/aiml/questions/generate-ai', data);
+  }): Promise<GenerateAIQuestionResponse> => {
+    const response = await apiClient.post<GenerateAIQuestionResponse>('/api/v1/aiml/questions/generate-ai', data);
+    // Backend returns data directly, not wrapped in ApiResponse
     return response.data;
   },
 };

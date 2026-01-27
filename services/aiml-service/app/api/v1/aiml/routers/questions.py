@@ -6,7 +6,7 @@ import logging
 from ..database import get_aiml_database as get_database
 from ..models.question import Question, QuestionCreate, QuestionUpdate
 from ..services.ai_question_generator import generate_aiml_question, generate_topic_suggestions, generate_topic_suggestions
-from app.core.dependencies import get_current_user, require_editor
+from app.core.dependencies import get_current_user, get_current_user_context, require_editor
 from fastapi import Body
 
 logger = logging.getLogger("backend")
@@ -285,7 +285,7 @@ async def create_question(
 @router.post("/suggest-topics", response_model=dict)
 async def suggest_topics(
     request: Dict[str, Any] = Body(...),
-    current_user: Dict[str, Any] = Depends(get_current_user)
+    current_user: Dict[str, Any] = Depends(get_current_user_context)
 ):
     """
     Generate AI-suggested topics based on skill and difficulty level.

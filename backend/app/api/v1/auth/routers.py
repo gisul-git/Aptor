@@ -1,0 +1,874 @@
+from __future__ import annotations
+
+import logging
+import random
+import re
+from datetime import datetime, timedelta, timezone
+
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
+from fastapi.responses import JSONResponse
+from google.auth.transport import requests as google_requests
+from google.oauth2 import id_token
+from motor.motor_asyncio import AsyncIOMotorDatabase
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
+
+from ....core.config import get_settings
+from ....core.security import create_access_token, create_refresh_token, get_password_hash, verify_password, sanitize_text_field
+from ....db.mongo import get_db
+from .schemas import (
+    GoogleSignupRequest,
+    LoginRequest,
+    OAuthLoginRequest,
+    OrgSignupRequest,
+    RefreshTokenRequest,
+    SendVerificationCodeRequest,
+    SuperAdminSignupRequest,
+    VerifyEmailCodeRequest,
+)
+from ....utils.email import get_email_service
+from ....utils.mongo import serialize_document
+from ....utils.responses import success_response
+
+logger = logging.getLogger(__name__)
+
+router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
+
+# Rate limiter instance (will be initialized in main.py)
+limiter: Limiter | None = None
+
+def set_limiter(limiter_instance: Limiter):
+    """Set the rate limiter instance from main.py"""
+    global limiter
+    limiter = limiter_instance
+
+def _apply_rate_limit(func):
+    """Apply rate limiting decorator if limiter is available.
+    For login endpoint: 5 requests/min/user (as per requirements)."""
+    if limiter:
+        # Login endpoint: 5 requests per minute per user
+        return limiter.limit("5/minute")(func)
+    return func
+
+
+def _normalize_email(email: str) -> str:
+    return email.strip().lower()
+
+
+def _generate_verification_code() -> str:
+    """Generate a 6-digit verification code."""
+    return str(random.randint(100000, 999999))
+
+
+async def _store_verification_code(
+    db: AsyncIOMotorDatabase,
+    email: str,
+    code: str,
+    expires_at: datetime,
+    pending_signup_data: dict | None = None,
+) -> None:
+    """Store verification code in database. Optionally store pending signup data."""
+    normalized = _normalize_email(email)
+    update_data = {
+        "code": code,
+        "expiresAt": expires_at,
+        "createdAt": datetime.now(timezone.utc),
+        "attempts": 0,
+    }
+    
+    # If pending signup data exists, store it (for new signups)
+    if pending_signup_data:
+        update_data["pendingSignup"] = pending_signup_data
+    
+    await db.email_verifications.update_one(
+        {"email": normalized},
+        {"$set": update_data},
+        upsert=True,
+    )
+
+
+async def _send_verification_email(
+    db: AsyncIOMotorDatabase,
+    email: str,
+    user_name: str | None = None,
+    pending_signup_data: dict | None = None,
+) -> None:
+    """Send verification email to user. Optionally store pending signup data."""
+    # Generate verification code
+    code = _generate_verification_code()
+    settings = get_settings()
+    expires_at = datetime.now(timezone.utc) + timedelta(minutes=settings.email_verification_code_ttl_minutes)
+
+    # Store code (and pending signup data if provided)
+    await _store_verification_code(db, email, code, expires_at, pending_signup_data)
+
+    # Send email
+    email_service = get_email_service()
+    subject = "Email Verification Code"
+    html_body = f"""
+    <html>
+        <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+            <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
+                <h2 style="color: #2563eb;">Email Verification</h2>
+                <p>Hello {user_name or 'User'},</p>
+                <p>Your email verification code is:</p>
+                <div style="background-color: #f3f4f6; padding: 20px; text-align: center; margin: 20px 0; border-radius: 5px;">
+                    <h1 style="color: #2563eb; margin: 0; font-size: 32px; letter-spacing: 5px;">{code}</h1>
+                </div>
+                <p>This code will expire in {settings.email_verification_code_ttl_minutes} minutes.</p>
+                <p>If you didn't request this code, please ignore this email.</p>
+                <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 20px 0;">
+                <p style="color: #6b7280; font-size: 12px;">This is an automated message, please do not reply.</p>
+            </div>
+        </body>
+    </html>
+    """
+
+    try:
+        await email_service.send_email(email, subject, html_body)
+        logger.info("Verification code sent to %s", email)
+    except Exception as exc:
+        logger.error("Failed to send verification email: %s", exc)
+        raise
+
+
+async def _send_verification_email_async(
+    db: AsyncIOMotorDatabase,
+    email: str,
+    user_name: str | None,
+    code: str,
+    ttl_minutes: int,
+) -> None:
+    """Send verification email asynchronously (for background tasks)."""
+    email_service = get_email_service()
+    subject = "Email Verification Code"
+    html_body = f"""
+    <html>
+        <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+            <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
+                <h2 style="color: #2563eb;">Email Verification</h2>
+                <p>Hello {user_name or 'User'},</p>
+                <p>Your email verification code is:</p>
+                <div style="background-color: #f3f4f6; padding: 20px; text-align: center; margin: 20px 0; border-radius: 5px;">
+                    <h1 style="color: #2563eb; margin: 0; font-size: 32px; letter-spacing: 5px;">{code}</h1>
+                </div>
+                <p>This code will expire in {ttl_minutes} minutes.</p>
+                <p>If you didn't request this code, please ignore this email.</p>
+                <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 20px 0;">
+                <p style="color: #6b7280; font-size: 12px;">This is an automated message, please do not reply.</p>
+            </div>
+        </body>
+    </html>
+    """
+
+    try:
+        await email_service.send_email(email, subject, html_body)
+        logger.info("Verification code sent to %s", email)
+    except Exception as exc:
+        logger.error("Failed to send verification email to %s: %s", email, exc)
+
+
+async def _verify_code(db: AsyncIOMotorDatabase, email: str, code: str) -> bool:
+    """Verify the code and mark email as verified if valid."""
+    normalized = _normalize_email(email)
+    verification = await db.email_verifications.find_one({"email": normalized})
+
+    if not verification:
+        return False
+
+    now = datetime.now(timezone.utc)
+    expires_at = verification.get("expiresAt")
+    
+    # Ensure expires_at is timezone-aware for comparison
+    if expires_at:
+        # If expires_at is timezone-naive, assume it's UTC and make it aware
+        if expires_at.tzinfo is None:
+            expires_at = expires_at.replace(tzinfo=timezone.utc)
+        elif expires_at.tzinfo != timezone.utc:
+            # Convert to UTC if it has a different timezone
+            expires_at = expires_at.astimezone(timezone.utc)
+        
+        if expires_at < now:
+            # Code has expired, delete it
+            await db.email_verifications.delete_one({"email": normalized})
+            logger.info("Expired verification code deleted during verification attempt: %s", normalized)
+            return False
+
+    stored_code = verification.get("code")
+    if stored_code != code:
+        # Increment attempts
+        await db.email_verifications.update_one(
+            {"email": normalized},
+            {"$inc": {"attempts": 1}},
+        )
+        return False
+
+    # Code is valid - check if this is a pending signup or existing user
+    pending_signup = verification.get("pendingSignup")
+    
+    if pending_signup:
+        # This is a new signup - create the user account now
+        # Sanitize name from pending signup data
+        sanitized_name = sanitize_text_field(pending_signup.get("name", "")) if pending_signup.get("name") else ""
+        user_doc = {
+            "name": sanitized_name,
+            "email": normalized,
+            "password": pending_signup.get("password"),
+            "role": pending_signup.get("role"),
+            "phone": pending_signup.get("phone"),
+            "country": pending_signup.get("country"),
+            "emailVerified": True,
+            "emailVerifiedAt": now,
+            "createdAt": now,
+        }
+        await db.users.insert_one(user_doc)
+        logger.info("User account created after email verification: %s", normalized)
+    else:
+        # This is an existing user - just mark email as verified
+        user = await _find_user_by_email(db, email)
+        if user:
+            await db.users.update_one(
+                {"_id": user["_id"]},
+                {"$set": {"emailVerified": True, "emailVerifiedAt": now}},
+            )
+
+    # Delete the verification code
+    await db.email_verifications.delete_one({"email": normalized})
+    return True
+
+
+async def _check_and_cleanup_expired_verification(
+    db: AsyncIOMotorDatabase,
+    email: str,
+) -> bool:
+    """Check if verification code exists and is expired. Clean up if expired. Returns True if expired or doesn't exist."""
+    normalized = _normalize_email(email)
+    verification = await db.email_verifications.find_one({"email": normalized})
+    
+    if not verification:
+        return True  # No verification exists, so it's "expired" (doesn't exist)
+    
+    now = datetime.now(timezone.utc)
+    expires_at = verification.get("expiresAt")
+    
+    if expires_at:
+        # Ensure expires_at is timezone-aware for comparison
+        if expires_at.tzinfo is None:
+            expires_at = expires_at.replace(tzinfo=timezone.utc)
+        elif expires_at.tzinfo != timezone.utc:
+            expires_at = expires_at.astimezone(timezone.utc)
+        
+        if expires_at < now:
+            # Code has expired, delete it
+            await db.email_verifications.delete_one({"email": normalized})
+            logger.info("Expired verification code cleaned up for %s", normalized)
+            return True  # Expired
+    
+    return False  # Code exists and is still valid
+
+
+async def _find_user_by_email(db: AsyncIOMotorDatabase, email: str) -> dict | None:
+    normalized = _normalize_email(email)
+    pattern = re.compile(f"^{re.escape(normalized)}$", re.IGNORECASE)
+
+    matches: list[dict] = []
+    async for doc in db.users.find({"email": pattern}):
+        matches.append(doc)
+
+    if not matches:
+        return None
+
+    preferred = next((doc for doc in matches if doc.get("email") == normalized), None)
+    super_admin_match = next((doc for doc in matches if doc.get("role") == "super_admin"), None)
+    if super_admin_match:
+        preferred = super_admin_match
+    if not preferred:
+        preferred = matches[0]
+
+    if preferred.get("email") != normalized:
+        await db.users.update_one({"_id": preferred["_id"]}, {"$set": {"email": normalized}})
+        preferred["email"] = normalized
+
+    return preferred
+
+
+@router.post("/superadmin-signup")
+async def super_admin_signup(
+    payload: SuperAdminSignupRequest,
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    email = _normalize_email(payload.email)
+    existing = await _find_user_by_email(db, email)
+    if existing:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Super Admin already exists")
+
+    # Check if there's already a pending signup for this email (and if it's expired)
+    pending = await db.email_verifications.find_one({"email": email, "pendingSignup": {"$exists": True}})
+    if pending:
+        # Check if the pending signup code has expired
+        is_expired = await _check_and_cleanup_expired_verification(db, email)
+        if not is_expired:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Verification email already sent. Please check your email or wait for it to expire.")
+
+    # Store pending signup data (will be created after verification)
+    pending_signup_data = {
+        "name": sanitize_text_field(payload.name),
+        "password": get_password_hash(payload.password),
+        "role": "super_admin",
+    }
+
+    # Send verification email with pending signup data
+    try:
+        await _send_verification_email(db, email, payload.name, pending_signup_data)
+        logger.info("Verification email sent to super admin: %s", email)
+    except Exception as exc:
+        logger.error("Failed to send verification email to super admin %s: %s", email, exc)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to send verification email. Please try again.",
+        ) from exc
+
+    return success_response(
+        "Please check your email for verification code. Account will be created after verification.",
+        {"email": email},
+        status_code=status.HTTP_201_CREATED,
+    )
+
+
+@router.post("/org-signup")
+async def org_signup_google(
+    payload: GoogleSignupRequest,
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    settings = get_settings()
+    if not settings.google_client_id:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Google OAuth is not configured")
+
+    try:
+        ticket = id_token.verify_oauth2_token(
+            payload.credential,
+            google_requests.Request(),
+            settings.google_client_id,
+        )
+    except ValueError as exc:
+        logger.warning("Org Google signup failed token verification: %s", exc)
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid Google credential") from exc
+
+    email = _normalize_email(ticket.get("email", ""))
+    name = ticket.get("name") or email.split("@")[0]
+    # Sanitize name to prevent XSS
+    name = sanitize_text_field(name)
+    google_id = ticket.get("sub")
+
+    if not email:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Email is required")
+
+    if await _find_user_by_email(db, email):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="User already registered")
+
+    user_doc = {
+        "name": name,
+        "email": email,
+        "googleId": google_id,
+        "role": "org_admin",
+        "phone": None,
+        "country": None,
+        "emailVerified": True,  # Google OAuth emails are pre-verified
+        "createdAt": datetime.now(timezone.utc),
+    }
+    await db.users.insert_one(user_doc)
+
+    return success_response(
+        "Signup successful. You can sign in now.",
+        {"email": email},
+        status_code=status.HTTP_201_CREATED,
+    )
+
+
+async def _check_account_lockout(db: AsyncIOMotorDatabase, email: str) -> tuple[bool, str | None]:
+    """Check if account is locked. Returns (is_locked, lockout_message)."""
+    settings = get_settings()
+    normalized = _normalize_email(email)
+    user = await _find_user_by_email(db, normalized)
+    
+    if not user:
+        return False, None
+    
+    failed_attempts = user.get("failedLoginAttempts", 0)
+    lockout_until = user.get("lockoutUntil")
+    
+    if lockout_until:
+        lockout_time = lockout_until
+        if isinstance(lockout_time, str):
+            try:
+                lockout_time = datetime.fromisoformat(lockout_time.replace("Z", "+00:00"))
+            except (ValueError, AttributeError):
+                # Fallback: try parsing with datetime.strptime
+                try:
+                    lockout_time = datetime.strptime(lockout_time, "%Y-%m-%dT%H:%M:%S.%fZ")
+                    lockout_time = lockout_time.replace(tzinfo=timezone.utc)
+                except (ValueError, AttributeError):
+                    logger.warning(f"Could not parse lockout_until: {lockout_until}")
+                    return False, None
+        if lockout_time.tzinfo is None:
+            lockout_time = lockout_time.replace(tzinfo=timezone.utc)
+        
+        if datetime.now(timezone.utc) < lockout_time:
+            remaining_minutes = int((lockout_time - datetime.now(timezone.utc)).total_seconds() / 60)
+            return True, f"Account is temporarily locked due to too many failed login attempts. Please try again in {remaining_minutes} minutes."
+        else:
+            # Lockout expired, clear it
+            await db.users.update_one(
+                {"_id": user["_id"]},
+                {"$unset": {"lockoutUntil": "", "failedLoginAttempts": 0}}
+            )
+    
+    if failed_attempts >= settings.max_failed_attempts:
+        # Lock account
+        lockout_until = datetime.now(timezone.utc) + timedelta(minutes=settings.lockout_duration_minutes)
+        await db.users.update_one(
+            {"_id": user["_id"]},
+            {"$set": {"lockoutUntil": lockout_until}}
+        )
+        return True, f"Account is temporarily locked due to too many failed login attempts. Please try again in {settings.lockout_duration_minutes} minutes."
+    
+    return False, None
+
+
+async def _increment_failed_attempts(db: AsyncIOMotorDatabase, email: str) -> None:
+    """Increment failed login attempts for a user."""
+    normalized = _normalize_email(email)
+    user = await _find_user_by_email(db, normalized)
+    if user:
+        await db.users.update_one(
+            {"_id": user["_id"]},
+            {"$inc": {"failedLoginAttempts": 1}}
+        )
+
+
+async def _clear_failed_attempts(db: AsyncIOMotorDatabase, email: str) -> None:
+    """Clear failed login attempts on successful login."""
+    normalized = _normalize_email(email)
+    user = await _find_user_by_email(db, normalized)
+    if user:
+        await db.users.update_one(
+            {"_id": user["_id"]},
+            {"$unset": {"failedLoginAttempts": "", "lockoutUntil": ""}}
+        )
+
+
+def _build_login_success_response(user: dict) -> JSONResponse:
+    """Build login success response with access and refresh tokens."""
+    from ....core.security import create_refresh_token
+    
+    access_token = create_access_token(str(user["_id"]), user.get("role", "pending"))
+    refresh_token = create_refresh_token(str(user["_id"]), user.get("role", "pending"))
+    user_data = serialize_document(user)
+    return success_response(
+        "Login successful",
+        {
+            "token": access_token,
+            "refreshToken": refresh_token,
+            "user": {
+                "id": user_data["id"],
+                "name": user_data.get("name"),
+                "email": user_data.get("email"),
+                "role": user_data.get("role"),
+                "organization": user_data.get("organization"),
+                "phone": user_data.get("phone"),
+                "country": user_data.get("country"),
+            },
+        },
+    )
+
+
+@router.post("/send-verification-code")
+async def send_verification_code(
+    payload: SendVerificationCodeRequest,
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Send email verification code to user. Handles both existing users and pending signups."""
+    email = _normalize_email(payload.email)
+    user = await _find_user_by_email(db, email)
+    
+    # Check if this is an existing user or pending signup
+    if user:
+        # Existing user flow
+        # Check if already verified
+        if user.get("emailVerified"):
+            return success_response("Email is already verified", {"verified": True})
+
+        # Clean up any expired verification codes before sending new one
+        await _check_and_cleanup_expired_verification(db, email)
+
+        try:
+            await _send_verification_email(db, email, user.get("name"))
+        except Exception as exc:
+            logger.error("Failed to send verification email: %s", exc)
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to send verification email",
+            ) from exc
+    else:
+        # Check if there's a pending signup (email is already normalized above)
+        normalized_email = _normalize_email(email)
+        verification = await db.email_verifications.find_one({"email": normalized_email, "pendingSignup": {"$exists": True}})
+        if not verification:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found. Please sign up first.")
+
+        # Get pending signup data BEFORE checking expiration (in case it gets deleted)
+        pending_signup_data = verification.get("pendingSignup")
+        if not pending_signup_data:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No pending signup found")
+
+        user_name = pending_signup_data.get("name") if pending_signup_data else None
+
+        # Check if the pending signup code has expired or is missing (cleared by verify-email-code)
+        now = datetime.now(timezone.utc)
+        expires_at = verification.get("expiresAt")
+        code = verification.get("code")
+        
+        # If code or expiresAt is missing, it means verify-email-code cleared it (expired code was entered)
+        # In that case, we can just resend without deleting
+        if not code or not expires_at:
+            logger.info("Verification code missing (cleared), resending for pending signup: %s", normalized_email)
+        elif expires_at:
+            # Ensure expires_at is timezone-aware for comparison
+            if expires_at.tzinfo is None:
+                expires_at = expires_at.replace(tzinfo=timezone.utc)
+            elif expires_at.tzinfo != timezone.utc:
+                expires_at = expires_at.astimezone(timezone.utc)
+            
+            if expires_at < now:
+                # Code has expired, delete it but allow resending with same pending data
+                await db.email_verifications.delete_one({"email": normalized_email})
+                logger.info("Expired verification code deleted, resending for pending signup: %s", normalized_email)
+
+        # Resend code for pending signup (preserve pending signup data)
+        try:
+            await _send_verification_email(db, email, user_name, pending_signup_data)
+        except Exception as exc:
+            logger.error("Failed to send verification email: %s", exc)
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to send verification email",
+            ) from exc
+
+    return success_response("Verification code sent successfully", {"email": email})
+
+
+@_apply_rate_limit
+@router.post("/verify-email-code")
+async def verify_email_code(
+    request: Request,
+    payload: VerifyEmailCodeRequest,
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Verify email verification code. Creates account if this is a pending signup."""
+    email = _normalize_email(payload.email)
+    
+    # Check if this is a pending signup or existing user
+    verification = await db.email_verifications.find_one({"email": email})
+    is_pending_signup = verification and verification.get("pendingSignup")
+    
+    # For existing users, check if they exist and are already verified
+    if not is_pending_signup:
+        user = await _find_user_by_email(db, email)
+        if not user:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+        if user.get("emailVerified"):
+            return success_response("Email is already verified", {"verified": True})
+
+    # Check if verification exists and if it's expired
+    if not verification:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Verification code expired or not found. Please request a new code.")
+    
+    # Check expiration before verifying code
+    now = datetime.now(timezone.utc)
+    expires_at = verification.get("expiresAt")
+    if expires_at:
+        # Ensure expires_at is timezone-aware for comparison
+        if expires_at.tzinfo is None:
+            expires_at = expires_at.replace(tzinfo=timezone.utc)
+        elif expires_at.tzinfo != timezone.utc:
+            expires_at = expires_at.astimezone(timezone.utc)
+        
+        if expires_at < now:
+            # Code has expired
+            # If this is a pending signup, preserve the pendingSignup data for resend functionality
+            # Otherwise, delete the entire record
+            if verification.get("pendingSignup"):
+                # For pending signups, just clear the code/expiration but keep pendingSignup data
+                # This allows resend to work properly
+                await db.email_verifications.update_one(
+                    {"email": email},
+                    {"$unset": {"code": "", "expiresAt": "", "attempts": ""}}
+                )
+                logger.info("Expired verification code cleared (pending signup preserved) during verification attempt: %s", email)
+            else:
+                # For existing users, delete the entire record
+                await db.email_verifications.delete_one({"email": email})
+                logger.info("Expired verification code deleted during verification attempt: %s", email)
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Verification code has expired. Please request a new code.")
+    
+    # Check if code matches
+    stored_code = verification.get("code")
+    if stored_code != payload.code:
+        # Increment attempts
+        await db.email_verifications.update_one(
+            {"email": email},
+            {"$inc": {"attempts": 1}},
+        )
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid verification code. Please check and try again.")
+
+    # Code is valid - proceed with verification (this will create account if pending signup)
+    # We've already checked expiration and code match above, so _verify_code should succeed
+    is_valid = await _verify_code(db, email, payload.code)
+    if not is_valid:
+        # This should not happen since we already checked above, but just in case
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid verification code. Please check and try again.")
+
+    # Check if account was just created
+    user = await _find_user_by_email(db, email)
+    if user and is_pending_signup:
+        return success_response("Email verified and account created successfully", {"verified": True, "accountCreated": True})
+    
+    return success_response("Email verified successfully", {"verified": True, "accountCreated": False})
+
+
+@_apply_rate_limit
+@router.post("/login")
+async def email_login(
+    request: Request,
+    payload: LoginRequest,
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """User login with rate limiting, account lockout, and generic error messages."""
+    settings = get_settings()
+    
+    email = _normalize_email(payload.email)
+    
+    # Check account lockout
+    is_locked, lockout_message = await _check_account_lockout(db, email)
+    if is_locked:
+        logger.warning("Locked account login attempt: %s", email)
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=lockout_message)
+    
+    user = await _find_user_by_email(db, email)
+    
+    # Generic error message to prevent user enumeration
+    generic_error = "Invalid email or password"
+    
+    if not user:
+        logger.info("Login attempt for non-existent user: %s", payload.email)
+        await _increment_failed_attempts(db, email)
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=generic_error)
+
+    if not user.get("password"):
+        logger.info("Login attempt - password not set: %s", payload.email)
+        await _increment_failed_attempts(db, email)
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=generic_error)
+
+    if not verify_password(payload.password, user["password"]):
+        logger.info("Invalid password attempt for user: %s", payload.email)
+        await _increment_failed_attempts(db, email)
+        # Check if account should be locked after this attempt
+        is_locked, lockout_message = await _check_account_lockout(db, email)
+        if is_locked:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=lockout_message)
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=generic_error)
+
+    # Check email verification
+    if not user.get("emailVerified"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Email not verified. Please verify your email before signing in.",
+        )
+
+    # Check if user is super_admin - require MFA
+    if user.get("role") == "super_admin":
+        # Check if TOTP secret exists
+        if not user.get("totp_secret"):
+            logger.warning("Super admin %s does not have TOTP secret configured", email)
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="TOTP not configured. Please contact administrator.",
+            )
+        # Clear failed attempts
+        await _clear_failed_attempts(db, email)
+        # Return require_mfa flag instead of logging in
+        return success_response(
+            "MFA required",
+            {
+                "require_mfa": True,
+                "email": email,
+            },
+        )
+
+    # Clear failed attempts on successful login
+    await _clear_failed_attempts(db, email)
+    return _build_login_success_response(user)
+
+
+@router.post("/org-signup-email")
+async def org_signup_email(
+    background_tasks: BackgroundTasks,
+    payload: OrgSignupRequest,
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    email = _normalize_email(payload.email)
+    if await _find_user_by_email(db, email):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="User already registered")
+
+    # Check if there's already a pending signup for this email (and if it's expired)
+    pending = await db.email_verifications.find_one({"email": email, "pendingSignup": {"$exists": True}})
+    if pending:
+        # Check if the pending signup code has expired
+        is_expired = await _check_and_cleanup_expired_verification(db, email)
+        if not is_expired:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Verification email already sent. Please check your email or wait for it to expire.")
+
+    # Store pending signup data (will be created after verification)
+    pending_signup_data = {
+        "name": sanitize_text_field(payload.name),
+        "password": get_password_hash(payload.password),
+        "role": "org_admin",
+        "phone": sanitize_text_field(payload.phone) if payload.phone else None,
+        "country": sanitize_text_field(payload.country) if payload.country else None,
+    }
+
+    # Generate verification code and store it immediately (before sending email)
+    code = _generate_verification_code()
+    settings = get_settings()
+    expires_at = datetime.now(timezone.utc) + timedelta(minutes=settings.email_verification_code_ttl_minutes)
+    await _store_verification_code(db, email, code, expires_at, pending_signup_data)
+
+    # Send verification email in background (non-blocking)
+    background_tasks.add_task(_send_verification_email_async, db, email, payload.name, code, settings.email_verification_code_ttl_minutes)
+    logger.info("Verification email queued for user: %s", email)
+
+    return success_response(
+        "Please check your email for verification code. Account will be created after verification.",
+        {"email": email},
+        status_code=status.HTTP_201_CREATED,
+    )
+
+
+@_apply_rate_limit
+@router.post("/oauth-login")
+async def oauth_login(
+    request: Request,
+    payload: OAuthLoginRequest,
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """OAuth login with rate limiting."""
+    try:
+        email = _normalize_email(payload.email)
+        logger.info(f"OAuth login attempt for email: {email}, provider: {payload.provider}")
+        
+        # Check MongoDB connection first
+        try:
+            await db.command("ping")
+        except Exception as db_error:
+            logger.error(f"MongoDB connection error during OAuth login: {db_error}")
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Database connection error. Please try again."
+            ) from db_error
+        
+        user = await _find_user_by_email(db, email)
+
+        if not user:
+            user_doc = {
+                "name": sanitize_text_field(payload.name or email.split("@")[0]),
+                "email": email,
+                "role": payload.role or "org_admin",
+                "provider": payload.provider,
+                "emailVerified": True,  # OAuth providers verify emails
+                "createdAt": datetime.now(timezone.utc),
+            }
+            result = await db.users.insert_one(user_doc)
+            user = await db.users.find_one({"_id": result.inserted_id})
+        else:
+            updates = {}
+            if payload.name and not user.get("name"):
+                # Sanitize name to prevent XSS
+                updates["name"] = sanitize_text_field(payload.name)
+            if payload.role and payload.role != user.get("role"):
+                updates["role"] = payload.role
+            if payload.provider and payload.provider != user.get("provider"):
+                updates["provider"] = payload.provider
+
+            if updates:
+                await db.users.update_one({"_id": user["_id"]}, {"$set": updates})
+                user = await db.users.find_one({"_id": user["_id"]})
+
+        if not user:
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to create user")
+
+        return _build_login_success_response(user)
+    except Exception as exc:
+        logger.error("OAuth login error: %s", exc, exc_info=True)
+        if isinstance(exc, HTTPException):
+            raise
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="OAuth login failed. Please try again."
+        )
+
+
+@router.post("/refresh-token")
+async def refresh_token(
+    payload: RefreshTokenRequest,
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Refresh access token using refresh token."""
+    from ....core.security import decode_token, create_access_token, create_refresh_token
+    
+    refresh_token_str = payload.refreshToken
+    
+    try:
+        decoded = decode_token(refresh_token_str)
+        
+        # Verify it's a refresh token
+        if decoded.get("type") != "refresh":
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid token type")
+        
+        user_id = decoded.get("sub")
+        role = decoded.get("role")
+        
+        if not user_id:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid token")
+        
+        # Verify user still exists
+        from ....utils.mongo import to_object_id
+        try:
+            user_oid = to_object_id(user_id)
+        except ValueError:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid user ID")
+        
+        user = await db.users.find_one({"_id": user_oid})
+        if not user:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+        
+        # Generate new token pair
+        new_access_token = create_access_token(user_id, role)
+        new_refresh_token = create_refresh_token(user_id, role)
+        
+        return success_response(
+            "Token refreshed successfully",
+            {
+                "token": new_access_token,
+                "refreshToken": new_refresh_token,
+            }
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error("Token refresh error: %s", exc)
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired refresh token"
+        ) from exc
+
