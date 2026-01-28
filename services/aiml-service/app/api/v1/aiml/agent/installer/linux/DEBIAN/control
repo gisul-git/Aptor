@@ -1,0 +1,22 @@
+Package: aicompetency-agent
+Version: 1.0.0
+Section: utils
+Priority: optional
+Architecture: amd64
+Depends: systemd (>= 240)
+Maintainer: Aptor <support@aptor.com>
+Description: AI Competency Agent - Local Python execution agent
+ AI Competency Agent provides a local WebSocket server for executing
+ Python code in Jupyter kernels. It runs as a background service and
+ automatically starts on system boot.
+ .
+ The agent exposes a WebSocket server on ws://127.0.0.1:8889 for
+ browser-based notebook interfaces to connect and execute Python code
+ locally on the user's machine.
+ .
+ Features:
+  - Local Python code execution via Jupyter kernels
+  - WebSocket API for browser integration
+  - Automatic service management via systemd
+  - File upload support
+  - Kernel restart and interrupt capabilities
