@@ -144,6 +144,8 @@ class QuestionCreate(BaseModel):
     sample_data: Optional[Dict[str, List[List[Any]]]] = None  # Sample data per table
     starter_query: Optional[str] = None  # SQL starter template
     reference_query: Optional[str] = None  # Correct SQL query for evaluation
+    # Optional manual expected result preview for SQL questions (e.g., result-set snapshot)
+    sql_expected_output: Optional[str] = None
     hints: Optional[List[str]] = None  # Optional hints for SQL questions
     evaluation: Optional[Dict[str, Any]] = None  # SQL evaluation config
 
@@ -171,6 +173,8 @@ class QuestionUpdate(BaseModel):
     sample_data: Optional[Dict[str, List[List[Any]]]] = None
     starter_query: Optional[str] = None
     reference_query: Optional[str] = None  # Correct SQL query for evaluation
+    # Optional manual expected result preview for SQL questions
+    sql_expected_output: Optional[str] = None
     hints: Optional[List[str]] = None
     evaluation: Optional[Dict[str, Any]] = None
 

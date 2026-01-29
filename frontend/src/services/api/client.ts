@@ -32,6 +32,18 @@ const processQueue = (error: any, token: string | null = null) => {
 /**
  * Proactively refresh token if it's expired or expiring soon
  */
+/**
+ * Check if current page is a candidate route (test take page)
+ */
+function isCandidatePage(): boolean {
+  if (typeof window === 'undefined') return false;
+  const pathname = window.location.pathname;
+  const searchParams = new URLSearchParams(window.location.search);
+  // Check if we're on a test take page with token/user_id (candidate access)
+  return (pathname.includes('/test/') && pathname.includes('/take')) || 
+         (pathname.includes('/test/') && (searchParams.has('token') || searchParams.has('user_id')));
+}
+
 async function refreshTokenProactively(): Promise<string | null> {
   if (isRefreshing) {
     // Already refreshing, wait for it
@@ -102,8 +114,8 @@ async function refreshTokenProactively(): Promise<string | null> {
     }
   } catch (refreshError) {
     processQueue(refreshError, null);
-    // Refresh failed, redirect to login
-    if (typeof window !== 'undefined') {
+    // Refresh failed, redirect to login only if not on candidate page
+    if (typeof window !== 'undefined' && !isCandidatePage()) {
       window.location.href = '/auth/signin';
     }
     return null;
@@ -121,10 +133,23 @@ apiClient.interceptors.request.use(
   async (config) => {
     // Only add token for admin API routes (not auth routes or candidate assessment routes)
     // Candidate assessment routes use token from URL params, not JWT
-    const isAuthRoute = config.url?.includes('/api/v1/auth/') || config.url?.includes('/api/auth/');
-    const isCandidateRoute = config.url?.includes('/api/assessment/') || config.url?.includes('/api/v1/candidate/');
+    const url = config.url || '';
+    const isAuthRoute = url.includes('/api/v1/auth/') || url.includes('/api/auth/');
+    const isCandidateRoute = url.includes('/api/assessment/') || url.includes('/api/v1/candidate/');
+    // DSA test routes that can be accessed by candidates (submission, start, public, question)
+    // These routes can be accessed by both candidates (no auth) and admins (with auth)
+    const isDSACandidateRoute = url.includes('/api/v1/dsa/tests/') && 
+      (url.includes('/submission') || url.includes('/start') || url.includes('/public') || url.includes('/question/'));
     
-    if (!isAuthRoute && !isCandidateRoute && typeof window !== 'undefined') {
+    // For auth routes, always skip auth
+    if (isAuthRoute) {
+      if (config.headers) {
+        delete config.headers.Authorization;
+      }
+      return config;
+    }
+    
+    if (typeof window !== 'undefined') {
       // Check for temporary token first (from recent refresh)
       let token: string | null = null;
       try {
@@ -149,8 +174,8 @@ apiClient.interceptors.request.use(
           if (newToken) {
             token = newToken;
           } else if (tokenStatus.isExpired) {
-            // Token is expired and refresh failed, redirect to login
-            if (typeof window !== 'undefined') {
+            // Token is expired and refresh failed, redirect to login only if not on candidate page
+            if (typeof window !== 'undefined' && !isCandidatePage()) {
               window.location.href = '/auth/signin';
             }
             return Promise.reject(new Error('Token expired and refresh failed'));
@@ -158,8 +183,31 @@ apiClient.interceptors.request.use(
         }
       }
 
-      if (token) {
-        config.headers.Authorization = `Bearer ${token}`;
+      // For candidate routes (assessment, candidate endpoints), skip auth if no token
+      // For DSA candidate routes, include auth if token is available (admin context), skip if not (candidate context)
+      if (isCandidateRoute) {
+        // Always skip auth for candidate assessment routes
+        if (config.headers) {
+          delete config.headers.Authorization;
+        }
+        return config;
+      } else if (isDSACandidateRoute) {
+        // For DSA candidate routes, include auth if we have a token (admin viewing analytics)
+        // Skip auth only if we don't have a token (candidate taking test)
+        if (token) {
+          config.headers.Authorization = `Bearer ${token}`;
+        } else {
+          // No token available, this is a candidate request - skip auth
+          if (config.headers) {
+            delete config.headers.Authorization;
+          }
+        }
+        return config;
+      } else {
+        // For all other routes, include auth if token is available
+        if (token) {
+          config.headers.Authorization = `Bearer ${token}`;
+        }
       }
     }
     return config;
@@ -181,6 +229,48 @@ apiClient.interceptors.response.use(
   async (error: AxiosError) => {
     const originalRequest = error.config as InternalAxiosRequestConfig & { _retry?: boolean };
 
+    // Skip token refresh for candidate routes (they don't require auth)
+    const url = originalRequest.url || '';
+    const isAuthRoute = url.includes('/api/v1/auth/') || url.includes('/api/auth/');
+    const isCandidateRoute = url.includes('/api/assessment/') || url.includes('/api/v1/candidate/');
+    const isDSACandidateRoute = url.includes('/api/v1/dsa/tests/') && 
+      (url.includes('/submission') || url.includes('/start') || url.includes('/public') || url.includes('/question/'));
+    
+    // For auth routes and candidate assessment routes, don't try to refresh token
+    if (isCandidateRoute || isAuthRoute) {
+      return Promise.reject(error);
+    }
+    
+    // For DSA candidate routes, check if we have a token
+    // If we have a token and get 401, try to refresh (admin context)
+    // If we don't have a token, just return error (candidate context)
+    if (isDSACandidateRoute) {
+      if (error.response?.status === 401 && typeof window !== 'undefined') {
+        // Check if we have a token - if yes, this is an admin request that needs auth
+        let hasToken = false;
+        try {
+          const tempToken = sessionStorage.getItem('temp_access_token');
+          if (tempToken) {
+            hasToken = true;
+          } else {
+            const session = await getSession();
+            hasToken = !!session?.backendToken;
+          }
+        } catch (e) {
+          // Ignore errors
+        }
+        
+        // If we have a token, this is an admin request - try to refresh
+        // If we don't have a token, this is a candidate request - just return error
+        if (!hasToken) {
+          return Promise.reject(error);
+        }
+        // Continue to token refresh logic below
+      } else {
+        return Promise.reject(error);
+      }
+    }
+    
     // If error is 401 and we haven't retried yet
     if (error.response?.status === 401 && !originalRequest._retry && typeof window !== 'undefined') {
       if (isRefreshing) {

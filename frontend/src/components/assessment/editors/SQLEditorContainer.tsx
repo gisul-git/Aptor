@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import dynamic from 'next/dynamic'
+import Split from 'react-split'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from './ui/tabs'
 import { EditorToolbar } from './EditorToolbar'
 import { OutputConsole } from './OutputConsole'
@@ -37,6 +38,8 @@ interface SQLQuestion {
   constraints?: string[]
   starter_query?: string
   hints?: string[]
+  // Optional expected result snapshot for the reference query
+  sql_expected_output?: string
 }
 
 export interface SQLSubmissionResult {
@@ -114,6 +117,123 @@ function SchemaDisplay({ schemas }: { schemas: Record<string, TableSchema> }) {
           </div>
         </div>
       ))}
+    </div>
+  )
+}
+
+// SQL Output Formatter - Parses and displays SQL output as a table
+function formatSQLOutput(output: string): { isTable: boolean; data: any[][] | null; rawText: string } {
+  if (!output || !output.trim()) {
+    return { isTable: false, data: null, rawText: output || '' }
+  }
+
+  const lines = output.trim().split('\n').filter(line => line.trim())
+  if (lines.length === 0) {
+    return { isTable: false, data: null, rawText: output }
+  }
+
+  // Try to detect if it's a table format (pipe-separated, tab-separated, or aligned columns)
+  const firstLine = lines[0]
+  const hasPipes = firstLine.includes('|')
+  const hasTabs = firstLine.includes('\t')
+  
+  // Check if it looks like a table (has multiple columns)
+  if (hasPipes || hasTabs || firstLine.split(/\s{2,}/).length > 1) {
+    try {
+      let rows: any[][] = []
+      
+      if (hasPipes) {
+        // Pipe-separated format
+        rows = lines.map(line => {
+          const cells = line.split('|').map(cell => cell.trim())
+          // Remove empty cells at start/end if they exist (from leading/trailing pipes)
+          if (cells[0] === '') cells.shift()
+          if (cells[cells.length - 1] === '') cells.pop()
+          return cells
+        })
+      } else if (hasTabs) {
+        // Tab-separated format
+        rows = lines.map(line => line.split('\t').map(cell => cell.trim()))
+      } else {
+        // Try to split by multiple spaces (aligned columns)
+        rows = lines.map(line => {
+          return line.split(/\s{2,}/).map(cell => cell.trim()).filter(cell => cell)
+        })
+      }
+
+      // Filter out separator rows (like "---+---" in markdown tables)
+      rows = rows.filter(row => {
+        const rowStr = row.join('')
+        return !/^[\s|\-:]+$/.test(rowStr) && row.length > 0
+      })
+
+      if (rows.length > 0 && rows[0].length > 0) {
+        return { isTable: true, data: rows, rawText: output }
+      }
+    } catch (e) {
+      // If parsing fails, fall back to raw text
+    }
+  }
+
+  return { isTable: false, data: null, rawText: output }
+}
+
+// SQL Output Display Component
+function SQLOutputDisplay({ output, title, titleColor = 'text-slate-300' }: { output: string; title?: string; titleColor?: string }) {
+  const formatted = formatSQLOutput(output)
+
+  if (formatted.isTable && formatted.data && formatted.data.length > 0) {
+    const headers = formatted.data[0]
+    const rows = formatted.data.slice(1)
+
+    return (
+      <div className="w-full">
+        {title && (
+          <div className="mb-2 text-xs text-slate-400 font-medium">{title}</div>
+        )}
+        <div className="border border-slate-700 rounded-lg overflow-hidden">
+          <div className="bg-slate-900/50 overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-slate-800">
+                  {headers.map((header, idx) => (
+                    <th key={idx} className="text-left py-2 px-3 text-slate-300 font-medium text-xs border-b border-slate-700">
+                      {String(header)}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="font-mono text-xs">
+                {rows.map((row, rowIdx) => (
+                  <tr key={rowIdx} className="border-b border-slate-800 hover:bg-slate-800/50">
+                    {headers.map((_, colIdx) => (
+                      <td key={colIdx} className="py-2 px-3 text-slate-200">
+                        {row[colIdx] === null || row[colIdx] === undefined || row[colIdx] === '' ? (
+                          <span className="text-slate-500 italic">NULL</span>
+                        ) : (
+                          String(row[colIdx])
+                        )}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // Fall back to formatted text display
+  return (
+    <div className="w-full">
+      {title && (
+        <div className="mb-2 text-xs text-slate-400 font-medium">{title}</div>
+      )}
+      <pre className="text-sm font-mono text-slate-200 whitespace-pre-wrap break-words bg-slate-900/50 p-3 rounded border border-slate-700">
+        {formatted.rawText || 'No output'}
+      </pre>
     </div>
   )
 }
@@ -235,13 +355,14 @@ export function SQLEditorContainer({
 
   const hasSchemas = question.schemas && Object.keys(question.schemas).length > 0
   const hasSampleData = question.sample_data && Object.keys(question.sample_data).length > 0
+  const hasExpectedOutput = typeof question.sql_expected_output === 'string' && question.sql_expected_output.trim().length > 0
 
   return (
     <div className="h-full flex bg-slate-950 overflow-hidden">
       {/* Left Panel - Schema & Sample Data */}
-      {(hasSchemas || hasSampleData) && (
+      {(hasSchemas || hasSampleData || question.sql_expected_output) && (
         <div className="w-80 border-r border-slate-700 flex flex-col bg-slate-900/50">
-          {/* Sidebar Content - Schema and Data stacked vertically */}
+          {/* Sidebar Content - Schema, Data and Expected Output stacked vertically */}
           <div className="flex-1 overflow-y-auto p-4 space-y-6">
             {/* Schema Section */}
             {hasSchemas && question.schemas && (
@@ -267,6 +388,21 @@ export function SQLEditorContainer({
                 />
               </div>
             )}
+
+            {/* Expected Output Preview (from reference query) */}
+            {question.sql_expected_output && question.sql_expected_output.trim() && (
+              <div>
+                <div className="flex items-center gap-2 mb-3 px-2">
+                  <Table2 className="w-4 h-4 text-emerald-400" />
+                  <h3 className="text-sm font-semibold text-emerald-400">Expected Output</h3>
+                </div>
+                <div className="bg-slate-900/50 p-3 rounded-md border border-slate-700 max-h-64 overflow-y-auto">
+                  <pre className="text-xs text-slate-200 whitespace-pre-wrap font-mono">
+                    {question.sql_expected_output}
+                  </pre>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -288,92 +424,256 @@ export function SQLEditorContainer({
 
           {/* Code Tab */}
           <TabsContent value="code" className="!mt-0 !mb-0 flex-1 flex flex-col overflow-hidden data-[state=active]:flex min-h-0 !p-0">
-            {/* SQL Toolbar - Simplified without language selector */}
-            <div className="flex items-center justify-between px-4 py-2 bg-slate-900 border-b border-slate-700">
-              <div className="flex items-center gap-2">
-                <Database className="w-4 h-4 text-blue-400" />
-                <span className="text-sm font-medium text-slate-300">SQL Query</span>
-                {question.sql_category && (
-                  <span className="text-xs bg-blue-500/20 text-blue-400 px-2 py-0.5 rounded capitalize">
-                    {question.sql_category}
-                  </span>
-                )}
-              </div>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={onReset}
-                  disabled={running || submitting}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-slate-400 hover:text-slate-200 hover:bg-slate-800 rounded transition-colors disabled:opacity-50"
-                  title="Reset to starter query"
-                >
-                  <RotateCcw className="w-4 h-4" />
-                  Reset
-                </button>
-                <button
-                  onClick={onRun}
-                  disabled={running || submitting}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-green-600 hover:bg-green-500 text-white rounded transition-colors disabled:opacity-50"
-                >
-                  <Play className="w-4 h-4" />
-                  {running ? 'Running...' : 'Run'}
-                </button>
-                <button
-                  onClick={onSubmit}
-                  disabled={running || submitting}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-500 text-white rounded transition-colors disabled:opacity-50"
-                >
-                  <Send className="w-4 h-4" />
-                  {submitting ? 'Submitting...' : 'Submit'}
-                </button>
-              </div>
-            </div>
+            {/* Vertical Split: Editor on top, Output comparison on bottom (if expected output exists) */}
+            {hasExpectedOutput ? (
+              <Split
+                className="flex flex-col h-full"
+                direction="vertical"
+                minSize={[200, 150]}
+                sizes={[60, 40]}
+                gutterSize={10}
+                snapOffset={0}
+                dragInterval={1}
+                gutterStyle={(dimension, gutterSize, index) => ({
+                  backgroundColor: '#64748b',
+                  cursor: 'row-resize',
+                  height: '10px',
+                  width: '100%',
+                  zIndex: '10',
+                  transition: 'background-color 0.2s',
+                })}
+                gutterAlign="center"
+              >
+                {/* Top: SQL Editor */}
+                <div className="flex flex-col overflow-hidden min-h-0">
+                  {/* SQL Toolbar - Simplified without language selector */}
+                  <div className="flex items-center justify-between px-4 py-2 bg-slate-900 border-b border-slate-700 flex-shrink-0">
+                    <div className="flex items-center gap-2">
+                      <Database className="w-4 h-4 text-blue-400" />
+                      <span className="text-sm font-medium text-slate-300">SQL Query</span>
+                      {question.sql_category && (
+                        <span className="text-xs bg-blue-500/20 text-blue-400 px-2 py-0.5 rounded capitalize">
+                          {question.sql_category}
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={onReset}
+                        disabled={running || submitting}
+                        className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-slate-400 hover:text-slate-200 hover:bg-slate-800 rounded transition-colors disabled:opacity-50"
+                        title="Reset to starter query"
+                      >
+                        <RotateCcw className="w-4 h-4" />
+                        Reset
+                      </button>
+                      <button
+                        onClick={onRun}
+                        disabled={running || submitting}
+                        className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-green-600 hover:bg-green-500 text-white rounded transition-colors disabled:opacity-50"
+                      >
+                        <Play className="w-4 h-4" />
+                        {running ? 'Running...' : 'Run'}
+                      </button>
+                      <button
+                        onClick={onSubmit}
+                        disabled={running || submitting}
+                        className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-500 text-white rounded transition-colors disabled:opacity-50"
+                      >
+                        <Send className="w-4 h-4" />
+                        {submitting ? 'Submitting...' : 'Submit'}
+                      </button>
+                    </div>
+                  </div>
 
-            {/* SQL Editor */}
-            <div 
-              ref={editorContainerRef} 
-              className="relative flex-1 min-h-[200px] w-full"
-            >
-              {editorHeight > 0 && (
-                <MonacoEditor
-                  height={editorHeight}
-                  language="sql"
-                  value={code || '-- Write your SQL query here\n\nSELECT '}
-                  onChange={(value) => onCodeChange(value || '')}
-                  theme="vs-dark"
-                  options={{
-                    minimap: { enabled: false },
-                    fontSize: 15,
-                    wordWrap: 'on',
-                    lineNumbers: 'on',
-                    roundedSelection: false,
-                    scrollBeyondLastLine: false,
-                    readOnly: false,
-                    cursorStyle: 'line',
-                    automaticLayout: true,
-                    tabSize: 2,
-                    insertSpaces: true,
-                    suggestOnTriggerCharacters: true,
-                    quickSuggestions: true,
-                    fontFamily: "'Fira Code', 'Consolas', 'Monaco', 'Courier New', monospace",
-                    fontLigatures: true,
-                    scrollbar: {
-                      vertical: 'visible',
-                      horizontal: 'visible',
-                      verticalScrollbarSize: 10,
-                      horizontalScrollbarSize: 10,
-                    },
-                  }}
-                  loading={
-                    <div className="flex items-center justify-center h-full bg-slate-950 text-slate-400">
-                      <div className="text-center">
-                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto mb-2"></div>
-                        <p>Loading SQL editor...</p>
+                  {/* SQL Editor */}
+                  <div 
+                    ref={editorContainerRef} 
+                    className="relative flex-1 min-h-[200px] w-full"
+                  >
+                    {editorHeight > 0 && (
+                      <MonacoEditor
+                        height={editorHeight}
+                        language="sql"
+                        value={code || '-- Write your SQL query here\n\nSELECT '}
+                        onChange={(value) => onCodeChange(value || '')}
+                        theme="vs-dark"
+                        options={{
+                          minimap: { enabled: false },
+                          fontSize: 15,
+                          wordWrap: 'on',
+                          lineNumbers: 'on',
+                          roundedSelection: false,
+                          scrollBeyondLastLine: false,
+                          readOnly: false,
+                          cursorStyle: 'line',
+                          automaticLayout: true,
+                          tabSize: 2,
+                          insertSpaces: true,
+                          suggestOnTriggerCharacters: true,
+                          quickSuggestions: true,
+                          fontFamily: "'Fira Code', 'Consolas', 'Monaco', 'Courier New', monospace",
+                          fontLigatures: true,
+                          scrollbar: {
+                            vertical: 'visible',
+                            horizontal: 'visible',
+                            verticalScrollbarSize: 10,
+                            horizontalScrollbarSize: 10,
+                          },
+                        }}
+                        loading={
+                          <div className="flex items-center justify-center h-full bg-slate-950 text-slate-400">
+                            <div className="text-center">
+                              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto mb-2"></div>
+                              <p>Loading SQL editor...</p>
+                            </div>
+                          </div>
+                        }
+                      />
+                    )}
+                  </div>
+                </div>
+
+                {/* Bottom: Expected Output vs Your Output */}
+                <div className="flex flex-col overflow-hidden min-h-0 bg-slate-950">
+                  <Split
+                    className="flex h-full"
+                    direction="horizontal"
+                    minSize={[200, 200]}
+                    sizes={[50, 50]}
+                    gutterSize={6}
+                    gutterStyle={() => ({
+                      backgroundColor: '#475569',
+                      cursor: 'col-resize',
+                    })}
+                  >
+                    {/* Left: Expected Output */}
+                    <div className="flex flex-col overflow-hidden min-h-0 bg-slate-900">
+                      <div className="px-4 py-2 border-b border-slate-700 bg-slate-800 flex-shrink-0">
+                        <span className="text-sm font-medium text-green-400">Expected Output</span>
+                      </div>
+                      <div className="flex-1 overflow-y-auto p-4">
+                        {question.sql_expected_output ? (
+                          <SQLOutputDisplay output={question.sql_expected_output} />
+                        ) : (
+                          <div className="text-slate-500 italic text-sm">No expected output provided</div>
+                        )}
                       </div>
                     </div>
-                  }
-                />
-              )}
-            </div>
+
+                    {/* Right: Your Output */}
+                    <div className="flex flex-col overflow-hidden min-h-0 bg-slate-900">
+                      <div className="px-4 py-2 border-b border-slate-700 bg-slate-800 flex-shrink-0">
+                        <span className="text-sm font-medium text-blue-400">Your Output</span>
+                      </div>
+                      <div className="flex-1 overflow-y-auto p-4">
+                        {output?.stdout ? (
+                          <SQLOutputDisplay output={output.stdout} />
+                        ) : output?.stderr || output?.error ? (
+                          <pre className="text-sm font-mono text-red-400 whitespace-pre-wrap break-words bg-red-900/20 p-3 rounded border border-red-800">
+                            {output.stderr || output.error}
+                          </pre>
+                        ) : (
+                          <div className="text-slate-500 italic text-sm">
+                            Run your query to see output here
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </Split>
+                </div>
+              </Split>
+            ) : (
+              /* No expected output - show editor only */
+              <div className="flex flex-col overflow-hidden min-h-0">
+                {/* SQL Toolbar - Simplified without language selector */}
+                <div className="flex items-center justify-between px-4 py-2 bg-slate-900 border-b border-slate-700 flex-shrink-0">
+                  <div className="flex items-center gap-2">
+                    <Database className="w-4 h-4 text-blue-400" />
+                    <span className="text-sm font-medium text-slate-300">SQL Query</span>
+                    {question.sql_category && (
+                      <span className="text-xs bg-blue-500/20 text-blue-400 px-2 py-0.5 rounded capitalize">
+                        {question.sql_category}
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={onReset}
+                      disabled={running || submitting}
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-slate-400 hover:text-slate-200 hover:bg-slate-800 rounded transition-colors disabled:opacity-50"
+                      title="Reset to starter query"
+                    >
+                      <RotateCcw className="w-4 h-4" />
+                      Reset
+                    </button>
+                    <button
+                      onClick={onRun}
+                      disabled={running || submitting}
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-green-600 hover:bg-green-500 text-white rounded transition-colors disabled:opacity-50"
+                    >
+                      <Play className="w-4 h-4" />
+                      {running ? 'Running...' : 'Run'}
+                    </button>
+                    <button
+                      onClick={onSubmit}
+                      disabled={running || submitting}
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-500 text-white rounded transition-colors disabled:opacity-50"
+                    >
+                      <Send className="w-4 h-4" />
+                      {submitting ? 'Submitting...' : 'Submit'}
+                    </button>
+                  </div>
+                </div>
+
+                {/* SQL Editor */}
+                <div 
+                  ref={editorContainerRef} 
+                  className="relative flex-1 min-h-[200px] w-full"
+                >
+                  {editorHeight > 0 && (
+                    <MonacoEditor
+                      height={editorHeight}
+                      language="sql"
+                      value={code || '-- Write your SQL query here\n\nSELECT '}
+                      onChange={(value) => onCodeChange(value || '')}
+                      theme="vs-dark"
+                      options={{
+                        minimap: { enabled: false },
+                        fontSize: 15,
+                        wordWrap: 'on',
+                        lineNumbers: 'on',
+                        roundedSelection: false,
+                        scrollBeyondLastLine: false,
+                        readOnly: false,
+                        cursorStyle: 'line',
+                        automaticLayout: true,
+                        tabSize: 2,
+                        insertSpaces: true,
+                        suggestOnTriggerCharacters: true,
+                        quickSuggestions: true,
+                        fontFamily: "'Fira Code', 'Consolas', 'Monaco', 'Courier New', monospace",
+                        fontLigatures: true,
+                        scrollbar: {
+                          vertical: 'visible',
+                          horizontal: 'visible',
+                          verticalScrollbarSize: 10,
+                          horizontalScrollbarSize: 10,
+                        },
+                      }}
+                      loading={
+                        <div className="flex items-center justify-center h-full bg-slate-950 text-slate-400">
+                          <div className="text-center">
+                            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto mb-2"></div>
+                            <p>Loading SQL editor...</p>
+                          </div>
+                        </div>
+                      }
+                    />
+                  )}
+                </div>
+              </div>
+            )}
           </TabsContent>
 
           {/* Submissions History Tab */}

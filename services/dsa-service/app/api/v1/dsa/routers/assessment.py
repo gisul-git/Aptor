@@ -1455,7 +1455,7 @@ async def submit_sql(
         
         return response
     
-    user_output = user_result.get("stdout", "").strip()
+    user_output = (user_result.get("stdout") or "").strip()
     
     # If there's a reference query, execute it and compare
     if reference_query:

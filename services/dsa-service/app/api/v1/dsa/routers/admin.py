@@ -2,6 +2,7 @@ from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 from ..services.ai_generator import generate_question
 from ..services.ai_sql_generator import generate_sql_question
+from ..services.sql_seeded_dataset import fetch_seeded_sql_schema
 from typing import Optional, List, Union
 import logging
 
@@ -82,9 +83,18 @@ async def generate_question_endpoint(
             )
             logger.info("Successfully generated question")
         except ValueError as ve:
-            # JSON parsing errors from AI generator
+            # Check if it's an authentication/configuration error
             error_msg = str(ve)
             logger.error(f"AI generation failed: {error_msg}")
+            
+            # Authentication/configuration errors should be 400 (client error)
+            if "API key" in error_msg or "OPENAI_API_KEY" in error_msg or "authentication" in error_msg.lower():
+                raise HTTPException(
+                    status_code=400,
+                    detail=error_msg
+                )
+            
+            # JSON parsing errors are still 500 (server/AI issue)
             raise HTTPException(
                 status_code=500,
                 detail=f"AI generation failed: {error_msg}. The AI may have returned invalid JSON. Please try again."
@@ -93,6 +103,14 @@ async def generate_question_endpoint(
             # Other errors from AI generator (OpenAI API errors, etc.)
             error_msg = str(gen_err)
             logger.error(f"AI generation error: {error_msg}", exc_info=True)
+            
+            # Check if it's an authentication error
+            if "401" in error_msg or "invalid_api_key" in error_msg.lower() or "authentication" in error_msg.lower():
+                raise HTTPException(
+                    status_code=400,
+                    detail="Invalid OpenAI API key. Please check your OPENAI_API_KEY in the .env file. Get a valid key from https://platform.openai.com/account/api-keys"
+                )
+            
             raise HTTPException(
                 status_code=500,
                 detail=f"AI generation error: {error_msg}. Please check your OpenAI API key and try again."
@@ -157,4 +175,58 @@ async def generate_sql_question_endpoint(
         return question_data
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/seeded-schema")
+async def get_seeded_schema():
+    """
+    Fetch the seeded database schema and sample data from the SQL execution engine.
+    
+    This endpoint returns the pre-seeded tables, their schemas (columns and types),
+    and sample data rows. This is useful for creating SQL questions that use the
+    existing seeded database instead of creating custom tables.
+    
+    Returns:
+    {
+        "schemas": {
+            "table_name": {
+                "columns": {
+                    "column_name": "column_type"
+                }
+            }
+        },
+        "sample_data": {
+            "table_name": [
+                [value1, value2, ...],  // List of lists format
+                ...
+            ]
+        }
+    }
+    """
+    try:
+        from ..config import SQL_ENGINE_URL, get_dsa_settings
+        settings = get_dsa_settings()
+        sql_engine_url = getattr(settings, "sql_engine_url", None) or SQL_ENGINE_URL
+        logger.info(f"[Admin Router] Fetching seeded SQL schema from SQL execution engine")
+        logger.info(f"[Admin Router] SQL Engine URL: {sql_engine_url}")
+        logger.info(f"[Admin Router] Full endpoint URL: {sql_engine_url.rstrip('/')}/schema")
+        
+        schema_data = await fetch_seeded_sql_schema()
+        
+        logger.info(f"[Admin Router] Successfully fetched schema with {len(schema_data.get('schemas', {}))} tables")
+        return schema_data
+    except RuntimeError as e:
+        # RuntimeError from fetch_seeded_sql_schema contains detailed error info
+        error_msg = str(e)
+        logger.error(f"[Admin Router] Runtime error fetching seeded schema: {error_msg}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=error_msg
+        )
+    except Exception as e:
+        logger.error(f"[Admin Router] Unexpected error fetching seeded schema: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to fetch seeded schema: {str(e)}"
+        )
 

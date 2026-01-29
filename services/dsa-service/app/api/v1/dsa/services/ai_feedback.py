@@ -875,21 +875,96 @@ The following is the starter code template provided to the user:
 **IMPORTANT:** Since {total_passed}/{total_tests} test cases passed, this indicates the user wrote actual implementation code. Evaluate based on test results, code structure, and implementation quality.
 """
         
-        # Check if this is SQL - SQL evaluation should be more lenient
+        # Check if this is SQL - SQL evaluation needs completely different approach
         is_sql = language and language.lower() == "sql"
-        sql_note = ""
-        if is_sql:
-            sql_note = """
-
-**SQL-SPECIFIC EVALUATION (MORE LENIENT):**
-- For SQL queries, use ANY reasonable criteria for evaluation
-- SQL queries can be written in many different ways and still be correct
-- Focus on: (1) Does the query produce correct results? (2) Is the query structure reasonable? (3) Does it demonstrate SQL knowledge?
-- Be flexible with SQL syntax variations - different approaches can be equally valid
-- If the query passes test cases, it should receive a high score
-"""
         
-        prompt = f"""You are evaluating code for an online coding judge platform (like LeetCode/HackerRank).
+        # Use SQL-specific prompt for SQL queries
+        if is_sql:
+            prompt = f"""You are evaluating a SQL query for an online SQL assessment platform.
+
+**Question:** {question_title}
+
+**Description:** {question_description[:500]}...
+
+**User's SQL Query:**
+```sql
+{source_code}
+```
+
+**Test Results:** {test_summary}{failed_details}
+
+**Test Case Breakdown:**
+- Public test cases: {public_passed}/{public_total} passed
+- Hidden test cases: {hidden_passed}/{hidden_total} passed
+- Total: {total_passed}/{total_tests} passed
+
+**SQL EVALUATION CRITERIA:**
+Focus on SQL-specific aspects:
+1. **Query Correctness** (Primary): Does the query produce correct results? This is the most important factor.
+2. **Query Structure & Readability**: Is the query well-formatted, readable, and follows SQL best practices?
+3. **SQL Best Practices**: Proper use of JOINs, WHERE clauses, aggregations, subqueries, CTEs, etc.
+4. **Query Efficiency**: Appropriate use of indexes, efficient joins, avoiding unnecessary subqueries, proper use of DISTINCT/GROUP BY
+5. **Edge Case Handling**: Handling NULLs, empty sets, duplicates appropriately
+6. **SQL Knowledge**: Demonstrates understanding of SQL concepts relevant to the problem
+
+**IMPORTANT FOR SQL:**
+- SQL queries can be written in many different ways and still be correct
+- Different approaches (JOINs vs subqueries, CTEs vs nested queries) can be equally valid
+- Focus on correctness first, then efficiency and best practices
+- If the query passes all test cases, it should receive a high score (100 if all pass)
+- Be flexible with SQL syntax variations - different SQL dialects and styles are acceptable
+- DO NOT discuss time/space complexity (O(n), O(1), etc.) - these concepts don't apply to SQL queries
+- Instead, discuss query execution efficiency, index usage, join optimization, etc.
+
+SCORING GUIDELINES:
+- **If ALL tests pass (100%): overall_score = 100 (perfect solution)**
+- **If 80-99% tests pass: overall_score = 85-99 (excellent, minor issues)**
+- **If 60-79% tests pass: overall_score = 70-84 (good, needs some fixes)**
+- **If 40-59% tests pass: overall_score = 55-69 (fair, significant issues)**
+- **If <40% tests pass: overall_score = 35-54 (poor, major revision needed)**
+- **If user submitted only starter code (no implementation AND 0 tests passed): overall_score = 0**
+
+Within each range, adjust based on:
+- **Query structure and SQL best practices**: ±5 points
+- **Query efficiency and optimization**: ±5 points
+- **Edge case handling**: ±5 points
+
+Provide comprehensive, detailed feedback in this JSON format:
+
+{{
+    "overall_score": <0-100 based on test pass rate and SQL quality>,
+    "feedback_summary": "<4-6 sentences providing comprehensive SQL-focused overview. Include: (1) Overall assessment based on test results ({total_passed}/{total_tests} passed), (2) Query structure and SQL best practices evaluation, (3) Query efficiency analysis (index usage, join optimization, etc.), (4) Discussion of SQL strengths with specific examples, (5) Areas for improvement with SQL-specific suggestions, (6) Educational context about SQL concepts used. DO NOT mention time/space complexity.>",
+    "one_liner": "<Brief summary: '✓ All tests passed | Efficient query | Proper JOINs' format - NO complexity notation>",
+    "code_quality": {{
+        "score": <0-100>,
+        "comments": "<Comprehensive 4-6 sentence SQL-focused analysis: (1) Query readability and formatting, (2) SQL best practices followed (proper JOINs, WHERE clauses, etc.), (3) Code organization and structure, (4) Naming conventions for aliases and columns, (5) SQL style and conventions, (6) Maintainability and clarity. Focus on SQL-specific aspects.>"
+    }},
+    "efficiency": {{
+        "time_complexity": "N/A",
+        "space_complexity": "N/A",
+        "comments": "<Comprehensive 5-7 sentence SQL query efficiency analysis: (1) Join efficiency and optimization opportunities, (2) Index usage and potential improvements, (3) Subquery vs JOIN performance considerations, (4) Use of DISTINCT, GROUP BY, and aggregations, (5) Query execution plan considerations, (6) Scalability with large datasets, (7) SQL-specific optimization techniques. DO NOT use Big O notation. Focus on SQL query performance and optimization.>"
+    }},
+    "correctness": {{
+        "score": <0-100 based on test pass rate>,
+        "comments": "<Comprehensive 4-6 sentence analysis: (1) Test results ({total_passed}/{total_tests} passed) and what this indicates, (2) Query logic correctness evaluation, (3) Edge case handling (NULLs, empty sets, duplicates), (4) Data accuracy and result correctness, (5) Potential issues if tests failed, (6) Robustness of the SQL solution.>"
+    }},
+    "suggestions": ["<SQL-specific improvement suggestions - query optimization, better JOINs, index usage, etc.>", "<Additional SQL suggestions>", "<More SQL best practices>"],
+    "strengths": ["<SQL-specific strengths - efficient JOINs, proper aggregations, good query structure, etc.>", "<Additional SQL strengths>", "<More SQL best practices demonstrated>"],
+    "areas_for_improvement": ["<SQL-specific areas to improve - query optimization, better use of SQL features, etc.>", "<Additional SQL improvement areas>", "<More SQL optimization opportunities>"],
+    "deduction_reasons": ["<ONLY if overall_score < 100. SQL-specific reasons: 'Failed test cases', 'Inefficient JOINs', 'Missing NULL handling', etc.>"],
+    "improvement_suggestions": ["<ONLY if overall_score < 100. SQL-specific suggestions: 'Optimize JOIN conditions', 'Add proper NULL handling', 'Use indexes effectively', etc.>"]
+}}
+
+IMPORTANT FOR SQL FEEDBACK:
+- DO NOT mention time complexity (O(n), O(1), etc.) or space complexity
+- Focus on SQL query efficiency, join optimization, index usage
+- Discuss SQL best practices, query structure, and readability
+- Provide SQL-specific educational context
+- Be comprehensive and detailed in every section
+- Score 100 if the query is correct and passes all tests"""
+        else:
+            # DSA/Programming language prompt (original)
+            prompt = f"""You are evaluating code for an online coding judge platform (like LeetCode/HackerRank).
 This platform supports ANY programming language that Judge0 supports.
 
 CRITICAL EVALUATION RULES:
@@ -901,7 +976,7 @@ CRITICAL EVALUATION RULES:
 6. If the function logic is correct and all tests pass, the score should be 100/100
 7. Empty or missing main() must NOT reduce the score
 8. Be LANGUAGE-AGNOSTIC - the same rules apply regardless of programming language
-9. ANALYZE THE ACTUAL CODE to determine time and space complexity - do not guess, analyze the loops, data structures, and algorithm logic{sql_note}{starter_code_check}
+9. ANALYZE THE ACTUAL CODE to determine time and space complexity - do not guess, analyze the loops, data structures, and algorithm logic{starter_code_check}
 
 **Question:** {question_title}
 
@@ -984,12 +1059,18 @@ IMPORTANT:
 - Be detailed in every section - users want comprehensive feedback, not brief summaries
 - Score 100 if the function implementation is correct and passes all tests."""
 
+        # Use SQL-specific system message for SQL queries
+        if is_sql:
+            system_message = "You are an expert SQL query reviewer and database analyst. Your task is to: 1) PRIORITIZE test cases passed - this is the primary indicator of query correctness, 2) Evaluate SQL query structure, readability, and best practices, 3) Analyze query efficiency (join optimization, index usage, subquery efficiency), 4) Evaluate SQL knowledge and proper use of SQL features, 5) Always respond with valid JSON, 6) Provide COMPREHENSIVE, HIGHLY DETAILED SQL-focused feedback with extensive educational context. Every section should be 4-7 sentences with substantial detail, examples, and educational insights. Explain the 'why' behind every observation. Include specific query examples when discussing strengths or improvements. Be educational and comprehensive. 7) CRITICALLY IMPORTANT: DO NOT mention time/space complexity (O(n), O(1), etc.) - these concepts don't apply to SQL. Instead, focus on query execution efficiency, join optimization, index usage, and SQL best practices. 8) If test cases passed, the user wrote actual SQL - evaluate based on test results, query structure, and SQL best practices. 9) PROVIDE EXTENSIVE DETAIL: Make feedback_summary 4-6 sentences, all comment fields 4-7 sentences, and include multiple detailed SQL-specific suggestions, strengths, and improvement areas."
+        else:
+            system_message = "You are an expert code reviewer and algorithm analyst for a LeetCode-style platform. Users only write function implementations - never I/O. Your task is to: 1) PRIORITIZE test cases passed - this is the primary indicator of correctness, 2) Evaluate code structure and implementation quality, 3) Analyze the ACTUAL CODE STRUCTURE to determine precise time and space complexity (e.g., if a loop iterates up to √n, report O(√n), not O(n)), 4) Evaluate only the function logic, 5) Be language-agnostic, 6) Always respond with valid JSON, 7) Provide COMPREHENSIVE, HIGHLY DETAILED feedback with extensive educational context - users want thorough, detailed feedback, not brief summaries. Every section should be 4-7 sentences with substantial detail, examples, and educational insights. Explain the 'why' behind every observation. Include specific code examples when discussing strengths or improvements. Be educational and comprehensive in every response. 8) CRITICALLY IMPORTANT: If test cases passed, the user wrote actual code - evaluate based on test results, code structure, and implementation quality. If the user's code is identical to starter code AND 0 tests passed, return overall_score = 0. 9) Carefully examine loops, their bounds, data structures used, and algorithm logic to give accurate complexity analysis. 10) PROVIDE EXTENSIVE DETAIL: Make feedback_summary 4-6 sentences, all comment fields 4-7 sentences, and include multiple detailed suggestions, strengths, and improvement areas."
+        
         response = client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
                 {
                     "role": "system",
-                    "content": "You are an expert code reviewer and algorithm analyst for a LeetCode-style platform. Users only write function implementations - never I/O. Your task is to: 1) PRIORITIZE test cases passed - this is the primary indicator of correctness, 2) Evaluate code structure and implementation quality, 3) Analyze the ACTUAL CODE STRUCTURE to determine precise time and space complexity (e.g., if a loop iterates up to √n, report O(√n), not O(n)), 4) Evaluate only the function logic, 5) Be language-agnostic, 6) Always respond with valid JSON, 7) Provide COMPREHENSIVE, HIGHLY DETAILED feedback with extensive educational context - users want thorough, detailed feedback, not brief summaries. Every section should be 4-7 sentences with substantial detail, examples, and educational insights. Explain the 'why' behind every observation. Include specific code examples when discussing strengths or improvements. Be educational and comprehensive in every response. 8) CRITICALLY IMPORTANT: If test cases passed, the user wrote actual code - evaluate based on test results, code structure, and implementation quality. If the user's code is identical to starter code AND 0 tests passed, return overall_score = 0. 9) For SQL queries: Be MORE LENIENT - use any reasonable criteria, focus on correctness and query structure, be flexible with syntax variations. Carefully examine loops, their bounds, data structures used, and algorithm logic to give accurate complexity analysis. 10) PROVIDE EXTENSIVE DETAIL: Make feedback_summary 4-6 sentences, all comment fields 4-7 sentences, and include multiple detailed suggestions, strengths, and improvement areas."
+                    "content": system_message
                 },
                 {
                     "role": "user",

@@ -8,10 +8,10 @@ import { requireAuth } from '../../../../lib/auth'
 import Link from 'next/link'
 import axios from 'axios'
 import apiClient from '@/services/api/client'
-import { ArrowLeft, Lightbulb, CheckCircle2, TrendingUp, AlertTriangle, Eye, Clock, Video, Loader2 } from 'lucide-react'
+import { ArrowLeft, Lightbulb, CheckCircle2, TrendingUp, AlertTriangle, Eye, Clock, Video, Loader2, Download } from 'lucide-react'
 import ProctorLogsReview from '../../../../components/admin/ProctorLogsReview'
 import { LiveProctoringDashboard } from '../../../../components/proctor'
-import { useDSATest, useDSACandidates, useDSACandidateAnalytics, useAddDSACandidate, useRemoveDSACandidate, useSendDSAInvitation, useSendDSAInvitationsToAll, useDSACandidateResume, useSendDSAFeedback, useBulkAddDSACandidates, useUpdateDSATest } from '@/hooks/api/useDSA'
+import { useDSATest, useDSACandidates, useDSACandidateAnalytics, useAddDSACandidate, useRemoveDSACandidate, useSendDSAInvitation, useSendDSAInvitationsToAll, useDSACandidateResume, useSendDSAFeedback, useBulkAddDSACandidates, useUpdateDSATest, type CandidateAnalytics, type QuestionAnalytics } from '@/hooks/api/useDSA'
 import { useEmployees, type Employee } from '@/hooks/api/useEmployees'
 
 interface AIFeedback {
@@ -59,44 +59,7 @@ interface AIFeedback {
   }
 }
 
-interface QuestionAnalytics {
-  question_id: string
-  question_title: string
-  language: string
-  status?: string
-  invited?: boolean
-  invited_at?: string | null
-  passed_testcases: number
-  total_testcases: number
-  execution_time?: number
-  memory_used?: number
-  code: string
-  test_results: any[]
-  ai_feedback?: AIFeedback
-  created_at: string | null
-}
-
-interface CandidateAnalytics {
-  candidate: {
-    name: string
-    email: string
-  }
-  candidateInfo?: {
-    phone?: string | null
-    linkedIn?: string | null
-    github?: string | null
-    hasResume?: boolean
-    customFields?: Record<string, any>
-  } | null
-  submission: {
-    score: number
-    started_at: string | null
-    submitted_at: string | null
-    is_completed: boolean
-  } | null
-  question_analytics: QuestionAnalytics[]
-  activity_logs: any[]
-}
+// QuestionAnalytics and CandidateAnalytics are now imported from '@/hooks/api/useDSA'
 
 interface Candidate {
   user_id: string
@@ -119,7 +82,7 @@ export default function AnalyticsPage() {
   const { data: testInfoData, isLoading: loadingTestInfo } = useDSATest(testId)
   const { data: candidatesData, isLoading: loadingCandidates, refetch: refetchCandidates } = useDSACandidates(testId)
   const selectedCandidateUserId = typeof candidateUserId === 'string' ? candidateUserId : undefined
-  const { data: analyticsData, isLoading: loadingAnalytics, refetch: refetchAnalytics } = useDSACandidateAnalytics(testId, selectedCandidateUserId)
+  const { data: analyticsData, isLoading: loadingAnalytics, refetch: refetchAnalytics, error: analyticsError } = useDSACandidateAnalytics(testId, selectedCandidateUserId)
   
   // Mutations
   const addCandidateMutation = useAddDSACandidate()
@@ -423,6 +386,15 @@ export default function AnalyticsPage() {
       allCandidates: candidates.map(c => ({ user_id: c.user_id, email: c.email }))
     })
     setSelectedCandidate(userId)
+    // Update router query params to trigger useDSACandidateAnalytics hook
+    router.push({
+      pathname: router.pathname,
+      query: { ...router.query, candidate: userId }
+    }, undefined, { shallow: true })
+    // Manually refetch analytics to ensure data loads immediately
+    setTimeout(() => {
+      refetchAnalytics()
+    }, 100)
     fetchAnalytics(userId)
     // Fetch proctor logs using candidate.user_id (MongoDB ObjectId)
     fetchProctorLogs(userId)
@@ -472,13 +444,13 @@ export default function AnalyticsPage() {
 
   const handleAddCandidate = async () => {
     if (!testId || typeof testId !== 'string') return
-
+    
     // Require an employee selection to ensure candidate belongs to this org
     if (!selectedEmployee) {
       setEmailError("Please select an employee from your organization.")
       return
     }
-
+    
     const candidateName = selectedEmployee.name?.trim()
     const candidateEmail = selectedEmployee.email?.trim()
     const candidateAaptorId = selectedEmployee.aaptorId
@@ -487,7 +459,7 @@ export default function AnalyticsPage() {
       setEmailError("Selected employee has no email configured.")
       return
     }
-
+    
     setEmailError(null)
     
     setAddingCandidate(true)
@@ -546,6 +518,12 @@ export default function AnalyticsPage() {
       if (selectedCandidate === userId) {
         setSelectedCandidate(null)
         setAnalytics(null)
+        // Clear candidate query param
+        const { candidate, ...restQuery } = router.query
+        router.push({
+          pathname: router.pathname,
+          query: restQuery
+        }, undefined, { shallow: true })
       }
       alert("Candidate removed successfully!")
     } catch (err: any) {
@@ -644,6 +622,144 @@ export default function AnalyticsPage() {
     }
   }
 
+  const handleExportResults = async () => {
+    if (!testId || typeof testId !== 'string' || candidates.length === 0) {
+      alert('No candidates to export')
+      return
+    }
+
+    try {
+      // Fetch analytics for all candidates
+      const exportData = []
+      
+      for (const candidate of candidates) {
+        try {
+          const response = await apiClient.get(`/api/v1/dsa/tests/${testId}/candidates/${candidate.user_id}/analytics`)
+          const analytics = response.data
+          
+          // Get aaptor ID from candidateInfo, customFields, or employee data
+          let aaptorId = ''
+          if (analytics.candidateInfo?.aaptorId) {
+            aaptorId = analytics.candidateInfo.aaptorId
+          } else if (analytics.candidateInfo?.customFields?.aaptorId) {
+            aaptorId = analytics.candidateInfo.customFields.aaptorId
+          } else {
+            // Try to find in employees list
+            const employee = employeesData?.employees?.find((emp: Employee) => emp.email === candidate.email)
+            if (employee?.aaptorId) {
+              aaptorId = employee.aaptorId
+            }
+          }
+          
+          // Collect all feedbacks
+          const feedbacks: string[] = []
+          if (analytics.question_analytics && analytics.question_analytics.length > 0) {
+            analytics.question_analytics.forEach((qa: QuestionAnalytics) => {
+              if (qa.ai_feedback) {
+                const feedback = qa.ai_feedback
+                const feedbackParts: string[] = []
+                
+                if (feedback.feedback_summary) {
+                  feedbackParts.push(`Summary: ${feedback.feedback_summary}`)
+                }
+                if (feedback.one_liner) {
+                  feedbackParts.push(`One-liner: ${feedback.one_liner}`)
+                }
+                if (feedback.code_quality?.comments) {
+                  feedbackParts.push(`Code Quality: ${feedback.code_quality.comments}`)
+                }
+                if (feedback.correctness?.comments) {
+                  feedbackParts.push(`Correctness: ${feedback.correctness.comments}`)
+                }
+                if (feedback.efficiency?.comments) {
+                  feedbackParts.push(`Efficiency: ${feedback.efficiency.comments}`)
+                }
+                if (feedback.suggestions && feedback.suggestions.length > 0) {
+                  feedbackParts.push(`Suggestions: ${feedback.suggestions.join('; ')}`)
+                }
+                if (feedback.strengths && feedback.strengths.length > 0) {
+                  feedbackParts.push(`Strengths: ${feedback.strengths.join('; ')}`)
+                }
+                if (feedback.areas_for_improvement && feedback.areas_for_improvement.length > 0) {
+                  feedbackParts.push(`Areas for Improvement: ${feedback.areas_for_improvement.join('; ')}`)
+                }
+                
+                if (feedbackParts.length > 0) {
+                  feedbacks.push(`Question: ${qa.question_title || 'Unknown'} - ${feedbackParts.join(' | ')}`)
+                }
+              }
+            })
+          }
+          
+          exportData.push({
+            name: analytics.candidate?.name || candidate.name || '',
+            email: analytics.candidate?.email || candidate.email || '',
+            aaptorId: aaptorId || 'N/A',
+            score: analytics.submission?.score || candidate.submission_score || 0,
+            feedbacks: feedbacks.join('\n\n') || 'No feedback available'
+          })
+        } catch (err: any) {
+          // If analytics fetch fails, still include candidate with available data
+          let aaptorId = ''
+          // Try to find in employees list
+          const employee = employeesData?.employees?.find((emp: Employee) => emp.email === candidate.email)
+          if (employee?.aaptorId) {
+            aaptorId = employee.aaptorId
+          }
+          
+          exportData.push({
+            name: candidate.name || '',
+            email: candidate.email || '',
+            aaptorId: aaptorId || 'N/A',
+            score: candidate.submission_score || 0,
+            feedbacks: 'Analytics not available'
+          })
+        }
+      }
+      
+      // Convert to CSV
+      const headers = ['Name', 'Email', 'Aaptor ID', 'Score', 'Feedbacks']
+      const csvRows = [
+        headers.join(','),
+        ...exportData.map(row => {
+          // Escape commas and quotes in CSV
+          const escapeCSV = (str: string) => {
+            if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+              return `"${str.replace(/"/g, '""')}"`
+            }
+            return str
+          }
+          
+          return [
+            escapeCSV(row.name),
+            escapeCSV(row.email),
+            escapeCSV(row.aaptorId),
+            row.score,
+            escapeCSV(row.feedbacks)
+          ].join(',')
+        })
+      ]
+      
+      const csvContent = csvRows.join('\n')
+      
+      // Download CSV
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+      const link = document.createElement('a')
+      const url = URL.createObjectURL(blob)
+      link.setAttribute('href', url)
+      link.setAttribute('download', `test_results_${testId}_${new Date().toISOString().split('T')[0]}.csv`)
+      link.style.visibility = 'hidden'
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      
+      alert(`Exported ${exportData.length} candidate results successfully!`)
+    } catch (err: any) {
+      console.error('Error exporting results:', err)
+      alert('Failed to export results: ' + (err.response?.data?.detail || err.message))
+    }
+  }
+
   // Check if test has ended
   const isTestEnded = useMemo(() => {
     if (!testInfo?.schedule?.endTime) return false
@@ -719,12 +835,12 @@ export default function AnalyticsPage() {
           }}
         >
           <div>
-            <h1 style={{ fontSize: "2rem", fontWeight: 700, marginBottom: "0.5rem" }}>
-              Test Analytics
-            </h1>
-            <p style={{ color: "#64748b", margin: 0 }}>
-              {testInfo?.title || 'DSA Test'} - View detailed analytics and AI feedback
-            </p>
+          <h1 style={{ fontSize: "2rem", fontWeight: 700, marginBottom: "0.5rem" }}>
+            Test Analytics
+          </h1>
+          <p style={{ color: "#64748b", margin: 0 }}>
+            {testInfo?.title || 'DSA Test'} - View detailed analytics and AI feedback
+          </p>
           </div>
 
           {/* Admin preview - Try This Test button */}
@@ -769,20 +885,20 @@ export default function AnalyticsPage() {
                 Test Access & Email Settings
               </h2>
               <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
-                <button
-                  type="button"
-                  className="btn-secondary"
-                  onClick={() => setShowEmailTemplateModal(true)}
-                  style={{ 
-                    padding: "0.5rem 1rem", 
-                    fontSize: "0.875rem",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "0.5rem"
-                  }}
-                >
-                  ✏️ Edit Email Template
-                </button>
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={() => setShowEmailTemplateModal(true)}
+                style={{ 
+                  padding: "0.5rem 1rem", 
+                  fontSize: "0.875rem",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "0.5rem"
+                }}
+              >
+                ✏️ Edit Email Template
+              </button>
               </div>
             </div>
             <div style={{ fontSize: "0.875rem", color: "#64748b", marginBottom: "1rem" }}>
@@ -843,21 +959,38 @@ export default function AnalyticsPage() {
             <h2 style={{ fontSize: "1.25rem", fontWeight: 600 }}>Candidates</h2>
             <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
               {candidates.length > 0 && (
-                <button
-                  type="button"
-                  className="btn-secondary"
-                  onClick={handleSendInvitationsToAll}
-                  disabled={sendingInvitations}
-                  style={{ 
-                    padding: "0.5rem 1rem", 
-                    fontSize: "0.875rem",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "0.5rem"
-                  }}
-                >
-                  {sendingInvitations ? "Sending..." : "📧 Send Email to All"}
-                </button>
+                <>
+                  <button
+                    type="button"
+                    className="btn-secondary"
+                    onClick={handleExportResults}
+                    style={{ 
+                      padding: "0.5rem 1rem", 
+                      fontSize: "0.875rem",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "0.5rem"
+                    }}
+                  >
+                    <Download className="h-4 w-4" />
+                    Export Results (CSV)
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-secondary"
+                    onClick={handleSendInvitationsToAll}
+                    disabled={sendingInvitations}
+                    style={{ 
+                      padding: "0.5rem 1rem", 
+                      fontSize: "0.875rem",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "0.5rem"
+                    }}
+                  >
+                    {sendingInvitations ? "Sending..." : "📧 Send Email to All"}
+                  </button>
+                </>
               )}
               <button
                 type="button"
@@ -988,6 +1121,12 @@ export default function AnalyticsPage() {
                   setSelectedCandidate(null)
                   setAnalytics(null)
                   setProctorLogs([])
+                  // Clear candidate query param to trigger hook update
+                  const { candidate, ...restQuery } = router.query
+                  router.push({
+                    pathname: router.pathname,
+                    query: restQuery
+                  }, undefined, { shallow: true })
                 }}
                 style={{
                   width: "100%",
@@ -1166,6 +1305,33 @@ export default function AnalyticsPage() {
                     </div>
                   </div>
                 </div>
+              </div>
+            ) : analyticsError ? (
+              <div style={{
+                border: "1px solid #ef4444",
+                borderRadius: "0.75rem",
+                padding: "3rem",
+                textAlign: "center",
+                backgroundColor: "#fee2e2",
+              }}>
+                <p style={{ color: "#991b1b", fontWeight: 600, marginBottom: "0.5rem" }}>Error loading analytics</p>
+                <p style={{ color: "#dc2626", fontSize: "0.875rem" }}>
+                  {analyticsError instanceof Error ? analyticsError.message : 'Failed to fetch analytics data'}
+                </p>
+                <button
+                  onClick={() => refetchAnalytics()}
+                  style={{
+                    marginTop: "1rem",
+                    padding: "0.5rem 1rem",
+                    backgroundColor: "#3b82f6",
+                    color: "white",
+                    border: "none",
+                    borderRadius: "0.5rem",
+                    cursor: "pointer",
+                  }}
+                >
+                  Retry
+                </button>
               </div>
             ) : !analytics ? (
               <div style={{
@@ -1373,7 +1539,7 @@ export default function AnalyticsPage() {
                           const questionDeduction = 100 - qa.ai_feedback.overall_score
                           
                           if (qa.ai_feedback.deduction_reasons && qa.ai_feedback.deduction_reasons.length > 0) {
-                            qa.ai_feedback.deduction_reasons.forEach(reason => {
+                            qa.ai_feedback.deduction_reasons.forEach((reason: string) => {
                               allDeductionReasons.push(`Question ${index + 1}: ${reason} (-${questionDeduction} points)`)
                             })
                           } else if (qa.ai_feedback.scoring_basis) {
@@ -1408,7 +1574,7 @@ export default function AnalyticsPage() {
                           }
                           
                           if (qa.ai_feedback.improvement_suggestions && qa.ai_feedback.improvement_suggestions.length > 0) {
-                            qa.ai_feedback.improvement_suggestions.forEach(suggestion => {
+                            qa.ai_feedback.improvement_suggestions.forEach((suggestion: string) => {
                               allImprovementSuggestions.push(`Question ${index + 1}: ${suggestion}`)
                             })
                           }
@@ -1683,7 +1849,7 @@ export default function AnalyticsPage() {
                                   Strengths
                                 </h4>
                               <ul style={{ margin: 0, paddingLeft: "1.25rem", fontSize: "0.875rem", color: "#a7f3d0", lineHeight: "1.8" }}>
-                                  {qa.ai_feedback.strengths.map((strength, idx) => (
+                                  {qa.ai_feedback.strengths.map((strength: string, idx: number) => (
                                     <li key={idx} style={{ marginBottom: "0.5rem" }}>{strength}</li>
                                   ))}
                                 </ul>
@@ -1698,7 +1864,7 @@ export default function AnalyticsPage() {
                                   Areas for Improvement
                                 </h4>
                               <ul style={{ margin: 0, paddingLeft: "1.25rem", fontSize: "0.875rem", color: "#fed7aa", lineHeight: "1.8" }}>
-                                  {qa.ai_feedback.areas_for_improvement.map((area, idx) => (
+                                  {qa.ai_feedback.areas_for_improvement.map((area: string, idx: number) => (
                                     <li key={idx} style={{ marginBottom: "0.5rem" }}>{area}</li>
                                   ))}
                                 </ul>
@@ -1713,7 +1879,7 @@ export default function AnalyticsPage() {
                                   Improvement Suggestions
                                 </h4>
                               <ul style={{ margin: 0, paddingLeft: "1.25rem", fontSize: "0.875rem", color: "#bfdbfe", lineHeight: "1.8" }}>
-                                  {qa.ai_feedback.improvement_suggestions.map((suggestion, idx) => (
+                                  {qa.ai_feedback.improvement_suggestions.map((suggestion: string, idx: number) => (
                                     <li key={idx} style={{ marginBottom: "0.5rem" }}>{suggestion}</li>
                                   ))}
                                 </ul>
@@ -1728,7 +1894,7 @@ export default function AnalyticsPage() {
                                   Suggestions
                                 </h4>
                               <ul style={{ margin: 0, paddingLeft: "1.25rem", fontSize: "0.875rem", color: "#bfdbfe", lineHeight: "1.8" }}>
-                                  {qa.ai_feedback.suggestions.map((suggestion, idx) => (
+                                  {qa.ai_feedback.suggestions.map((suggestion: string, idx: number) => (
                                     <li key={idx} style={{ marginBottom: "0.5rem" }}>{suggestion}</li>
                                   ))}
                                 </ul>
@@ -1743,7 +1909,7 @@ export default function AnalyticsPage() {
                                   Deduction Reasons
                                 </h4>
                               <ul style={{ margin: 0, paddingLeft: "1.25rem", fontSize: "0.875rem", color: "#fecaca", lineHeight: "1.8" }}>
-                                  {qa.ai_feedback.deduction_reasons.map((reason, idx) => (
+                                  {qa.ai_feedback.deduction_reasons.map((reason: string, idx: number) => (
                                     <li key={idx} style={{ marginBottom: "0.5rem" }}>{reason}</li>
                                   ))}
                                 </ul>
@@ -1942,9 +2108,9 @@ export default function AnalyticsPage() {
                           setSelectedEmployee(emp)
                           setNewCandidateName(emp.name)
                           setNewCandidateEmail(emp.email)
-                          setEmailError(null)
-                        }}
-                        style={{
+                    setEmailError(null)
+                  }}
+                  style={{
                           padding: "0.5rem 0.75rem",
                           marginBottom: "0.25rem",
                           borderRadius: "0.375rem",
@@ -1976,11 +2142,11 @@ export default function AnalyticsPage() {
                 </div>
               )}
 
-              {emailError && (
-                <p style={{ color: "#ef4444", fontSize: "0.875rem", marginTop: "0.25rem" }}>
-                  {emailError}
-                </p>
-              )}
+                {emailError && (
+                  <p style={{ color: "#ef4444", fontSize: "0.875rem", marginTop: "0.25rem" }}>
+                    {emailError}
+                  </p>
+                )}
               <div style={{ display: "flex", gap: "0.5rem", justifyContent: "flex-end", marginTop: "1rem" }}>
                 <button
                   type="button"

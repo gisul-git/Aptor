@@ -181,6 +181,83 @@ button {
   font-family: inherit;
 }
 
+/* Resizable split gutters for DSA test layout & SQL editor */
+.dsa-split-gutter {
+  cursor: col-resize;
+  background-color: #475569;
+}
+.dsa-split-gutter:hover {
+  background-color: #64748b;
+}
+
+/* React-Split gutter styles */
+.split {
+  display: flex;
+  flex-wrap: nowrap;
+}
+
+.split.split-horizontal {
+  flex-direction: row;
+}
+
+.split.split-vertical {
+  flex-direction: column;
+}
+
+.gutter {
+  flex-shrink: 0;
+  flex-grow: 0;
+  background-color: #64748b;
+  cursor: col-resize;
+  position: relative;
+  transition: background-color 0.2s ease;
+}
+
+.gutter:hover {
+  background-color: #94a3b8;
+}
+
+.gutter.gutter-horizontal {
+  cursor: col-resize;
+  height: 100%;
+}
+
+.gutter.gutter-horizontal::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 2px;
+  height: 40px;
+  background-color: #cbd5e1;
+  border-radius: 1px;
+  opacity: 0.6;
+}
+
+.gutter.gutter-vertical {
+  cursor: row-resize;
+  width: 100%;
+}
+
+.gutter.gutter-vertical::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 40px;
+  height: 2px;
+  background-color: #cbd5e1;
+  border-radius: 1px;
+  opacity: 0.6;
+}
+
+.gutter:hover::before {
+  opacity: 1;
+  background-color: #f1f5f9;
+}
+
 .container {
   max-width: 90%;
   width: 90%;
