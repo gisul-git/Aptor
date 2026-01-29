@@ -158,7 +158,38 @@ export function ExpectedOutputsPanel({ testcases, results = [], isLoading = fals
               <div className="mb-3">
                 <p className="text-xs font-medium uppercase tracking-wide text-slate-400 mb-1">Expected Output</p>
                 <pre className="bg-slate-950/50 rounded px-3 py-2 whitespace-pre-wrap break-words text-sm text-slate-300 font-mono border border-slate-800">
-                  {tc.expected || '(empty)'}
+                  {(() => {
+                    // Prefer expected coming back from the execution result (if available),
+                    // otherwise fall back to the static testcase.expected value or the user's output.
+                    const expectedFromResult = result?.expected
+
+                    if (expectedFromResult && typeof expectedFromResult === 'string' && expectedFromResult.trim().length > 0) {
+                      // Don't show placeholder strings
+                      if (expectedFromResult.trim().toLowerCase() !== '(not available)' && 
+                          expectedFromResult.trim().toLowerCase() !== 'not available') {
+                        return expectedFromResult
+                      }
+                    }
+
+                    // Fall back to static testcase value, but also check for placeholders
+                    const staticExpected = tc.expected
+                    if (staticExpected && 
+                        staticExpected.trim().toLowerCase() !== '(not available)' && 
+                        staticExpected.trim().toLowerCase() !== 'not available' &&
+                        staticExpected.trim() !== '(empty)') {
+                      return staticExpected
+                    }
+
+                    // If the test passed and we have an actual output, use that as the effective expected value
+                    if (result?.passed) {
+                      const userOut = (result.stdout || (result as any).output || '') as string
+                      if (userOut && userOut.trim().length > 0) {
+                        return userOut
+                      }
+                    }
+
+                    return '(empty)'
+                  })()}
                 </pre>
               </div>
 

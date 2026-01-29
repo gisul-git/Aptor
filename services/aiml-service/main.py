@@ -11,6 +11,7 @@ from typing import List, Dict, Any
 
 from app.config.settings import get_settings
 from app.db.mongo import connect_to_mongo, close_mongo_connection
+from app.api.v1.aiml.database import connect_to_aiml_mongo, close_aiml_mongo_connection
 from app.api.v1.aiml.routers import questions as aiml_questions, tests as aiml_tests, assessment as aiml_assessment, run as aiml_run, evaluate as aiml_evaluate
 from app.exceptions.handlers import (
     validation_exception_handler,
@@ -31,11 +32,21 @@ logger = logging.getLogger("aiml-service")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Initialize main MongoDB connection (for user authentication)
     await connect_to_mongo()
-    logger.info("✅ AIML service connected to MongoDB")
+    logger.info("✅ AIML service connected to MongoDB (main)")
+    
+    # Initialize AIML-specific MongoDB connection (for questions/tests)
+    await connect_to_aiml_mongo()
+    logger.info("✅ AIML service connected to MongoDB (AIML module)")
+    
     yield
+    
+    # Cleanup: close both connections
+    await close_aiml_mongo_connection()
+    logger.info("✅ AIML service disconnected from MongoDB (AIML module)")
     await close_mongo_connection()
-    logger.info("✅ AIML service disconnected from MongoDB")
+    logger.info("✅ AIML service disconnected from MongoDB (main)")
 
 
 app = FastAPI(

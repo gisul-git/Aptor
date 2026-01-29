@@ -7,8 +7,10 @@ from pydantic import BaseModel
 
 from ..database import get_dsa_database as get_database
 from ..models.submission import SubmissionCreate, Submission
+from ..models.question import FunctionSignature, FunctionParameter
 from ..utils.evaluator import evaluate_submission
-from ..utils.judge0 import get_language_id, submit_to_judge0
+from ..utils.judge0 import get_language_id, submit_to_judge0, run_all_test_cases
+from ..routers.assessment import prepare_code_for_execution
 
 router = APIRouter(prefix="/api/v1/dsa", tags=["dsa"])
 
@@ -38,90 +40,108 @@ async def submit_code(submission: SubmissionCreate, user_id: str = Query(..., de
     if not language_id:
         raise HTTPException(status_code=400, detail=f"Unsupported language: {submission.language}")
     
-    # Run all testcases
-    all_testcases = question["public_testcases"] + question["hidden_testcases"]
-    test_results = []
-    passed = 0
-    total = len(all_testcases)
-    status = "accepted"
+    # Prepare code for execution (handles wrapping for Judge0, returns raw for custom engine)
+    prepared_code, prep_error, _ = await prepare_code_for_execution(
+        source_code=submission.code,
+        language_id=language_id,
+        question=question
+    )
     
-    for testcase in all_testcases:
-        try:
-            # Execute code using Judge0
-            judge0_result = await submit_to_judge0(
-                source_code=submission.code,
-                language_id=language_id,
-                stdin=testcase["input"]
-            )
-            
-            # Extract Judge0 response fields (already decoded by service)
-            stdout = judge0_result.get("stdout", "") or ""
-            stderr = judge0_result.get("stderr", "") or ""
-            compile_output = judge0_result.get("compile_output", "") or ""
-            status_info = judge0_result.get("status", {})
-            status_id = status_info.get("id", 0)
-            status_description = status_info.get("description", "")
-            
-            # Normalize outputs (strip whitespace)
-            expected = testcase["expected_output"].strip()
-            actual = stdout.strip()
-            
-            # Map Judge0 status to our status
-            # Status IDs: 3=Accepted, 4=Wrong Answer, 5=Time Limit, 6=Compilation Error, etc.
-            if status_id == 3:
-                judge0_status = "accepted"
-            elif status_id == 4:
-                judge0_status = "wrong_answer"
-            elif status_id == 5:
-                judge0_status = "time_limit_exceeded"
-            elif status_id == 6:
-                judge0_status = "compilation_error"
-            else:
-                judge0_status = "runtime_error"
-            
-            # Check if output matches expected
-            test_passed = actual == expected and status_id == 3
-            
+    if prep_error:
+        raise HTTPException(status_code=400, detail=prep_error)
+    
+    # Build test cases array
+    all_testcases = question["public_testcases"] + question["hidden_testcases"]
+    test_cases = []
+    for i, tc in enumerate(all_testcases):
+        test_cases.append({
+            "id": f"tc_{i}",
+            "stdin": tc.get("input", ""),
+            "expected_output": tc.get("expected_output", ""),
+            "is_hidden": i >= len(question.get("public_testcases", [])),
+            "points": 1,
+        })
+    
+    if not test_cases:
+        raise HTTPException(status_code=400, detail="Question has no test cases")
+    
+    # Get function signature for custom engine
+    function_signature = None
+    func_sig_data = question.get("function_signature")
+    if func_sig_data:
+        function_signature = FunctionSignature(
+            name=func_sig_data.get("name"),
+            parameters=[
+                FunctionParameter(name=p.get("name"), type=p.get("type"))
+                for p in func_sig_data.get("parameters", [])
+            ],
+            return_type=func_sig_data.get("return_type")
+        )
+    
+    # Run all test cases using batch execution (for Java/Python) or sequential (for others)
+    try:
+        results = await run_all_test_cases(
+            source_code=prepared_code,
+            language_id=language_id,
+            test_cases=test_cases,
+            cpu_time_limit=2.0,
+            memory_limit=128000,
+            stop_on_compilation_error=True,
+            function_signature=function_signature,
+        )
+        
+        # Transform results to match expected format
+        test_results = []
+        passed = results.get("passed", 0)
+        total = results.get("total", len(test_cases))
+        all_results = results.get("results", [])
+        
+        # Determine overall status
+        if results.get("compilation_error"):
+            status = "compilation_error"
+        elif passed == total:
+            status = "accepted"
+        elif passed > 0:
+            status = "partially_accepted"
+        else:
+            status = "wrong_answer"
+        
+        # Format test results
+        for i, result in enumerate(all_results):
+            tc = all_testcases[i] if i < len(all_testcases) else {}
             test_result = {
-                "input": testcase["input"],
-                "expected_output": expected,
-                "actual_output": actual,
-                "passed": test_passed,
-                "status": judge0_status,
-                "status_description": status_description,
-                "stdout": stdout,
-                "stderr": stderr,
-                "compile_output": compile_output,
-                "time": judge0_result.get("time", 0),
-                "memory": judge0_result.get("memory", 0),
-                "judge0_status_id": status_id,
+                "input": tc.get("input", ""),
+                "expected_output": tc.get("expected_output", ""),
+                "actual_output": result.get("stdout", "").strip(),
+                "passed": result.get("passed", False),
+                "status": result.get("status", "runtime_error").lower().replace(" ", "_"),
+                "status_description": result.get("status", ""),
+                "stdout": result.get("stdout", ""),
+                "stderr": result.get("stderr", ""),
+                "compile_output": result.get("compile_output", ""),
+                "time": result.get("time", 0),
+                "memory": result.get("memory", 0),
+                "judge0_status_id": result.get("status_id", 0),
             }
-            
-            if test_passed:
-                passed += 1
-            else:
-                if status == "accepted":
-                    status = judge0_status
-            
-            if judge0_status != "accepted":
-                status = judge0_status
-            
             test_results.append(test_result)
             
-        except Exception as e:
-            test_results.append({
-                "input": testcase["input"],
-                "expected_output": testcase["expected_output"],
-                "actual_output": "",
-                "passed": False,
-                "status": "runtime_error",
-                "status_description": str(e),
-                "stdout": "",
-                "stderr": str(e),
-                "compile_output": "",
-                "error": str(e),
-            })
-            status = "runtime_error"
+    except Exception as e:
+        # Fallback to error response
+        test_results = [{
+            "input": tc.get("input", ""),
+            "expected_output": tc.get("expected_output", ""),
+            "actual_output": "",
+            "passed": False,
+            "status": "runtime_error",
+            "status_description": str(e),
+            "stdout": "",
+            "stderr": str(e),
+            "compile_output": "",
+            "error": str(e),
+        } for tc in all_testcases]
+        passed = 0
+        total = len(all_testcases)
+        status = "runtime_error"
     
     # Create submission record
     submission_dict = {

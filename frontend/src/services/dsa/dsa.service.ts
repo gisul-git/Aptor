@@ -106,16 +106,17 @@ export const dsaService = {
   /**
    * List all DSA tests
    */
-  listTests: async (): Promise<ApiResponse<DSATest[]>> => {
-    const response = await apiClient.get<ApiResponse<DSATest[]>>('/api/v1/dsa/tests');
+  listTests: async (): Promise<DSATest[]> => {
+    const response = await apiClient.get<DSATest[]>('/api/v1/dsa/tests');
     return response.data;
   },
 
   /**
    * Get test by ID
+   * Backend returns a plain test object (not wrapped in ApiResponse)
    */
-  getTest: async (testId: string): Promise<ApiResponse<DSATest>> => {
-    const response = await apiClient.get<ApiResponse<DSATest>>(`/api/v1/dsa/tests/${testId}`);
+  getTest: async (testId: string): Promise<DSATest> => {
+    const response = await apiClient.get<DSATest>(`/api/v1/dsa/tests/${testId}`);
     return response.data;
   },
 
@@ -247,9 +248,10 @@ export const dsaService = {
 
   /**
    * Get candidates for a test
+   * Backend returns a plain array of candidates.
    */
-  getCandidates: async (testId: string): Promise<ApiResponse<any[]>> => {
-    const response = await apiClient.get<ApiResponse<any[]>>(`/api/v1/dsa/tests/${testId}/candidates`);
+  getCandidates: async (testId: string): Promise<any[]> => {
+    const response = await apiClient.get<any[]>(`/api/v1/dsa/tests/${testId}/candidates`);
     return response.data;
   },
 

@@ -10,12 +10,15 @@ All code wrapping/transformation is handled through question configuration by ad
 
 import asyncio
 import base64
+import json
 import logging
 from typing import Any, Dict, List, Optional
 
 import httpx
 
-from ..config import JUDGE0_URL, JUDGE0_POLL_INTERVAL, JUDGE0_MAX_POLLS, JUDGE0_TIMEOUT
+from ..config import JUDGE0_URL, JUDGE0_POLL_INTERVAL, JUDGE0_MAX_POLLS, JUDGE0_TIMEOUT, USE_CUSTOM_ENGINE
+from ..models.question import FunctionSignature
+from ..services.custom_execution_service import execute_batch, CustomExecutionError
 
 logger = logging.getLogger("backend")
 
@@ -159,6 +162,16 @@ def get_language_id(language: str) -> Optional[int]:
         return int(language)
     except ValueError:
         return None
+
+
+def get_language_name(language_id: int) -> Optional[str]:
+    """
+    Get language name from Judge0 language ID.
+    Returns None if language ID not in predefined list.
+    """
+    # Create reverse mapping: ID -> name
+    id_to_name = {lang_id: lang_name for lang_name, lang_id in LANGUAGE_IDS.items()}
+    return id_to_name.get(language_id)
 
 
 async def create_submission(
@@ -365,15 +378,139 @@ async def run_all_test_cases(
     cpu_time_limit: float = 2.0,
     memory_limit: int = 128000,
     stop_on_compilation_error: bool = True,
+    function_signature: Optional[FunctionSignature] = None,
 ) -> Dict[str, Any]:
     """
-    Run all test cases for a question sequentially.
-    Returns aggregated results with score calculation.
+    Run all test cases for a question.
+    Uses custom execution engine for Java/Python (batch execution).
+    Falls back to Judge0 for other languages (sequential execution).
     
     This function is LANGUAGE-AGNOSTIC.
     
     test_cases should have: stdin, expected_output, is_hidden, points, id (optional)
+    function_signature: Required for Java/Python to use custom engine
     """
+    # Check if we should use custom engine for Java/Python
+    language = get_language_name(language_id)
+    
+    # For Python: MUST use custom engine, function_signature is required
+    if language == "python":
+        if not USE_CUSTOM_ENGINE:
+            raise ValueError("Python execution requires custom engine to be enabled")
+        if function_signature is None:
+            raise ValueError("Python execution requires function_signature in question")
+        # Python ALWAYS uses custom engine, no fallback
+        logger.info("Python detected - using custom execution engine ONLY (no Judge0)")
+        try:
+            time_limit_ms = int(cpu_time_limit * 1000)
+            memory_limit_mb = memory_limit // 1024
+            
+            result = await execute_batch(
+                code=source_code,  # Raw user code, no wrapping needed
+                language="python",
+                function_signature=function_signature,
+                test_cases=test_cases,
+                time_limit_ms=time_limit_ms,
+                memory_limit_mb=memory_limit_mb
+            )
+            return result
+        except Exception as e:
+            logger.error(f"Python custom engine execution failed: {e}")
+            error_msg = str(e)
+            return {
+                "passed": 0,
+                "total": len(test_cases),
+                "score": 0,
+                "max_score": len(test_cases),
+                "compilation_error": True,
+                "results": [{
+                    "test_case_id": tc.get("id", f"tc_{i}"),
+                    "is_hidden": tc.get("is_hidden", False),
+                    "passed": False,
+                    "status": "Execution Error",
+                    "status_id": 13,
+                    "time": None,
+                    "memory": None,
+                    "stdout": "",
+                    "stderr": error_msg,
+                    "compile_output": error_msg,
+                } for i, tc in enumerate(test_cases)]
+            }
+    
+    # For Java: Use custom engine if available, with potential fallback
+    if (USE_CUSTOM_ENGINE and 
+        language and 
+        language == "java" and 
+        function_signature is not None):
+        # Use custom execution engine (batch execution)
+        # For Python: ALWAYS use custom engine, NO fallback to Judge0
+        try:
+            logger.info(f"Using custom execution engine for {language} (NO Judge0 fallback)")
+            time_limit_ms = int(cpu_time_limit * 1000)
+            memory_limit_mb = memory_limit // 1024
+            
+            result = await execute_batch(
+                code=source_code,  # Raw user code, no wrapping needed
+                language=language,
+                function_signature=function_signature,
+                test_cases=test_cases,
+                time_limit_ms=time_limit_ms,
+                memory_limit_mb=memory_limit_mb
+            )
+            
+            # Result is already in Judge0-compatible format
+            return result
+            
+        except CustomExecutionError as e:
+            logger.error(f"Custom engine execution failed for {language}: {e}")
+            # For Python: Return error, NO fallback to Judge0
+            # For Java: Could fallback, but for now return error for consistency
+            error_msg = str(e)
+            return {
+                "passed": 0,
+                "total": len(test_cases),
+                "score": 0,
+                "max_score": len(test_cases),
+                "compilation_error": True,
+                "results": [{
+                    "test_case_id": tc.get("id", f"tc_{i}"),
+                    "is_hidden": tc.get("is_hidden", False),
+                    "passed": False,
+                    "status": "Execution Error",
+                    "status_id": 13,
+                    "time": None,
+                    "memory": None,
+                    "stdout": "",
+                    "stderr": error_msg,
+                    "compile_output": error_msg,
+                } for i, tc in enumerate(test_cases)]
+            }
+        except Exception as e:
+            logger.error(f"Unexpected error in custom engine for {language}: {e}")
+            # Return error structure, NO fallback to Judge0
+            error_msg = f"Unexpected error in {language} execution engine: {str(e)}"
+            return {
+                "passed": 0,
+                "total": len(test_cases),
+                "score": 0,
+                "max_score": len(test_cases),
+                "compilation_error": True,
+                "results": [{
+                    "test_case_id": tc.get("id", f"tc_{i}"),
+                    "is_hidden": tc.get("is_hidden", False),
+                    "passed": False,
+                    "status": "Execution Error",
+                    "status_id": 13,
+                    "time": None,
+                    "memory": None,
+                    "stdout": "",
+                    "stderr": error_msg,
+                    "compile_output": error_msg,
+                } for i, tc in enumerate(test_cases)]
+            }
+    
+    # Fallback to Judge0 (sequential execution for other languages or if custom engine fails)
+    logger.info(f"Using Judge0 for {language or language_id}")
     results = []
     total_score = 0
     max_score = 0
@@ -390,8 +527,11 @@ async def run_all_test_cases(
         max_score += points
         
         logger.info(f"Running test case {i + 1}/{len(test_cases)} (id={tc_id}, hidden={is_hidden})")
-        logger.info(f"  stdin: {stdin[:100]}{'...' if len(stdin) > 100 else ''}")
-        logger.info(f"  expected_output: {expected_output[:100]}{'...' if len(expected_output) > 100 else ''}")
+        # Convert stdin to string for logging (handles both string and dict/object inputs)
+        stdin_str = json.dumps(stdin) if isinstance(stdin, (dict, list)) else str(stdin)
+        expected_str = json.dumps(expected_output) if isinstance(expected_output, (dict, list)) else str(expected_output)
+        logger.info(f"  stdin: {stdin_str[:100]}{'...' if len(stdin_str) > 100 else ''}")
+        logger.info(f"  expected_output: {expected_str[:100]}{'...' if len(expected_str) > 100 else ''}")
         
         # Run the test case
         result = await run_test_case(

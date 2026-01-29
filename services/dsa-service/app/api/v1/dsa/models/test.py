@@ -97,6 +97,8 @@ class AddCandidateRequest(BaseModel):
     test_id: Optional[str] = None  # Optional since it's in the path
     name: str
     email: str
+    # Optional Aaptor ID for tighter linking with employee records
+    aaptorId: Optional[str] = None
 
 class CandidateLinkResponse(BaseModel):
     candidate_id: str

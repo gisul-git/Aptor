@@ -12,6 +12,7 @@ import { ArrowLeft, Lightbulb, CheckCircle2, TrendingUp, AlertTriangle, Eye, Clo
 import ProctorLogsReview from '../../../../components/admin/ProctorLogsReview'
 import { LiveProctoringDashboard } from '../../../../components/proctor'
 import { useDSATest, useDSACandidates, useDSACandidateAnalytics, useAddDSACandidate, useRemoveDSACandidate, useSendDSAInvitation, useSendDSAInvitationsToAll, useDSACandidateResume, useSendDSAFeedback, useBulkAddDSACandidates, useUpdateDSATest } from '@/hooks/api/useDSA'
+import { useEmployees, type Employee } from '@/hooks/api/useEmployees'
 
 interface AIFeedback {
   overall_score?: number
@@ -143,6 +144,15 @@ export default function AnalyticsPage() {
   const [emailError, setEmailError] = useState<string | null>(null)
   const [addingCandidate, setAddingCandidate] = useState(false)
   const [testInfo, setTestInfo] = useState<any>(null)
+  const [employeeSearch, setEmployeeSearch] = useState("")
+  const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null)
+
+  // Org-admin employees list, filtered by search (scoped by org on backend)
+  const { data: employeesData, isLoading: employeesLoading } = useEmployees({
+    page: 1,
+    limit: 20,
+    search: employeeSearch || undefined,
+  })
   
   // Update local state from React Query data
   useEffect(() => {
@@ -462,20 +472,23 @@ export default function AnalyticsPage() {
 
   const handleAddCandidate = async () => {
     if (!testId || typeof testId !== 'string') return
-    
-    // Validate email
-    if (!validateEmail(newCandidateEmail.trim())) {
-      setEmailError("Please enter a valid email address.")
+
+    // Require an employee selection to ensure candidate belongs to this org
+    if (!selectedEmployee) {
+      setEmailError("Please select an employee from your organization.")
       return
     }
-    
-    if (!newCandidateName.trim()) {
-      setEmailError("Please enter a candidate name.")
+
+    const candidateName = selectedEmployee.name?.trim()
+    const candidateEmail = selectedEmployee.email?.trim()
+    const candidateAaptorId = selectedEmployee.aaptorId
+
+    if (!candidateEmail) {
+      setEmailError("Selected employee has no email configured.")
       return
     }
-    
+
     setEmailError(null)
-    if (!testId || typeof testId !== 'string') return
     
     setAddingCandidate(true)
     
@@ -483,8 +496,9 @@ export default function AnalyticsPage() {
       await addCandidateMutation.mutateAsync({
         testId,
         data: {
-          name: newCandidateName.trim(),
-          email: newCandidateEmail.trim(),
+          name: candidateName || selectedEmployee.email,
+          email: candidateEmail,
+          aaptorId: candidateAaptorId,
         }
       })
       
@@ -495,6 +509,8 @@ export default function AnalyticsPage() {
       setShowAddCandidateModal(false)
       setNewCandidateName("")
       setNewCandidateEmail("")
+      setSelectedEmployee(null)
+      setEmployeeSearch("")
       setEmailError(null)
       alert("Candidate added successfully!")
     } catch (err: any) {
@@ -693,13 +709,50 @@ export default function AnalyticsPage() {
           </Link>
         </div>
 
-        <div style={{ marginBottom: "2rem" }}>
-          <h1 style={{ fontSize: "2rem", fontWeight: 700, marginBottom: "0.5rem" }}>
-            Test Analytics
-          </h1>
-          <p style={{ color: "#64748b", margin: 0 }}>
-            {testInfo?.title || 'DSA Test'} - View detailed analytics and AI feedback
-          </p>
+        <div
+          style={{
+            marginBottom: "2rem",
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            gap: "1rem",
+          }}
+        >
+          <div>
+            <h1 style={{ fontSize: "2rem", fontWeight: 700, marginBottom: "0.5rem" }}>
+              Test Analytics
+            </h1>
+            <p style={{ color: "#64748b", margin: 0 }}>
+              {testInfo?.title || 'DSA Test'} - View detailed analytics and AI feedback
+            </p>
+          </div>
+
+          {/* Admin preview - Try This Test button */}
+          {testId && (
+            <button
+              type="button"
+              className="btn-primary"
+              onClick={() => {
+                window.open(`/test/${testId}/take?preview=true&admin=true`, "_blank");
+              }}
+              style={{
+                padding: "0.5rem 1rem",
+                fontSize: "0.875rem",
+                display: "flex",
+                alignItems: "center",
+                gap: "0.5rem",
+                backgroundColor: "#3b82f6",
+                color: "white",
+                border: "none",
+                borderRadius: "0.5rem",
+                cursor: "pointer",
+                fontWeight: 500,
+                whiteSpace: "nowrap",
+              }}
+            >
+              🧪 Test This Test
+            </button>
+          )}
         </div>
 
         {/* Test Access & Email Template Section */}
@@ -715,20 +768,22 @@ export default function AnalyticsPage() {
               <h2 style={{ fontSize: "1.25rem", fontWeight: 600, marginBottom: 0 }}>
                 Test Access & Email Settings
               </h2>
-              <button
-                type="button"
-                className="btn-secondary"
-                onClick={() => setShowEmailTemplateModal(true)}
-                style={{ 
-                  padding: "0.5rem 1rem", 
-                  fontSize: "0.875rem",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "0.5rem"
-                }}
-              >
-                ✏️ Edit Email Template
-              </button>
+              <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  onClick={() => setShowEmailTemplateModal(true)}
+                  style={{ 
+                    padding: "0.5rem 1rem", 
+                    fontSize: "0.875rem",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "0.5rem"
+                  }}
+                >
+                  ✏️ Edit Email Template
+                </button>
+              </div>
             </div>
             <div style={{ fontSize: "0.875rem", color: "#64748b", marginBottom: "1rem" }}>
               {testInfo.invitationTemplate ? (
@@ -1833,20 +1888,20 @@ export default function AnalyticsPage() {
               <div style={{ flex: 1, height: "1px", backgroundColor: "#e2e8f0" }}></div>
             </div>
             
-            {/* Manual Add Section */}
+            {/* Manual Add Section - now driven by Employee search/selection */}
             <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
               <div>
                 <label style={{ display: "block", marginBottom: "0.5rem", fontWeight: 600, color: "#1e293b" }}>
-                  Full Name <span style={{ color: "#ef4444" }}>*</span>
+                  Search employees in your organization <span style={{ color: "#ef4444" }}>*</span>
                 </label>
                 <input
                   type="text"
-                  value={newCandidateName}
+                  value={employeeSearch}
                   onChange={(e) => {
-                    setNewCandidateName(e.target.value)
+                    setEmployeeSearch(e.target.value)
                     setEmailError(null)
                   }}
-                  placeholder="Enter candidate's full name"
+                  placeholder="Search by name or email"
                   style={{
                     width: "100%",
                     padding: "0.75rem",
@@ -1857,33 +1912,75 @@ export default function AnalyticsPage() {
                   disabled={addingCandidate}
                 />
               </div>
-              <div>
-                <label style={{ display: "block", marginBottom: "0.5rem", fontWeight: 600, color: "#1e293b" }}>
-                  Email Address <span style={{ color: "#ef4444" }}>*</span>
-                </label>
-                <input
-                  type="email"
-                  value={newCandidateEmail}
-                  onChange={(e) => {
-                    setNewCandidateEmail(e.target.value)
-                    setEmailError(null)
-                  }}
-                  placeholder="Enter candidate's email address"
-                  style={{
-                    width: "100%",
-                    padding: "0.75rem",
-                    border: emailError ? "1px solid #ef4444" : "1px solid #A8E8BC",
-                    borderRadius: "0.5rem",
-                    fontSize: "1rem",
-                  }}
-                  disabled={addingCandidate}
-                />
-                {emailError && (
-                  <p style={{ color: "#ef4444", fontSize: "0.875rem", marginTop: "0.25rem" }}>
-                    {emailError}
+              
+              <div
+                style={{
+                  maxHeight: "220px",
+                  overflowY: "auto",
+                  border: "1px solid #e2e8f0",
+                  borderRadius: "0.5rem",
+                  padding: "0.5rem",
+                  backgroundColor: "#f8fafc",
+                }}
+              >
+                {employeesLoading && (
+                  <p style={{ fontSize: "0.875rem", color: "#64748b", padding: "0.5rem" }}>
+                    Loading employees...
                   </p>
                 )}
+                {!employeesLoading && (!employeesData?.employees || employeesData.employees.length === 0) && (
+                  <p style={{ fontSize: "0.875rem", color: "#64748b", padding: "0.5rem" }}>
+                    No employees found. Try a different search.
+                  </p>
+                )}
+                {!employeesLoading && employeesData?.employees && employeesData.employees.length > 0 && (
+                  <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
+                    {employeesData.employees.map((emp) => (
+                      <li
+                        key={emp.aaptorId}
+                        onClick={() => {
+                          setSelectedEmployee(emp)
+                          setNewCandidateName(emp.name)
+                          setNewCandidateEmail(emp.email)
+                          setEmailError(null)
+                        }}
+                        style={{
+                          padding: "0.5rem 0.75rem",
+                          marginBottom: "0.25rem",
+                          borderRadius: "0.375rem",
+                          cursor: "pointer",
+                          backgroundColor:
+                            selectedEmployee?.aaptorId === emp.aaptorId ? "#dcfce7" : "transparent",
+                          border:
+                            selectedEmployee?.aaptorId === emp.aaptorId
+                              ? "1px solid #22c55e"
+                              : "1px solid transparent",
+                        }}
+                      >
+                        <div style={{ fontSize: "0.9rem", fontWeight: 600, color: "#0f172a" }}>
+                          {emp.name || emp.email}
+                        </div>
+                        <div style={{ fontSize: "0.8rem", color: "#64748b" }}>
+                          {emp.email} &nbsp;•&nbsp; Aaptor ID: {emp.aaptorId}
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </div>
+
+              {selectedEmployee && (
+                <div style={{ fontSize: "0.875rem", color: "#334155", marginTop: "0.25rem" }}>
+                  Selected: <strong>{selectedEmployee.name || selectedEmployee.email}</strong> (
+                  {selectedEmployee.email}) &nbsp;•&nbsp; Aaptor ID: {selectedEmployee.aaptorId}
+                </div>
+              )}
+
+              {emailError && (
+                <p style={{ color: "#ef4444", fontSize: "0.875rem", marginTop: "0.25rem" }}>
+                  {emailError}
+                </p>
+              )}
               <div style={{ display: "flex", gap: "0.5rem", justifyContent: "flex-end", marginTop: "1rem" }}>
                 <button
                   type="button"
