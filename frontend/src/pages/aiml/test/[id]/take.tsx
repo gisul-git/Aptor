@@ -624,15 +624,16 @@ export default function AIMLTestTakePage() {
         hasResponse: !!response,
         responseType: typeof response,
         responseKeys: response ? Object.keys(response) : [],
-        hasQuestions: !!(response?.questions),
-        questionsCount: response?.questions?.length || 0,
+        hasData: !!(response?.data),
+        hasQuestions: !!(response?.data?.questions),
+        questionsCount: response?.data?.questions?.length || 0,
       })
       
-      // AIML service's getTestForCandidate returns the test data directly (already extracted from response.data)
-      const testData = response
+      // AIML service's getTestForCandidate returns ApiResponse, extract data from response.data
+      const testData = response?.data
       if (!testData) {
         console.error('[AIML Take] ❌ testData is undefined!', { response })
-        throw new Error('Failed to load test data: response is undefined')
+        throw new Error('Failed to load test data: response.data is undefined')
       }
       
       if (!testData.questions) {
