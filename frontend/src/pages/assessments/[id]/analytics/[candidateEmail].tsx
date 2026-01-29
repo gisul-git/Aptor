@@ -74,7 +74,7 @@ export default function CandidateAnalyticsPage() {
         let foundCandidateName = ''
         let foundCandidateData: Candidate | null = null
         
-        if (assessmentResponse?.success && assessmentResponse.data) {
+        if (assessmentResponse.data?.success && assessmentResponse.data) {
           setAssessment(assessmentResponse.data)
           
           // Find candidate in assessment - check both candidates array and also try to get from candidate results
@@ -129,10 +129,12 @@ export default function CandidateAnalyticsPage() {
           setLoadingAnalytics(true)
           try {
             const logsResponse = await axios.get(
-              `/api/assessments/get-answer-logs?assessmentId=${assessmentId}&candidateEmail=${encodeURIComponent(candidateEmail)}&candidateName=${encodeURIComponent(foundCandidateName)}`
+              `/api/assessments/get-answer-logs?assessmentId=${assessmentId}&candidateEmail=${encodeURIComponent(
+                candidateEmail,
+              )}&candidateName=${encodeURIComponent(foundCandidateName)}`,
             )
-            if (logsResponse?.success) {
-              setAnswerLogs(logsResponse.data || [])
+            if (logsResponse.data?.success) {
+              setAnswerLogs(logsResponse.data?.data?.logs || logsResponse.data || [])
             }
           } catch (err) {
             console.error('Error fetching answer logs:', err)

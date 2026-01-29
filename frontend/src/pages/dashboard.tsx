@@ -455,8 +455,8 @@ export default function DashboardPage({ session: serverSession }: DashboardPageP
               </button>
             )}
             <Image 
-              src="/gisullogo.png" 
-              alt="Gisul Logo" 
+              src="/Aaptor%20Logo.png" 
+              alt="Aaptor Logo" 
               width={250} 
               height={100} 
               style={{ 
