@@ -199,7 +199,6 @@ export default function AIMLTestTakePage() {
   } = useUniversalProctoring({
     onViolation: handleUniversalViolation,
     debug: debugMode,
-    enabled: !isAdminPreview, // Disable proctoring in admin preview mode
   })
 
   // Unlock fullscreen when test is submitted

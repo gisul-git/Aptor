@@ -72,15 +72,23 @@ export const assessmentService = {
    * Get assessment by ID
    */
   getById: async (id: string): Promise<ApiResponse<Assessment>> => {
-    const response = await apiClient.get<ApiResponse<{ assessment: Assessment }>>(`/api/v1/assessments/${id}/questions`);
-    // Extract assessment from nested structure
-    if (response.data && (response.data as any).assessment) {
-      return {
-        ...response.data,
-        data: (response.data as any).assessment,
-      } as ApiResponse<Assessment>;
-    }
-    return response.data as ApiResponse<Assessment>;
+    const response = await apiClient.get<ApiResponse<any>>(
+      `/api/v1/assessments/${id}/questions`
+    );
+
+    const raw = response.data as ApiResponse<any>;
+    const inner = raw.data;
+
+    // Some backends return { data: { assessment: Assessment } }, others return { data: Assessment }
+    const normalizedAssessment: Assessment =
+      inner && typeof inner === 'object' && 'assessment' in inner
+        ? (inner as any).assessment
+        : (inner as Assessment);
+
+    return {
+      ...raw,
+      data: normalizedAssessment,
+    };
   },
 
   /**

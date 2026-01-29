@@ -103,9 +103,18 @@ export default async function handler(
           const { assessmentId, userId } = req.query;
           const assessmentIdStr = Array.isArray(assessmentId) ? assessmentId[0] : assessmentId;
           const userIdStr = Array.isArray(userId) ? userId[0] : userId;
+
+          if (!assessmentIdStr || !userIdStr) {
+            return res.status(400).json({
+              success: false,
+              message: "Missing assessmentId or userId for proctor summary retry",
+            });
+          }
           
           const retryResponse = await axios.get(
-            `${BACKEND_URL}/api/v1/proctor/summary/${encodeURIComponent(assessmentIdStr)}/${encodeURIComponent(userIdStr)}`,
+            `${BACKEND_URL}/api/v1/proctor/summary/${encodeURIComponent(
+              String(assessmentIdStr),
+            )}/${encodeURIComponent(String(userIdStr))}`,
             {
               headers: {
                 "Content-Type": "application/json; charset=utf-8",
