@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useRef, useCallback } from 'react'
+import { useEffect, useState, useRef, useCallback, useMemo } from 'react'
 import { useRouter } from 'next/router'
 import { useSession } from 'next-auth/react'
 import dynamic from 'next/dynamic'
@@ -187,6 +187,7 @@ export default function AIMLTestTakePage() {
   }, [requestFullscreenLock, setFullscreenLocked]);
 
   // Universal proctoring hook - handles AI proctoring, tab switch, fullscreen
+  // DISABLE PROCTORING IN ADMIN PREVIEW MODE
   const {
     state: proctoringState,
     isRunning: isProctoringRunning,
@@ -198,6 +199,7 @@ export default function AIMLTestTakePage() {
   } = useUniversalProctoring({
     onViolation: handleUniversalViolation,
     debug: debugMode,
+    enabled: !isAdminPreview, // Disable proctoring in admin preview mode
   })
 
   // Unlock fullscreen when test is submitted
@@ -208,8 +210,26 @@ export default function AIMLTestTakePage() {
     }
   }, [submitted, setFullscreenLocked]);
 
+  // Check if this is admin preview mode
+  const isAdminPreview = useMemo(() => {
+    if (typeof window !== 'undefined') {
+      const urlParams = new URLSearchParams(window.location.search)
+      return urlParams.get('preview') === 'true' && urlParams.get('admin') === 'true'
+    }
+    return false
+  }, [])
+
   useEffect(() => {
     if (!testId) return
+    
+    // Skip precheck and token validation in admin preview mode
+    if (isAdminPreview) {
+      setToken('admin_preview_token')
+      setUserId('admin_preview')
+      setCandidateEmail('admin@preview.com')
+      fetchTestData('admin_preview_token', 'admin_preview')
+      return
+    }
     
     const urlParams = new URLSearchParams(window.location.search)
     const urlToken = urlParams.get('token')
@@ -238,7 +258,7 @@ export default function AIMLTestTakePage() {
     setCandidateEmail(sessionStorage.getItem("candidateEmail"))
     
     fetchTestData(urlToken, urlUserId)
-  }, [testId])
+  }, [testId, isAdminPreview])
 
   // Get screen stream from window.__screenStream (set by identity-verify gate)
   useEffect(() => {
@@ -252,7 +272,13 @@ export default function AIMLTestTakePage() {
   }, []);
 
   // Start proctoring when test is loaded and ready (AI proctoring + tab switch + fullscreen)
+  // SKIP PROCTORING IN ADMIN PREVIEW MODE
   useEffect(() => {
+    if (isAdminPreview) {
+      console.log('[AIML Take] Admin preview mode - skipping proctoring')
+      return
+    }
+    
     const localAssessmentIdStr = String(testId || '')
     // Resolve userId with priority: URL param > email > anonymous
     // Note: session.user.id would be ideal but requires SessionProvider context
@@ -283,7 +309,7 @@ export default function AIMLTestTakePage() {
         }
       })
     }
-  }, [questions.length, isProctoringRunning, submitted, testId, candidateEmail, userId, cameraProctorEnabled, liveProctoringEnabled, startUniversalProctoring])
+  }, [questions.length, isProctoringRunning, submitted, testId, candidateEmail, userId, cameraProctorEnabled, liveProctoringEnabled, startUniversalProctoring, isAdminPreview])
 
   // ✅ PHASE 2.4: Lazy start function (called only when admin connects)
   const startLiveProctoring = useCallback((sessionId: string, ws: WebSocket) => {
@@ -579,7 +605,19 @@ export default function AIMLTestTakePage() {
     try {
       setLoading(true)
       const { aimlService } = await import('@/services/aiml')
-      const response = await aimlService.getTestForCandidate(String(testId), urlUserId, urlToken)
+      
+      // In admin preview mode, use a dummy token/userId or skip token validation
+      let effectiveToken = urlToken
+      let effectiveUserId = urlUserId
+      
+      if (isAdminPreview) {
+        // For admin preview, we might need to handle this differently
+        // Try to get test data without full candidate validation
+        effectiveToken = 'admin_preview_token'
+        effectiveUserId = 'admin_preview'
+      }
+      
+      const response = await aimlService.getTestForCandidate(String(testId), effectiveUserId, effectiveToken)
       
       const testData = response.data
       setTest(testData)
@@ -588,7 +626,13 @@ export default function AIMLTestTakePage() {
       // Apply runtime camera toggle based on admin proctoring setting:
       // Only explicit true enables camera/model; missing/false => OFF (per PROCTORING_AI_TOGGLE_NOTES.md)
       // Load proctoring settings from test data (matching DSA pattern)
-      if (testData?.proctoringSettings) {
+      // DISABLE PROCTORING IN ADMIN PREVIEW MODE
+      if (isAdminPreview) {
+        console.log('[AIML Take] Admin preview mode - disabling proctoring');
+        setProctoringSettings({ aiProctoringEnabled: false, liveProctoringEnabled: false });
+        setCameraProctorEnabled(false);
+        setLiveProctoringEnabled(false);
+      } else if (testData?.proctoringSettings) {
         console.log('[AIML Take] Loading proctoring settings:', testData.proctoringSettings);
         setProctoringSettings(testData.proctoringSettings);
         setCameraProctorEnabled(testData.proctoringSettings.aiProctoringEnabled === true);

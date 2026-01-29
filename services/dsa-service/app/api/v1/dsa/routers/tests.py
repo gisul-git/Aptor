@@ -373,6 +373,81 @@ async def create_test(
     # Store the actual user ID who created the test - CRITICAL: Must be string, no whitespace
     # user_id is already normalized above
     test_dict["created_by"] = user_id
+
+    # ------------------------------------------------------------------
+    # ORGANIZATION: ensure every test is linked to the creator's org
+    # ------------------------------------------------------------------
+    # The employee dashboard and /employee-tests endpoint filter by
+    # test.organization == employee.organizationId (via ObjectId).
+    # To make tests visible to employees, we must ALWAYS persist the
+    # creator's organization on the test document.
+    from bson import ObjectId as _BsonObjectId  # local alias to avoid confusion
+
+    org_id = None
+    # 1) Try to read organization from the authenticated user payload (preferred path)
+    logger.info(
+        f"[create_test] Resolving organization for user_id={user_id}. "
+        f"current_user keys={list(current_user.keys())}"
+    )
+    raw_org = (
+        current_user.get("organizationId")
+        or current_user.get("organization_id")
+        or current_user.get("orgId")
+        or current_user.get("org_id")  # some services may use org_id
+        or current_user.get("organization")
+    )
+    logger.info(f"[create_test] raw_org from current_user={raw_org!r}")
+    if raw_org:
+        try:
+            # If already an ObjectId-like value, this will normalize it; otherwise from string
+            org_id = _BsonObjectId(str(raw_org))
+            logger.info(f"[create_test] Using organization from current_user: {org_id}")
+        except Exception:
+            logger.warning(f"[create_test] Could not convert organization value '{raw_org}' to ObjectId")
+
+    # 2) Fallback: look up creator in users collection to get organization
+    if org_id is None:
+        try:
+            user_doc = await db.users.find_one({"_id": ObjectId(user_id)})  # type: ignore[arg-type]
+            logger.info(
+                f"[create_test] user_doc lookup for user_id={user_id}: "
+                f"found={bool(user_doc)} "
+                f"keys={list(user_doc.keys()) if user_doc else None}"
+            )
+            if user_doc:
+                raw_org = (
+                    user_doc.get("organization")
+                    or user_doc.get("organizationId")
+                    or user_doc.get("organization_id")
+                    or user_doc.get("orgId")
+                    or user_doc.get("org_id")  # support org_id on user documents as well
+                )
+                if raw_org:
+                    try:
+                        org_id = _BsonObjectId(str(raw_org))
+                        logger.info(
+                            f"[create_test] Using organization from user document for user_id={user_id}: {org_id}"
+                        )
+                    except Exception:
+                        logger.warning(
+                            f"[create_test] Could not convert organization value from user document '{raw_org}' to ObjectId"
+                        )
+            else:
+                logger.warning(f"[create_test] No user document found for user_id={user_id} when resolving organization")
+        except Exception as org_lookup_error:
+            logger.error(
+                f"[create_test] Error looking up organization for user_id={user_id} in users collection: {org_lookup_error}"
+            )
+
+    if org_id is not None:
+        test_dict["organization"] = org_id
+    else:
+        # Log but do not block test creation; tests without organization
+        # will not appear in employee dashboards filtered by org.
+        logger.warning(
+            f"[create_test] No organizationId resolved for user_id={user_id}. "
+            f"DSA tests will not be visible via /employee-tests until organization is set."
+        )
     test_dict["is_active"] = True
     test_dict["is_published"] = False  # Tests start as unpublished
     test_dict["invited_users"] = []  # Will be populated via add candidate
@@ -1437,7 +1512,7 @@ async def get_test_question(
         raise HTTPException(status_code=404, detail="Question not found")
     
     # Build response with all necessary fields
-    question_dict = {
+    question_dict: Dict[str, Any] = {
         "id": str(question["_id"]),
         "title": question.get("title", ""),
         "description": question.get("description", ""),
@@ -1446,7 +1521,7 @@ async def get_test_question(
         "starter_code": question.get("starter_code", {}),
         # Only return public testcases for candidates
         "public_testcases": question.get("public_testcases", []),
-        # Don't return hidden testcases to candidates
+        # We intentionally do not expose hidden_testcases to candidates
     }
     
     # Add function_signature if it exists
@@ -1491,7 +1566,8 @@ async def get_test_question(
     
     logger.info(f"[get_test_question] Returning question {question_id} for test {test_id}, user {user_id}")
     
-    return question_dict
+    # Wrap in ApiResponse-like shape so frontend can consistently use .data
+    return {"data": question_dict}
 
 
 @router.patch("/{test_id}/submission")
@@ -1929,6 +2005,20 @@ async def process_question_evaluation_background(
         cpu_time_limit = 2.0
         memory_limit = 128000
         
+        # Get function signature for custom engine
+        function_signature = None
+        func_sig_data = question.get("function_signature")
+        if func_sig_data:
+            from ..models.question import FunctionSignature, FunctionParameter
+            function_signature = FunctionSignature(
+                name=func_sig_data.get("name"),
+                parameters=[
+                    FunctionParameter(name=p.get("name"), type=p.get("type"))
+                    for p in func_sig_data.get("parameters", [])
+                ],
+                return_type=func_sig_data.get("return_type")
+            )
+        
         results = await run_all_test_cases(
             source_code=prepared_code,
             language_id=language_id,
@@ -1936,6 +2026,7 @@ async def process_question_evaluation_background(
             cpu_time_limit=cpu_time_limit,
             memory_limit=memory_limit,
             stop_on_compilation_error=True,
+            function_signature=function_signature,
         )
         
         # Process results
@@ -2492,6 +2583,20 @@ async def final_submit_test(
         cpu_time_limit = 2.0
         memory_limit = 128000
         
+        # Get function signature for custom engine
+        function_signature = None
+        func_sig_data = question.get("function_signature")
+        if func_sig_data:
+            from ..models.question import FunctionSignature, FunctionParameter
+            function_signature = FunctionSignature(
+                name=func_sig_data.get("name"),
+                parameters=[
+                    FunctionParameter(name=p.get("name"), type=p.get("type"))
+                    for p in func_sig_data.get("parameters", [])
+                ],
+                return_type=func_sig_data.get("return_type")
+            )
+        
         # Run ALL test cases with prepared code
         results = await run_all_test_cases(
             source_code=prepared_code,
@@ -2500,6 +2605,7 @@ async def final_submit_test(
             cpu_time_limit=cpu_time_limit,
             memory_limit=memory_limit,
             stop_on_compilation_error=True,
+            function_signature=function_signature,
         )
         
         # Process test case results
@@ -2768,6 +2874,10 @@ async def add_candidate(
         "user_id": user_id,
         "name": candidate.name,
         "email": candidate.email,
+        # Optional Aaptor ID linkage for employee/candidate
+        "aaptorId": getattr(candidate, "aaptorId", None),
+        # Link candidate to same organization as the test (if present)
+        "organization": test.get("organization"),
         "status": "pending",  # pending -> invited -> started -> completed
         "invited": False,
         "invited_at": None,
@@ -2783,17 +2893,16 @@ async def add_candidate(
         {"$set": {"invited_users": list(current_invited)}}
     )
     
-    # Get the shared test link
+    # Ensure shared test token exists (one per test)
     test_token = test.get("test_token")
     if not test_token:
-        # Generate token if not exists (shouldn't happen if test is published)
         test_token = secrets.token_urlsafe(32)
         await db.tests.update_one(
             {"_id": ObjectId(test_id)},
             {"$set": {"test_token": test_token}}
         )
-    
-    # Build full test URL
+
+    # Build full test URL using shared test token
     # Use cors_origins to get frontend URL, or default to localhost:3000
     settings = get_settings()
     cors_origins = settings.cors_origins.split(",")[0].strip() if settings.cors_origins else "http://localhost:3000"
@@ -2849,14 +2958,15 @@ async def send_invitation(
 
     candidate_name = candidate.get("name") or "Candidate"
 
-    # Ensure shared token exists
-    test_token = test.get("test_token")
-    if not test_token:
-        test_token = secrets.token_urlsafe(32)
-        await db.tests.update_one({"_id": ObjectId(test_id)}, {"$set": {"test_token": test_token}})
-
     settings = get_settings()
     cors_origins = settings.cors_origins.split(",")[0].strip() if settings.cors_origins else "http://localhost:3000"
+
+    # Use shared test token for invitations (legacy, stateless links)
+    test_token = test.get("test_token")
+    if not test_token:
+      test_token = secrets.token_urlsafe(32)
+      await db.tests.update_one({"_id": ObjectId(test_id)}, {"$set": {"test_token": test_token}})
+
     test_link = f"{cors_origins}/test/{test_id}?token={test_token}"
 
     stored_template = test.get("invitationTemplate", {})
@@ -3219,6 +3329,8 @@ async def bulk_add_candidates(
                 "name": name,
                 "email": email,
                 "link_token": link_token,
+                # Keep candidate organization in sync with the test's organization
+                "organization": test.get("organization"),
                 "status": "pending",  # pending -> invited -> started -> completed
                 "invited": False,
                 "invited_at": None,
@@ -4081,6 +4193,8 @@ async def bulk_add_candidates(
                 "name": name,
                 "email": email,
                 "link_token": link_token,
+                # Keep candidate organization in sync with the test's organization
+                "organization": test.get("organization"),
                 "status": "pending",  # pending -> invited -> started -> completed
                 "invited": False,
                 "invited_at": None,
@@ -4130,18 +4244,24 @@ async def verify_test_link(test_id: str, token: str):
     db = get_database()
     if not ObjectId.is_valid(test_id):
         raise HTTPException(status_code=400, detail="Invalid test ID")
-    
-    # Verify the shared test token
+
+    # Verify the shared test token or a legacy per-candidate link_token
     test = await db.tests.find_one({"_id": ObjectId(test_id)})
     if not test:
         raise HTTPException(status_code=404, detail="Test not found")
-    
-    if test.get("test_token") != token:
-        raise HTTPException(status_code=404, detail="Invalid test link")
-    
+
+    test_token = test.get("test_token")
+
+    if token != test_token:
+        # Backward compatibility: some older invitations used per-candidate link_token
+        candidate = await db.test_candidates.find_one(
+            {"test_id": test_id, "link_token": token}
+        )
+        if not candidate:
+            raise HTTPException(status_code=404, detail="Invalid test link")
+
     if not test.get("is_published", False):
         raise HTTPException(status_code=403, detail="Test is not published")
-    
     # Return schedule with candidateRequirements for candidate requirements page
     schedule = test.get("schedule") or {}
     logger.info(f"[verify_test_link] Test schedule: {schedule}")
@@ -4156,7 +4276,7 @@ async def verify_test_link(test_id: str, token: str):
         "duration_minutes": test.get("duration_minutes", 60),
         "duration": test.get("duration_minutes", 60),  # Also return as 'duration' for consistency
         "schedule": schedule,  # Include schedule with candidateRequirements
-        "valid": True
+        "valid": True,
     }
 
 

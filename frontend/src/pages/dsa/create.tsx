@@ -204,7 +204,7 @@ export default function CreateDSACompetencyPage() {
       alert("Test created successfully!");
       // After creating, land on Test Management filtered to this test only.
       if (testId) {
-        router.push(`/dsa/tests?testId=${encodeURIComponent(String(testId))}`);
+        router.push(`/dsa/tests?testId=${encodeURIComponent(String(testId))}&refreshed=true`);
       } else {
         router.push("/dsa/tests");
       }

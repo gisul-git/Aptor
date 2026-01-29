@@ -27,6 +27,10 @@ class DSASettings(BaseSettings):
     judge0_max_polls: int = 20
     judge0_api_key: str = ""  # For RapidAPI hosted Judge0
     
+    # Custom Execution Engine Configuration
+    custom_python_engine_url: str = "http://localhost:9000"
+    use_custom_engine: bool = True  # Feature flag to enable/disable custom engine
+    
     # OpenAI Configuration (can also use OPENAI_API_KEY from main config)
     openai_api_key: str = ""
     
@@ -55,4 +59,6 @@ JUDGE0_POLL_INTERVAL = _settings.judge0_poll_interval
 JUDGE0_MAX_POLLS = _settings.judge0_max_polls
 JUDGE0_API_KEY = _settings.judge0_api_key
 OPENAI_API_KEY = _settings.openai_api_key
+CUSTOM_PYTHON_ENGINE_URL = _settings.custom_python_engine_url
+USE_CUSTOM_ENGINE = _settings.use_custom_engine
 

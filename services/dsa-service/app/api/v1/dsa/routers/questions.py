@@ -588,8 +588,12 @@ async def get_question(
                 else:
                     question_dict["hidden_testcases"] = hidden_tc
     except Exception as e:
-        # Fail fast for admin UI: expected output computation must succeed if needed.
-        raise HTTPException(status_code=500, detail=f"Failed to compute expected outputs: {str(e)}")
+        # Best-effort: if expected-output computation fails, log and fall back to original testcases
+        logger.error(f"[get_question] Failed to compute expected outputs for question {question_id}: {e}", exc_info=True)
+        # Keep original public/hidden testcases without computed outputs
+        # so that admin UI and preview can still load the question.
+        question_dict["public_testcases"] = question.get("public_testcases", [])
+        question_dict["hidden_testcases"] = question.get("hidden_testcases", [])
     
     # Add optional fields if they exist
     if "created_at" in question:
@@ -627,6 +631,64 @@ async def create_question(
     question_dict["module_type"] = "dsa"  # Mark as DSA question to isolate from AIML
     
     logger.info(f"[create_question] Creating DSA question with created_by={user_id}, title={question_dict.get('title')}")
+    
+    # Auto-compute missing expected outputs for testcases if reference_solution exists
+    # This ensures AI-generated questions get their expected_outputs saved to the database
+    if not _is_sql_question(question_dict):
+        reference_solution = question_dict.get("reference_solution")
+        if reference_solution:
+            # Get testcases
+            hidden_testcases = question_dict.get("hidden_testcases", [])
+            public_testcases = question_dict.get("public_testcases", [])
+            
+            # Check for missing expected outputs (None, empty string, or placeholder)
+            def is_missing_output(tc):
+                eo = tc.get("expected_output")
+                if eo is None:
+                    return True
+                if isinstance(eo, str) and not eo.strip():
+                    return True
+                # Check for placeholder patterns
+                eo_str = str(eo).lower()
+                return any(pattern in eo_str for pattern in ["e.g.", "example", "placeholder", "expected:"])
+            
+            hidden_missing = [tc for tc in hidden_testcases if is_missing_output(tc)]
+            public_missing = [tc for tc in public_testcases if is_missing_output(tc)]
+            
+            if hidden_missing or public_missing:
+                try:
+                    logger.info(f"[create_question] Computing missing expected outputs: {len(hidden_missing)} hidden, {len(public_missing)} public")
+                    
+                    if hidden_missing:
+                        computed_hidden = await compute_expected_outputs_for_testcases(question_dict, hidden_missing)
+                        # Create a map of input -> computed testcase
+                        computed_map = {tc.get("input", ""): tc for tc in computed_hidden}
+                        # Update missing testcases with computed outputs
+                        updated_hidden = []
+                        for tc in hidden_testcases:
+                            if is_missing_output(tc) and tc.get("input") in computed_map:
+                                updated_hidden.append(computed_map[tc.get("input")])
+                            else:
+                                updated_hidden.append(tc)
+                        question_dict["hidden_testcases"] = updated_hidden
+                        logger.info(f"[create_question] Computed {len(computed_hidden)} hidden testcase expected outputs")
+                    
+                    if public_missing:
+                        computed_public = await compute_expected_outputs_for_testcases(question_dict, public_missing)
+                        # Create a map of input -> computed testcase
+                        computed_map = {tc.get("input", ""): tc for tc in computed_public}
+                        # Update missing testcases with computed outputs
+                        updated_public = []
+                        for tc in public_testcases:
+                            if is_missing_output(tc) and tc.get("input") in computed_map:
+                                updated_public.append(computed_map[tc.get("input")])
+                            else:
+                                updated_public.append(tc)
+                        question_dict["public_testcases"] = updated_public
+                        logger.info(f"[create_question] Computed {len(computed_public)} public testcase expected outputs")
+                except Exception as e:
+                    # Log but don't fail the creation - expected outputs computation is best-effort
+                    logger.warning(f"[create_question] Failed to compute expected outputs: {e}. Question creation will proceed without computed outputs.")
     
     result = await db.questions.insert_one(question_dict)
     

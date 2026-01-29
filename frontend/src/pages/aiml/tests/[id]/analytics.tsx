@@ -609,20 +609,46 @@ export default function AnalyticsPage() {
               <h2 style={{ fontSize: "1.25rem", fontWeight: 600, marginBottom: 0 }}>
                 Test Access & Email Settings
               </h2>
-              <button
-                type="button"
-                className="btn-secondary"
-                onClick={() => setShowEmailTemplateModal(true)}
-                style={{ 
-                  padding: "0.5rem 1rem", 
-                  fontSize: "0.875rem",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "0.5rem"
-                }}
-              >
-                ✏️ Edit Email Template
-              </button>
+              <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
+                <button
+                  type="button"
+                  className="btn-primary"
+                  onClick={() => {
+                    if (testId) {
+                      window.open(`/aiml/test/${testId}/take?preview=true&admin=true`, '_blank')
+                    }
+                  }}
+                  style={{ 
+                    padding: "0.5rem 1rem", 
+                    fontSize: "0.875rem",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "0.5rem",
+                    backgroundColor: "#3b82f6",
+                    color: "white",
+                    border: "none",
+                    borderRadius: "0.5rem",
+                    cursor: "pointer",
+                    fontWeight: 500
+                  }}
+                >
+                  🧪 Test This Test
+                </button>
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  onClick={() => setShowEmailTemplateModal(true)}
+                  style={{ 
+                    padding: "0.5rem 1rem", 
+                    fontSize: "0.875rem",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "0.5rem"
+                  }}
+                >
+                  ✏️ Edit Email Template
+                </button>
+              </div>
             </div>
             <div style={{ fontSize: "0.875rem", color: "#64748b", marginBottom: "1rem" }}>
               {testInfo.invitationTemplate ? (
