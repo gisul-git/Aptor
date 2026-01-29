@@ -79,15 +79,6 @@ app.include_router(aiml_assessment.router)
 app.include_router(aiml_run.router)
 app.include_router(aiml_evaluate.router)
 
-# Debug: Log all registered routes
-logger.info("=" * 60)
-logger.info("Registered routes:")
-for route in app.routes:
-    if hasattr(route, 'path') and hasattr(route, 'methods'):
-        methods = ', '.join(sorted(route.methods))
-        logger.info(f"  {methods:20} {route.path}")
-logger.info("=" * 60)
-
 # Add route without trailing slash - call the handler directly to avoid redirects
 # Import the handler function to reuse the logic
 from app.api.v1.aiml.routers.tests import get_tests as get_aiml_tests_handler

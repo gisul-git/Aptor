@@ -13,7 +13,16 @@ export const useCustomMCQAssessments = () => {
     queryFn: async () => {
       try {
         const response = await customMCQService.listAssessments();
-        return response.data || [];
+        // Backend returns {success: true, data: {assessments: [...], total: ...}}
+        // Extract the assessments array from the nested data structure
+        if (response.data && typeof response.data === 'object' && 'assessments' in response.data) {
+          return response.data.assessments || [];
+        }
+        // Fallback: if response.data is already an array (legacy format)
+        if (Array.isArray(response.data)) {
+          return response.data;
+        }
+        return [];
       } catch (error: any) {
         console.warn('Failed to fetch custom MCQ assessments:', error?.message || error);
         return [];

@@ -1,0 +1,14 @@
+Welcome to AI Competency Agent
+
+This installer will set up the AI Competency Agent on your Mac.
+
+The agent provides local Python code execution for the AI Competency
+Platform, allowing you to run Jupyter notebook-style code directly
+on your machine.
+
+The agent will:
+- Install to /usr/local/bin
+- Run automatically when you log in
+- Provide a WebSocket server at ws://127.0.0.1:8889
+
+Click Continue to begin installation.
