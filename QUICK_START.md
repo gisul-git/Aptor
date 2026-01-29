@@ -102,7 +102,7 @@ MONGO_URI=mongodb://localhost:27017
 MONGO_DB=auth_db
 JWT_SECRET=your-secret-here
 JWT_ALGORITHM=HS256
-```
+````
 
 ## 🐳 Docker Compose
 
