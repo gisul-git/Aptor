@@ -222,7 +222,8 @@ export const aimlService = {
    * Publish/unpublish test
    */
   publishTest: async (testId: string, isPublished: boolean): Promise<ApiResponse<any>> => {
-    const response = await apiClient.patch<ApiResponse<any>>(`/api/v1/aiml/tests/${testId}/publish`, null, {
+    // Do not send a null body; FastAPI expects only query params and may try to parse the body as JSON
+    const response = await apiClient.patch<ApiResponse<any>>(`/api/v1/aiml/tests/${testId}/publish`, undefined, {
       params: { is_published: isPublished },
     });
     return response.data;
@@ -300,7 +301,8 @@ export const aimlService = {
    * Publish/unpublish question
    */
   publishQuestion: async (questionId: string, isPublished: boolean): Promise<ApiResponse<any>> => {
-    const response = await apiClient.patch<ApiResponse<any>>(`/api/v1/aiml/questions/${questionId}/publish`, null, {
+    // Don't send null body - use undefined or empty object to avoid JSON parsing errors
+    const response = await apiClient.patch<ApiResponse<any>>(`/api/v1/aiml/questions/${questionId}/publish`, undefined, {
       params: { is_published: isPublished },
     });
     return response.data;

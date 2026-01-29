@@ -14,7 +14,18 @@ export const useAIMLTests = () => {
     queryFn: async () => {
       try {
         const response = await aimlService.listTests();
-        return response.data || [];
+        // Backend returns a direct array of tests (not wrapped in ApiResponse)
+        // Handle both direct array and wrapped { data: [...] } formats safely
+        if (Array.isArray(response)) {
+          return response;
+        }
+        if (response?.data && Array.isArray(response.data)) {
+          return response.data;
+        }
+        if (response?.data) {
+          return Array.isArray(response.data) ? response.data : [];
+        }
+        return [];
       } catch (error: any) {
         console.warn('Failed to fetch AIML tests:', error?.message || error);
         return [];
@@ -43,10 +54,30 @@ export const useAIMLQuestions = () => {
   return useQuery({
     queryKey: QUERY_KEYS.questions,
     queryFn: async () => {
-      const response = await aimlService.listQuestions();
-      return response.data || [];
+      try {
+        const response = await aimlService.listQuestions();
+        // Backend returns direct array, not wrapped in ApiResponse
+        // Check if response is already an array (direct response)
+        if (Array.isArray(response)) {
+          return response;
+        }
+        // If response is wrapped in ApiResponse, extract data
+        if (response.data && Array.isArray(response.data)) {
+          return response.data;
+        }
+        // Fallback: if response.data exists but is not an array, or if it's an object with data property
+        if (response.data) {
+          return Array.isArray(response.data) ? response.data : [];
+        }
+        return [];
+      } catch (error: any) {
+        console.warn('Failed to fetch AIML questions:', error?.message || error);
+        return [];
+      }
     },
     staleTime: 5 * 60 * 1000,
+    retry: 1,
+    retryOnMount: false,
   });
 };
 
@@ -55,8 +86,28 @@ export const useAIMLQuestion = (questionId: string | undefined) => {
     queryKey: QUERY_KEYS.question(questionId || ''),
     queryFn: async () => {
       if (!questionId) throw new Error('Question ID is required');
-      const response = await aimlService.getQuestion(questionId);
-      return response.data;
+      try {
+        const response = await aimlService.getQuestion(questionId);
+        // Backend returns direct object, not wrapped in ApiResponse
+        // Check if response is already an object (direct response)
+        if (response && typeof response === 'object' && !Array.isArray(response)) {
+          // Check if it has a 'data' property (wrapped response)
+          if ('data' in response && response.data !== undefined) {
+            return response.data;
+          }
+          // Otherwise, response is already the question object
+          return response;
+        }
+        // If response.data exists, use it
+        if (response?.data) {
+          return response.data;
+        }
+        // Fallback: return null if nothing matches (shouldn't happen)
+        return null;
+      } catch (error: any) {
+        console.warn('Failed to fetch AIML question:', error?.message || error);
+        throw error; // Re-throw to let React Query handle the error state
+      }
     },
     enabled: !!questionId,
     staleTime: 5 * 60 * 1000,

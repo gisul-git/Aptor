@@ -5,9 +5,9 @@ from contextlib import asynccontextmanager
 import logging
 import sys
 
-from fastapi import FastAPI, Depends
+from fastapi import FastAPI, Depends, Query
 from fastapi.middleware.cors import CORSMiddleware
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 
 from app.config.settings import get_settings
 from app.db.mongo import connect_to_mongo, close_mongo_connection
@@ -81,8 +81,11 @@ app.include_router(aiml_evaluate.router)
 
 # Add route without trailing slash - call the handler directly to avoid redirects
 # Import the handler function to reuse the logic
-from app.api.v1.aiml.routers.tests import get_tests as get_aiml_tests_handler
-from app.core.dependencies import get_current_user
+from app.api.v1.aiml.routers.tests import get_tests as get_aiml_tests_handler, create_test as create_aiml_test_handler, add_candidate as add_candidate_handler, get_test_full_for_candidate as get_test_full_handler
+from app.api.v1.aiml.routers.questions import get_questions as get_aiml_questions_handler, create_question as create_aiml_question_handler
+from app.core.dependencies import get_current_user, require_editor
+from app.api.v1.aiml.models.question import QuestionCreate
+from app.api.v1.aiml.models.test import TestCreate, AddCandidateRequest
 
 @app.get("/api/v1/aiml/tests", response_model=List[dict], include_in_schema=False)
 async def get_aiml_tests_no_slash(
@@ -90,6 +93,56 @@ async def get_aiml_tests_no_slash(
 ):
     """Handle /api/v1/aiml/tests (without trailing slash) by calling the same handler"""
     return await get_aiml_tests_handler(current_user)
+
+@app.post("/api/v1/aiml/tests", response_model=dict, include_in_schema=False)
+async def create_aiml_test_no_slash(
+    test: TestCreate,
+    current_user: Dict[str, Any] = Depends(require_editor)
+):
+    """Handle POST /api/v1/aiml/tests (without trailing slash) by calling the same handler"""
+    return await create_aiml_test_handler(test, current_user)
+
+@app.get("/api/v1/aiml/questions", response_model=List[dict], include_in_schema=False)
+async def get_aiml_questions_no_slash(
+    skip: int = Query(0),
+    limit: int = Query(1000),
+    published_only: Optional[bool] = Query(None),
+    library: Optional[str] = Query(None),
+    ai_generated: Optional[bool] = Query(None),
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
+    """Handle /api/v1/aiml/questions (without trailing slash) by calling the same handler"""
+    return await get_aiml_questions_handler(
+        skip=skip,
+        limit=limit,
+        published_only=published_only,
+        library=library,
+        ai_generated=ai_generated,
+        current_user=current_user
+    )
+
+@app.post("/api/v1/aiml/questions", response_model=dict, include_in_schema=False)
+async def create_aiml_question_no_slash(
+    question: QuestionCreate,
+    current_user: Dict[str, Any] = Depends(require_editor)
+):
+    """Handle POST /api/v1/aiml/questions (without trailing slash) by calling the same handler"""
+    return await create_aiml_question_handler(question, current_user)
+
+@app.post("/api/v1/aiml/tests/{test_id}/add-candidate", response_model=dict, include_in_schema=False)
+async def add_candidate_no_slash(
+    test_id: str,
+    candidate: AddCandidateRequest
+):
+    """Handle POST /api/v1/aiml/tests/{test_id}/add-candidate (without trailing slash) by calling the same handler"""
+    return await add_candidate_handler(test_id, candidate)
+
+@app.get("/api/v1/aiml/tests/{test_id}/full", response_model=dict, include_in_schema=False)
+async def get_test_full_no_slash(
+    test_id: str
+):
+    """Handle GET /api/v1/aiml/tests/{test_id}/full (without trailing slash) by calling the same handler"""
+    return await get_test_full_handler(test_id)
 
 
 app.add_exception_handler(RequestValidationError, validation_exception_handler)
