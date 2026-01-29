@@ -60,6 +60,24 @@ const formatTestcaseInput = (input: any): string => {
   return String(input)
 }
 
+// Helper function to safely convert expected_output to string for display
+const formatTestcaseExpectedOutput = (output: any): string => {
+  if (output === null || output === undefined) {
+    return ''
+  }
+  if (typeof output === 'string') {
+    return output
+  }
+  if (typeof output === 'object') {
+    try {
+      return JSON.stringify(output, null, 2)
+    } catch (e) {
+      return String(output)
+    }
+  }
+  return String(output)
+}
+
 // Helper function to parse testcase input back to object if it's valid JSON, otherwise keep as string
 const parseTestcaseInput = (input: string): any => {
   if (!input || !input.trim()) {
@@ -77,6 +95,28 @@ const parseTestcaseInput = (input: string): any => {
   } catch (e) {
     // Not valid JSON, return as string (legacy stdin format)
     return input
+  }
+}
+
+// Helper to parse expected_output into JSON value when possible
+const parseTestcaseExpectedOutput = (output: any): any => {
+  // If it's already a non-string value (e.g., object/array/number/boolean from AI),
+  // just return it as-is.
+  if (output !== null && output !== undefined && typeof output !== 'string') {
+    return output
+  }
+
+  const str = (output || '').toString()
+  if (!str.trim()) {
+    return ''
+  }
+
+  try {
+    const parsed = JSON.parse(str.trim())
+    return parsed
+  } catch (e) {
+    // Not valid JSON, keep as string
+    return str
   }
 }
 
@@ -551,34 +591,19 @@ export default function QuestionCreatePage() {
             return hasInput || hasExpectedOutput
           })
           
-          // For AI-generated questions, omit expected_output from ALL testcases
-          // For manual questions, include expected_output for ALL testcases (backend will validate it's not empty)
-          if (isAiGenerated) {
-            return nonEmptyTestcases.map((tc) => {
-              // Ensure input is always a string, default to empty string if missing
-              const inputStr = tc.input 
-                ? (typeof tc.input === 'string' ? tc.input : formatTestcaseInput(tc.input))
-                : ''
-              return {
-                input: parseTestcaseInput(inputStr),
-                // Omit expected_output for AI-generated
-                is_hidden: false,
-              }
-            })
-          } else {
-            // Manual questions - include expected_output for all (even if empty, backend will validate)
-            return nonEmptyTestcases.map((tc) => {
-              // Ensure input is always a string, default to empty string if missing
-              const inputStr = tc.input 
-                ? (typeof tc.input === 'string' ? tc.input : formatTestcaseInput(tc.input))
-                : ''
-              return {
-                input: parseTestcaseInput(inputStr),
-                expected_output: tc.expected_output || '', // Always include, backend will validate it's not empty
-                is_hidden: false,
-              }
-            })
-          }
+          // Always include expected_output when present (for both AI-generated and manual questions)
+          return nonEmptyTestcases.map((tc) => {
+            // Ensure input is always a string, default to empty string if missing
+            const inputStr = tc.input 
+              ? (typeof tc.input === 'string' ? tc.input : formatTestcaseInput(tc.input))
+              : ''
+            return {
+              input: parseTestcaseInput(inputStr),
+              // Parse expected_output so objects/arrays/numbers are stored correctly
+              expected_output: parseTestcaseExpectedOutput(tc.expected_output || ''),
+              is_hidden: false,
+            }
+          })
         })(),
         hidden_testcases: (() => {
           // Filter out empty testcases - only store testcases with actual data
@@ -588,34 +613,19 @@ export default function QuestionCreatePage() {
             return hasInput || hasExpectedOutput
           })
           
-          // For AI-generated questions, omit expected_output from ALL testcases
-          // For manual questions, include expected_output for ALL testcases (backend will validate it's not empty)
-          if (isAiGenerated) {
-            return nonEmptyTestcases.map((tc) => {
-              // Ensure input is always a string, default to empty string if missing
-              const inputStr = tc.input 
-                ? (typeof tc.input === 'string' ? tc.input : formatTestcaseInput(tc.input))
-                : ''
-              return {
-                input: parseTestcaseInput(inputStr),
-                // Omit expected_output for AI-generated
-                is_hidden: true,
-              }
-            })
-          } else {
-            // Manual questions - include expected_output for all (even if empty, backend will validate)
-            return nonEmptyTestcases.map((tc) => {
-              // Ensure input is always a string, default to empty string if missing
-              const inputStr = tc.input 
-                ? (typeof tc.input === 'string' ? tc.input : formatTestcaseInput(tc.input))
-                : ''
-              return {
-                input: parseTestcaseInput(inputStr),
-                expected_output: tc.expected_output || '', // Always include, backend will validate it's not empty
-                is_hidden: true,
-              }
-            })
-          }
+          // Always include expected_output when present (for both AI-generated and manual questions)
+          return nonEmptyTestcases.map((tc) => {
+            // Ensure input is always a string, default to empty string if missing
+            const inputStr = tc.input 
+              ? (typeof tc.input === 'string' ? tc.input : formatTestcaseInput(tc.input))
+              : ''
+            return {
+              input: parseTestcaseInput(inputStr),
+              // Parse expected_output so objects/arrays/numbers are stored correctly
+              expected_output: parseTestcaseExpectedOutput(tc.expected_output || ''),
+              is_hidden: true,
+            }
+          })
         })(),
         function_signature: functionSignature,
         secure_mode: secureMode,
@@ -1646,18 +1656,17 @@ export default function QuestionCreatePage() {
                     />
                   </div>
                   <div>
-                    <label className="text-xs font-medium">Expected Output</label>
+                      <label className="text-xs font-medium">Expected Output</label>
                     <Textarea
                       rows={3}
                       className="font-mono text-sm"
-                      value={tc.expected_output ?? ''}
+                      value={formatTestcaseExpectedOutput(tc.expected_output)}
                       onChange={(e) =>
                         updateTestcase(idx, 'public', 'expected_output', e.target.value)
                       }
                       placeholder={
                         getExpectedOutputPlaceholder(returnType)
                       }
-                      disabled={isAiGenerated}
                     />
                   </div>
                 </div>
@@ -1721,18 +1730,17 @@ export default function QuestionCreatePage() {
                     />
                   </div>
                   <div>
-                    <label className="text-xs font-medium">Expected Output</label>
+                      <label className="text-xs font-medium">Expected Output</label>
                     <Textarea
                       rows={3}
                       className="font-mono text-sm"
-                      value={tc.expected_output ?? ''}
+                      value={formatTestcaseExpectedOutput(tc.expected_output)}
                       onChange={(e) =>
                         updateTestcase(idx, 'hidden', 'expected_output', e.target.value)
                       }
                       placeholder={
                         getExpectedOutputPlaceholder(returnType)
                       }
-                      disabled={isAiGenerated}
                     />
                   </div>
                 </div>

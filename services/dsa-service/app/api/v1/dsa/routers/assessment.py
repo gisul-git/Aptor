@@ -392,10 +392,14 @@ async def run_code(request: RunCodeRequest):
     # Build test cases array - PUBLIC ONLY
     test_cases = []
     for i, tc in enumerate(question.get("public_testcases", [])):
+        # Preserve expected_output as-is (can be None, string, list, dict, etc.)
+        # Don't default to empty string - preserve None to check if it exists
+        expected_output = tc.get("expected_output") if "expected_output" in tc else None
+        
         test_cases.append({
             "id": f"public_{i}",
             "stdin": tc.get("input", ""),
-            "expected_output": tc.get("expected_output", ""),
+            "expected_output": expected_output,  # Preserve original value (None, string, list, dict, etc.)
             "is_hidden": False,
             "points": tc.get("points", 1),
         })

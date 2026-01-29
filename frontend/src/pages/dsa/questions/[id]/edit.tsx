@@ -57,6 +57,27 @@ const formatTestcaseInput = (input: any): string => {
   return String(input)
 }
 
+// Helper function to safely convert expected_output to string for display
+const formatTestcaseExpectedOutput = (expectedOutput: any): string => {
+  if (expectedOutput === null || expectedOutput === undefined) {
+    return ''
+  }
+  if (typeof expectedOutput === 'string') {
+    return expectedOutput
+  }
+  // For objects, arrays, numbers, booleans - convert to JSON string
+  try {
+    // If it's a primitive (number, boolean), just convert to string
+    if (typeof expectedOutput !== 'object') {
+      return String(expectedOutput)
+    }
+    // For objects/arrays, stringify with formatting
+    return JSON.stringify(expectedOutput, null, 2)
+  } catch (e) {
+    return String(expectedOutput)
+  }
+}
+
 // Helper function to parse testcase input back to object if it's valid JSON, otherwise keep as string
 const parseTestcaseInput = (input: string): any => {
   if (!input || !input.trim()) {
@@ -74,6 +95,22 @@ const parseTestcaseInput = (input: string): any => {
   } catch (e) {
     // Not valid JSON, return as string (legacy stdin format)
     return input
+  }
+}
+
+// Helper function to parse expected_output back to JSON value if valid JSON, otherwise keep as string
+const parseTestcaseExpectedOutput = (expectedOutput: string): any => {
+  if (!expectedOutput || !expectedOutput.trim()) {
+    return expectedOutput || ''
+  }
+  // Try to parse as JSON (could be object, array, number, boolean, string, or null)
+  try {
+    const parsed = JSON.parse(expectedOutput.trim())
+    // Return the parsed value (could be any JSON value)
+    return parsed
+  } catch (e) {
+    // Not valid JSON, return as string (legacy format)
+    return expectedOutput
   }
 }
 
@@ -278,7 +315,7 @@ export default function QuestionEditPage() {
         setPublicTestcases(
           data.public_testcases.map((tc: any) => ({
             input: formatTestcaseInput(tc.input),
-            expected_output: tc.expected_output || '', // Always show expected_output, even if empty
+            expected_output: formatTestcaseExpectedOutput(tc.expected_output), // Format expected_output (handles objects/arrays/strings/null)
           }))
         )
       } else {
@@ -289,7 +326,7 @@ export default function QuestionEditPage() {
         setHiddenTestcases(
           data.hidden_testcases.map((tc: any) => ({
             input: formatTestcaseInput(tc.input),
-            expected_output: tc.expected_output || '', // Always show expected_output, even if empty
+            expected_output: formatTestcaseExpectedOutput(tc.expected_output), // Format expected_output (handles objects/arrays/strings/null)
           }))
         )
       } else {
@@ -519,34 +556,20 @@ export default function QuestionEditPage() {
             return hasInput || hasExpectedOutput
           })
           
-          // For AI-generated questions, omit expected_output from ALL testcases
-          // For manual questions, include expected_output for ALL testcases (backend will validate it's not empty)
-          if (isAiGenerated) {
-            return nonEmptyTestcases.map((tc) => {
-              // Ensure input is always a string, default to empty string if missing
-              const inputStr = tc.input 
-                ? (typeof tc.input === 'string' ? tc.input : formatTestcaseInput(tc.input))
-                : ''
-              return {
-                input: parseTestcaseInput(inputStr),
-                // Omit expected_output for AI-generated
-                is_hidden: false,
-              }
-            })
-          } else {
-            // Manual questions - include expected_output for all (even if empty, backend will validate)
-            return nonEmptyTestcases.map((tc) => {
-              // Ensure input is always a string, default to empty string if missing
-              const inputStr = tc.input 
-                ? (typeof tc.input === 'string' ? tc.input : formatTestcaseInput(tc.input))
-                : ''
-              return {
-                input: parseTestcaseInput(inputStr),
-                expected_output: tc.expected_output || '', // Always include, backend will validate it's not empty
-                is_hidden: false,
-              }
-            })
-          }
+          // Include expected_output if it exists (for both AI-generated and manual questions)
+          // AI-generated questions may have expected_output computed after creation
+          return nonEmptyTestcases.map((tc) => {
+            // Ensure input is always a string, default to empty string if missing
+            const inputStr = tc.input 
+              ? (typeof tc.input === 'string' ? tc.input : formatTestcaseInput(tc.input))
+              : ''
+            const expectedOutputStr = tc.expected_output || ''
+            return {
+              input: parseTestcaseInput(inputStr),
+              expected_output: expectedOutputStr ? parseTestcaseExpectedOutput(expectedOutputStr) : '', // Parse JSON if valid, otherwise keep as string
+              is_hidden: false,
+            }
+          })
         })(),
         hidden_testcases: (() => {
           // Filter out empty testcases - only store testcases with actual data
@@ -556,34 +579,20 @@ export default function QuestionEditPage() {
             return hasInput || hasExpectedOutput
           })
           
-          // For AI-generated questions, omit expected_output from ALL testcases
-          // For manual questions, include expected_output for ALL testcases (backend will validate it's not empty)
-          if (isAiGenerated) {
-            return nonEmptyTestcases.map((tc) => {
-              // Ensure input is always a string, default to empty string if missing
-              const inputStr = tc.input 
-                ? (typeof tc.input === 'string' ? tc.input : formatTestcaseInput(tc.input))
-                : ''
-              return {
-                input: parseTestcaseInput(inputStr),
-                // Omit expected_output for AI-generated
-                is_hidden: true,
-              }
-            })
-          } else {
-            // Manual questions - include expected_output for all (even if empty, backend will validate)
-            return nonEmptyTestcases.map((tc) => {
-              // Ensure input is always a string, default to empty string if missing
-              const inputStr = tc.input 
-                ? (typeof tc.input === 'string' ? tc.input : formatTestcaseInput(tc.input))
-                : ''
-              return {
-                input: parseTestcaseInput(inputStr),
-                expected_output: tc.expected_output || '', // Always include, backend will validate it's not empty
-                is_hidden: true,
-              }
-            })
-          }
+          // Include expected_output if it exists (for both AI-generated and manual questions)
+          // AI-generated questions may have expected_output computed after creation
+          return nonEmptyTestcases.map((tc) => {
+            // Ensure input is always a string, default to empty string if missing
+            const inputStr = tc.input 
+              ? (typeof tc.input === 'string' ? tc.input : formatTestcaseInput(tc.input))
+              : ''
+            const expectedOutputStr = tc.expected_output || ''
+            return {
+              input: parseTestcaseInput(inputStr),
+              expected_output: expectedOutputStr ? parseTestcaseExpectedOutput(expectedOutputStr) : '', // Parse JSON if valid, otherwise keep as string
+              is_hidden: true,
+            }
+          })
         })(),
         function_signature: functionSignature,
         secure_mode: secureMode,

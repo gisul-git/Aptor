@@ -1,32 +1,25 @@
 """
 Custom Execution Engine Service
 
-Handles batch code execution for Java and Python using custom execution engines.
-Java engine: http://localhost:9000
-Python engine: http://localhost:9001
+Handles batch code execution for Python using custom execution engine.
+Python engine URL is configured via CUSTOM_PYTHON_ENGINE_URL in .env file.
 
-The custom engines expect:
+The custom engine expects:
 - Raw function code (no wrapping, no main method)
-- Function metadata (name, parameters, return type)
+- Function metadata (name, parameters)
 - Test cases in JSON format
 """
 
 import json
 import logging
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List
 import httpx
 from ..models.question import FunctionSignature
-from ..config import CUSTOM_JAVA_ENGINE_URL, CUSTOM_PYTHON_ENGINE_URL
+from ..config import CUSTOM_PYTHON_ENGINE_URL
 
 logger = logging.getLogger("dsa-service")
 
-# Language to port mapping
-LANGUAGE_TO_PORT = {
-    "java": 9000,
-    "python": 9001
-}
-
-# Verdict mapping: Custom engine → Judge0 status IDs
+# Verdict mapping: Custom engine → Internal status IDs
 VERDICT_TO_STATUS_ID = {
     "ACCEPTED": 3,
     "WRONG_ANSWER": 4,
@@ -54,21 +47,15 @@ class CustomExecutionError(Exception):
     pass
 
 
-def get_engine_url(language: str) -> str:
-    """Get the custom engine URL for a language"""
-    language_lower = language.lower()
-    if language_lower == "java":
-        return CUSTOM_JAVA_ENGINE_URL
-    elif language_lower == "python":
-        return CUSTOM_PYTHON_ENGINE_URL
-    else:
-        raise ValueError(f"Unsupported language for custom engine: {language}")
+def get_engine_url() -> str:
+    """Get the Python execution engine URL from configuration"""
+    return CUSTOM_PYTHON_ENGINE_URL
 
 
-async def check_custom_engine_health(language: str) -> bool:
-    """Check if custom execution engine is accessible"""
+async def check_custom_engine_health() -> bool:
+    """Check if Python execution engine is accessible"""
     try:
-        url = get_engine_url(language)
+        url = get_engine_url()
         health_url = f"{url}/health" if url else None
         if not health_url:
             return False
@@ -78,7 +65,7 @@ async def check_custom_engine_health(language: str) -> bool:
             response = await client.get(health_url)
             return response.status_code == 200
     except Exception as e:
-        logger.warning(f"Custom engine health check failed for {language}: {e}")
+        logger.warning(f"Python engine health check failed: {e}")
         return False
 
 
@@ -92,7 +79,7 @@ def transform_test_cases(test_cases: List[Dict[str, Any]]) -> List[Dict[str, Any
     
     Output format (Custom API):
     - test_cases[i]["test_input"] - JSON object
-    - test_cases[i]["expected_output"] - any JSON value
+    - test_cases[i]["expected_output"] - string
     """
     transformed = []
     
@@ -116,21 +103,21 @@ def transform_test_cases(test_cases: List[Dict[str, Any]]) -> List[Dict[str, Any
         elif test_input is None:
             test_input = {}
         
-        # Handle expected_output - can be string or any JSON value
+        # Handle expected_output - API expects string format
+        # Convert any type (int, list, dict, bool, etc.) to string representation
         expected_output = tc.get("expected_output")
-        if isinstance(expected_output, str) and expected_output.strip():
-            # Try to parse as JSON if it looks like JSON
-            try:
-                expected_output = json.loads(expected_output)
-            except json.JSONDecodeError:
-                # Keep as string if not valid JSON
-                pass
-        elif expected_output is None:
-            expected_output = None
+        if expected_output is None:
+            expected_output = ""
+        elif isinstance(expected_output, str):
+            # Already a string, use as-is
+            expected_output = expected_output
+        else:
+            # Convert non-string types (int, list, dict, bool, etc.) to JSON string
+            expected_output = json.dumps(expected_output)
         
         transformed.append({
             "test_input": test_input,
-            "expected_output": expected_output
+            "expected_output": expected_output  # Always a string per API spec
         })
     
     return transformed
@@ -141,7 +128,7 @@ def transform_response(
     test_cases: List[Dict[str, Any]]
 ) -> Dict[str, Any]:
     """
-    Transform custom API response to Judge0-compatible format.
+    Transform custom API response to internal format.
     
     Custom API response:
     {
@@ -162,7 +149,7 @@ def transform_response(
         ]
     }
     
-    Judge0-compatible format:
+    Internal format:
     {
         "passed": 2,
         "total": 2,
@@ -232,9 +219,18 @@ def transform_response(
         
         # Only include details for visible test cases
         if not tc.get("is_hidden", False):
+            # Preserve expected_output from original test case
+            expected_output = tc.get("expected_output")
+            
+            if expected_output is None:
+                expected_output = ""
+            elif not isinstance(expected_output, str):
+                # Convert to JSON string if it's an object (list, dict, etc.)
+                expected_output = json.dumps(expected_output)
+            
             transformed_result.update({
                 "stdin": json.dumps(tc.get("input") or tc.get("stdin", "")) if isinstance(tc.get("input") or tc.get("stdin", ""), dict) else str(tc.get("input") or tc.get("stdin", "")),
-                "expected_output": json.dumps(tc.get("expected_output")) if not isinstance(tc.get("expected_output"), str) else tc.get("expected_output"),
+                "expected_output": expected_output,
                 "stdout": output if output else "",
                 "stderr": error if error else "",
                 "compile_output": error if status_id == 6 and error else "",
@@ -263,94 +259,36 @@ def transform_response(
     }
 
 
-async def execute_batch_java(
-    code: str,
-    function_name: str,
-    param_types: List[str],
-    param_names: List[str],
-    return_type: str,
-    test_cases: List[Dict[str, Any]],
-    time_limit_ms: int = 3000,
-    memory_limit_mb: int = 256
-) -> Dict[str, Any]:
-    """Execute Java code using custom Java execution engine (port 9000)"""
-    url = f"{get_engine_url('java')}/execute/batch"
-    
-    # Transform test cases
-    transformed_test_cases = transform_test_cases(test_cases)
-    
-    payload = {
-        "code": code,
-        "function_name": function_name,
-        "param_types": param_types,
-        "param_names": param_names,
-        "return_type": return_type,
-        "test_cases": transformed_test_cases,
-        "time_limit_ms": time_limit_ms,
-        "memory_limit_mb": memory_limit_mb,
-    }
-    
-    headers = {
-        "Content-Type": "application/json"
-    }
-    
-    logger.info(f"Executing Java batch: function={function_name}, test_cases={len(test_cases)}")
-    
-    try:
-        timeout_config = httpx.Timeout(
-            connect=15.0,
-            read=time_limit_ms / 1000.0 + 10.0,  # Add buffer
-            write=15.0,
-            pool=15.0
-        )
-        
-        async with httpx.AsyncClient(timeout=timeout_config) as client:
-            response = await client.post(url, json=payload, headers=headers)
-            
-            if response.status_code != 200:
-                error_text = response.text[:500] if response.text else "No error message"
-                raise CustomExecutionError(
-                    f"Java engine error (status {response.status_code}): {error_text}"
-                )
-            
-            result = response.json()
-            
-            # Transform response to Judge0-compatible format
-            return transform_response(result, test_cases)
-            
-    except httpx.TimeoutException as e:
-        logger.error(f"Java engine timeout: {e}")
-        raise CustomExecutionError(f"Java engine request timed out: {e}")
-    except httpx.HTTPError as e:
-        logger.error(f"Java engine HTTP error: {e}")
-        raise CustomExecutionError(f"Java engine HTTP error: {e}")
-    except Exception as e:
-        logger.error(f"Java engine error: {e}")
-        raise CustomExecutionError(f"Java engine error: {str(e)}")
-
-
 async def execute_batch_python(
     code: str,
     function_name: str,
-    param_types: List[str],
     param_names: List[str],
-    return_type: str,
     test_cases: List[Dict[str, Any]],
     time_limit_ms: int = 3000,
     memory_limit_mb: int = 256
 ) -> Dict[str, Any]:
-    """Execute Python code using custom Python execution engine (port 9001)"""
-    url = f"{get_engine_url('python')}/execute/batch"
+    """Execute Python code using custom Python execution engine
+    
+    API format:
+    {
+        "code": "string",
+        "function_name": "string",
+        "param_names": ["string"],
+        "test_cases": [{"test_input": {}, "expected_output": "string"}],
+        "time_limit_ms": 3000,
+        "memory_limit_mb": 256
+    }
+    """
+    url = f"{get_engine_url()}/execute/batch"
     
     # Transform test cases
     transformed_test_cases = transform_test_cases(test_cases)
     
+    # Python engine API only requires: code, function_name, param_names, test_cases, time_limit_ms, memory_limit_mb
     payload = {
         "code": code,
         "function_name": function_name,
-        "param_types": param_types,
         "param_names": param_names,
-        "return_type": return_type,
         "test_cases": transformed_test_cases,
         "time_limit_ms": time_limit_ms,
         "memory_limit_mb": memory_limit_mb,
@@ -359,8 +297,6 @@ async def execute_batch_python(
     headers = {
         "Content-Type": "application/json"
     }
-    
-    logger.info(f"Executing Python batch: function={function_name}, test_cases={len(test_cases)}")
     
     try:
         timeout_config = httpx.Timeout(
@@ -375,15 +311,27 @@ async def execute_batch_python(
             
             if response.status_code != 200:
                 error_text = response.text[:500] if response.text else "No error message"
+                logger.error(f"Python engine returned non-200 status {response.status_code}: {error_text}")
                 raise CustomExecutionError(
                     f"Python engine error (status {response.status_code}): {error_text}"
                 )
             
             result = response.json()
             
-            # Transform response to Judge0-compatible format
+            # Log errors in individual test case results
+            for i, res in enumerate(result.get("results", [])):
+                if res.get("error"):
+                    logger.warning(f"Test case {i} error: {res.get('error')}")
+            
+            # Transform response to internal format
             return transform_response(result, test_cases)
             
+    except httpx.ConnectError as e:
+        logger.error(f"Python engine connection failed: {e}")
+        raise CustomExecutionError(
+            f"Unable to connect to Python execution engine at {url}. "
+            f"Please ensure the engine is running. Error: {str(e)}"
+        )
     except httpx.TimeoutException as e:
         logger.error(f"Python engine timeout: {e}")
         raise CustomExecutionError(f"Python engine request timed out: {e}")
@@ -405,53 +353,34 @@ async def execute_batch(
 ) -> Dict[str, Any]:
     """
     Main entry point for batch execution.
-    Routes to appropriate custom engine based on language.
+    Routes to Python execution engine.
     
     Args:
         code: Raw function code (no wrapping, no main method)
-        language: Language name ("java" or "python")
-        function_signature: Function signature with name, parameters, return_type
+        language: Language name ("python")
+        function_signature: Function signature with name and parameters
         test_cases: List of test cases with input and expected_output
         time_limit_ms: Time limit in milliseconds
         memory_limit_mb: Memory limit in megabytes
     
     Returns:
-        Judge0-compatible result dictionary
+        Internal result dictionary
     """
     language_lower = language.lower()
     
-    if language_lower not in LANGUAGE_TO_PORT:
-        raise ValueError(f"Unsupported language for custom engine: {language}")
+    if language_lower != "python":
+        raise ValueError(f"Unsupported language for custom engine: {language}. Only Python is supported.")
     
     # Extract function metadata
     function_name = function_signature.name
-    param_types = [p.type for p in function_signature.parameters]
     param_names = [p.name for p in function_signature.parameters]
-    return_type = function_signature.return_type
     
-    # Route to appropriate engine
-    if language_lower == "java":
-        return await execute_batch_java(
-            code=code,
-            function_name=function_name,
-            param_types=param_types,
-            param_names=param_names,
-            return_type=return_type,
-            test_cases=test_cases,
-            time_limit_ms=time_limit_ms,
-            memory_limit_mb=memory_limit_mb
-        )
-    elif language_lower == "python":
-        return await execute_batch_python(
-            code=code,
-            function_name=function_name,
-            param_types=param_types,
-            param_names=param_names,
-            return_type=return_type,
-            test_cases=test_cases,
-            time_limit_ms=time_limit_ms,
-            memory_limit_mb=memory_limit_mb
-        )
-    else:
-        raise ValueError(f"Unsupported language: {language}")
-
+    # Execute using Python engine
+    return await execute_batch_python(
+        code=code,
+        function_name=function_name,
+        param_names=param_names,
+        test_cases=test_cases,
+        time_limit_ms=time_limit_ms,
+        memory_limit_mb=memory_limit_mb
+    )

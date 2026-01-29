@@ -14,8 +14,7 @@ class Settings(BaseSettings):
     openai_api_key: str | None = None
     
     # Custom Execution Engine Configuration
-    custom_java_engine_url: str = "http://localhost:9000"
-    custom_python_engine_url: str = "http://localhost:9001"
+    custom_python_engine_url: str = "http://localhost:9000"
     use_custom_engine: bool = True  # Feature flag to enable/disable custom engine
 
     # Email / SendGrid configuration

@@ -52,6 +52,45 @@ def _validate_json_testcase_format(question_data: Dict[str, Any]) -> Optional[st
     return None
 
 
+def _normalize_json_testcase_format(question_data: Dict[str, Any]) -> None:
+    
+    for tc_type in ["public_testcases", "hidden_testcases"]:
+        testcases = question_data.get(tc_type, [])
+        if not isinstance(testcases, list):
+            continue
+
+        for idx, tc in enumerate(testcases):
+            if not isinstance(tc, dict):
+                continue
+
+            # Normalize input: stringified JSON -> dict
+            test_input = tc.get("input")
+            if isinstance(test_input, str):
+                stripped = test_input.strip()
+                # Heuristic: looks like JSON object
+                if stripped.startswith("{") and stripped.endswith("}"):
+                    try:
+                        parsed = json.loads(stripped)
+                        if isinstance(parsed, dict):
+                            tc["input"] = parsed
+                    except json.JSONDecodeError:
+                        # Leave as-is; validator will report if needed
+                        pass
+
+            # Normalize expected_output: stringified JSON -> JSON value
+            expected_output = tc.get("expected_output")
+            if isinstance(expected_output, str):
+                stripped_eo = expected_output.strip()
+                # Only attempt to parse when it looks like JSON (array, object, number, boolean, null)
+                if stripped_eo and stripped_eo[0] in "[{\"-0123456789tfn":
+                    try:
+                        parsed_eo = json.loads(stripped_eo)
+                        tc["expected_output"] = parsed_eo
+                    except json.JSONDecodeError:
+                        # Not valid JSON string; keep original plain string
+                        pass
+
+
 def _infer_function_signature_from_testcases(question_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     """
     Infer function signature from test cases.
@@ -561,20 +600,30 @@ Return ONLY the JSON object. No markdown. No explanations."""
                 if lines and lines[-1].strip() == "```":
                     lines = lines[:-1]
                 content = "\n".join(lines)
-            
-            # Extract JSON boundaries
+
+            # If the model wrapped the JSON with explanation steps (STEP 1..., RETURNING JSON: {...}),
+            # try to isolate the final JSON block after 'RETURNING JSON:' to avoid extra text.
+            marker = "RETURNING JSON:"
+            if marker in content:
+                marker_idx = content.find(marker)
+                # Take everything after the marker to minimize non-JSON preamble
+                content = content[marker_idx + len(marker):].strip()
+
+            # Extract JSON boundaries robustly
             content = content.strip()
             if not content.startswith("{"):
-                start_idx = content.find("{")
-                if start_idx >= 0:
-                    content = content[start_idx:]
+                # Prefer the last JSON object in the content (final answer),
+                # since earlier ones may appear in examples inside the explanation.
+                last_brace_idx = content.rfind("{")
+                if last_brace_idx >= 0:
+                    content = content[last_brace_idx:]
                 else:
                     if attempt < max_retries:
                         logger.warning(f"Attempt {attempt + 1}: No JSON found. Retrying...")
                         continue
                     else:
                         raise ValueError("No JSON object found in response")
-            
+
             if not content.endswith("}"):
                 end_idx = content.rfind("}")
                 if end_idx >= 0:
@@ -589,6 +638,9 @@ Return ONLY the JSON object. No markdown. No explanations."""
             # Parse JSON
             try:
                 question_data = json.loads(content)
+
+                # Best-effort normalization of testcase formats (stringified JSON -> proper JSON)
+                _normalize_json_testcase_format(question_data)
                 
                 # Validate JSON test case format
                 json_format_error = _validate_json_testcase_format(question_data)

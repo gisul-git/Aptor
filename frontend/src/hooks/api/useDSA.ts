@@ -15,8 +15,8 @@ export const useDSATests = () => {
     queryKey: QUERY_KEYS.tests,
     queryFn: async () => {
       try {
-        const response = await dsaService.listTests();
-        return response.data || [];
+        const tests = await dsaService.listTests();
+        return Array.isArray(tests) ? tests : [];
       } catch (error: any) {
         console.warn('Failed to fetch DSA tests:', error?.message || error);
         return [];
@@ -33,8 +33,8 @@ export const useDSATest = (testId: string | undefined) => {
     queryKey: QUERY_KEYS.test(testId || ''),
     queryFn: async () => {
       if (!testId) throw new Error('Test ID is required');
-      const response = await dsaService.getTest(testId);
-      return response.data;
+      const test = await dsaService.getTest(testId);
+      return test;
     },
     enabled: !!testId,
     staleTime: 5 * 60 * 1000,
@@ -188,8 +188,8 @@ export const useDSACandidates = (testId: string | undefined) => {
     queryKey: [...QUERY_KEYS.test(testId || ''), 'candidates'] as const,
     queryFn: async () => {
       if (!testId) throw new Error('Test ID is required');
-      const response = await dsaService.getCandidates(testId);
-      return response.data || [];
+      const candidates = await dsaService.getCandidates(testId);
+      return Array.isArray(candidates) ? candidates : [];
     },
     enabled: !!testId,
     staleTime: 30 * 1000, // 30 seconds
@@ -219,7 +219,7 @@ export const useAddDSACandidate = () => {
   const queryClient = useQueryClient();
   
   return useMutation({
-    mutationFn: ({ testId, data }: { testId: string; data: { name: string; email: string } }) =>
+    mutationFn: ({ testId, data }: { testId: string; data: { name: string; email: string; aaptorId?: string } }) =>
       dsaService.addCandidate(testId, data),
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: [...QUERY_KEYS.test(variables.testId), 'candidates'] });

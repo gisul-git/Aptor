@@ -197,8 +197,18 @@ export default function TestTakePage() {
   }
 
 
-  // Enforce unified gate completion (deep-link safety)
+  // Check if this is admin preview mode
+  const isAdminPreview = useMemo(() => {
+    if (typeof window !== 'undefined') {
+      const urlParams = new URLSearchParams(window.location.search)
+      return urlParams.get('preview') === 'true' && urlParams.get('admin') === 'true'
+    }
+    return false
+  }, [])
+
+  // Enforce unified gate completion (deep-link safety) - SKIP if admin preview
   useEffect(() => {
+    if (isAdminPreview) return // Skip precheck for admin preview
     if (!router.isReady) return
     if (!testId) return
     const id = String(testId)
@@ -214,7 +224,7 @@ export default function TestTakePage() {
       router.replace(`/precheck/${id}/${encodeURIComponent(urlToken)}`)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [router.isReady, testId])
+  }, [router.isReady, testId, isAdminPreview])
   
   // Proctoring settings - will be loaded from test data
   const [proctoringSettings, setProctoringSettings] = useState<any>({
@@ -538,6 +548,12 @@ export default function TestTakePage() {
 
   // Start proctoring when test is ready (AI proctoring + tab switch + fullscreen)
   useEffect(() => {
+    // Skip proctoring in admin preview mode
+    if (isAdminPreview) {
+      console.log('[DSA Take] Admin preview mode - skipping proctoring');
+      return;
+    }
+    
     if (test && questions.length > 0 && !isProctoringRunning && isClient && thumbVideoRef.current) {
       console.log('[DSA Take] Starting Universal Proctoring...');
       
@@ -559,7 +575,7 @@ export default function TestTakePage() {
         }
       });
     }
-  }, [test, questions.length, isProctoringRunning, isClient, aiProctoringEnabled, liveProctoringEnabled, candidateIdStr, assessmentIdStr, startUniversalProctoring]);
+  }, [test, questions.length, isProctoringRunning, isClient, aiProctoringEnabled, liveProctoringEnabled, candidateIdStr, assessmentIdStr, startUniversalProctoring, isAdminPreview]);
 
   // ✅ PHASE 2.4: Lazy start function (called only when admin connects)
   const startLiveProctoring = useCallback((sessionId: string, ws: WebSocket) => {
@@ -927,7 +943,7 @@ export default function TestTakePage() {
       const fetchCandidateInfo = async () => {
         try {
           const candidatesRes = await dsaService.getCandidates(testId as string)
-          const candidates = candidatesRes.data || []
+          const candidates = Array.isArray(candidatesRes) ? candidatesRes : []
           const candidate = candidates.find((c: any) => c.user_id === userId)
           if (candidate) {
             setCandidateEmail(candidate.email)
@@ -1002,16 +1018,32 @@ export default function TestTakePage() {
         ? testId[0]
         : undefined
 
-    if (!safeTestId || !token || !userId) {
-      console.warn('[Test Load] Missing required params, cannot load test', {
-        testId: safeTestId,
-        hasToken: !!token,
-        userId,
-      })
-      if (!skipInitialCheck) {
-        setCheckingParams(false)
+    // In admin preview mode, skip token/userId requirements
+    if (isAdminPreview) {
+      if (!safeTestId) {
+        console.warn('[Test Load] Missing testId in admin preview mode')
+        if (!skipInitialCheck) {
+          setCheckingParams(false)
+        }
+        return
       }
-      return
+      // Use admin preview userId
+      const adminUserId = 'admin_preview'
+      setUserId(adminUserId)
+      setToken('admin_preview_token')
+    } else {
+      // Normal mode - require token and userId
+      if (!safeTestId || !token || !userId) {
+        console.warn('[Test Load] Missing required params, cannot load test', {
+          testId: safeTestId,
+          hasToken: !!token,
+          userId,
+        })
+        if (!skipInitialCheck) {
+          setCheckingParams(false)
+        }
+        return
+      }
     }
 
     try {
@@ -1023,70 +1055,100 @@ export default function TestTakePage() {
       // --- Step 1: Ensure submission exists ---
       let submissionData: any = null
 
-      try {
-        const subRes = await dsaService.getTestSubmission(safeTestId, userId)
-        submissionData = subRes.data
-
-        if (submissionData.is_completed) {
-          router.push('/dashboard')
-          return
+      // In admin preview mode, skip submission checks and create dummy submission
+      if (isAdminPreview) {
+        submissionData = {
+          started_at: new Date().toISOString(),
+          is_completed: false,
+          submissions: [],
+          precheck_mode: false,
         }
+        setPrecheckMode(null)
+        setTestReadyToStart(false)
+      } else {
+        // In normal mode, userId is guaranteed by the earlier guard (we return if it's missing)
+        const nonNullUserId = userId as string
+        try {
+          const subRes = await dsaService.getTestSubmission(safeTestId, nonNullUserId)
+          // Backend currently returns a plain submission object (not wrapped in { data: ... })
+          // But keep backward compatibility if it is wrapped.
+          submissionData = (subRes as any)?.data ?? subRes
 
-        // If submission exists and test has started (has started_at and no precheck_mode), clear precheck mode
-        if (submissionData.started_at && !submissionData.precheck_mode) {
-          setPrecheckMode(null)
-          setTestReadyToStart(false)
-        }
-      } catch (err: any) {
-        if (err?.response?.status === 404) {
-          // No submission yet -> start test
-          try {
-            const startRes = await dsaService.startTest(safeTestId, userId)
-            const data = startRes.data
-
-            if (data.precheck_mode === true) {
-              setPrecheckMode({
-                start_time: data.start_time,
-                message:
-                  data.message ||
-                  'Test has not started yet. Please complete pre-checks and wait.',
-              })
-
-              submissionData = {
-                started_at: null,
-                is_completed: false,
-                precheck_mode: true,
-              }
-            } else {
-              submissionData = {
-                started_at: data.started_at,
-                is_completed: false,
-                submissions: [],
-              }
-              // Clear precheck mode when test starts
-              setPrecheckMode(null)
-              setTestReadyToStart(false)
-            }
-          } catch (startErr: any) {
-            const detail =
-              startErr?.response?.data?.detail ||
-              startErr?.response?.data?.message ||
-              'Failed to start test. Please try again.'
-            alert(detail)
+          if (submissionData.is_completed) {
             router.push('/dashboard')
             return
           }
-        } else {
-          console.error('[Test Load] Error fetching submission', err)
-          alert('Error loading test. Please try again.')
-          router.push('/dashboard')
-          return
+
+          // If submission exists and test has started (has started_at and no precheck_mode), clear precheck mode
+          if (submissionData.started_at && !submissionData.precheck_mode) {
+            setPrecheckMode(null)
+            setTestReadyToStart(false)
+          }
+        } catch (err: any) {
+          if (err?.response?.status === 404) {
+            // No submission yet -> start test
+            try {
+              const startRes = await dsaService.startTest(safeTestId, nonNullUserId)
+              const data = startRes.data
+
+              if (data.precheck_mode === true) {
+                setPrecheckMode({
+                  start_time: data.start_time,
+                  message:
+                    data.message ||
+                    'Test has not started yet. Please complete pre-checks and wait.',
+                })
+
+                submissionData = {
+                  started_at: null,
+                  is_completed: false,
+                  precheck_mode: true,
+                }
+              } else {
+                submissionData = {
+                  started_at: data.started_at,
+                  is_completed: false,
+                  submissions: [],
+                }
+                // Clear precheck mode when test starts
+                setPrecheckMode(null)
+                setTestReadyToStart(false)
+              }
+            } catch (startErr: any) {
+              const detail =
+                startErr?.response?.data?.detail ||
+                startErr?.response?.data?.message ||
+                'Failed to start test. Please try again.'
+              alert(detail)
+              router.push('/dashboard')
+              return
+            }
+          } else {
+            console.error('[Test Load] Error fetching submission', err)
+            alert('Error loading test. Please try again.')
+            router.push('/dashboard')
+            return
+          }
         }
       }
 
-      // --- Step 2: Fetch public test data ---
-      const testRes = await dsaService.getPublicTest(safeTestId, userId)
-      const testData = testRes.data
+      // --- Step 2: Fetch test data ---
+      // In admin preview mode, fetch owner view of the test (no candidate token required).
+      // In normal mode, use the public candidate view (requires user_id / token).
+      let testData: any
+      let effectiveUserId: string
+      if (isAdminPreview) {
+        // Owner view: dsaService.getTest returns the plain test object
+        const ownerTest = await dsaService.getTest(safeTestId)
+        testData = ownerTest
+        // Use a synthetic user id for preview flows
+        effectiveUserId = 'admin_preview'
+      } else {
+        effectiveUserId = userId as string
+        const testRes = await dsaService.getPublicTest(safeTestId, effectiveUserId)
+        // Backend may return either plain object or { data: ... } ApiResponse
+        testData = (testRes as any)?.data ?? testRes
+      }
 
       if (!testData) {
         alert('Error: Could not load test data. Please refresh the page.')
@@ -1097,7 +1159,13 @@ export default function TestTakePage() {
       setTestSubmission(submissionData)
 
       // Load proctoring settings from test data (consistent with reference implementation)
-      if (testData?.proctoringSettings) {
+      // DISABLE PROCTORING IN ADMIN PREVIEW MODE
+      if (isAdminPreview) {
+        console.log('[DSA Take] Admin preview mode - disabling proctoring');
+        setProctoringSettings({ aiProctoringEnabled: false, liveProctoringEnabled: false });
+        setAiProctoringEnabled(false);
+        setLiveProctoringEnabled(false);
+      } else if (testData?.proctoringSettings) {
         console.log('[DSA Take] Loading proctoring settings:', testData.proctoringSettings);
         setProctoringSettings(testData.proctoringSettings);
         setAiProctoringEnabled(testData.proctoringSettings.aiProctoringEnabled === true);
@@ -1124,7 +1192,15 @@ export default function TestTakePage() {
       }
 
       const questionPromises = questionIds.map((qId: string) =>
-        dsaService.getTestQuestion(safeTestId, qId, userId).then((res) => res.data as Question)
+        (isAdminPreview
+          // In admin preview, fetch owner question by id (service returns ApiResponse)
+          ? dsaService
+              .getQuestion(qId as string)
+              .then((res) => (res.data || res) as unknown as Question)
+          // In candidate mode, fetch question via public test endpoint (service returns ApiResponse)
+          : dsaService
+              .getTestQuestion(safeTestId, qId, effectiveUserId)
+              .then((res) => res.data as Question))
       )
 
       const results = await Promise.allSettled(questionPromises)
@@ -1155,11 +1231,34 @@ export default function TestTakePage() {
       const visibleMap: Record<string, VisibleTestcase[]> = {}
       questionsData.forEach((q) => {
         visibleMap[q.id] =
-          q.public_testcases?.map((tc: { input: string; expected_output: string }, idx: number) => ({
-            id: `${q.id}-public-${idx}`,
-            input: tc.input,
-            expected: tc.expected_output,
-          })) || []
+          q.public_testcases?.map((tc: { input: string | any; expected_output: string | any }, idx: number) => {
+            // Convert input to string if it's an object (for JSON testcases)
+            let inputStr: string
+            if (typeof tc.input === 'object' && tc.input !== null) {
+              inputStr = JSON.stringify(tc.input, null, 2)
+            } else {
+              inputStr = String(tc.input || '')
+            }
+            
+            // Convert expected_output to string if it's an object
+            let expectedStr: string
+            // Check if expected_output exists in the testcase
+            if (!('expected_output' in tc) || tc.expected_output === undefined || tc.expected_output === null) {
+              // If expected_output is missing, show a placeholder
+              expectedStr = '(not available)'
+            } else if (typeof tc.expected_output === 'object' && tc.expected_output !== null) {
+              expectedStr = JSON.stringify(tc.expected_output, null, 2)
+            } else {
+              const outputStr = String(tc.expected_output).trim()
+              expectedStr = outputStr || '(empty)'
+            }
+            
+            return {
+              id: `${q.id}-public-${idx}`,
+              input: inputStr,
+              expected: expectedStr,
+            }
+          }) || []
       })
 
       // Initialize code and language (no preloading/localStorage merging)
@@ -1245,7 +1344,7 @@ export default function TestTakePage() {
       alert('An error occurred while loading the test. Please try again.')
       router.push('/dashboard')
     }
-  }, [testId, token, userId, router])
+  }, [testId, token, userId, router, isAdminPreview])
 
   // NEW: simple, from-scratch test + question loading flow
   // 1) Ensure submission (existing or start)
@@ -1460,7 +1559,18 @@ export default function TestTakePage() {
           time_spent_seconds: timeSpentSeconds,
         })
 
-        const result = response.data
+        // Handle both ApiResponse wrapper and plain object responses
+        const result = response?.data || response
+        
+        if (!result) {
+          console.error('Submit code response is undefined:', response)
+          throw new Error('Invalid response format: response is undefined')
+        }
+        
+        if (!result.public_results) {
+          console.error('Submit code response missing public_results:', result)
+          throw new Error('Invalid response format: missing public_results')
+        }
         
         const mappedResults: SubmissionTestcaseResult[] = (result.public_results || []).map((r: any) => ({
           visible: true,
@@ -1827,21 +1937,46 @@ export default function TestTakePage() {
         language_id: String(languageId),
       })
       
-      const result = response.data
+      // Handle both ApiResponse wrapper and plain object responses
+      const result = response?.data || response
       
-      const mappedResults: SubmissionTestcaseResult[] = (result.public_results || []).map((r: any) => ({
-        visible: true,
-        input: r.input,
-        expected: r.expected_output,
-        output: r.user_output || r.stdout || '',
-        stdout: r.user_output || r.stdout || '',
-        stderr: r.stderr || '',
-        compile_output: r.compile_output || '',
-        time: r.time,
-        memory: r.memory,
-        status: r.status,
-        passed: r.passed,
-      }))
+      if (!result) {
+        console.error('Run code response is undefined:', response)
+        throw new Error('Invalid response format: response is undefined')
+      }
+      
+      if (!result.public_results) {
+        console.error('Run code response missing public_results:', result)
+        throw new Error('Invalid response format: missing public_results')
+      }
+      
+      // Debug: Log the API response to see what expected_output values we're getting
+      console.log('[RunCode] API response public_results:', JSON.stringify(result.public_results, null, 2))
+      
+      const mappedResults: SubmissionTestcaseResult[] = (result.public_results || []).map((r: any) => {
+        // Try to get expected_output from the result, fall back to empty string if missing
+        let expectedValue = r.expected_output
+        if (expectedValue === null || expectedValue === undefined) {
+          expectedValue = ''
+        } else if (typeof expectedValue !== 'string') {
+          // Convert objects/arrays to JSON string
+          expectedValue = JSON.stringify(expectedValue)
+        }
+        
+        return {
+          visible: true,
+          input: r.input,
+          expected: expectedValue,
+          output: r.user_output || r.stdout || '',
+          stdout: r.user_output || r.stdout || '',
+          stderr: r.stderr || '',
+          compile_output: r.compile_output || '',
+          time: r.time,
+          memory: r.memory,
+          status: r.status,
+          passed: r.passed,
+        }
+      })
       
       setPublicResults(prev => ({ ...prev, [currentQuestion.id]: mappedResults }))
       
@@ -2025,7 +2160,18 @@ export default function TestTakePage() {
         time_spent_seconds: timeSpentSeconds,
       })
 
-      const result = response.data
+      // Handle both ApiResponse wrapper and plain object responses
+      const result = response?.data || response
+      
+      if (!result) {
+        console.error('Submit code response is undefined:', response)
+        throw new Error('Invalid response format: response is undefined')
+      }
+      
+      if (!result.public_results) {
+        console.error('Submit code response missing public_results:', result)
+        throw new Error('Invalid response format: missing public_results')
+      }
       
       const mappedResults: SubmissionTestcaseResult[] = (result.public_results || []).map((r: any) => ({
         visible: true,
@@ -2300,8 +2446,50 @@ export default function TestTakePage() {
     )
   }
 
+  const hasQuestions = questions.length > 0
+  const currentQuestion = hasQuestions ? questions[currentQuestionIndex] : undefined
+
+  // Create fallback test object if test data hasn't loaded yet (allows progressive rendering)
+  const testForRender = test || {
+    title: 'Test',
+    description: '',
+    timer_mode: 'GLOBAL' as const,
+    duration_minutes: 60,
+    question_ids: hasQuestions ? questions.map(q => q.id) : []
+  }
+
+  const currentCode = currentQuestion
+    ? (code[currentQuestion.id] ||
+      currentQuestion.starter_code[language[currentQuestion.id] || 'python'] ||
+      '')
+    : ''
+
+  const currentLang = currentQuestion
+    ? (language[currentQuestion.id] || currentQuestion.languages[0] || 'python')
+    : 'python'
+  
+  const availableLanguages = useMemo(() => {
+    if (!currentQuestion) return Object.keys(LANGUAGE_IDS) as string[]
+
+    const starter = currentQuestion.starter_code || {}
+    const starterLangs = Object.keys(starter).filter((lang) => {
+      const codeForLang = starter[lang]
+      return typeof codeForLang === 'string' && codeForLang.trim().length > 0
+    })
+
+    if (starterLangs.length > 0) {
+      return starterLangs as string[]
+    }
+
+    if (Array.isArray(currentQuestion.languages) && currentQuestion.languages.length > 0) {
+      return currentQuestion.languages as string[]
+    }
+
+    return Object.keys(LANGUAGE_IDS) as string[]
+  }, [currentQuestion])
+
   // If we have no questions yet, show loading screen
-  if (questions.length === 0) {
+  if (!hasQuestions || !currentQuestion) {
     return (
       <>
         <div className="min-h-screen flex items-center justify-center bg-slate-950">
@@ -2317,28 +2505,16 @@ export default function TestTakePage() {
             onRequestFullscreen={requestFullscreenLock}
             exitCount={fullscreenExitCount}
             message="You must be in fullscreen mode to continue the test."
-            warningText={fullscreenExitCount > 0 ? "Exiting fullscreen is recorded as a violation." : undefined}
+            warningText={
+              fullscreenExitCount > 0
+                ? "Exiting fullscreen is recorded as a violation."
+                : undefined
+            }
           />
         )}
       </>
     )
   }
-  
-  // Create fallback test object if test data hasn't loaded yet (allows progressive rendering)
-  const testForRender = test || {
-    title: 'Test',
-    description: '',
-    timer_mode: 'GLOBAL' as const,
-    duration_minutes: 60,
-    question_ids: questions.map(q => q.id)
-  }
-
-  const currentQuestion = questions[currentQuestionIndex]
-  const currentCode = code[currentQuestion.id] || currentQuestion.starter_code[language[currentQuestion.id] || 'python'] || ''
-  const currentLang = language[currentQuestion.id] || currentQuestion.languages[0] || 'python'
-  
-  const availableLanguages = Object.keys(LANGUAGE_IDS) as string[]
-
 
   if (isMobile) {
     return (

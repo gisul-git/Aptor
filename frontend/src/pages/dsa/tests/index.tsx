@@ -112,6 +112,20 @@ export default function TestsListPage() {
     }
   }, [router.query.refreshed, router.query.testId, refetchTests])
 
+  // Refetch if testId is in URL but test not found in current list
+  useEffect(() => {
+    const q = router.query.testId
+    const testId = typeof q === 'string' ? q : (Array.isArray(q) ? q[0] : undefined)
+    if (testId && tests.length > 0) {
+      const found = tests.find(t => String(t.id) === String(testId))
+      if (!found) {
+        // Test ID in URL but not in list - refetch to get latest data
+        console.log(`[Test List] Test ${testId} not found in current list, refetching...`)
+        refetchTests()
+      }
+    }
+  }, [router.query.testId, tests, refetchTests])
+
   const filteredTests = (() => {
     const q = router.query.testId
     const testId = typeof q === 'string' ? q : (Array.isArray(q) ? q[0] : undefined)
@@ -122,9 +136,12 @@ export default function TestsListPage() {
   const handlePublish = async (testId: string, currentStatus: boolean) => {
     try {
       const newStatus = !currentStatus
-      await apiClient.patch(`/api/v1/dsa/tests/${testId}/publish`, null, {
-        params: { is_published: newStatus }
+
+      // DSA publish endpoint expects JSON body: { is_published: boolean }
+      await apiClient.patch(`/api/v1/dsa/tests/${testId}/publish`, {
+        is_published: newStatus,
       })
+
       // React Query will automatically refetch and update the UI
       refetchTests()
       alert(`Test ${newStatus ? 'published' : 'unpublished'} successfully!`)

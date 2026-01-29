@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/router";
+import { getSession } from "next-auth/react";
 import IdentityVerification from "@/proctoring/components/IdentityVerification";
 import { getGateContext } from "@/lib/gateContext";
 import { useAssessmentFull } from "@/hooks/api/useAssessments";
@@ -360,6 +361,17 @@ export default function IdentityVerificationPage() {
     setIsStarting(true);
     
     try {
+      // Resolve backend access token (same logic as apiClient)
+      let backendToken: string | null = null;
+      try {
+        backendToken = sessionStorage.getItem("temp_access_token");
+      } catch (e) {
+        // ignore
+      }
+      if (!backendToken) {
+        const session = await getSession();
+        backendToken = (session as any)?.backendToken || null;
+      }
       const userId = sessionStorage.getItem("candidateUserId") || email; // Use email as fallback
       
       if (!userId || !id) {
@@ -430,7 +442,13 @@ export default function IdentityVerificationPage() {
         // CRITICAL: Always check test start time FIRST before attempting to start
         // This ensures the popup shows on this page itself
         try {
-          const testResponse = await fetch(`${apiBase}${testEndpoint}`);
+          const testResponse = await fetch(`${apiBase}${testEndpoint}`, {
+            method: "GET",
+            headers: {
+              "Content-Type": "application/json",
+              ...(backendToken ? { Authorization: `Bearer ${backendToken}` } : {}),
+            },
+          });
           if (testResponse.ok) {
             const testData = await testResponse.json();
             startTimeStr = testData.schedule?.startTime || testData.start_time || null;
@@ -588,6 +606,7 @@ export default function IdentityVerificationPage() {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
+            ...(backendToken ? { Authorization: `Bearer ${backendToken}` } : {}),
           },
         });
         

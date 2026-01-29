@@ -69,6 +69,7 @@ async function verifyToken(req, res, next) {
     '/api/v1/custom-mcq/candidate', 
     '/api/v1/dsa/candidate', 
     '/api/v1/aiml/candidate', 
+    '/api/v1/dsa/assessment',
     '/api/v1/assessments/start-session', 
     '/api/v1/assessment', 
   ];
@@ -91,15 +92,26 @@ async function verifyToken(req, res, next) {
     publicRoutes: publicRoutes,
   });
   
-  // Debug: Check specifically for DSA/AIML test routes
-  if (pathToCheck.includes('/dsa/tests/') || pathToCheck.includes('/aiml/tests/')) {
-    console.log('🔵 [API Gateway] DSA/AIML test route detected:', {
-      pathToCheck,
-      checkingAgainst: ['/api/v1/dsa/tests/', '/api/v1/aiml/tests/'],
-    });
+  // Candidate-specific public endpoints for DSA/AIML tests (no auth required)
+  // These are accessed by candidates via test links with just name/email verification
+  const candidatePublicPatterns = [
+    /^\/api\/v1\/dsa\/tests\/[^/]+\/verify-link$/,
+    /^\/api\/v1\/dsa\/tests\/[^/]+\/verify-candidate$/,
+    /^\/api\/v1\/dsa\/tests\/[^/]+\/start$/,
+    /^\/api\/v1\/dsa\/tests\/[^/]+\/public$/,
+    /^\/api\/v1\/aiml\/tests\/[^/]+\/verify-link$/,
+    /^\/api\/v1\/aiml\/tests\/[^/]+\/verify-candidate$/,
+    /^\/api\/v1\/aiml\/tests\/[^/]+\/start$/,
+    /^\/api\/v1\/aiml\/tests\/[^/]+\/public$/,
+  ];
+  
+  // Check if path matches candidate public patterns
+  const isCandidatePublicRoute = candidatePublicPatterns.some(pattern => pattern.test(pathToCheck));
+  if (isCandidatePublicRoute) {
+    console.log(`✅ [API Gateway] Route matched as public (candidate pattern): ${pathToCheck}`);
   }
   
-  const isPublicRoute = publicRoutes.some(route => {
+  const isPublicRoute = isCandidatePublicRoute || publicRoutes.some(route => {
     // Normalize route for comparison
     const normalizedRoute = route.replace(/\/$/, '') || '/';
     
