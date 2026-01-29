@@ -472,13 +472,13 @@ export default function AnalyticsPage() {
 
   const handleAddCandidate = async () => {
     if (!testId || typeof testId !== 'string') return
-
+    
     // Require an employee selection to ensure candidate belongs to this org
     if (!selectedEmployee) {
       setEmailError("Please select an employee from your organization.")
       return
     }
-
+    
     const candidateName = selectedEmployee.name?.trim()
     const candidateEmail = selectedEmployee.email?.trim()
     const candidateAaptorId = selectedEmployee.aaptorId
@@ -487,7 +487,7 @@ export default function AnalyticsPage() {
       setEmailError("Selected employee has no email configured.")
       return
     }
-
+    
     setEmailError(null)
     
     setAddingCandidate(true)
@@ -719,12 +719,12 @@ export default function AnalyticsPage() {
           }}
         >
           <div>
-            <h1 style={{ fontSize: "2rem", fontWeight: 700, marginBottom: "0.5rem" }}>
-              Test Analytics
-            </h1>
-            <p style={{ color: "#64748b", margin: 0 }}>
-              {testInfo?.title || 'DSA Test'} - View detailed analytics and AI feedback
-            </p>
+          <h1 style={{ fontSize: "2rem", fontWeight: 700, marginBottom: "0.5rem" }}>
+            Test Analytics
+          </h1>
+          <p style={{ color: "#64748b", margin: 0 }}>
+            {testInfo?.title || 'DSA Test'} - View detailed analytics and AI feedback
+          </p>
           </div>
 
           {/* Admin preview - Try This Test button */}
@@ -769,20 +769,20 @@ export default function AnalyticsPage() {
                 Test Access & Email Settings
               </h2>
               <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
-                <button
-                  type="button"
-                  className="btn-secondary"
-                  onClick={() => setShowEmailTemplateModal(true)}
-                  style={{ 
-                    padding: "0.5rem 1rem", 
-                    fontSize: "0.875rem",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "0.5rem"
-                  }}
-                >
-                  ✏️ Edit Email Template
-                </button>
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={() => setShowEmailTemplateModal(true)}
+                style={{ 
+                  padding: "0.5rem 1rem", 
+                  fontSize: "0.875rem",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "0.5rem"
+                }}
+              >
+                ✏️ Edit Email Template
+              </button>
               </div>
             </div>
             <div style={{ fontSize: "0.875rem", color: "#64748b", marginBottom: "1rem" }}>
@@ -1942,9 +1942,9 @@ export default function AnalyticsPage() {
                           setSelectedEmployee(emp)
                           setNewCandidateName(emp.name)
                           setNewCandidateEmail(emp.email)
-                          setEmailError(null)
-                        }}
-                        style={{
+                    setEmailError(null)
+                  }}
+                  style={{
                           padding: "0.5rem 0.75rem",
                           marginBottom: "0.25rem",
                           borderRadius: "0.375rem",
@@ -1976,11 +1976,11 @@ export default function AnalyticsPage() {
                 </div>
               )}
 
-              {emailError && (
-                <p style={{ color: "#ef4444", fontSize: "0.875rem", marginTop: "0.25rem" }}>
-                  {emailError}
-                </p>
-              )}
+                {emailError && (
+                  <p style={{ color: "#ef4444", fontSize: "0.875rem", marginTop: "0.25rem" }}>
+                    {emailError}
+                  </p>
+                )}
               <div style={{ display: "flex", gap: "0.5rem", justifyContent: "flex-end", marginTop: "1rem" }}>
                 <button
                   type="button"

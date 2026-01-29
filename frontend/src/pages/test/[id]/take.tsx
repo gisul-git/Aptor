@@ -1033,16 +1033,16 @@ export default function TestTakePage() {
       setToken('admin_preview_token')
     } else {
       // Normal mode - require token and userId
-      if (!safeTestId || !token || !userId) {
-        console.warn('[Test Load] Missing required params, cannot load test', {
-          testId: safeTestId,
-          hasToken: !!token,
-          userId,
-        })
-        if (!skipInitialCheck) {
-          setCheckingParams(false)
-        }
-        return
+    if (!safeTestId || !token || !userId) {
+      console.warn('[Test Load] Missing required params, cannot load test', {
+        testId: safeTestId,
+        hasToken: !!token,
+        userId,
+      })
+      if (!skipInitialCheck) {
+        setCheckingParams(false)
+      }
+      return
       }
     }
 
@@ -1074,61 +1074,61 @@ export default function TestTakePage() {
           // But keep backward compatibility if it is wrapped.
           submissionData = (subRes as any)?.data ?? subRes
 
-          if (submissionData.is_completed) {
-            router.push('/dashboard')
-            return
-          }
+        if (submissionData.is_completed) {
+          router.push('/dashboard')
+          return
+        }
 
-          // If submission exists and test has started (has started_at and no precheck_mode), clear precheck mode
-          if (submissionData.started_at && !submissionData.precheck_mode) {
-            setPrecheckMode(null)
-            setTestReadyToStart(false)
-          }
-        } catch (err: any) {
-          if (err?.response?.status === 404) {
-            // No submission yet -> start test
-            try {
+        // If submission exists and test has started (has started_at and no precheck_mode), clear precheck mode
+        if (submissionData.started_at && !submissionData.precheck_mode) {
+          setPrecheckMode(null)
+          setTestReadyToStart(false)
+        }
+      } catch (err: any) {
+        if (err?.response?.status === 404) {
+          // No submission yet -> start test
+          try {
               const startRes = await dsaService.startTest(safeTestId, nonNullUserId)
-              const data = startRes.data
+            const data = startRes.data
 
-              if (data.precheck_mode === true) {
-                setPrecheckMode({
-                  start_time: data.start_time,
-                  message:
-                    data.message ||
-                    'Test has not started yet. Please complete pre-checks and wait.',
-                })
+            if (data.precheck_mode === true) {
+              setPrecheckMode({
+                start_time: data.start_time,
+                message:
+                  data.message ||
+                  'Test has not started yet. Please complete pre-checks and wait.',
+              })
 
-                submissionData = {
-                  started_at: null,
-                  is_completed: false,
-                  precheck_mode: true,
-                }
-              } else {
-                submissionData = {
-                  started_at: data.started_at,
-                  is_completed: false,
-                  submissions: [],
-                }
-                // Clear precheck mode when test starts
-                setPrecheckMode(null)
-                setTestReadyToStart(false)
+              submissionData = {
+                started_at: null,
+                is_completed: false,
+                precheck_mode: true,
               }
-            } catch (startErr: any) {
-              const detail =
-                startErr?.response?.data?.detail ||
-                startErr?.response?.data?.message ||
-                'Failed to start test. Please try again.'
-              alert(detail)
-              router.push('/dashboard')
-              return
+            } else {
+              submissionData = {
+                started_at: data.started_at,
+                is_completed: false,
+                submissions: [],
+              }
+              // Clear precheck mode when test starts
+              setPrecheckMode(null)
+              setTestReadyToStart(false)
             }
-          } else {
-            console.error('[Test Load] Error fetching submission', err)
-            alert('Error loading test. Please try again.')
+          } catch (startErr: any) {
+            const detail =
+              startErr?.response?.data?.detail ||
+              startErr?.response?.data?.message ||
+              'Failed to start test. Please try again.'
+            alert(detail)
             router.push('/dashboard')
             return
           }
+        } else {
+          console.error('[Test Load] Error fetching submission', err)
+          alert('Error loading test. Please try again.')
+          router.push('/dashboard')
+          return
+        }
         }
       }
 
@@ -1254,7 +1254,7 @@ export default function TestTakePage() {
             }
             
             return {
-              id: `${q.id}-public-${idx}`,
+            id: `${q.id}-public-${idx}`,
               input: inputStr,
               expected: expectedStr,
             }
@@ -1964,17 +1964,17 @@ export default function TestTakePage() {
         }
         
         return {
-          visible: true,
-          input: r.input,
+        visible: true,
+        input: r.input,
           expected: expectedValue,
-          output: r.user_output || r.stdout || '',
-          stdout: r.user_output || r.stdout || '',
-          stderr: r.stderr || '',
-          compile_output: r.compile_output || '',
-          time: r.time,
-          memory: r.memory,
-          status: r.status,
-          passed: r.passed,
+        output: r.user_output || r.stdout || '',
+        stdout: r.user_output || r.stdout || '',
+        stderr: r.stderr || '',
+        compile_output: r.compile_output || '',
+        time: r.time,
+        memory: r.memory,
+        status: r.status,
+        passed: r.passed,
         }
       })
       
