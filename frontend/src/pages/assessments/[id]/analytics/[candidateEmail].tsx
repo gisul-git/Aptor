@@ -74,7 +74,7 @@ export default function CandidateAnalyticsPage() {
         let foundCandidateName = ''
         let foundCandidateData: Candidate | null = null
         
-        if (assessmentResponse.data?.success && assessmentResponse.data?.data) {
+        if (assessmentResponse.data.data?.success && assessmentResponse.data?.data) {
           setAssessment(assessmentResponse.data.data)
           
           // Find candidate in assessment - check both candidates array and also try to get from candidate results
@@ -129,7 +129,9 @@ export default function CandidateAnalyticsPage() {
           setLoadingAnalytics(true)
           try {
             const logsResponse = await axios.get(
-              `/api/assessments/get-answer-logs?assessmentId=${assessmentId}&candidateEmail=${encodeURIComponent(candidateEmail)}&candidateName=${encodeURIComponent(foundCandidateName)}`
+              `/api/assessments/get-answer-logs?assessmentId=${assessmentId}&candidateEmail=${encodeURIComponent(
+                candidateEmail,
+              )}&candidateName=${encodeURIComponent(foundCandidateName)}`,
             )
             if (logsResponse.data?.success && logsResponse.data?.data) {
               setAnswerLogs(logsResponse.data.data || [])

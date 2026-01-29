@@ -728,19 +728,41 @@ export const useAssessmentFull = (assessmentId: string | undefined, token: strin
   return useQuery({
     queryKey: [...QUERY_KEYS.assessment(assessmentId || ''), 'full', token] as const,
     queryFn: async () => {
+      console.log("[useAssessmentFull] 🔵 queryFn called:", {
+        assessmentId,
+        hasToken: !!token,
+        tokenPreview: token ? token.substring(0, 20) + '...' : 'no token',
+        timestamp: new Date().toISOString(),
+      });
+      
       if (!assessmentId || !token) {
+        console.error("[useAssessmentFull] ❌ Missing assessmentId or token:", { assessmentId, hasToken: !!token });
         throw new Error('Assessment ID and token are required');
       }
+      
+      console.log("[useAssessmentFull] 🔵 Calling assessmentService.getAssessmentFull");
       const response = await assessmentService.getAssessmentFull(assessmentId, token);
+      
+      console.log("[useAssessmentFull] ✅ getAssessmentFull response received:", {
+        hasResponse: !!response,
+        hasData: !!response?.data,
+        responseKeys: response ? Object.keys(response) : [],
+        dataKeys: response?.data ? Object.keys(response.data) : [],
+        responseType: typeof response,
+      });
+      
       // Handle different response structures
       if (response.data) {
+        console.log("[useAssessmentFull] ✅ Returning response.data");
         return response.data;
       }
       // Fallback for legacy response format
       const responseAny = response as any;
       if (responseAny.assessment) {
+        console.log("[useAssessmentFull] ✅ Returning responseAny.assessment (legacy format)");
         return responseAny.assessment;
       }
+      console.log("[useAssessmentFull] ⚠️ Returning response as-is (no data or assessment key)");
       return response;
     },
     enabled: !!assessmentId && !!token,

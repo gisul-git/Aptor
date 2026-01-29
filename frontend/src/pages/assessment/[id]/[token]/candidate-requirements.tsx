@@ -454,9 +454,16 @@ export default function CandidateRequirementsPage() {
 
     // AI: Fetch assessment info to get candidate requirements settings
     const fetchAssessment = async () => {
-      console.log("[AI DEBUG] Starting fetchAssessment for regular AI flow");
-      if (!id || !token) {
-        console.log("[AI DEBUG] Missing id or token, aborting");
+      const tokenStr = Array.isArray(token) ? token[0] : token;
+      console.log("[candidate-requirements] 🚀 fetchAssessment called:", {
+        id,
+        hasToken: !!tokenStr,
+        tokenPreview: tokenStr ? tokenStr.substring(0, 20) + '...' : 'no token',
+        timestamp: new Date().toISOString(),
+      });
+      
+      if (!id || !tokenStr) {
+        console.error("[candidate-requirements] ❌ Missing id or token:", { id, hasToken: !!tokenStr });
         setFetchingAssessment(false);
         return;
       }
@@ -464,13 +471,28 @@ export default function CandidateRequirementsPage() {
       try {
         setFetchingAssessment(true);
         setError(null);
+        
+        const apiUrl = `/api/assessment/get-assessment-full?assessmentId=${id}&token=${tokenStr}`;
+        console.log("[candidate-requirements] 🔵 Calling Next.js API route:", {
+          url: apiUrl,
+          fullUrl: `${window.location.origin}${apiUrl}`,
+        });
  
-        const response = await axios.get(
-          `/api/assessment/get-assessment-full?assessmentId=${id}&token=${token}`
-        );
- 
+        const response = await axios.get(apiUrl);
+
+        console.log("[candidate-requirements] ✅ API response received:", {
+          status: response.status,
+          statusText: response.statusText,
+          hasData: !!response.data,
+          dataType: typeof response.data,
+          dataKeys: response.data ? Object.keys(response.data) : [],
+        });
+
         const data = response.data;
-        console.log("get-assessment-full raw response:", data);
+        console.log("[candidate-requirements] 📋 Raw response data:", {
+          data,
+          dataString: JSON.stringify(data).substring(0, 500),
+        });
  
         // 🔑 Normalize all possible response formats
         const assessment =

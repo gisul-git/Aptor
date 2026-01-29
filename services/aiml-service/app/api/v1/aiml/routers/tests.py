@@ -14,6 +14,7 @@ from app.core.dependencies import get_current_user, require_editor
 from app.utils.email import get_email_service
 from app.config.settings import get_settings
 from ..utils.dataset_manager import get_dataset_manager
+from app.utils.responses import success_response
 
 logger = logging.getLogger("backend")
 router = APIRouter(tags=["aiml"])
@@ -938,6 +939,62 @@ async def get_test_public(
     return test_dict
 
 
+@router.get("/{test_id}/full", response_model=dict)
+async def get_test_full_for_candidate(
+    test_id: str,
+):
+    """
+    AIML-specific equivalent of get-assessment-full for candidate pipeline.
+    Returns full test metadata (schedule, candidateRequirements, proctoringSettings, etc.)
+    without requiring the generic AI assessment service.
+    Public endpoint (no auth required) - candidates access via token in URL.
+    """
+    db = get_database()
+    logger.info(f"[get_test_full_for_candidate] Request for test_id={test_id}")
+    
+    if not ObjectId.is_valid(test_id):
+        logger.warning(f"[get_test_full_for_candidate] Invalid test_id format: {test_id}")
+        raise HTTPException(status_code=400, detail="Invalid test ID")
+
+    test = await db.tests.find_one({"_id": ObjectId(test_id)})
+    if not test:
+        logger.warning(f"[get_test_full_for_candidate] Test not found: {test_id}")
+        raise HTTPException(status_code=404, detail="Test not found")
+
+    # Ensure this is an AIML test (or defaulted as such)
+    test_type = test.get("test_type", "aiml")
+    if test_type != "aiml":
+        logger.warning(f"[get_test_full_for_candidate] Test {test_id} is not AIML type (type={test_type})")
+        raise HTTPException(status_code=404, detail="Test not found")
+    
+    logger.info(f"[get_test_full_for_candidate] Found AIML test {test_id}, title={test.get('title', 'N/A')}")
+
+    # Shape mirrors the admin list/get response and includes schedule.candidateRequirements
+    test_dict = {
+        "id": str(test["_id"]),
+        "title": test.get("title", ""),
+        "description": test.get("description", ""),
+        "duration_minutes": test.get("duration_minutes", 0),
+        "start_time": test.get("start_time").isoformat() if test.get("start_time") else None,
+        "end_time": test.get("end_time").isoformat() if test.get("end_time") else None,
+        "timer_mode": test.get("timer_mode", "GLOBAL"),
+        "question_timings": test.get("question_timings"),
+        "examMode": test.get("examMode", "strict"),
+        "schedule": test.get("schedule") or {},
+        "is_active": test.get("is_active", False),
+        "is_published": test.get("is_published", False),
+        "question_ids": [str(qid) if isinstance(qid, ObjectId) else str(qid) for qid in test.get("question_ids", [])],
+        "test_token": test.get("test_token"),
+        "created_by": str(test.get("created_by")) if test.get("created_by") is not None else None,
+        "test_type": test_type,
+        "created_at": test.get("created_at").isoformat() if test.get("created_at") else None,
+        # Include proctoring settings so precheck/candidate-requirements can read them if needed
+        "proctoringSettings": test.get("proctoringSettings"),
+    }
+
+    # Return in the same envelope shape as /api/v1/candidate/get-assessment-full
+    return success_response("Assessment fetched successfully", test_dict)
+
 @router.get("/{test_id}/candidate")
 async def get_test_for_candidate(
     test_id: str,
@@ -1790,6 +1847,18 @@ async def add_candidate(
     IMPORTANT: Does NOT send invitation email. Emails are sent only from explicit "Send Email" actions.
     """
     db = get_database()
+
+    # Debug logging to trace candidate-add issues
+    try:
+        logger.info(
+            "[AIML][add_candidate] Incoming request - test_id=%s, name=%s, email=%s, db=%s.test_candidates",
+            test_id,
+            getattr(candidate, "name", None),
+            getattr(candidate, "email", None),
+            getattr(getattr(db, "name", None), "__str__", lambda: db.name)() if hasattr(db, "name") else "unknown",
+        )
+    except Exception as log_exc:
+        logger.error("[AIML][add_candidate] Failed to log incoming request details: %s", log_exc)
     if not ObjectId.is_valid(test_id):
         raise HTTPException(status_code=400, detail="Invalid test ID")
     
@@ -1805,7 +1874,19 @@ async def add_candidate(
         "test_id": test_id,
         "email": candidate.email
     })
+    logger.info(
+        "[AIML][add_candidate] Existing candidate lookup - test_id=%s, email=%s, found=%s",
+        test_id,
+        candidate.email,
+        bool(existing_candidate),
+    )
     if existing_candidate:
+        logger.warning(
+            "[AIML][add_candidate] Rejecting add-candidate: candidate already exists for test. test_id=%s, email=%s, candidate_id=%s",
+            test_id,
+            candidate.email,
+            str(existing_candidate.get("user_id")) if isinstance(existing_candidate, dict) else "unknown",
+        )
         raise HTTPException(status_code=400, detail="Candidate already added to this test")
     
     # Check if user already exists

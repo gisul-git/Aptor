@@ -103,6 +103,14 @@ export default async function handler(
           const { assessmentId, userId } = req.query;
           const assessmentIdStr = Array.isArray(assessmentId) ? assessmentId[0] : assessmentId;
           const userIdStr = Array.isArray(userId) ? userId[0] : userId;
+
+          // If either is missing, fail fast rather than calling backend with invalid URL
+          if (!assessmentIdStr || !userIdStr) {
+            return res.status(400).json({
+              success: false,
+              message: "Missing assessmentId or userId for proctor logs retry",
+            });
+          }
           
           // Validate required fields before encoding
           if (!assessmentIdStr || !userIdStr) {
@@ -113,7 +121,9 @@ export default async function handler(
           }
           
           const retryResponse = await axios.get(
-            `${BACKEND_URL}/api/v1/proctor/logs/${encodeURIComponent(assessmentIdStr)}/${encodeURIComponent(userIdStr)}`,
+            `${BACKEND_URL}/api/v1/proctor/logs/${encodeURIComponent(
+              String(assessmentIdStr),
+            )}/${encodeURIComponent(String(userIdStr))}`,
             {
               headers: {
                 "Content-Type": "application/json; charset=utf-8",

@@ -157,6 +157,14 @@ export default function CreateAIMLCompetencyPage() {
         timer_mode: timerMode,
       };
 
+      console.log("[AIML Create Test] Prepared payload before create:", {
+        ...payload,
+        questionIdsCount: payload.question_ids?.length,
+        examMode,
+        timerMode,
+        durationForSchedule,
+      });
+
       // For strict mode: don't send end_time (backend calculates it)
       // For flexible mode: include end_time
       if (examMode === "flexible") {
@@ -171,11 +179,22 @@ export default function CreateAIMLCompetencyPage() {
         payload.duration_minutes = calculateTotalDuration();
       }
 
+      console.log("[AIML Create Test] Final payload sent to backend:", {
+        payloadKeys: Object.keys(payload),
+        questionIdsCount: payload.question_ids?.length,
+        hasSchedule: !!payload.schedule,
+        schedule: payload.schedule,
+      });
+
       const response = await createTestMutation.mutateAsync(payload);
+      console.log("[AIML Create Test] Raw create response:", response);
       const responseData = (response as any).data || response;
+      console.log("[AIML Create Test] Normalized responseData:", responseData);
       const testData = responseData?.data || responseData;
+      console.log("[AIML Create Test] Extracted testData:", testData);
       
       const testId = testData?.id || testData?._id;
+      console.log("[AIML Create Test] Derived testId for redirect:", testId);
 
       // New tests should start unpublished; editor will publish from AIML Test Management.
       alert("Test created successfully!");

@@ -1,0 +1,85 @@
+name: Build and Deploy to Azure Container Apps
+
+on:
+  push:
+    branches:
+      - dev
+  pull_request:
+    types: [closed]
+    branches:
+      - dev
+  workflow_dispatch: # Allow manual triggering
+
+env:
+  AZURE_RESOURCE_GROUP: Aaptor
+  CONTAINER_APP_NAME: aptor-env
+  DOCKER_IMAGE_NAME: frontend
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    # Only run on push to dev, merged PRs, or manual dispatch
+    if: |
+      github.event_name == 'push' ||
+      (github.event_name == 'pull_request' && github.event.pull_request.merged == true) ||
+      github.event_name == 'workflow_dispatch'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: ./frontend
+        run: npm ci
+
+      - name: Run linter
+        working-directory: ./frontend
+        run: npm run lint
+        continue-on-error: true
+
+      - name: Build Next.js application
+        working-directory: ./frontend
+        run: npm run build
+        env:
+          NODE_ENV: production
+
+      - name: Login to Azure
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Login to Azure Container Registry
+        run: |
+          echo ${{ secrets.ACR_PASSWORD }} | docker login ${{ secrets.ACR_LOGIN_SERVER }} \
+            -u ${{ secrets.ACR_USERNAME }} --password-stdin
+
+      - name: Build Docker image
+        working-directory: ./frontend
+        run: |
+          docker build -t ${{ secrets.ACR_LOGIN_SERVER }}/${{ env.DOCKER_IMAGE_NAME }}:${{ github.sha }} .
+          docker build -t ${{ secrets.ACR_LOGIN_SERVER }}/${{ env.DOCKER_IMAGE_NAME }}:latest .
+
+      - name: Push Docker image to ACR
+        run: |
+          docker push ${{ secrets.ACR_LOGIN_SERVER }}/${{ env.DOCKER_IMAGE_NAME }}:${{ github.sha }}
+          docker push ${{ secrets.ACR_LOGIN_SERVER }}/${{ env.DOCKER_IMAGE_NAME }}:latest
+
+      - name: Deploy to Azure Container App
+        run: |
+          az containerapp update \
+            --name ${{ env.CONTAINER_APP_NAME }} \
+            --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+            --image ${{ secrets.ACR_LOGIN_SERVER }}/${{ env.DOCKER_IMAGE_NAME }}:${{ github.sha }}
+
+      - name: Verify deployment
+        run: |
+          echo "Deployment completed successfully!"
+          echo "Image: ${{ secrets.ACR_LOGIN_SERVER }}/${{ env.DOCKER_IMAGE_NAME }}:${{ github.sha }}"
+

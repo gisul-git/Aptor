@@ -233,7 +233,7 @@ export default function AnalyticsPage() {
         },
       })
 
-      if (response.data?.success && response.data?.data?.referenceImage) {
+      if (response.data.data?.success && response.data?.data?.referenceImage) {
         setReferencePhoto(response.data.data.referenceImage)
       } else {
         setReferencePhoto(null)

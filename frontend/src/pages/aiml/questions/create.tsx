@@ -351,7 +351,129 @@ export default function AIMLQuestionCreatePage() {
     }
   }
 
+  // Helper function to parse CSV file and convert to dataset format
+  const parseCSVToDataset = (file: File): Promise<{ schema: Array<{ name: string; type: string }>; rows: any[][] }> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = (e) => {
+        try {
+          const text = e.target?.result as string
+          console.log('🔵 [AIML Create] CSV file read, parsing...', {
+            fileSize: text.length,
+            firstChars: text.substring(0, 200),
+          })
+          
+          const lines = text.split('\n').filter(line => line.trim())
+          if (lines.length < 2) {
+            reject(new Error('CSV must have at least a header row and one data row'))
+            return
+          }
+          
+          // Robust CSV parser that handles quoted fields properly
+          const parseCsvLine = (line: string): string[] => {
+            const result: string[] = []
+            let current = ''
+            let inQuotes = false
+            
+            for (let i = 0; i < line.length; i++) {
+              const char = line[i]
+              const nextChar = i < line.length - 1 ? line[i + 1] : null
+              
+              if (char === '"') {
+                // Handle escaped quotes ("")
+                if (inQuotes && nextChar === '"') {
+                  current += '"'
+                  i++ // Skip next quote
+                } else {
+                  inQuotes = !inQuotes
+                }
+              } else if (char === ',' && !inQuotes) {
+                result.push(current.trim())
+                current = ''
+              } else {
+                current += char
+              }
+            }
+            // Add the last field
+            result.push(current.trim())
+            return result
+          }
+          
+          // Parse header
+          const header = parseCsvLine(lines[0]).map(h => h.replace(/^"|"$/g, '').trim())
+          console.log('🔵 [AIML Create] CSV header parsed:', {
+            headerCount: header.length,
+            headers: header,
+          })
+          
+          // Infer types from first data row
+          const firstDataRow = parseCsvLine(lines[1])
+          const schema = header.map((name, idx) => {
+            const value = firstDataRow[idx] || ''
+            let type = 'string' // default
+            
+            // Try to infer type
+            if (value !== '') {
+              // Check if it's a number
+              if (!isNaN(Number(value)) && value.trim() !== '') {
+                type = value.includes('.') ? 'float' : 'int'
+              } else if (value.toLowerCase() === 'true' || value.toLowerCase() === 'false') {
+                type = 'bool'
+              }
+            }
+            
+            return { name, type }
+          })
+          
+          console.log('🔵 [AIML Create] Schema inferred:', schema)
+          
+          // Parse all data rows
+          const rows: any[][] = []
+          for (let i = 1; i < lines.length; i++) {
+            const values = parseCsvLine(lines[i])
+            // Ensure row has same number of columns as header
+            const row = header.map((_, idx) => {
+              const val = values[idx] || ''
+              // Convert based on schema type
+              const colType = schema[idx]?.type || 'string'
+              if (colType === 'int' && val !== '') {
+                const num = parseInt(val)
+                return isNaN(num) ? val : num
+              } else if (colType === 'float' && val !== '') {
+                const num = parseFloat(val)
+                return isNaN(num) ? val : num
+              } else if (colType === 'bool' && val !== '') {
+                return val.toLowerCase() === 'true'
+              }
+              return val
+            })
+            rows.push(row)
+          }
+          
+          console.log('🟢 [AIML Create] CSV parsed successfully:', {
+            schemaCount: schema.length,
+            rowCount: rows.length,
+            firstRow: rows[0],
+          })
+          
+          resolve({ schema, rows })
+        } catch (error: any) {
+          console.error('🔴 [AIML Create] Error parsing CSV:', error)
+          reject(error)
+        }
+      }
+      
+      reader.onerror = () => {
+        reject(new Error('Failed to read file'))
+      }
+      
+      reader.readAsText(file)
+    })
+  }
+
   const handleCreate = async () => {
+    console.log('🔵 [AIML Create] handleCreate called')
+    
     if (!title.trim()) {
       alert('Title is required')
       return
@@ -361,6 +483,16 @@ export default function AIMLQuestionCreatePage() {
       alert('Description is required')
       return
     }
+
+    console.log('🔵 [AIML Create] Validation passed, preparing payload...', {
+      title,
+      hasDescription: !!description,
+      requiresDataset,
+      hasDatasetFile: !!datasetFile,
+      datasetFileName: datasetFile?.name,
+      datasetFileSize: datasetFile?.size,
+      manualDatasetFormat,
+    })
 
     setSaving(true)
     setError(null)
@@ -392,23 +524,84 @@ export default function AIMLQuestionCreatePage() {
       
       // Handle dataset file upload if provided
       if (requiresDataset && datasetFile) {
-        // For now, we'll handle dataset separately or convert it
-        // The backend will need to handle file uploads
-        // For manual creation, we can create dataset from file
-        const formData = new FormData()
-        formData.append('file', datasetFile)
-        // Note: This would need a separate endpoint to upload and parse dataset
-        // For now, we'll just set requires_dataset flag
+        console.log('🟢 [AIML Create] Dataset file detected, parsing CSV...', {
+          fileName: datasetFile.name,
+          fileSize: datasetFile.size,
+          fileType: datasetFile.type,
+        })
+        
+        try {
+          // Parse CSV file to dataset format
+          const dataset = await parseCSVToDataset(datasetFile)
+          console.log('🟢 [AIML Create] Dataset parsed successfully:', {
+            schemaCount: dataset.schema.length,
+            rowCount: dataset.rows.length,
+            schema: dataset.schema,
+          })
+          
+          // Add dataset to payload with format
+          payload.dataset = {
+            ...dataset,
+            format: manualDatasetFormat
+          }
+          
+          console.log('🟢 [AIML Create] Dataset added to payload:', {
+            hasDataset: !!payload.dataset,
+            schemaCount: payload.dataset.schema.length,
+            rowCount: payload.dataset.rows.length,
+            format: payload.dataset.format,
+          })
+        } catch (parseError: any) {
+          console.error('🔴 [AIML Create] Error parsing dataset file:', parseError)
+          alert(`Failed to parse dataset file: ${parseError.message}`)
+          setSaving(false)
+          return
+        }
+      } else {
+        console.log('🟡 [AIML Create] Dataset handling:', {
+          requiresDataset,
+          hasDatasetFile: !!datasetFile,
+          message: requiresDataset && !datasetFile 
+            ? 'WARNING: requires_dataset is true but no file uploaded!' 
+            : 'No dataset required or no file provided',
+        })
       }
+      
+      console.log('🔵 [AIML Create] Payload prepared:', {
+        ...payload,
+        tasksCount: payload.tasks.length,
+        hasAssessmentMetadata: !!payload.assessment_metadata,
+        selectedFormat: payload.assessment_metadata.selected_dataset_format,
+        hasDataset: !!payload.dataset,
+      })
+
+      console.log('🟢 [AIML Create] Sending payload to backend:', {
+        payloadKeys: Object.keys(payload),
+        hasDatasetInPayload: 'dataset' in payload,
+        requiresDataset: payload.requires_dataset,
+        datasetInfo: payload.dataset ? {
+          schemaCount: payload.dataset.schema?.length,
+          rowCount: payload.dataset.rows?.length,
+          format: payload.dataset.format,
+        } : null,
+      })
 
       await createQuestionMutation.mutateAsync(payload)
+      console.log('🟢 [AIML Create] Question created successfully!')
       alert('Question created successfully!')
       router.push('/aiml/questions')
     } catch (err: any) {
-      console.error(err)
+      console.error('🔴 [AIML Create] Error creating question:', {
+        error: err,
+        message: err?.message,
+        response: err?.response,
+        status: err?.response?.status,
+        data: err?.response?.data,
+      })
       setError(err.response?.data?.detail || 'Failed to create question')
     } finally {
       setSaving(false)
+      console.log('🔵 [AIML Create] handleCreate completed')
     }
   }
 
@@ -1157,7 +1350,22 @@ export default function AIMLQuestionCreatePage() {
                       <input
                         type="file"
                         accept=".csv,.json,.xlsx"
-                        onChange={(e) => setDatasetFile(e.target.files?.[0] || null)}
+                        onChange={(e) => {
+                          const file = e.target.files?.[0] || null
+                          console.log('🔵 [AIML Create] Dataset file selected:', {
+                            hasFile: !!file,
+                            fileName: file?.name,
+                            fileSize: file?.size,
+                            fileType: file?.type,
+                            lastModified: file?.lastModified,
+                          })
+                          setDatasetFile(file)
+                          if (file) {
+                            console.log('🟢 [AIML Create] Dataset file set successfully:', file.name)
+                          } else {
+                            console.log('🟡 [AIML Create] No file selected or file cleared')
+                          }
+                        }}
                   style={{
                     width: "100%",
                           padding: "0.875rem 1rem",

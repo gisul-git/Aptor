@@ -37,37 +37,43 @@ async def get_current_user_role(
     return x_role
 
 
-async def _fetch_user(db: AsyncIOMotorDatabase, user_id: str) -> Dict[str, Any]:
-    """Fetch user from database by ID."""
+async def _fetch_user(db: AsyncIOMotorDatabase, user_id: str) -> Optional[Dict[str, Any]]:
+    """Fetch user from database by ID. Returns None if not found."""
     try:
         oid = ObjectId(user_id)
-    except Exception as exc:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid user identifier"
-        ) from exc
+    except Exception:
+        return None
 
     user = await db.users.find_one({"_id": oid})
     if not user:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="User not found"
-        )
+        return None
     serialized = serialize_document(user)
-    if not serialized:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="User not found"
-        )
     return serialized
 
 
 async def get_current_user(
     user_id: str = Depends(get_current_user_id),
+    org_id: Optional[str] = Depends(get_current_user_org),
+    role: Optional[str] = Depends(get_current_user_role),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ) -> Dict[str, Any]:
-    """Get current user from database using gateway-injected user ID."""
-    return await _fetch_user(db, user_id)
+    """
+    Get current user from database using gateway-injected user ID.
+    Falls back to header-based user object if user not found in database.
+    """
+    # Try to fetch from database first
+    user = await _fetch_user(db, user_id)
+    if user:
+        return user
+    
+    # If user not found in database, return user object based on headers
+    # This allows the service to work even if users aren't synced to AIML database
+    return {
+        "id": user_id,
+        "_id": user_id,  # Include _id for compatibility
+        "organization": org_id,
+        "role": role,
+    }
 
 
 async def get_current_user_context(
