@@ -89,19 +89,6 @@ export const assessmentService = {
       ...raw,
       data: normalizedAssessment,
     };
-    const response = await apiClient.get<ApiResponse<{ assessment: Assessment }>>(`/api/v1/assessments/${id}/questions`);
-    // Extract assessment from nested structure
-    // response.data is ApiResponse<{ assessment: Assessment }>
-    // response.data.data is { assessment: Assessment }
-    if (response.data?.data && 'assessment' in response.data.data) {
-      return {
-        success: response.data.success,
-        message: response.data.message,
-        data: (response.data.data as { assessment: Assessment }).assessment,
-      };
-    }
-    // Fallback: if structure is different, try to return as-is
-    throw new Error('Unexpected response structure from getById');
   },
 
   /**
