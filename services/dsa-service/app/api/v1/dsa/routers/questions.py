@@ -515,6 +515,9 @@ async def get_question(
         question_dict["hints"] = question.get("hints")
     if question.get("evaluation"):
         question_dict["evaluation"] = question.get("evaluation")
+    # Optional manual expected result preview for SQL questions
+    if "sql_expected_output" in question:
+        question_dict["sql_expected_output"] = question.get("sql_expected_output")
     if question.get("constraints"):
         question_dict["constraints"] = question.get("constraints")
     if question.get("examples"):

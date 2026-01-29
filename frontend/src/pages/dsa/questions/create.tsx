@@ -41,6 +41,163 @@ const getStdinPlaceholder = () => {
   return 'Raw stdin only (no variable names, no JSON arrays like [1,2,3])'
 }
 
+
+const parseTableSchema = (text: string): { tableName?: string; columns: Record<string, string> } => {
+  const lines = text.split('\n').filter(line => line.trim())
+  if (lines.length === 0) {
+    throw new Error('No data found')
+  }
+
+  // Try to detect format
+  const firstLine = lines[0].trim()
+  const isMarkdown = firstLine.includes('|')
+  const isTabSeparated = firstLine.includes('\t')
+  
+  let headerLine = 0
+  let dataStart = 1
+
+  // Skip markdown separator line if present
+  if (isMarkdown && lines.length > 1 && lines[1].trim().match(/^\|[\s\-:]+\|/)) {
+    headerLine = 0
+    dataStart = 2
+  }
+
+  // Parse header
+  const header = isMarkdown 
+    ? firstLine.split('|').map(h => h.trim()).filter(h => h)
+    : isTabSeparated
+    ? firstLine.split('\t').map(h => h.trim())
+    : firstLine.split(/\s{2,}|\t/).map(h => h.trim())
+
+  // Find Column and Type columns (case-insensitive)
+  const columnIdx = header.findIndex(h => h.toLowerCase().includes('column') || h.toLowerCase() === 'col')
+  const typeIdx = header.findIndex(h => h.toLowerCase().includes('type') || h.toLowerCase() === 'datatype')
+
+  if (columnIdx === -1 || typeIdx === -1) {
+    // If no header found, assume first two columns are Column and Type
+    if (header.length < 2) {
+      throw new Error('Need at least 2 columns: Column and Type')
+    }
+  }
+
+  const actualColumnIdx = columnIdx >= 0 ? columnIdx : 0
+  const actualTypeIdx = typeIdx >= 0 ? typeIdx : 1
+
+  // Parse data rows
+  const columns: Record<string, string> = {}
+  for (let i = dataStart; i < lines.length; i++) {
+    const line = lines[i].trim()
+    if (!line) continue
+
+    // Skip markdown separator lines
+    if (isMarkdown && line.match(/^\|[\s\-:]+\|/)) continue
+
+    const parts = isMarkdown
+      ? line.split('|').map(p => p.trim()).filter(p => p)
+      : isTabSeparated
+      ? line.split('\t').map(p => p.trim())
+      : line.split(/\s{2,}|\t/).map(p => p.trim())
+
+    if (parts.length < 2) continue
+
+    // Remove any trailing ✕ or X characters
+    const colName = parts[actualColumnIdx].replace(/[\s✕×xX]+$/, '').trim()
+    const colType = parts[actualTypeIdx].replace(/[\s✕×xX]+$/, '').trim()
+
+    if (colName && colType) {
+      // Normalize common type names
+      const normalizedType = colType.toUpperCase()
+        .replace(/^INT$/, 'INTEGER')
+        .replace(/^VARCHAR$/, 'VARCHAR(255)')
+        .replace(/^TEXT$/, 'TEXT')
+        .replace(/^BOOL$/, 'BOOLEAN')
+      
+      columns[colName] = normalizedType
+    }
+  }
+
+  return { columns }
+}
+
+// Parse sample data from pasted text
+// Supports formats like:
+// - Tab-separated: "employee_id\temployee_name\n1\tJohn"
+// - Space-separated: "employee_id employee_name\n1 John"
+// - Markdown table: "| employee_id | employee_name |\n|-------------|---------------|\n| 1 | John |"
+const parseSampleData = (text: string, columns: string[]): any[][] => {
+  const lines = text.split('\n').filter(line => line.trim())
+  if (lines.length === 0) {
+    throw new Error('No data found')
+  }
+
+  const firstLine = lines[0].trim()
+  const isMarkdown = firstLine.includes('|')
+  const isTabSeparated = firstLine.includes('\t')
+
+  let headerLine = 0
+  let dataStart = 1
+
+  // Skip markdown separator line if present
+  if (isMarkdown && lines.length > 1 && lines[1].trim().match(/^\|[\s\-:]+\|/)) {
+    headerLine = 0
+    dataStart = 2
+  }
+
+  // Parse header to get column order
+  const header = isMarkdown
+    ? firstLine.split('|').map(h => h.trim()).filter(h => h)
+    : isTabSeparated
+    ? firstLine.split('\t').map(h => h.trim())
+    : firstLine.split(/\s{2,}|\t/).map(h => h.trim())
+
+  // Map header columns to expected columns
+  const columnMap: number[] = []
+  columns.forEach(col => {
+    const idx = header.findIndex(h => h.toLowerCase() === col.toLowerCase())
+    columnMap.push(idx >= 0 ? idx : -1)
+  })
+
+  // Parse data rows
+  const rows: any[][] = []
+  for (let i = dataStart; i < lines.length; i++) {
+    const line = lines[i].trim()
+    if (!line) continue
+
+    // Skip markdown separator lines
+    if (isMarkdown && line.match(/^\|[\s\-:]+\|/)) continue
+
+    const parts = isMarkdown
+      ? line.split('|').map(p => p.trim()).filter(p => p)
+      : isTabSeparated
+      ? line.split('\t').map(p => p.trim())
+      : line.split(/\s{2,}|\t/).map(p => p.trim())
+
+    if (parts.length === 0) continue
+
+    // Build row in the correct column order
+    const row: any[] = []
+    columnMap.forEach(mapIdx => {
+      if (mapIdx >= 0 && mapIdx < parts.length) {
+        const value = parts[mapIdx].trim()
+        // Try to parse as number if it looks like a number
+        if (value && !isNaN(Number(value)) && value !== '') {
+          row.push(Number(value))
+        } else if (value === '' || value.toLowerCase() === 'null') {
+          row.push(null)
+        } else {
+          row.push(value)
+        }
+      } else {
+        row.push('')
+      }
+    })
+
+    rows.push(row)
+  }
+
+  return rows
+}
+
 // Helper function to safely convert input to string for display
 const formatTestcaseInput = (input: any): string => {
   if (input === null || input === undefined) {
@@ -234,6 +391,7 @@ export default function QuestionCreatePage() {
 
   const [saving, setSaving] = useState(false)
   const [generating, setGenerating] = useState(false)
+  const [loadingSeededSchema, setLoadingSeededSchema] = useState(false)
   const [error, setError] = useState<string | null>(null)
   
   // Question Type selector
@@ -283,6 +441,8 @@ export default function QuestionCreatePage() {
   const [sampleData, setSampleData] = useState<Record<string, any[][]>>({})
   const [starterQuery, setStarterQuery] = useState('-- Write your SQL query here\n\nSELECT ')
   const [referenceQuery, setReferenceQuery] = useState('')  // Correct SQL answer for evaluation
+  // Optional manual expected result snapshot for SQL questions
+  const [sqlExpectedOutput, setSqlExpectedOutput] = useState('')
   const [hints, setHints] = useState<string[]>([''])
   const [orderSensitive, setOrderSensitive] = useState(false)
 
@@ -494,6 +654,54 @@ export default function QuestionCreatePage() {
     }
   }
 
+  // Fetch seeded database schema from SQL execution engine
+  const handleLoadSeededSchema = async () => {
+    setLoadingSeededSchema(true)
+    setError(null)
+
+    try {
+      const response = await dsaApi.get('/admin/seeded-schema')
+      const data = response.data
+
+      if (data.schemas && Object.keys(data.schemas).length > 0) {
+        // Set schemas
+        setSchemas(data.schemas)
+
+        // Set sample data (convert from list-of-lists format if needed)
+        const normalizedSampleData: Record<string, any[][]> = {}
+        for (const [tableName, rows] of Object.entries(data.sample_data || {})) {
+          // Ensure rows are in list-of-lists format
+          if (Array.isArray(rows)) {
+            normalizedSampleData[tableName] = rows.map(row => 
+              Array.isArray(row) ? row : Object.values(row)
+            )
+          } else {
+            normalizedSampleData[tableName] = []
+          }
+        }
+        setSampleData(normalizedSampleData)
+
+        alert(`✅ Successfully loaded ${Object.keys(data.schemas).length} table(s) from seeded database!`)
+      } else {
+        alert('⚠️ No tables found in seeded database')
+      }
+    } catch (err: any) {
+      console.error('Error loading seeded schema:', err)
+      let errorMessage = 'Failed to load seeded database schema.'
+      if (err.response?.data?.detail) {
+        errorMessage = err.response.data.detail
+      } else if (err.message) {
+        errorMessage = `${errorMessage} Error: ${err.message}`
+      } else if (err.code === 'ERR_NETWORK') {
+        errorMessage = 'Network error. Make sure the SQL execution engine is running on port 3000.'
+      }
+      setError(errorMessage)
+      alert(`❌ ${errorMessage}`)
+    } finally {
+      setLoadingSeededSchema(false)
+    }
+  }
+
   const handleCreate = async () => {
     if (!title.trim()) {
       setError('Title is required')
@@ -543,6 +751,8 @@ export default function QuestionCreatePage() {
           constraints: constraints.filter((c) => c.trim()),
           starter_query: starterQuery,
           reference_query: referenceQuery.trim() || null,  // Correct SQL for evaluation
+          // Optional manual expected result snapshot (admin-entered)
+          sql_expected_output: sqlExpectedOutput.trim() || null,
           hints: hints.filter((h) => h.trim()),
           evaluation: {
             engine: 'postgres',
@@ -1042,32 +1252,110 @@ export default function QuestionCreatePage() {
                           </span>
                         )}
             </div>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => {
-                          const tableName = prompt('Enter table name:')
-                          if (tableName && tableName.trim()) {
-                            setSchemas({
-                              ...schemas,
-                              [tableName.trim()]: { columns: { id: 'INTEGER' } }
-                            })
-                            setSampleData({
-                              ...sampleData,
-                              [tableName.trim()]: []
-                            })
-                          }
-                        }}
-                      >
-                        + Add Table
-                      </Button>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={handleLoadSeededSchema}
+                          disabled={loadingSeededSchema}
+                          className="bg-green-600/20 hover:bg-green-600/30 border-green-500/50 text-green-400"
+                        >
+                          {loadingSeededSchema ? (
+                            <>
+                              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                              Loading...
+                            </>
+                          ) : (
+                            <>
+                              <Database className="w-4 h-4 mr-2" />
+                              Use Existing DB
+                            </>
+                          )}
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            const tableName = prompt('Enter table name:')
+                            if (tableName && tableName.trim()) {
+                              setSchemas({
+                                ...schemas,
+                                [tableName.trim()]: { columns: { id: 'INTEGER' } }
+                              })
+                              setSampleData({
+                                ...sampleData,
+                                [tableName.trim()]: []
+                              })
+                            }
+                          }}
+                        >
+                          + Add Table
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            const tableName = prompt('Enter table name:')
+                            if (!tableName || !tableName.trim()) {
+                              return
+                            }
+                            const pasteText = prompt('Paste table schema (format: Column\tType, one per line, or markdown table):')
+                            if (pasteText && pasteText.trim()) {
+                              try {
+                                const parsed = parseTableSchema(pasteText.trim())
+                                if (parsed.columns && Object.keys(parsed.columns).length > 0) {
+                                  setSchemas({
+                                    ...schemas,
+                                    [tableName.trim()]: { columns: parsed.columns }
+                                  })
+                                  // Initialize empty sample data for this table
+                                  if (!sampleData[tableName.trim()]) {
+                                    setSampleData({
+                                      ...sampleData,
+                                      [tableName.trim()]: []
+                                    })
+                                  }
+                                  alert(`Successfully parsed table "${tableName.trim()}" with ${Object.keys(parsed.columns).length} columns`)
+                                } else {
+                                  alert('Failed to parse table schema. Please check the format.')
+                                }
+                              } catch (e) {
+                                alert(`Error parsing schema: ${e}`)
+                              }
+                            }
+                          }}
+                        >
+                          📋 Paste Schema
+                        </Button>
+                      </div>
                     </CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-4">
                     {Object.keys(schemas).length === 0 ? (
-                      <p className="text-sm text-muted-foreground italic">
-                        No schemas yet. Use AI to generate or add tables manually.
-                      </p>
+                      <div className="text-center py-8 space-y-3">
+                        <p className="text-sm text-muted-foreground italic">
+                          No schemas yet. Use the options above to load from seeded database, generate with AI, or add tables manually.
+                        </p>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={handleLoadSeededSchema}
+                          disabled={loadingSeededSchema}
+                          className="bg-green-600/20 hover:bg-green-600/30 border-green-500/50 text-green-400"
+                        >
+                          {loadingSeededSchema ? (
+                            <>
+                              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                              Loading Seeded Database...
+                            </>
+                          ) : (
+                            <>
+                              <Database className="w-4 h-4 mr-2" />
+                              Load from Seeded Database
+                            </>
+                          )}
+                        </Button>
+                      </div>
                     ) : (
                       Object.entries(schemas).map(([tableName, schema]) => (
                         <div key={tableName} className="border border-slate-700 rounded-lg p-4 space-y-3">
@@ -1190,21 +1478,49 @@ export default function QuestionCreatePage() {
                                 <span className="font-mono font-medium text-purple-400">{tableName}</span>
                                 <span className="text-xs text-muted-foreground">({rows.length} rows)</span>
                               </div>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="text-purple-400 hover:text-purple-300 h-7 px-2 text-xs"
-                                onClick={() => {
-                                  // Add a new row with empty/default values
-                                  const newRow = columns.map(() => '')
-                                  setSampleData({
-                                    ...sampleData,
-                                    [tableName]: [...rows, newRow]
-                                  })
-                                }}
-                              >
-                                + Add Row
-                              </Button>
+                              <div className="flex items-center gap-2">
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="text-purple-400 hover:text-purple-300 h-7 px-2 text-xs"
+                                  onClick={() => {
+                                    // Add a new row with empty/default values
+                                    const newRow = columns.map(() => '')
+                                    setSampleData({
+                                      ...sampleData,
+                                      [tableName]: [...rows, newRow]
+                                    })
+                                  }}
+                                >
+                                  + Add Row
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="text-purple-400 hover:text-purple-300 h-7 px-2 text-xs"
+                                  onClick={() => {
+                                    const pasteText = prompt('Paste sample data (format: tab-separated with header row, or markdown table):')
+                                    if (pasteText && pasteText.trim()) {
+                                      try {
+                                        const parsedRows = parseSampleData(pasteText.trim(), columns)
+                                        if (parsedRows.length > 0) {
+                                          setSampleData({
+                                            ...sampleData,
+                                            [tableName]: [...rows, ...parsedRows]
+                                          })
+                                          alert(`Successfully parsed ${parsedRows.length} row(s)`)
+                                        } else {
+                                          alert('No data rows found. Please check the format.')
+                                        }
+                                      } catch (e) {
+                                        alert(`Error parsing sample data: ${e}`)
+                                      }
+                                    }
+                                  }}
+                                >
+                                  📋 Paste Data
+                                </Button>
+                              </div>
                             </div>
                             <div className="bg-slate-900 rounded p-3 overflow-x-auto">
                               <table className="w-full text-sm">
@@ -1298,8 +1614,23 @@ export default function QuestionCreatePage() {
                       className="font-mono text-sm"
                       placeholder="SELECT column1, column2 FROM table_name WHERE condition ORDER BY column1;"
                     />
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium">Expected Output Preview (optional)</label>
+                      <p className="text-xs text-muted-foreground">
+                        Paste the expected result set for this query. This is stored with the question and shown to candidates
+                        in the SQL editor as a reference for what the correct result set should look like.
+                      </p>
+                      <Textarea
+                        value={sqlExpectedOutput}
+                        onChange={(e) => setSqlExpectedOutput(e.target.value)}
+                        rows={4}
+                        className="font-mono text-sm"
+                        placeholder="e.g., markdown table or plain-text rows representing the expected result set"
+                      />
+                    </div>
                     <p className="text-xs text-yellow-600 dark:text-yellow-400">
-                      ⚠️ This query is never shown to candidates. It is only used to generate the expected output for comparison.
+                      ⚠️ The SQL query itself is never shown to candidates, but the expected output preview may be displayed
+                      alongside the schema and sample data in the editor.
                     </p>
                   </CardContent>
                 </Card>

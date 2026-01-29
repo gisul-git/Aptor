@@ -169,20 +169,8 @@ class EmployeeService:
         result = await employee_collection.insert_one(employee_data)
         employee_data["_id"] = result.inserted_id
         
-        # Get organization name
-        org = await self.org_collection.find_one({"orgId": organization_id})
-        org_name = org.get("name", "Your Organization") if org else "Your Organization"
-        
-        # Send welcome email
-        setup_link = f"{self.settings.next_public_app_url}/auth/set-password?aaptorId={aaptor_id}"
-        await send_welcome_email(
-            email=email,
-            name=name,
-            aaptor_id=aaptor_id,
-            temp_password=temp_password,
-            organization_name=org_name,
-            setup_link=setup_link,
-        )
+        # Note: Email is NOT sent automatically when employee is created
+        # Admin must click "Send Email" button to send the welcome email with Aaptor ID and password
         
         return EmployeeModel.to_dict(employee_data)
     
@@ -385,7 +373,7 @@ class EmployeeService:
         return {"success": True}
     
     async def resend_welcome_email(self, aaptor_id: str) -> dict:
-        """Resend welcome email."""
+        """Send welcome email with Aaptor ID and password."""
         result = await self.find_employee_organization(aaptor_id)
         if not result:
             raise HTTPException(
@@ -396,33 +384,33 @@ class EmployeeService:
         org_id, employee = result
         employee_collection = self.get_employee_collection(org_id)
         
-        if employee.get("isPasswordSet"):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Employee has already set their password"
-            )
-        
-        # Generate new temporary password
-        temp_password = self.generate_random_password()
-        temp_password_expiry = datetime.utcnow() + timedelta(hours=24)
-        
-        # Update employee with new temp password
-        await employee_collection.update_one(
-            {"aaptorId": aaptor_id},
-            {
-                "$set": {
-                    "tempPassword": temp_password,
-                    "tempPasswordExpiry": temp_password_expiry,
-                    "updatedAt": datetime.utcnow(),
+        # If password is already set, we still send email but with a message to use login
+        # If password is not set, generate new temporary password
+        if not employee.get("isPasswordSet"):
+            # Generate new temporary password
+            temp_password = self.generate_random_password()
+            temp_password_expiry = datetime.utcnow() + timedelta(hours=24)
+            
+            # Update employee with new temp password
+            await employee_collection.update_one(
+                {"aaptorId": aaptor_id},
+                {
+                    "$set": {
+                        "tempPassword": temp_password,
+                        "tempPasswordExpiry": temp_password_expiry,
+                        "updatedAt": datetime.utcnow(),
+                    }
                 }
-            }
-        )
+            )
+        else:
+            # Password already set - use existing temp password if available, or generate new one for reference
+            temp_password = employee.get("tempPassword") or self.generate_random_password()
         
         # Get organization name
         org = await self.org_collection.find_one({"orgId": employee["organizationId"]})
         org_name = org.get("name", "Your Organization") if org else "Your Organization"
         
-        # Resend email
+        # Send email with Aaptor ID and password information
         setup_link = f"{self.settings.next_public_app_url}/auth/set-password?aaptorId={aaptor_id}"
         await send_welcome_email(
             email=employee["email"],

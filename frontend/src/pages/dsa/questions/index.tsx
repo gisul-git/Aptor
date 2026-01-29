@@ -17,6 +17,7 @@ interface Question {
   is_published: boolean
   created_at?: string
   updated_at?: string
+  question_type?: string  // 'SQL' for SQL questions, undefined/null for coding questions
 }
 
 export default function QuestionsListPage() {
@@ -202,7 +203,11 @@ export default function QuestionsListPage() {
                       >
                         {question.is_published ? 'Unpublish' : 'Publish'}
                       </Button>
-                      <Link href={`/dsa/questions/${question.id}/edit`}>
+                      <Link href={
+                        question.question_type === 'SQL' 
+                          ? `/dsa/questions/${question.id}/edit-sql`
+                          : `/dsa/questions/${question.id}/edit`
+                      }>
                         <Button variant="outline" size="sm">
                           <Edit className="h-4 w-4 mr-2" />
                           Edit
