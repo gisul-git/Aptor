@@ -39,14 +39,42 @@ export default function IdentityVerificationPage() {
   // React Query hook to fetch assessment data
   const assessmentId = typeof id === 'string' ? id : undefined;
   const assessmentToken = typeof token === 'string' ? token : undefined;
-  const { data: assessmentData } = useAssessmentFull(assessmentId, assessmentToken);
+  
+  console.log("[identity-verify] 🔵 useAssessmentFull hook called:", {
+    assessmentId,
+    hasToken: !!assessmentToken,
+    idType: typeof id,
+    tokenType: typeof token,
+    timestamp: new Date().toISOString(),
+  });
+  
+  const { data: assessmentData, isLoading, error: assessmentError } = useAssessmentFull(assessmentId, assessmentToken);
+
+  console.log("[identity-verify] 📊 useAssessmentFull hook state:", {
+    hasData: !!assessmentData,
+    isLoading,
+    hasError: !!assessmentError,
+    errorMessage: assessmentError?.message,
+    dataKeys: assessmentData ? Object.keys(assessmentData) : [],
+  });
 
   // Extract proctoring settings from assessment data
   useEffect(() => {
+    console.log("[identity-verify] 🔵 useEffect for assessmentData:", {
+      hasAssessmentData: !!assessmentData,
+      assessmentDataType: typeof assessmentData,
+    });
+    
     if (assessmentData) {
       const assessment = assessmentData;
       const proctoringSettings = assessment?.schedule?.proctoringSettings || assessment?.proctoringSettings;
       const aiEnabled = proctoringSettings?.aiProctoringEnabled === true;
+      
+      console.log("[identity-verify] ✅ Extracted proctoring settings:", {
+        hasProctoringSettings: !!proctoringSettings,
+        aiEnabled,
+        proctoringSettings,
+      });
       const faceMismatch = proctoringSettings?.faceMismatchEnabled === true;
       
       setAiProctoringEnabled(aiEnabled);

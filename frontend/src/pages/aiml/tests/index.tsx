@@ -56,6 +56,12 @@ export default function AIMLTestsListPage() {
 
   // Update local state from React Query data
   useEffect(() => {
+    console.log('[AIML Tests] testsData from useAIMLTests:', {
+      hasData: !!testsData,
+      length: Array.isArray(testsData) ? testsData.length : 'not-array',
+      raw: testsData,
+    })
+
     if (testsData) {
       // Map API data to local Test interface with proper defaults
       const mappedTests: Test[] = testsData.map((t: any) => ({
@@ -73,7 +79,15 @@ export default function AIMLTestsListPage() {
         pausedAt: t.pausedAt || null,
         schedule: t.schedule || null,
       }))
+
+      console.log('[AIML Tests] mappedTests for state:', {
+        count: mappedTests.length,
+        ids: mappedTests.map(t => t.id),
+      })
+
       setTests(mappedTests)
+    } else {
+      console.log('[AIML Tests] No testsData available yet')
     }
   }, [testsData])
 
@@ -103,8 +117,21 @@ export default function AIMLTestsListPage() {
   const filteredTests = (() => {
     const q = router.query.testId
     const testId = typeof q === 'string' ? q : (Array.isArray(q) ? q[0] : undefined)
+
+    console.log('[AIML Tests] Filtering tests:', {
+      queryTestId: q,
+      normalizedTestId: testId,
+      totalTests: tests.length,
+      testIds: tests.map(t => t.id),
+    })
+
     if (!testId) return tests
-    return tests.filter(t => String(t.id) === String(testId))
+    const result = tests.filter(t => String(t.id) === String(testId))
+    console.log('[AIML Tests] filteredTests result:', {
+      count: result.length,
+      ids: result.map(t => t.id),
+    })
+    return result
   })()
 
   const handlePublish = async (testId: string, currentStatus: boolean) => {
@@ -132,7 +159,7 @@ export default function AIMLTestsListPage() {
 
     setAddingCandidate(true)
     try {
-      const response =       await addCandidateMutation.mutateAsync({
+      const response = await addCandidateMutation.mutateAsync({
         testId,
         data: {
           name: candidateName.trim(),
@@ -143,8 +170,10 @@ export default function AIMLTestsListPage() {
       setGeneratedLink({
         testId: testId,
         link: '',
-        name: response.data.name,
-        email: response.data.email
+        // aimlService.addCandidate already returns the data object from the backend
+        // so response is the plain object: { candidate_id, test_link, name, email }
+        name: response.name,
+        email: response.email,
       })
     } catch (error: any) {
       alert(error.response?.data?.detail || 'Failed to add candidate')

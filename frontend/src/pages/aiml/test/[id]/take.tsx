@@ -186,6 +186,15 @@ export default function AIMLTestTakePage() {
     return success;
   }, [requestFullscreenLock, setFullscreenLocked]);
 
+  // Check if this is admin preview mode (compute BEFORE using in hooks)
+  const isAdminPreview = useMemo(() => {
+    if (typeof window !== 'undefined') {
+      const urlParams = new URLSearchParams(window.location.search)
+      return urlParams.get('preview') === 'true' && urlParams.get('admin') === 'true'
+    }
+    return false
+  }, [])
+
   // Universal proctoring hook - handles AI proctoring, tab switch, fullscreen
   // DISABLE PROCTORING IN ADMIN PREVIEW MODE
   const {
@@ -208,15 +217,6 @@ export default function AIMLTestTakePage() {
       setFullscreenLocked(false);
     }
   }, [submitted, setFullscreenLocked]);
-
-  // Check if this is admin preview mode
-  const isAdminPreview = useMemo(() => {
-    if (typeof window !== 'undefined') {
-      const urlParams = new URLSearchParams(window.location.search)
-      return urlParams.get('preview') === 'true' && urlParams.get('admin') === 'true'
-    }
-    return false
-  }, [])
 
   useEffect(() => {
     if (!testId) return
@@ -603,6 +603,7 @@ export default function AIMLTestTakePage() {
     if (!testId) return
     try {
       setLoading(true)
+      console.log('[AIML Take] fetchTestData called:', { testId, urlUserId, hasToken: !!urlToken, isAdminPreview })
       const { aimlService } = await import('@/services/aiml')
       
       // In admin preview mode, use a dummy token/userId or skip token validation
@@ -616,9 +617,29 @@ export default function AIMLTestTakePage() {
         effectiveUserId = 'admin_preview'
       }
       
+      console.log('[AIML Take] Calling aimlService.getTestForCandidate:', { testId, effectiveUserId, hasToken: !!effectiveToken })
       const response = await aimlService.getTestForCandidate(String(testId), effectiveUserId, effectiveToken)
       
-      const testData = response.data
+      console.log('[AIML Take] getTestForCandidate response:', {
+        hasResponse: !!response,
+        responseType: typeof response,
+        responseKeys: response ? Object.keys(response) : [],
+        hasQuestions: !!(response?.questions),
+        questionsCount: response?.questions?.length || 0,
+      })
+      
+      // AIML service's getTestForCandidate returns the test data directly (already extracted from response.data)
+      const testData = response
+      if (!testData) {
+        console.error('[AIML Take] ❌ testData is undefined!', { response })
+        throw new Error('Failed to load test data: response is undefined')
+      }
+      
+      if (!testData.questions) {
+        console.error('[AIML Take] ❌ testData.questions is undefined!', { testData })
+        throw new Error('Failed to load test questions: testData.questions is undefined')
+      }
+      
       setTest(testData)
       setQuestions(testData.questions || [])
 

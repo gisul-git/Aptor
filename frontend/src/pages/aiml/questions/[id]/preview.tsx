@@ -42,8 +42,16 @@ export default function AIMLQuestionPreviewPage() {
 
   // Update local state from React Query data
   useEffect(() => {
+    console.log('🔵 [AIML Preview] questionData received:', questionData)
     if (questionData) {
       const q = questionData as any
+      console.log('🔵 [AIML Preview] Question data structure:', {
+        hasDataset: !!q.dataset,
+        dataset: q.dataset,
+        requires_dataset: q.requires_dataset,
+        assessment_metadata: q.assessment_metadata,
+        selected_dataset_format: q.assessment_metadata?.selected_dataset_format,
+      })
       setQuestion({
         id: q.id || '',
         title: q.title || '',
@@ -57,6 +65,9 @@ export default function AIMLQuestionPreviewPage() {
         requires_dataset: q.requires_dataset,
         ai_generated: q.ai_generated,
       })
+      console.log('🟢 [AIML Preview] Question state set with dataset:', !!q.dataset)
+    } else {
+      console.log('🟡 [AIML Preview] No questionData available')
     }
   }, [questionData])
 
@@ -68,36 +79,98 @@ export default function AIMLQuestionPreviewPage() {
   }, [queryError])
 
   useEffect(() => {
-    if (question?.dataset && question?.assessment_metadata?.selected_dataset_format) {
-      setSelectedFormat(question.assessment_metadata.selected_dataset_format)
-      fetchDatasetPreview(question.assessment_metadata.selected_dataset_format)
+    console.log('🔵 [AIML Preview] useEffect triggered for dataset fetch:', {
+      hasQuestion: !!question,
+      hasDataset: !!question?.dataset,
+      dataset: question?.dataset,
+      hasAssessmentMetadata: !!question?.assessment_metadata,
+      selectedFormat: question?.assessment_metadata?.selected_dataset_format,
+      questionId: id,
+    })
+    
+    if (question?.dataset) {
+      // Use selected_dataset_format if available, otherwise default to 'csv'
+      const format = question?.assessment_metadata?.selected_dataset_format || 'csv'
+      console.log('🟢 [AIML Preview] Dataset exists, fetching preview with format:', format)
+      setSelectedFormat(format)
+      fetchDatasetPreview(format)
+    } else {
+      console.log('🟡 [AIML Preview] Dataset not found in question object:', {
+        questionKeys: question ? Object.keys(question) : 'question is null',
+        requiresDataset: question?.requires_dataset,
+      })
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [question])
 
   const fetchDatasetPreview = async (format: string) => {
-    if (!question?.dataset || !id) return
+    console.log('🔵 [AIML Preview] fetchDatasetPreview called:', {
+      format,
+      hasQuestion: !!question,
+      hasDataset: !!question?.dataset,
+      questionId: id,
+    })
+    
+    if (!question?.dataset || !id) {
+      console.log('🟡 [AIML Preview] Cannot fetch dataset preview - missing data:', {
+        hasQuestion: !!question,
+        hasDataset: !!question?.dataset,
+        hasId: !!id,
+      })
+      return
+    }
     
     try {
+      console.log('🟢 [AIML Preview] Starting dataset preview fetch...', {
+        url: `/api/v1/aiml/questions/${id}/dataset-preview`,
+        format,
+      })
       setLoadingDataset(true)
-      const response = await apiClient.get(`/api/v1/aiml/questions/${id}/dataset`, {
+      // Use dataset-preview endpoint for authenticated preview (not the candidate endpoint)
+      const response = await apiClient.get(`/api/v1/aiml/questions/${id}/dataset-preview`, {
         params: { format },
       })
+      console.log('🟢 [AIML Preview] Dataset preview response received:', {
+        status: response.status,
+        hasData: !!response.data,
+        dataKeys: response.data ? Object.keys(response.data) : [],
+        isBinary: response.data?.is_binary,
+        hasContent: !!response.data?.content,
+        contentLength: response.data?.content?.length,
+        mimeType: response.data?.mime_type,
+      })
+      
       // Store the full response to check if it's binary
       const isBinary = response.data.is_binary || false
       const content = response.data.content
       const mimeType = response.data.mime_type || 'text/plain'
+      
+      console.log('🟢 [AIML Preview] Setting dataset preview state:', {
+        hasContent: !!content,
+        contentLength: content?.length,
+        isBinary,
+        mimeType,
+      })
       
       // Store both content and metadata
       setDatasetPreview(content)
       setSelectedFormat(format)
       setDatasetMeta({ isBinary, mimeType })
     } catch (error: any) {
-      console.error('Error fetching dataset preview:', error)
+      console.error('🔴 [AIML Preview] Error fetching dataset preview:', {
+        error: error,
+        message: error?.message,
+        response: error?.response,
+        status: error?.response?.status,
+        statusText: error?.response?.statusText,
+        data: error?.response?.data,
+        url: error?.config?.url,
+      })
       setError(error.response?.data?.detail || 'Failed to fetch dataset preview')
       setDatasetMeta(null)
     } finally {
       setLoadingDataset(false)
+      console.log('🔵 [AIML Preview] Dataset preview fetch completed')
     }
   }
 
