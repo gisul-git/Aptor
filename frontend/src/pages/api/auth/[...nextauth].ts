@@ -126,8 +126,21 @@ export const authOptions: NextAuthOptions = {
             return null; // Return null for invalid response so NextAuth returns 401
           }
 
+          // CRITICAL: Ensure user object has an 'id' field (required by NextAuth)
+          // Handle both '_id' (MongoDB) and 'id' (serialized) formats
+          const userId = userObj.id ?? userObj._id ?? userObj.userId;
+          
+          if (!userId) {
+            console.error("🔴 [Credentials] User object missing 'id' field. Cannot create session:", {
+              userObj,
+              responseData: respData,
+              parsedData: data,
+            });
+            return null; // Return null if no user ID - NextAuth requires this
+          }
+
           const backendUser: BackendUser = {
-            id: userObj.id,
+            id: String(userId), // Ensure id is always a string
             name: userObj.name,
             email: userObj.email,
             role: userObj.role,
@@ -135,7 +148,7 @@ export const authOptions: NextAuthOptions = {
             phone: userObj.phone || undefined,
             country: userObj.country || undefined,
             token: token,
-            refreshToken: data?.refreshToken ?? respData?.refreshToken, // Store refresh token
+            refreshToken: data?.refreshToken ?? respData?.refreshToken ?? data?.refresh_token ?? respData?.refresh_token, // Store refresh token
           } as BackendUser;
 
           // Debug the final user object returned by authorize
