@@ -41,7 +41,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   try {
-  
+    // First, try DSA-specific /full endpoint.
     try {
       const dsaUrl = `/api/v1/dsa/tests/${assessmentId}/full`;
       const fullDsaUrl = `${API_GATEWAY_URL}${dsaUrl}`;
