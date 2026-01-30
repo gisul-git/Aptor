@@ -110,7 +110,7 @@ export default function AnalyticsPage() {
   const [addingCandidate, setAddingCandidate] = useState(false)
   const [testInfo, setTestInfo] = useState<any>(null)
   const [employeeSearch, setEmployeeSearch] = useState("")
-  const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null) // Keep for backward compatibility
+  const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null) 
   const [selectedEmployees, setSelectedEmployees] = useState<Employee[]>([]) // Multi-select support
 
   // Org-admin employees list, filtered by search (scoped by org on backend)
