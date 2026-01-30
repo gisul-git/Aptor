@@ -146,7 +146,7 @@ export default function AnalyticsPage() {
   const [emailTemplate, setEmailTemplate] = useState<{
     logoUrl?: string;
     companyName?: string;
-    message?: string;
+    message: string;
     footer?: string;
     sentBy?: string;
   }>({

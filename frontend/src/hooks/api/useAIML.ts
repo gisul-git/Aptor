@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { aimlService, type AIMLTest, type AIMLQuestion, type CreateAIMLTestDto, type CreateAIMLQuestionDto, type ExecuteNotebookDto } from '@/services/aiml';
+import type { ApiResponse } from '@/services/api/types';
 
 const QUERY_KEYS = {
   tests: ['aiml', 'tests'] as const,
@@ -46,20 +47,15 @@ export const useAIMLTest = (testId: string | undefined) => {
       // Ensure we always return a value (not undefined)
       // Handle both wrapped and unwrapped responses
       if (response && typeof response === 'object') {
-        // If response has a 'data' property (ApiResponse format), use it
-        if ('data' in response && response.data !== undefined) {
-          return response.data as AIMLTest;
+        // Check if it's an ApiResponse with data property
+        const apiResponse = response as ApiResponse<AIMLTest>;
+        if ('data' in apiResponse && apiResponse.data !== undefined) {
+          return apiResponse.data;
         }
-        // Check if response has ApiResponse structure but data might be the test itself
-        if ('success' in response || 'message' in response) {
-          // It's an ApiResponse, but data might be undefined or the test
-          const apiResponse = response as { data?: AIMLTest; success?: boolean };
-          return apiResponse.data || null;
-        }
-        // Otherwise, response itself is the data (direct AIMLTest)
-        // Check if it has required AIMLTest properties
-        if ('id' in response && 'title' in response && 'questions' in response) {
-          return response as AIMLTest;
+        // Check if response itself is an AIMLTest (has required properties)
+        const testData = response as unknown as AIMLTest;
+        if ('id' in testData && 'title' in testData && 'questions' in testData) {
+          return testData;
         }
       }
       // Fallback to null if response is invalid
