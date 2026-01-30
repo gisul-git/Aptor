@@ -843,7 +843,7 @@ Return ONLY the JSON object. No markdown. No explanations."""
             # Re-raise validation errors
             raise
         except Exception as e:
-            # Check for authentication errors specifically
+
             error_str = str(e)
             if "401" in error_str or "invalid_api_key" in error_str.lower() or "authentication" in error_str.lower():
                 raise ValueError(

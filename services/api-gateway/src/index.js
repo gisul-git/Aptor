@@ -99,10 +99,15 @@ async function verifyToken(req, res, next) {
     /^\/api\/v1\/dsa\/tests\/[^/]+\/verify-candidate$/,
     /^\/api\/v1\/dsa\/tests\/[^/]+\/start$/,
     /^\/api\/v1\/dsa\/tests\/[^/]+\/public$/,
+    /^\/api\/v1\/dsa\/tests\/[^/]+\/submission$/,
+    /^\/api\/v1\/dsa\/tests\/[^/]+\/question\/[^/]+$/,
+    /^\/api\/v1\/dsa\/tests\/[^/]+\/final-submit$/,
+    /^\/api\/v1\/dsa\/tests\/[^/]+\/full$/,
     /^\/api\/v1\/aiml\/tests\/[^/]+\/verify-link$/,
     /^\/api\/v1\/aiml\/tests\/[^/]+\/verify-candidate$/,
     /^\/api\/v1\/aiml\/tests\/[^/]+\/start$/,
     /^\/api\/v1\/aiml\/tests\/[^/]+\/public$/,
+    /^\/api\/v1\/aiml\/tests\/[^/]+\/full$/,
   ];
   
   // Check if path matches candidate public patterns

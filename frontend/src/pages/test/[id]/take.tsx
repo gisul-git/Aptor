@@ -2361,87 +2361,139 @@ export default function TestTakePage() {
           actualOutputText = `(unexpected output type: ${typeof submitResult.actualOutput})`
         }
         
-        // Also save submission to backend for tracking
+        // Submit to backend for AI evaluation and tracking
+        let backendResponse: any = null
         try {
-          await dsaService.submitSQL({
+          const backendResult = await dsaService.submitSQL({
             question_id: currentQuestion.id,
             sql_query: sqlQuery,
             started_at: startedAt,
             submitted_at: submittedAt,
             time_spent_seconds: timeSpentSeconds,
           })
-        } catch (backendError) {
+          backendResponse = backendResult.data || backendResult
+          console.log('[SQL Submit] Backend response:', backendResponse)
+        } catch (backendError: any) {
           console.warn('Failed to save submission to backend:', backendError)
-          // Continue even if backend save fails
+          // Continue with SQL engine result if backend fails
         }
         
-        if (submitResult.passed) {
+        // CRITICAL: ALWAYS use backend response for strict comparison
+        // Backend does exact output matching - its result is AUTHORITATIVE
+        // Ignore SQL engine's passed status - backend comparison is what matters
+        if (!backendResponse) {
+          console.error('[SQL Submit] Backend response missing - cannot determine pass/fail accurately')
+          // If backend fails, we cannot trust the SQL engine's result
+          // Default to failed to be safe
           setOutput(prev => ({
             ...prev,
             [currentQuestion.id]: {
-              stdout: `✅ Query passed!\n\n📊 Your Output:\n${actualOutputText}\n\n${submitResult.reason ? `ℹ️ Note: ${submitResult.reason}` : ''}`,
+              stderr: 'Error: Could not verify submission. Please try again.',
+              status: 'error'
+            }
+          }))
+          setSubmitting(false)
+          return
+        }
+        
+        const finalResult = backendResponse
+        
+        // IMPORTANT: Backend's passed status is based on strict output comparison
+        // If backend says passed=false, then test case FAILED regardless of SQL engine result
+        console.log('[SQL Submit] Backend strict comparison result:', {
+          passed: finalResult.passed,
+          status: finalResult.status,
+          message: finalResult.message,
+          user_output_length: finalResult.user_output?.length,
+          expected_output_length: finalResult.expected_output?.length
+        })
+        
+        // Update output with test case information (NO SCORE DISPLAY - score only in admin analytics)
+        const testCaseInfo = finalResult.public_summary 
+          ? `\n\n Test Cases: ${finalResult.public_summary.passed}/${finalResult.public_summary.total} passed`
+          : ''
+        
+        if (finalResult.passed) {
+          setOutput(prev => ({
+            ...prev,
+            [currentQuestion.id]: {
+              stdout: ` Query passed!${testCaseInfo}\n\n📊 Your Output:\n${actualOutputText}\n\n${submitResult.reason ? `ℹ️ Note: ${submitResult.reason}` : ''}`,
               status: 'accepted'
             }
           }))
           setQuestionStatus({ ...questionStatus, [currentQuestion.id]: 'solved' })
         } else {
           // Query failed or didn't match expected output
-          let outputMessage = `❌ Query did not pass\n\n📊 Your Output:\n${actualOutputText}`
+          let outputMessage = ` Query did not pass${testCaseInfo}\n\n📊 Your Output:\n${actualOutputText}`
           
-          // Add debug info about actual output structure
-          if (submitResult.actualOutput !== null && submitResult.actualOutput !== undefined) {
-            if (Array.isArray(submitResult.actualOutput)) {
-              outputMessage += `\n\n🔍 Debug Info:\n- Actual output is an array with ${submitResult.actualOutput.length} row(s)`
-              if (submitResult.actualOutput.length > 0) {
-                outputMessage += `\n- First row keys: ${Object.keys(submitResult.actualOutput[0]).join(', ')}`
-                outputMessage += `\n- First row sample: ${JSON.stringify(submitResult.actualOutput[0])}`
-              }
-            } else {
-              outputMessage += `\n\n🔍 Debug Info:\n- Actual output type: ${typeof submitResult.actualOutput}`
-              outputMessage += `\n- Actual output value: ${JSON.stringify(submitResult.actualOutput)}`
-            }
-          } else {
-            outputMessage += `\n\n🔍 Debug Info:\n- Actual output is null/undefined`
-          }
-          
-          if (submitResult.error) {
-            // Provide more helpful error messages
-            let errorMsg = submitResult.error
-            if (submitResult.error.includes('incomplete input')) {
-              errorMsg = `Incomplete SQL query. Please ensure your query is complete and properly terminated.\n\nCommon issues:\n- Missing FROM clause in SELECT statement\n- Unclosed parentheses or quotes\n- Incomplete WHERE clause\n- Missing semicolon (if using multiple statements)\n\nError details: ${submitResult.error}`
-            } else if (submitResult.error.includes('syntax error')) {
-              errorMsg = `SQL syntax error: ${submitResult.error}\n\nPlease check your query syntax.`
-            } else if (submitResult.error.includes('no such table')) {
-              errorMsg = `Table not found: ${submitResult.error}\n\nPlease check the table name and ensure it exists in the schema.`
-            } else if (submitResult.error.includes('no such column')) {
-              errorMsg = `Column not found: ${submitResult.error}\n\nPlease check the column name and ensure it exists in the table.`
+          if (finalResult.error || submitResult.error) {
+            const errorMsg = finalResult.error || submitResult.error
+            let formattedError = errorMsg
+            if (errorMsg.includes('incomplete input')) {
+              formattedError = `Incomplete SQL query. Please ensure your query is complete and properly terminated.\n\nCommon issues:\n- Missing FROM clause in SELECT statement\n- Unclosed parentheses or quotes\n- Incomplete WHERE clause\n- Missing semicolon (if using multiple statements)\n\nError details: ${errorMsg}`
+            } else if (errorMsg.includes('syntax error')) {
+              formattedError = `SQL syntax error: ${errorMsg}\n\nPlease check your query syntax.`
+            } else if (errorMsg.includes('no such table')) {
+              formattedError = `Table not found: ${errorMsg}\n\nPlease check the table name and ensure it exists in the schema.`
+            } else if (errorMsg.includes('no such column')) {
+              formattedError = `Column not found: ${errorMsg}\n\nPlease check the column name and ensure it exists in the table.`
             }
             
-            outputMessage = `❌ Execution Error: ${errorMsg}\n\n📊 Your Output:\n${actualOutputText}`
+            outputMessage = ` Execution Error: ${formattedError}\n\n📊 Your Output:\n${actualOutputText}`
           } else if (submitResult.reason) {
-            outputMessage += `\n\nℹ️ Reason: ${submitResult.reason}`
+            outputMessage += `\n\n Reason: ${submitResult.reason}`
           }
           
           setOutput(prev => ({
             ...prev,
             [currentQuestion.id]: {
               stdout: outputMessage,
-              status: submitResult.error ? 'error' : 'wrong_answer'
+              status: finalResult.status || (submitResult.error ? 'error' : 'wrong_answer')
             }
           }))
           setQuestionStatus({ ...questionStatus, [currentQuestion.id]: 'attempted' })
         }
+        
+        // Set public results for test case display
+        if (finalResult.public_results && finalResult.public_results.length > 0) {
+          const mappedResults: SubmissionTestcaseResult[] = finalResult.public_results.map((r: any) => ({
+            visible: true,
+            input: r.input || '',
+            expected: r.expected_output || '',
+            output: r.user_output || actualOutputText,
+            stdout: r.user_output || actualOutputText,
+            stderr: r.stderr || '',
+            compile_output: r.compile_output || '',
+            time: r.time,
+            memory: r.memory,
+            status: r.status,
+            passed: r.passed,
+          }))
+          setPublicResults(prev => ({ ...prev, [currentQuestion.id]: mappedResults }))
+        }
 
-        // Add to submission history
+        // Add to submission history with AI score and test case results
         const historyEntry: SubmissionHistoryEntry = {
           id: `sql-${currentQuestion.id}-${Date.now()}`,
-          status: submitResult.passed ? 'accepted' : (submitResult.error ? 'error' : 'wrong_answer'),
-          passed: submitResult.passed ? 1 : 0,
-          total: 1,
-          score: submitResult.passed ? 100 : 0,
-          max_score: 100,
+          status: finalResult.status || (finalResult.passed ? 'accepted' : (submitResult.error ? 'error' : 'wrong_answer')),
+          passed: finalResult.public_summary?.passed || (finalResult.passed ? 1 : 0),
+          total: finalResult.public_summary?.total || 1,
+          score: finalResult.score !== undefined ? finalResult.score : (finalResult.passed ? 100 : 0),
+          max_score: finalResult.max_score !== undefined ? finalResult.max_score : 100,
           created_at: new Date().toISOString(),
-          results: [],
+          results: finalResult.public_results ? finalResult.public_results.map((r: any) => ({
+            visible: true,
+            input: r.input || '',
+            expected: r.expected_output || '',
+            output: r.user_output || actualOutputText,
+            stdout: r.user_output || actualOutputText,
+            stderr: r.stderr || '',
+            compile_output: r.compile_output || '',
+            time: r.time,
+            memory: r.memory,
+            status: r.status,
+            passed: r.passed,
+          })) : [],
         }
         
         setSubmissionHistory((prev) => {
@@ -2480,7 +2532,7 @@ export default function TestTakePage() {
         setOutput(prev => ({
           ...prev,
           [currentQuestion.id]: {
-            stderr: `❌ Error: ${errorMessage}`,
+            stderr: ` Error: ${errorMessage}`,
             status: 'error'
           }
         }))

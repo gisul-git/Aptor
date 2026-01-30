@@ -16,6 +16,7 @@ SQL Support:
 - submit-sql: Compare results with reference query
 """
 import logging
+import re
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -1284,25 +1285,130 @@ async def execute_sql_with_judge0(sql_script: str) -> Dict[str, Any]:
         }
 
 
+def parse_sql_table_output(output: str) -> Tuple[List[str], List[List[str]]]:
+    """
+    Parse SQL table output into headers and data rows.
+    Handles pipe-separated, tab-separated, or space-aligned formats.
+    
+    Returns: (headers, rows) where headers is list of column names, rows is list of row data
+    """
+    if not output or not output.strip():
+        return [], []
+    
+    lines = [line.strip() for line in output.strip().split('\n') if line.strip()]
+    if not lines:
+        return [], []
+    
+    # Filter out separator lines (like "--- | ---" or "---")
+    data_lines = [line for line in lines if not re.match(r'^[\s|\-:]+$', line)]
+    if not data_lines:
+        return [], []
+    
+    # Detect separator type from first line
+    first_line = data_lines[0]
+    has_pipes = '|' in first_line
+    has_tabs = '\t' in first_line
+    
+    # Parse headers (first line) - be strict about parsing
+    if has_pipes:
+        # Pipe-separated: split by | and filter empty strings
+        headers = [col.strip() for col in first_line.split('|') if col.strip()]
+    elif has_tabs:
+        # Tab-separated: split by tab
+        headers = [col.strip() for col in first_line.split('\t') if col.strip()]
+    else:
+        # Space-aligned: split by 2+ spaces
+        headers = [col.strip() for col in re.split(r'\s{2,}', first_line) if col.strip()]
+    
+    if not headers:
+        return [], []
+    
+    # Parse data rows (remaining lines) - use same separator as headers
+    rows = []
+    for line in data_lines[1:]:
+        if has_pipes:
+            row = [col.strip() for col in line.split('|') if col.strip()]
+        elif has_tabs:
+            row = [col.strip() for col in line.split('\t') if col.strip()]
+        else:
+            row = [col.strip() for col in re.split(r'\s{2,}', line) if col.strip()]
+        
+        # Only add rows with same number of columns as headers
+        # This ensures data integrity
+        if len(row) == len(headers):
+            rows.append(row)
+        else:
+            # Log mismatch for debugging
+            logger.debug(f"Row column count mismatch: expected {len(headers)}, got {len(row)}. Row: {row}")
+    
+    return headers, rows
+
+
 def compare_sql_results(user_output: str, expected_output: str, order_sensitive: bool = False) -> bool:
     """
-    Compare SQL query results.
+    Compare SQL query results with STRICT matching.
     
-    If order_sensitive is False, compares results as sets of rows.
-    If order_sensitive is True, compares results as ordered lists.
+    Test case only passes if outputs match EXACTLY (same columns, same data values).
+    If order_sensitive is False, compares data rows as sets (order doesn't matter).
+    If order_sensitive is True, compares data rows in order (exact match required).
+    
+    Returns False if outputs don't match exactly.
     """
     if not user_output or not expected_output:
         return user_output.strip() == expected_output.strip()
     
-    # Parse output into rows
-    user_rows = [line.strip() for line in user_output.strip().split('\n') if line.strip()]
-    expected_rows = [line.strip() for line in expected_output.strip().split('\n') if line.strip()]
+    # Parse both outputs into structured data
+    user_headers, user_rows = parse_sql_table_output(user_output)
+    expected_headers, expected_rows = parse_sql_table_output(expected_output)
     
-    if order_sensitive:
-        return user_rows == expected_rows
+    # CRITICAL: Compare headers first - must match exactly (column names and order)
+    # If headers don't match, test case FAILS immediately
+    if user_headers != expected_headers:
+        logger.warning(
+            f"Header mismatch detected:\n"
+            f"  User headers ({len(user_headers)}): {user_headers}\n"
+            f"  Expected headers ({len(expected_headers)}): {expected_headers}\n"
+            f"  Missing in user: {set(expected_headers) - set(user_headers)}\n"
+            f"  Extra in user: {set(user_headers) - set(expected_headers)}"
+        )
+        return False
+    
+    # Compare number of rows
+    if len(user_rows) != len(expected_rows):
+        logger.warning(
+            f"Row count mismatch: user has {len(user_rows)} rows, expected {len(expected_rows)} rows"
+        )
+        return False
+    
+    # Compare data rows
+    if not order_sensitive:
+        # Compare as sets (order doesn't matter, but data must match exactly)
+        # Convert rows to tuples for set comparison
+        user_row_set = {tuple(row) for row in user_rows}
+        expected_row_set = {tuple(row) for row in expected_rows}
+        
+        if user_row_set != expected_row_set:
+            logger.warning(
+                f"Row data mismatch:\n"
+                f"  User rows: {user_row_set}\n"
+                f"  Expected rows: {expected_row_set}\n"
+                f"  Missing rows: {expected_row_set - user_row_set}\n"
+                f"  Extra rows: {user_row_set - expected_row_set}"
+            )
+            return False
     else:
-        # Compare as sets (order doesn't matter)
-        return sorted(user_rows) == sorted(expected_rows)
+        # Order-sensitive: rows must match in exact order
+        for i, (user_row, expected_row) in enumerate(zip(user_rows, expected_rows)):
+            if user_row != expected_row:
+                logger.warning(
+                    f"Row {i} mismatch:\n"
+                    f"  User row: {user_row}\n"
+                    f"  Expected row: {expected_row}"
+                )
+                return False
+    
+    logger.info("SQL output comparison passed: headers and all data rows match")
+    return True
 
 
 @router.post("/assessment/run-sql")
@@ -1477,12 +1583,25 @@ async def submit_sql(
             )
         
         expected_output = ref_result.get("stdout", "").strip()
+        # STRICT matching: test case only passes if outputs match exactly
+        # This is the authoritative comparison - ignore SQL engine's result
         passed = compare_sql_results(user_output, expected_output, order_sensitive)
+        
+        # Log comparison result for debugging
+        if not passed:
+            logger.warning(
+                f"SQL output mismatch for question {request.question_id}. "
+                f"User output:\n{user_output[:500]}\n\nExpected output:\n{expected_output[:500]}"
+            )
+        else:
+            logger.info(f"SQL output match confirmed for question {request.question_id}")
         
     else:
         # No reference query - just check if query executed successfully
+        # But this should rarely happen - SQL questions should have reference queries
         passed = user_result["success"]
         expected_output = None
+        logger.warning(f"SQL question {request.question_id} has no reference query for comparison")
     
     # AI Evaluation
     ai_evaluation = None
@@ -1527,6 +1646,20 @@ async def submit_sql(
         status = "wrong_answer"
         message = "Query output does not match expected results"
     
+    # Create test case result structure for consistency with coding questions
+    test_case_result = {
+        "id": "sql_test_1",
+        "test_number": 1,
+        "input": "",  # SQL doesn't have input test cases
+        "expected_output": expected_output if expected_output else "",
+        "user_output": user_output,
+        "status": status,
+        "status_id": 3 if passed else 4,  # 3 = accepted, 4 = wrong answer
+        "time": user_result.get("time"),
+        "memory": user_result.get("memory"),
+        "passed": passed,
+    }
+    
     response = {
         "question_id": request.question_id,
         "status": status,
@@ -1539,6 +1672,13 @@ async def submit_sql(
         "score": ai_score,  # Use AI score instead of binary
         "max_score": ai_max_marks,  # Use AI max marks
         "ai_evaluation": ai_evaluation,  # Include full AI evaluation
+        # Add test case results for frontend display
+        "test_case_result": test_case_result,
+        "public_results": [test_case_result],  # Single test case for SQL
+        "public_summary": {
+            "total": 1,
+            "passed": 1 if passed else 0
+        },
     }
     
     # Save submission if user_id provided
