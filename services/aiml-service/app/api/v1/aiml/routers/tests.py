@@ -512,6 +512,195 @@ async def update_test(
     }
 
 
+@router.get("/get-reference-photo")
+async def get_reference_photo(
+    assessmentId: str = Query(..., description="Assessment ID (test ID)"),
+    candidateEmail: str = Query(..., description="Candidate email"),
+) -> Dict[str, Any]:
+    """
+    Get reference photo for a candidate in an AIML test.
+    Retrieves the reference image from test.candidateResponses[email].candidateVerification.referenceImage.
+    """
+    try:
+        db = get_database()
+        
+        if not ObjectId.is_valid(assessmentId):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid test ID"
+            )
+        
+        assessment_id = ObjectId(assessmentId)
+        
+        # Find the AIML test
+        test = await db.tests.find_one({"_id": assessment_id, "test_type": "aiml"})
+        
+        if not test:
+            logger.warning(f"[AIML][get_reference_photo] Test not found: {assessmentId}")
+            return success_response("No reference photo found", {"referenceImage": None})
+        
+        # Get candidateResponses
+        candidate_responses = test.get("candidateResponses", {})
+        if not candidate_responses:
+            logger.info(f"[AIML][get_reference_photo] No candidateResponses found for test {assessmentId}")
+            return success_response("No reference photo found", {"referenceImage": None})
+        
+        # Find the candidate key (email might be in different format)
+        email_lower = candidateEmail.lower().strip()
+        candidate_key_found = None
+        
+        for key in candidate_responses.keys():
+            if email_lower in key.lower():
+                candidate_key_found = key
+                break
+        
+        if not candidate_key_found:
+            logger.info(f"[AIML][get_reference_photo] Candidate {candidateEmail} not found in test {assessmentId}")
+            return success_response("No reference photo found", {"referenceImage": None})
+        
+        # Get candidate data
+        candidate_data = candidate_responses.get(candidate_key_found, {})
+        candidate_verification = candidate_data.get("candidateVerification", {})
+        reference_image = candidate_verification.get("referenceImage")
+        
+        if not reference_image or not isinstance(reference_image, str) or len(reference_image) < 50:
+            logger.info(f"[AIML][get_reference_photo] Reference image not found or invalid for {candidateEmail} in test {assessmentId}")
+            return success_response("No reference photo found", {"referenceImage": None})
+        
+        # Ensure it has data URI prefix
+        if not reference_image.startswith("data:image"):
+            reference_image = f"data:image/jpeg;base64,{reference_image}"
+        
+        logger.info(f"[AIML][get_reference_photo] Reference photo found for {candidateEmail} in test {assessmentId}")
+        return success_response("Reference photo fetched successfully", {
+            "referenceImage": reference_image
+        })
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(f"[AIML][get_reference_photo] Error getting reference photo: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get reference photo: {str(e)}"
+        )
+
+
+class SaveReferenceFaceRequest(BaseModel):
+    """Request to save reference face image."""
+    assessmentId: str
+    candidateEmail: str
+    referenceImage: str  # Base64 encoded image
+
+
+@router.post("/save-reference-face")
+async def save_reference_face(
+    request: SaveReferenceFaceRequest,
+) -> Dict[str, Any]:
+    """
+    Save reference face image from identity verification for AIML tests.
+    Stores the image in test.candidateResponses[email].candidateVerification.referenceImage field.
+    """
+    try:
+        db = get_database()
+        
+        if not ObjectId.is_valid(request.assessmentId):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid test ID"
+            )
+        
+        assessment_id = ObjectId(request.assessmentId)
+        
+        # Find the AIML test
+        test = await db.tests.find_one({"_id": assessment_id, "test_type": "aiml"})
+        
+        if not test:
+            logger.error(f"[AIML][save_reference_face] Test not found: {request.assessmentId}")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="AIML test not found"
+            )
+        
+        # Initialize candidateResponses if it doesn't exist
+        if "candidateResponses" not in test:
+            test["candidateResponses"] = {}
+        
+        # Find or create candidate entry by email
+        candidate_email_lower = request.candidateEmail.lower().strip()
+        candidate_key_found = None
+        
+        # Try to find existing candidate key
+        for key in test["candidateResponses"].keys():
+            if candidate_email_lower in key.lower():
+                candidate_key_found = key
+                break
+        
+        # If not found, create new entry
+        if not candidate_key_found:
+            candidate_key_found = f"{candidate_email_lower}_unknown"
+        
+        # Initialize candidate entry if it doesn't exist
+        if candidate_key_found not in test["candidateResponses"]:
+            test["candidateResponses"][candidate_key_found] = {}
+        
+        # Validate and prepare image for storage
+        is_valid, error_msg = validate_face_image(request.referenceImage)
+        if not is_valid:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid face image: {error_msg}"
+            )
+        
+        # Prepare image (compress and sanitize)
+        processed_image = prepare_image_for_storage(request.referenceImage)
+        if not processed_image:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to process image for storage"
+            )
+        
+        # Store reference image in candidateVerification
+        if "candidateVerification" not in test["candidateResponses"][candidate_key_found]:
+            test["candidateResponses"][candidate_key_found]["candidateVerification"] = {}
+        
+        test["candidateResponses"][candidate_key_found]["candidateVerification"]["referenceImage"] = processed_image
+        test["candidateResponses"][candidate_key_found]["candidateVerification"]["referenceImageSavedAt"] = datetime.utcnow().isoformat()
+        
+        # Log the event
+        if "logs" not in test["candidateResponses"][candidate_key_found]:
+            test["candidateResponses"][candidate_key_found]["logs"] = []
+        
+        test["candidateResponses"][candidate_key_found]["logs"].append({
+            "eventType": "REFERENCE_PHOTO_CAPTURED",
+            "timestamp": datetime.utcnow().isoformat(),
+            "metadata": {
+                "email": request.candidateEmail,
+            }
+        })
+        
+        # Update the test document
+        await db.tests.update_one(
+            {"_id": assessment_id},
+            {"$set": {"candidateResponses": test["candidateResponses"]}}
+        )
+        
+        logger.info(f"[AIML][save_reference_face] Reference face saved for {request.candidateEmail} in test {request.assessmentId}")
+        
+        return success_response({
+            "message": "Reference face image saved successfully"
+        })
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(f"[AIML][save_reference_face] Error saving reference face: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to save reference face: {str(e)}"
+        )
+
+
 @router.get("/{test_id}", response_model=dict)
 async def get_test(
     test_id: str,
@@ -3121,13 +3310,6 @@ async def get_employee_tests(
     }
 
 
-class SaveReferenceFaceRequest(BaseModel):
-    """Request to save reference face image."""
-    assessmentId: str
-    candidateEmail: str
-    referenceImage: str  # Base64 encoded image
-
-
 @router.get("/{test_id}/get-assessment-full")
 async def get_assessment_full(
     test_id: str,
@@ -3178,112 +3360,4 @@ async def get_assessment_full(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to get test: {str(e)}"
-        )
-
-
-@router.post("/save-reference-face")
-async def save_reference_face(
-    request: SaveReferenceFaceRequest,
-) -> Dict[str, Any]:
-    """
-    Save reference face image from identity verification for AIML tests.
-    Stores the image in test.candidateResponses[email].candidateVerification.referenceImage field.
-    """
-    try:
-        db = get_database()
-        
-        if not ObjectId.is_valid(request.assessmentId):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid test ID"
-            )
-        
-        assessment_id = ObjectId(request.assessmentId)
-        
-        # Find the AIML test
-        test = await db.tests.find_one({"_id": assessment_id, "test_type": "aiml"})
-        
-        if not test:
-            logger.error(f"[AIML][save_reference_face] Test not found: {request.assessmentId}")
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="AIML test not found"
-            )
-        
-        # Initialize candidateResponses if it doesn't exist
-        if "candidateResponses" not in test:
-            test["candidateResponses"] = {}
-        
-        # Find or create candidate entry by email
-        candidate_email_lower = request.candidateEmail.lower().strip()
-        candidate_key_found = None
-        
-        # Try to find existing candidate key
-        for key in test["candidateResponses"].keys():
-            if candidate_email_lower in key.lower():
-                candidate_key_found = key
-                break
-        
-        # If not found, create new entry
-        if not candidate_key_found:
-            candidate_key_found = f"{candidate_email_lower}_unknown"
-        
-        # Initialize candidate entry if it doesn't exist
-        if candidate_key_found not in test["candidateResponses"]:
-            test["candidateResponses"][candidate_key_found] = {}
-        
-        # Validate and prepare image for storage
-        is_valid, error_msg = validate_face_image(request.referenceImage)
-        if not is_valid:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Invalid face image: {error_msg}"
-            )
-        
-        # Prepare image (compress and sanitize)
-        processed_image = prepare_image_for_storage(request.referenceImage)
-        if not processed_image:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Failed to process image for storage"
-            )
-        
-        # Store reference image in candidateVerification
-        if "candidateVerification" not in test["candidateResponses"][candidate_key_found]:
-            test["candidateResponses"][candidate_key_found]["candidateVerification"] = {}
-        
-        test["candidateResponses"][candidate_key_found]["candidateVerification"]["referenceImage"] = processed_image
-        test["candidateResponses"][candidate_key_found]["candidateVerification"]["referenceImageSavedAt"] = datetime.utcnow().isoformat()
-        
-        # Log the event
-        if "logs" not in test["candidateResponses"][candidate_key_found]:
-            test["candidateResponses"][candidate_key_found]["logs"] = []
-        
-        test["candidateResponses"][candidate_key_found]["logs"].append({
-            "eventType": "REFERENCE_PHOTO_CAPTURED",
-            "timestamp": datetime.utcnow().isoformat(),
-            "metadata": {
-                "email": request.candidateEmail,
-            }
-        })
-        
-        # Update the test document
-        await db.tests.update_one(
-            {"_id": assessment_id},
-            {"$set": {"candidateResponses": test["candidateResponses"]}}
-        )
-        
-        logger.info(f"[AIML][save_reference_face] Reference face saved for {request.candidateEmail} in test {request.assessmentId}")
-        
-        return success_response({
-            "message": "Reference face image saved successfully"
-        })
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.exception(f"[AIML][save_reference_face] Error saving reference face: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to save reference face: {str(e)}"
         )

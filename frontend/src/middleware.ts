@@ -65,6 +65,18 @@ export default withAuth(
         // Protect all routes except public ones
         const { pathname } = req.nextUrl;
         
+        // DEBUG: Log candidate reference photo routes
+        if (pathname.startsWith("/api/v1/candidate/get-reference-photo") ||
+            pathname.startsWith("/api/v1/candidate/save-reference-face")) {
+          console.log("[Middleware] 🔍 Candidate reference photo route detected:", {
+            pathname,
+            hasToken: !!token,
+            tokenType: token ? typeof token : 'none',
+            willAllow: true,
+          });
+          return true;
+        }
+        
         // Skip auth for MediaPipe assets
         if (pathname.startsWith('/mediapipe/')) {
           return true;
@@ -173,13 +185,14 @@ export const config = {
      * - api/auth (NextAuth routes)
      * - api/assessment (Candidate assessment API)
      * - api/proctor (Proctoring API - candidates aren't logged in)
+     * - api/v1/candidate (Candidate API routes - reference photo, etc.)
      * - mediapipe (MediaPipe assets)
      * - _next/static (static files)
      * - _next/image (image optimization files)
      * - favicon.ico (favicon file)
      * - public files (public folder)
      */
-    "/((?!api/auth|api/assessment|api/proctor|mediapipe|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|js|wasm|data|binarypb)$).*)",
+    "/((?!api/auth|api/assessment|api/proctor|api/v1/candidate|mediapipe|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|js|wasm|data|binarypb)$).*)",
   ],
 };
 

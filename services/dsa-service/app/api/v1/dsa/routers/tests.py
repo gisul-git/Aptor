@@ -23,6 +23,7 @@ from ..routers.assessment import (
 from app.core.dependencies import get_current_user, require_editor
 from app.utils.email import get_email_service
 from app.config.settings import get_settings
+from app.utils.face_image_storage import validate_face_image, prepare_image_for_storage
 
 logger = logging.getLogger("backend")
 
@@ -34,18 +35,27 @@ logger.info("[DSA Tests Router] Router initialized")
 def normalize_proctoring_settings(proctoring_settings: Optional[Dict[str, Any]]) -> Dict[str, bool]:
     """
     Normalize proctoringSettings to ensure boolean values are always explicit.
-    Returns a dict with aiProctoringEnabled and liveProctoringEnabled as explicit booleans.
+    Returns a dict with aiProctoringEnabled, faceMismatchEnabled, and liveProctoringEnabled as explicit booleans.
     """
     if not proctoring_settings:
         return {
             "aiProctoringEnabled": False,
+            "faceMismatchEnabled": False,
             "liveProctoringEnabled": False,
         }
     
     return {
         "aiProctoringEnabled": bool(proctoring_settings.get("aiProctoringEnabled", False)),
+        "faceMismatchEnabled": bool(proctoring_settings.get("faceMismatchEnabled", False)),
         "liveProctoringEnabled": bool(proctoring_settings.get("liveProctoringEnabled", False)),
     }
+
+
+class SaveReferenceFaceRequest(BaseModel):
+    """Request model for saving reference face image."""
+    assessmentId: str
+    candidateEmail: str
+    referenceImage: str  # Base64 encoded image
 
 
 class EmployeeTestSummary(BaseModel):
@@ -295,7 +305,32 @@ async def create_test(
             # Plain dict
             candidate_requirements = schedule_obj.get("candidateRequirements", {}) or {}
     
+    # Extract proctoringSettings from schedule or top-level test object
+    proctoring_settings = None
+    if schedule_obj:
+        if hasattr(schedule_obj, "proctoringSettings") and schedule_obj.proctoringSettings is not None:
+            proctoring_settings = schedule_obj.proctoringSettings
+        elif isinstance(schedule_obj, dict):
+            proctoring_settings = schedule_obj.get("proctoringSettings")
+    
+    # If not in schedule, check top-level test object
+    if not proctoring_settings:
+        if hasattr(test, "proctoringSettings") and test.proctoringSettings is not None:
+            proctoring_settings = test.proctoringSettings
+        elif isinstance(test, dict):
+            proctoring_settings = test.get("proctoringSettings")
+    
+    # Convert Pydantic model to dict if needed
+    if proctoring_settings and hasattr(proctoring_settings, "model_dump"):
+        proctoring_settings = proctoring_settings.model_dump()
+    elif proctoring_settings and not isinstance(proctoring_settings, dict):
+        try:
+            proctoring_settings = dict(proctoring_settings) if proctoring_settings else None
+        except:
+            proctoring_settings = None
+    
     logger.info(f"[create_test] Extracted candidateRequirements: {candidate_requirements}")
+    logger.info(f"[create_test] Extracted proctoringSettings: {proctoring_settings}")
     logger.info(f"[create_test] Schedule object type: {type(schedule_obj)}")
     if schedule_obj:
         logger.info(f"[create_test] Schedule object has candidateRequirements attr: {hasattr(schedule_obj, 'candidateRequirements')}")
@@ -308,6 +343,7 @@ async def create_test(
         "endTime": end_dt if exam_mode == "flexible" else None,  # Will be calculated for strict mode
         "duration": int(duration_minutes) if (exam_mode == "flexible" and duration_minutes is not None) else None,
         "candidateRequirements": candidate_requirements,  # Store candidate requirements
+        "proctoringSettings": proctoring_settings,  # Store proctoring settings in schedule
     }
     
     logger.info(f"[create_test] Schedule payload with candidateRequirements: {schedule_payload}")
@@ -321,7 +357,7 @@ async def create_test(
     # end_time will be set below for strict mode, or use provided end_dt for flexible
     if exam_mode == "flexible":
         test_dict["end_time"] = end_dt
-
+    
     # -------------------------------
     # Timer configuration for DSA (GLOBAL / PER_QUESTION)
     # -------------------------------
@@ -454,16 +490,30 @@ async def create_test(
     test_dict["created_at"] = datetime.utcnow()  # Set creation timestamp
     test_dict["test_type"] = "dsa"  # Mark as DSA test to isolate from AIML tests
     
-    # Normalize proctoringSettings BEFORE saving to ensure both fields are always explicit
-    # This ensures the database always has both aiProctoringEnabled and liveProctoringEnabled as explicit booleans
-    if "proctoringSettings" in test_dict:
+    # Normalize proctoringSettings BEFORE saving to ensure all three fields are always explicit
+    # Use extracted proctoring_settings if available (which may include faceMismatchEnabled from frontend)
+    # Otherwise use what's in test_dict from model_dump()
+    if proctoring_settings is not None:
+        # Normalize the extracted proctoring_settings (preserves faceMismatchEnabled if present)
+        test_dict["proctoringSettings"] = normalize_proctoring_settings(proctoring_settings)
+    elif "proctoringSettings" in test_dict:
+        # If not extracted but exists in test_dict, normalize it
         test_dict["proctoringSettings"] = normalize_proctoring_settings(test_dict.get("proctoringSettings"))
     else:
         # If not provided, set defaults
         test_dict["proctoringSettings"] = normalize_proctoring_settings(None)
     
+    # Also ensure proctoringSettings is in the schedule object (for frontend compatibility)
+    if isinstance(test_dict.get("schedule"), dict):
+        test_dict["schedule"]["proctoringSettings"] = test_dict["proctoringSettings"]
+    elif test_dict.get("schedule") is None:
+        # If schedule doesn't exist, create it with proctoringSettings
+        test_dict["schedule"] = schedule_payload.copy()
+        test_dict["schedule"]["proctoringSettings"] = test_dict["proctoringSettings"]
+    
     # Debug: Log proctoringSettings being saved
-    logger.info(f"[create_test] ProctoringSettings being saved: {test_dict.get('proctoringSettings')}")
+    logger.info(f"[create_test] ProctoringSettings being saved (top-level): {test_dict.get('proctoringSettings')}")
+    logger.info(f"[create_test] ProctoringSettings in schedule: {test_dict.get('schedule', {}).get('proctoringSettings')}")
     
     logger.info(f"[create_test] Creating test with created_by='{user_id}' (type: {type(user_id).__name__}), title={test_dict.get('title')}")
     logger.info(f"[create_test] Current user data: id={current_user.get('id')}, _id={current_user.get('_id')}, email={current_user.get('email')}")
@@ -775,17 +825,33 @@ async def get_tests(
                 return iso_str
             return str(dt_val) if dt_val else None
         
-        # Format schedule datetimes if schedule exists
+        # Format schedule datetimes if schedule exists, but preserve all other fields
         schedule_data = test.get("schedule")
         formatted_schedule = None
         if schedule_data:
             formatted_schedule = {}
+            # Format datetime fields
             if "startTime" in schedule_data and schedule_data["startTime"]:
                 formatted_schedule["startTime"] = format_datetime_iso(schedule_data["startTime"])
             if "endTime" in schedule_data and schedule_data["endTime"]:
                 formatted_schedule["endTime"] = format_datetime_iso(schedule_data["endTime"])
             if "duration" in schedule_data:
                 formatted_schedule["duration"] = schedule_data["duration"]
+            # Preserve other schedule fields (candidateRequirements, proctoringSettings, etc.)
+            if "candidateRequirements" in schedule_data:
+                formatted_schedule["candidateRequirements"] = schedule_data["candidateRequirements"]
+            if "proctoringSettings" in schedule_data:
+                formatted_schedule["proctoringSettings"] = normalize_proctoring_settings(schedule_data["proctoringSettings"])
+        
+        # Ensure proctoringSettings is in schedule if it exists at top level
+        proctoring_settings = normalize_proctoring_settings(test.get("proctoringSettings"))
+        if formatted_schedule and "proctoringSettings" not in formatted_schedule:
+            formatted_schedule["proctoringSettings"] = proctoring_settings
+        elif not formatted_schedule and schedule_data:
+            # If we're using schedule_data directly, ensure proctoringSettings is there
+            if isinstance(schedule_data, dict) and "proctoringSettings" not in schedule_data:
+                schedule_data = schedule_data.copy()
+                schedule_data["proctoringSettings"] = proctoring_settings
         
         test_dict = {
             "id": str(test["_id"]),
@@ -801,9 +867,9 @@ async def get_tests(
             "test_token": test.get("test_token"),
             "created_by": str(test.get("created_by", "")),  # CRITICAL: Include for client-side verification
             "examMode": test.get("examMode", "strict"),  # Include examMode for frontend display logic
-            "schedule": formatted_schedule if formatted_schedule else schedule_data,  # Include formatted schedule
+            "schedule": formatted_schedule if formatted_schedule else (schedule_data if schedule_data else {}),  # Include formatted schedule with all fields
             # Normalize to ensure boolean values are explicit
-            "proctoringSettings": normalize_proctoring_settings(test.get("proctoringSettings")),
+            "proctoringSettings": proctoring_settings,
         }
         if test.get("pausedAt"):
             paused_val = test.get("pausedAt")
@@ -816,6 +882,189 @@ async def get_tests(
             test_dict["updated_at"] = test.get("updated_at").isoformat() if isinstance(test.get("updated_at"), datetime) else test.get("updated_at")
         result.append(test_dict)
     return result
+
+@router.get("/get-reference-photo")
+async def get_reference_photo(
+    assessmentId: str = Query(..., description="Assessment ID (test ID)"),
+    candidateEmail: str = Query(..., description="Candidate email"),
+) -> Dict[str, Any]:
+    """
+    Get reference photo for a candidate in a DSA test.
+    Retrieves the reference image from test_candidates collection.
+    """
+    try:
+        db = get_database()
+        
+        if not ObjectId.is_valid(assessmentId):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid test ID"
+            )
+        
+        assessment_id = ObjectId(assessmentId)
+        
+        # Find the DSA test
+        test = await db.tests.find_one({"_id": assessment_id, "test_type": "dsa"})
+        
+        if not test:
+            logger.warning(f"[DSA][get_reference_photo] Test not found: {assessmentId}")
+            return {
+                "success": True,
+                "message": "No reference photo found",
+                "data": {"referenceImage": None}
+            }
+        
+        # Find candidate in test_candidates collection
+        candidate_email_lower = candidateEmail.lower().strip()
+        candidate = await db.test_candidates.find_one({
+            "test_id": assessmentId,
+            "email": candidate_email_lower
+        })
+        
+        if not candidate:
+            logger.info(f"[DSA][get_reference_photo] Candidate {candidateEmail} not found in test {assessmentId}")
+            return {
+                "success": True,
+                "message": "No reference photo found",
+                "data": {"referenceImage": None}
+            }
+        
+        # Get candidateVerification from candidateInfo
+        candidate_info = candidate.get("candidateInfo", {})
+        candidate_verification = candidate_info.get("candidateVerification", {})
+        reference_image = candidate_verification.get("referenceImage")
+        
+        if not reference_image or not isinstance(reference_image, str) or len(reference_image) < 50:
+            logger.info(f"[DSA][get_reference_photo] Reference image not found or invalid for {candidateEmail} in test {assessmentId}")
+            return {
+                "success": True,
+                "message": "No reference photo found",
+                "data": {"referenceImage": None}
+            }
+        
+        # Ensure it has data URI prefix
+        if not reference_image.startswith("data:image"):
+            reference_image = f"data:image/jpeg;base64,{reference_image}"
+        
+        logger.info(f"[DSA][get_reference_photo] Reference photo found for {candidateEmail} in test {assessmentId}")
+        return {
+            "success": True,
+            "message": "Reference photo fetched successfully",
+            "data": {
+                "referenceImage": reference_image
+            }
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(f"[DSA][get_reference_photo] Error getting reference photo: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get reference photo: {str(e)}"
+        )
+
+
+@router.post("/save-reference-face")
+async def save_reference_face(
+    request: SaveReferenceFaceRequest,
+) -> Dict[str, Any]:
+    """
+    Save reference face image from identity verification for DSA tests.
+    Stores the image in test_candidates[email].candidateInfo.candidateVerification.referenceImage field.
+    """
+    try:
+        db = get_database()
+        
+        if not ObjectId.is_valid(request.assessmentId):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid test ID"
+            )
+        
+        assessment_id = ObjectId(request.assessmentId)
+        
+        # Find the DSA test
+        test = await db.tests.find_one({"_id": assessment_id, "test_type": "dsa"})
+        
+        if not test:
+            logger.error(f"[DSA][save_reference_face] Test not found: {request.assessmentId}")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="DSA test not found"
+            )
+        
+        # Find candidate in test_candidates collection
+        candidate_email_lower = request.candidateEmail.lower().strip()
+        candidate = await db.test_candidates.find_one({
+            "test_id": request.assessmentId,
+            "email": candidate_email_lower
+        })
+        
+        if not candidate:
+            logger.error(f"[DSA][save_reference_face] Candidate not found: {request.candidateEmail} in test {request.assessmentId}")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Candidate not found for this test"
+            )
+        
+        # Validate and prepare image for storage
+        is_valid, error_msg = validate_face_image(request.referenceImage)
+        if not is_valid:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid face image: {error_msg}"
+            )
+        
+        # Prepare image (compress and sanitize)
+        processed_image = prepare_image_for_storage(request.referenceImage)
+        if not processed_image:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to process image for storage"
+            )
+        
+        # Get existing candidateInfo or create new
+        candidate_info = candidate.get("candidateInfo", {})
+        
+        # Initialize candidateVerification if it doesn't exist
+        if "candidateVerification" not in candidate_info:
+            candidate_info["candidateVerification"] = {}
+        
+        # Store reference image
+        candidate_info["candidateVerification"]["referenceImage"] = processed_image
+        candidate_info["candidateVerification"]["referenceImageSavedAt"] = datetime.utcnow().isoformat()
+        
+        # Update candidate record
+        update_result = await db.test_candidates.update_one(
+            {"test_id": request.assessmentId, "email": candidate_email_lower},
+            {"$set": {"candidateInfo": candidate_info}}
+        )
+        
+        if update_result.matched_count == 0:
+            logger.error(f"[DSA][save_reference_face] Failed to update candidate record")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to save reference face"
+            )
+        
+        logger.info(f"[DSA][save_reference_face] Reference face saved for {request.candidateEmail} in test {request.assessmentId}")
+        
+        return {
+            "success": True,
+            "message": "Reference face image saved successfully",
+            "data": {}
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(f"[DSA][save_reference_face] Error saving reference face: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to save reference face: {str(e)}"
+        )
+
 
 @router.get("/{test_id}/public")
 async def get_test_public(
@@ -942,8 +1191,18 @@ async def get_test(
         # Normalize to ensure boolean values are explicit
         "proctoringSettings": normalize_proctoring_settings(test.get("proctoringSettings")),
     }
+    
+    # Ensure proctoringSettings is also in the schedule object (for frontend compatibility)
+    if isinstance(test_dict.get("schedule"), dict):
+        if "proctoringSettings" not in test_dict["schedule"]:
+            test_dict["schedule"]["proctoringSettings"] = test_dict["proctoringSettings"]
+    elif not test_dict.get("schedule"):
+        # If schedule doesn't exist, create it with proctoringSettings
+        test_dict["schedule"] = {"proctoringSettings": test_dict["proctoringSettings"]}
+    
     # Debug: Log proctoringSettings being returned
     logger.info(f"[get_test] ProctoringSettings for test {test_id}: {test_dict.get('proctoringSettings')}")
+    logger.info(f"[get_test] ProctoringSettings in schedule: {test_dict.get('schedule', {}).get('proctoringSettings')}")
     
     # Include invitationTemplate if it exists
     if "invitationTemplate" in test:
@@ -992,8 +1251,18 @@ async def patch_test(
     if "proctoringSettings" in payload:
         proctoring_settings = payload["proctoringSettings"]
         # Normalize to ensure boolean values are explicit
-        update_data["proctoringSettings"] = normalize_proctoring_settings(proctoring_settings)
-        logger.info(f"[patch_test] Updating proctoringSettings for test {test_id}: {update_data['proctoringSettings']}")
+        normalized_proctoring = normalize_proctoring_settings(proctoring_settings)
+        update_data["proctoringSettings"] = normalized_proctoring
+        logger.info(f"[patch_test] Updating proctoringSettings for test {test_id}: {normalized_proctoring}")
+        
+        # Also update proctoringSettings in schedule object
+        existing_schedule = existing_test.get("schedule") or {}
+        if isinstance(existing_schedule, dict):
+            existing_schedule["proctoringSettings"] = normalized_proctoring
+            update_data["schedule"] = existing_schedule
+        else:
+            # If schedule doesn't exist, create it with proctoringSettings
+            update_data["schedule"] = {"proctoringSettings": normalized_proctoring}
     
     # Update the test
     result = await db.tests.update_one(
@@ -1019,9 +1288,19 @@ async def patch_test(
             "invited_users": updated_test.get("invited_users", []),
             "question_ids": [str(qid) if isinstance(qid, ObjectId) else qid for qid in updated_test.get("question_ids", [])],
             "test_token": updated_test.get("test_token"),
+            "schedule": updated_test.get("schedule"),  # Include schedule
             # Normalize to ensure boolean values are explicit
             "proctoringSettings": normalize_proctoring_settings(updated_test.get("proctoringSettings")),
         }
+        
+        # Ensure proctoringSettings is also in the schedule object (for frontend compatibility)
+        if isinstance(test_dict.get("schedule"), dict):
+            if "proctoringSettings" not in test_dict["schedule"]:
+                test_dict["schedule"]["proctoringSettings"] = test_dict["proctoringSettings"]
+        elif not test_dict.get("schedule"):
+            # If schedule doesn't exist, create it with proctoringSettings
+            test_dict["schedule"] = {"proctoringSettings": test_dict["proctoringSettings"]}
+        
         # Include invitationTemplate if it exists
         if "invitationTemplate" in updated_test:
             test_dict["invitationTemplate"] = updated_test.get("invitationTemplate")
@@ -4290,6 +4569,40 @@ async def get_test_full_for_candidate(
             return iso_str
         return str(dt_val) if dt_val else None
 
+    # Serialize schedule to handle datetime objects
+    schedule = test.get("schedule") or {}
+    serialized_schedule = {}
+    if isinstance(schedule, dict):
+        for key, value in schedule.items():
+            if isinstance(value, datetime):
+                serialized_schedule[key] = format_datetime_iso(value)
+            elif isinstance(value, ObjectId):
+                serialized_schedule[key] = str(value)
+            elif isinstance(value, dict):
+                # Recursively serialize nested dicts
+                serialized_nested = {}
+                for nested_key, nested_value in value.items():
+                    if isinstance(nested_value, datetime):
+                        serialized_nested[nested_key] = format_datetime_iso(nested_value)
+                    elif isinstance(nested_value, ObjectId):
+                        serialized_nested[nested_key] = str(nested_value)
+                    else:
+                        serialized_nested[nested_key] = nested_value
+                serialized_schedule[key] = serialized_nested
+            elif isinstance(value, list):
+                # Serialize list items
+                serialized_list = []
+                for item in value:
+                    if isinstance(item, datetime):
+                        serialized_list.append(format_datetime_iso(item))
+                    elif isinstance(item, ObjectId):
+                        serialized_list.append(str(item))
+                    else:
+                        serialized_list.append(item)
+                serialized_schedule[key] = serialized_list
+            else:
+                serialized_schedule[key] = value
+    
     # Shape mirrors the admin list/get response and includes schedule.candidateRequirements
     test_dict = {
         "id": str(test["_id"]),
@@ -4301,7 +4614,7 @@ async def get_test_full_for_candidate(
         "timer_mode": test.get("timer_mode", "GLOBAL"),
         "question_timings": test.get("question_timings"),
         "examMode": test.get("examMode", "strict"),
-        "schedule": test.get("schedule") or {},
+        "schedule": serialized_schedule,
         "is_active": test.get("is_active", False),
         "is_published": test.get("is_published", False),
         "question_ids": [str(qid) if isinstance(qid, ObjectId) else str(qid) for qid in test.get("question_ids", [])],
@@ -4312,6 +4625,15 @@ async def get_test_full_for_candidate(
         # Include proctoring settings so precheck/candidate-requirements can read them if needed
         "proctoringSettings": normalize_proctoring_settings(test.get("proctoringSettings")),
     }
+    
+    # Ensure proctoringSettings is also in the schedule object (for frontend compatibility)
+    # Frontend checks schedule.proctoringSettings first, then falls back to top-level
+    if isinstance(test_dict.get("schedule"), dict):
+        if "proctoringSettings" not in test_dict["schedule"]:
+            test_dict["schedule"]["proctoringSettings"] = test_dict["proctoringSettings"]
+    elif not test_dict.get("schedule"):
+        # If schedule doesn't exist, create it with proctoringSettings
+        test_dict["schedule"] = {"proctoringSettings": test_dict["proctoringSettings"]}
 
     # Return in the same envelope shape as /api/v1/candidate/get-assessment-full
     return {

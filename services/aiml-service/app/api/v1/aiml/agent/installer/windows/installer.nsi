@@ -28,6 +28,10 @@
   !define BUILD_DIR "build"
 !endif
 
+; Retry parameters for antivirus-blocked files
+!define INSTALL_RETRY_COUNT 5
+!define INSTALL_RETRY_DELAY 2000
+
 ;--------------------------------
 ; General Configuration
 
@@ -135,8 +139,26 @@ Section "Core Installation" SecCore
     SetOverwrite on
     ; Set output to installation root so the 'python' directory is created directly under $INSTDIR
     SetOutPath "$INSTDIR"
-    ; Recurse over the python directory so it lands at $INSTDIR\python\...
+    SetErrorLevel 0
+    
+    ; Extract Python with error continuation - if antivirus blocks, NSIS will skip and continue
+    File /nonfatal /r "${BUILD_DIR}\python"
+    
+    ; Check if critical files extracted
+    IfFileExists "$INSTDIR\python\python.exe" 0 python_fail
+    IfFileExists "$INSTDIR\python\python311.dll" 0 python_fail
+    Goto python_success
+    
+python_fail:
+    MessageBox MB_RETRYCANCEL|MB_ICONEXCLAMATION "Python installation failed.$\n$\nPlease temporarily disable antivirus and click Retry." IDRETRY retry_python
+    Abort "Installation cancelled"
+    
+retry_python:
+    RMDir /r "$INSTDIR\python"
+    SetOutPath "$INSTDIR"
     File /r "${BUILD_DIR}\python"
+    
+python_success:
     
     ; ========================================
     ; Step 2: Configure Python for pip
@@ -175,10 +197,29 @@ Section "Core Installation" SecCore
     ; Step 4: Copy Agent Source Files
     ; ========================================
     DetailPrint "Copying agent source files..."
+    SetOverwrite on
     ; Set output to installation root so the 'agent' directory is created directly under $INSTDIR
     SetOutPath "$INSTDIR"
-    ; Recurse over the agent directory so it lands at $INSTDIR\agent\...
+    SetErrorLevel 0
+    
+    ; Extract agent files - if antivirus blocks, NSIS will skip and continue
+    File /nonfatal /r "${BUILD_DIR}\agent"
+    
+    ; Check if critical files extracted
+    IfFileExists "$INSTDIR\agent\__main__.py" 0 agent_fail
+    IfFileExists "$INSTDIR\agent\server.py" 0 agent_fail
+    Goto agent_success
+    
+agent_fail:
+    MessageBox MB_RETRYCANCEL|MB_ICONEXCLAMATION "Agent installation failed.$\n$\nPlease temporarily disable antivirus and click Retry." IDRETRY retry_agent
+    Abort "Installation cancelled"
+    
+retry_agent:
+    RMDir /r "$INSTDIR\agent"
+    SetOutPath "$INSTDIR"
     File /r "${BUILD_DIR}\agent"
+    
+agent_success:
     
     ; ========================================
     ; Step 5: Install Python Dependencies
@@ -340,6 +381,20 @@ Section "Core Installation" SecCore
     nsExec::ExecToStack '"$INSTDIR\nssm.exe" set AptorAIAgent AppEnvironmentExtra "PYTHONUNBUFFERED=1$\r$\nPYTHONPATH=$INSTDIR"'
     Pop $0
     Pop $1
+    
+    ; Configure service to run as LocalService account
+    ; This allows the service to spawn child processes (Jupyter kernels) without SID mapping errors
+    DetailPrint "Configuring service account..."
+    nsExec::ExecToStack '"$INSTDIR\nssm.exe" set AptorAIAgent ObjectName "NT AUTHORITY\LocalService" ""'
+    Pop $0
+    Pop $1
+    DetailPrint "Service account configuration exit code: $0"
+    ${If} $0 != 0
+        DetailPrint "Warning: Failed to set LocalService account (exit code: $0)"
+        DetailPrint "Service will run as SYSTEM (may have process spawning limitations)"
+    ${Else}
+        DetailPrint "Service configured to run as LocalService"
+    ${EndIf}
     
     ; ========================================
     ; Step 14: Start the Service
