@@ -13,18 +13,17 @@ on:
       - dev
     paths:
       - 'services/api-gateway/**'
-  workflow_dispatch: # Allow manual triggering
+  workflow_dispatch:
 
 env:
   AZURE_RESOURCE_GROUP: Aaptor
-  CONTAINER_APP_NAME: aptor-api-gateway
+  CONTAINER_APP_NAME: api-gateway   # MUST match Azure name
   DOCKER_IMAGE_NAME: api-gateway
   SERVICE_PATH: services/api-gateway
 
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
-    # Only run on push to dev, merged PRs, or manual dispatch
     if: |
       github.event_name == 'push' ||
       (github.event_name == 'pull_request' && github.event.pull_request.merged == true) ||
@@ -33,17 +32,6 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '18'
-          cache: 'npm'
-          cache-dependency-path: ${{ env.SERVICE_PATH }}/package-lock.json
-
-      - name: Install dependencies
-        working-directory: ./${{ env.SERVICE_PATH }}
-        run: npm ci
 
       - name: Login to Azure
         uses: azure/login@v1
@@ -56,10 +44,11 @@ jobs:
             -u ${{ secrets.ACR_USERNAME }} --password-stdin
 
       - name: Build Docker image
-        working-directory: ./${{ env.SERVICE_PATH }}
         run: |
-          docker build -t ${{ secrets.ACR_LOGIN_SERVER }}/${{ env.DOCKER_IMAGE_NAME }}:${{ github.sha }} .
-          docker build -t ${{ secrets.ACR_LOGIN_SERVER }}/${{ env.DOCKER_IMAGE_NAME }}:latest .
+          docker build \
+            -t ${{ secrets.ACR_LOGIN_SERVER }}/${{ env.DOCKER_IMAGE_NAME }}:${{ github.sha }} \
+            -t ${{ secrets.ACR_LOGIN_SERVER }}/${{ env.DOCKER_IMAGE_NAME }}:latest \
+            ./${{ env.SERVICE_PATH }}
 
       - name: Push Docker image to ACR
         run: |
@@ -75,6 +64,5 @@ jobs:
 
       - name: Verify deployment
         run: |
-          echo "Deployment completed successfully!"
+          echo "API Gateway deployment completed"
           echo "Image: ${{ secrets.ACR_LOGIN_SERVER }}/${{ env.DOCKER_IMAGE_NAME }}:${{ github.sha }}"
-
