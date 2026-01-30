@@ -28,7 +28,7 @@ type ExecuteResult = {
     private debounceTimeout: NodeJS.Timeout | null = null
     private permanentlyDisconnected = false // Stop reconnecting if agent is unavailable
   
-    constructor(private agentUrl = 'ws://127.0.0.1:8889') {}
+    constructor(private agentUrl = process.env.NEXT_PUBLIC_AIML_AGENT_URL || 'wss://aiml-agent-service.delightfulpebble-b20f7903.centralindia.azurecontainerapps.io') {}
   
     async connect(): Promise<void> {
       if (this.ws?.readyState === WebSocket.OPEN) return

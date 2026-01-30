@@ -26,6 +26,9 @@ class AIMLSettings(BaseSettings):
     # OpenAI Configuration for AI question generation
     openai_api_key: str = ""
     
+    # API Gateway Configuration for generating dataset URLs
+    api_gateway_url: str = "http://localhost:80"
+    
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
@@ -48,4 +51,5 @@ JUDGE0_POLL_INTERVAL = _settings.judge0_poll_interval
 JUDGE0_MAX_POLLS = _settings.judge0_max_polls
 JUDGE0_API_KEY = _settings.judge0_api_key
 OPENAI_API_KEY = _settings.openai_api_key
+API_GATEWAY_URL = _settings.api_gateway_url
 

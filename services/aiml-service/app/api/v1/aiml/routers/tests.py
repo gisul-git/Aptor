@@ -17,6 +17,7 @@ from ..utils.dataset_manager import get_dataset_manager
 from app.utils.responses import success_response
 from app.utils.face_image_storage import prepare_image_for_storage, validate_face_image
 from pydantic import BaseModel
+from ..config import API_GATEWAY_URL
 
 logger = logging.getLogger("backend")
 router = APIRouter(tags=["aiml"])
@@ -1331,7 +1332,9 @@ async def get_test_for_candidate(
                 if question.get("dataset"):
                     dataset_format = question.get("dataset", {}).get("format", "csv")
                     # Use download endpoint for all formats (returns raw file content)
-                    question_dict["dataset_url"] = f"/api/v1/aiml/questions/{question_dict['id']}/dataset-download?format={dataset_format}&test_id={test_id}&user_id={user_id}"
+                    # Use full API Gateway URL instead of relative path for Azure deployment
+                    base_url = API_GATEWAY_URL.rstrip('/')
+                    question_dict["dataset_url"] = f"{base_url}/api/v1/aiml/questions/{question_dict['id']}/dataset-download?format={dataset_format}&test_id={test_id}&user_id={user_id}"
                 elif question.get("dataset_path"):
                     # Backward compatibility: expose stored path as URL
                     question_dict["dataset_url"] = question.get("dataset_path")
