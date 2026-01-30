@@ -111,9 +111,8 @@ export default function AnalyticsPage() {
   const [testInfo, setTestInfo] = useState<any>(null)
   const [employeeSearch, setEmployeeSearch] = useState("")
   const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null) 
-  const [selectedEmployees, setSelectedEmployees] = useState<Employee[]>([]) // Multi-select support
+  const [selectedEmployees, setSelectedEmployees] = useState<Employee[]>([]) 
 
-  // Org-admin employees list, filtered by search (scoped by org on backend)
   const { data: employeesData, isLoading: employeesLoading } = useEmployees({
     page: 1,
     limit: 20,
