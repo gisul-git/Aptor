@@ -749,11 +749,56 @@ export const useAssessmentFull = (assessmentId: string | undefined, token: strin
         responseKeys: response ? Object.keys(response) : [],
         dataKeys: response?.data ? Object.keys(response.data) : [],
         responseType: typeof response,
+        responseDataKeys: response?.data ? (typeof response.data === 'object' ? Object.keys(response.data) : 'not object') : 'no data',
+        fullResponse: JSON.stringify(response, null, 2),
       });
       
       // Handle different response structures
+      // Next.js API route returns: { success: true, message: "...", data: {...} }
+      // We need to extract the actual assessment/test object from response.data.data
       if (response.data) {
-        console.log("[useAssessmentFull] ✅ Returning response.data");
+        console.log("[useAssessmentFull] 🔍 Processing response.data:", {
+          responseDataType: typeof response.data,
+          responseDataKeys: Object.keys(response.data),
+          hasNestedData: !!(response.data?.data),
+          hasSchedule: !!(response.data?.schedule),
+          hasProctoringSettings: !!(response.data?.proctoringSettings),
+          hasScheduleProctoringSettings: !!(response.data?.schedule?.proctoringSettings),
+          fullResponseData: JSON.stringify(response.data, null, 2),
+        });
+        
+        // Check if response.data has a nested 'data' field (Next.js API route format)
+        if (typeof response.data === 'object' && 'data' in response.data && response.data.data) {
+          const assessmentData = response.data.data;
+          console.log("[useAssessmentFull] ✅ Extracting nested data field from Next.js API response:", {
+            assessmentDataType: typeof assessmentData,
+            assessmentDataKeys: Object.keys(assessmentData),
+            hasSchedule: !!(assessmentData?.schedule),
+            scheduleKeys: assessmentData?.schedule ? Object.keys(assessmentData.schedule) : [],
+            hasProctoringSettingsTop: !!(assessmentData?.proctoringSettings),
+            proctoringSettingsTop: assessmentData?.proctoringSettings,
+            hasProctoringSettingsSchedule: !!(assessmentData?.schedule?.proctoringSettings),
+            proctoringSettingsSchedule: assessmentData?.schedule?.proctoringSettings,
+            fullAssessmentData: JSON.stringify(assessmentData, null, 2),
+          });
+          return assessmentData; // Return the actual assessment/test object
+        }
+        // Check if response.data is the assessment object directly
+        if (typeof response.data === 'object' && ('schedule' in response.data || 'proctoringSettings' in response.data || 'id' in response.data)) {
+          console.log("[useAssessmentFull] ✅ Returning response.data (direct assessment object):", {
+            hasSchedule: !!(response.data?.schedule),
+            scheduleKeys: response.data?.schedule ? Object.keys(response.data.schedule) : [],
+            hasProctoringSettingsTop: !!(response.data?.proctoringSettings),
+            proctoringSettingsTop: response.data?.proctoringSettings,
+            hasProctoringSettingsSchedule: !!(response.data?.schedule?.proctoringSettings),
+            proctoringSettingsSchedule: response.data?.schedule?.proctoringSettings,
+            fullResponseData: JSON.stringify(response.data, null, 2),
+          });
+          return response.data;
+        }
+        console.log("[useAssessmentFull] ⚠️ Returning response.data (fallback):", {
+          responseData: JSON.stringify(response.data, null, 2),
+        });
         return response.data;
       }
       // Fallback for legacy response format

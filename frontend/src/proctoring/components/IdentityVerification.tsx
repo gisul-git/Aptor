@@ -913,6 +913,70 @@ export default function IdentityVerification({
       sessionStorage.setItem(`referenceFace_${assessmentId}`, photoData);
       sessionStorage.setItem(`capturedPhoto_${assessmentId}`, photoData);
 
+      // Save reference image to backend asynchronously (non-blocking)
+      // This should happen regardless of AI Proctoring status
+      if (!skipBackendSave) {
+        // Prevent duplicate saves
+        if (!isSavingRef.current) {
+          isSavingRef.current = true;
+          (async () => {
+            try {
+              // Detect if this is an AIML test by checking the assessment ID format or using gateContext
+              // For now, try the standard endpoint first, then fallback to AIML endpoint on 404
+              let endpoint = "/api/v1/candidate/save-reference-face";
+              
+              // Check if this might be an AIML test (assessment IDs are ObjectIds, but we can try AIML endpoint on error)
+              console.log('[IdentityVerification] Saving reference photo to database:', {
+                assessmentId,
+                candidateEmail,
+                skipBackendSave,
+                photoDataLength: photoData.length,
+                photoDataPrefix: photoData.substring(0, 50),
+                endpoint
+              });
+
+              let response;
+              try {
+                response = await axios.post(endpoint, {
+                  assessmentId,
+                  candidateEmail,
+                  referenceImage: photoData,
+                });
+                console.log('[IdentityVerification] ✅ Reference photo saved to database:', response.data);
+              } catch (firstError: any) {
+                // If 404, try AIML endpoint
+                if (firstError?.response?.status === 404) {
+                  console.log('[IdentityVerification] Standard endpoint returned 404, trying AIML endpoint...');
+                  endpoint = "/api/v1/aiml/tests/save-reference-face";
+                  response = await axios.post(endpoint, {
+                    assessmentId,
+                    candidateEmail,
+                    referenceImage: photoData,
+                  });
+                  console.log('[IdentityVerification] ✅ Reference photo saved to AIML database:', response.data);
+                } else {
+                  throw firstError;
+                }
+              }
+            } catch (saveError: any) {
+              // Don't block the flow if saving fails - photo is still in sessionStorage
+              console.warn('[IdentityVerification] Failed to save to database (non-critical):', {
+                status: saveError?.response?.status,
+                error: saveError?.response?.data?.error || saveError?.response?.data?.detail || saveError?.message,
+                assessmentId,
+                candidateEmail
+              });
+            } finally {
+              isSavingRef.current = false;
+            }
+          })();
+        } else {
+          console.log('[IdentityVerification] Save already in progress, skipping duplicate save');
+        }
+      } else {
+        console.log('[IdentityVerification] ⚠️ skipBackendSave is true - skipping backend save (photo stored in sessionStorage only)');
+      }
+
       // CONDITIONAL: Only extract embedding if both AI Proctoring AND Face Mismatch Detection are enabled
       // FIX: Add debug logging to verify proctoring status
       const shouldExtractEmbedding = aiProctoringEnabled && faceMismatchEnabled;
@@ -1125,44 +1189,7 @@ export default function IdentityVerification({
       
       // Don't call onCaptureComplete immediately - wait for user to confirm or retry
       // User will click "Confirm & Continue" button to proceed only if quality is valid
-
-      // Save reference image to backend asynchronously (non-blocking)
-      // Prevent duplicate saves
-      if (isSavingRef.current) {
-        console.log('[IdentityVerification] Save already in progress, skipping duplicate save');
-        return;
-      }
-
-      // Save to database in background (non-blocking)
-      isSavingRef.current = true;
-      (async () => {
-        try {
-          console.log('[IdentityVerification] Saving reference photo to database:', {
-            assessmentId,
-            candidateEmail,
-            skipBackendSave,
-            photoDataLength: photoData.length,
-            photoDataPrefix: photoData.substring(0, 50)
-          });
-
-          const response = await axios.post("/api/v1/candidate/save-reference-face", {
-            assessmentId,
-            candidateEmail,
-            referenceImage: photoData,
-          });
-          console.log('[IdentityVerification] ✅ Reference photo saved to database:', response.data);
-        } catch (saveError: any) {
-          // Don't block the flow if saving fails - photo is still in sessionStorage
-          console.warn('[IdentityVerification] Failed to save to database (non-critical):', {
-            status: saveError?.response?.status,
-            error: saveError?.response?.data?.error || saveError?.response?.data?.detail || saveError?.message,
-            assessmentId,
-            candidateEmail
-          });
-        } finally {
-          isSavingRef.current = false;
-        }
-      })();
+      // Note: Photo save to backend already happened above (before embedding extraction)
     } catch (error) {
       console.error("Error capturing photo:", error);
       setStatusMessage("Failed to capture photo. Please try again.");

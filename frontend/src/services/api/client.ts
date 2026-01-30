@@ -4,7 +4,10 @@ import { checkTokenExpiration } from '@/lib/jwt';
 
 
 const apiClient = axios.create({
-  baseURL: process.env.NEXT_PUBLIC_API_URL || '', // Empty = relative URLs (use Next.js proxy)
+  // Always use relative URLs so Next.js can handle routing:
+  // - /api/assessment/* → Next.js API routes
+  // - /api/v1/* → Next.js rewrites → API Gateway → Backend
+  baseURL: '',
   headers: {
     'Content-Type': 'application/json',
   },

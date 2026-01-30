@@ -643,7 +643,7 @@ export const assessmentService = {
   getAssessmentFull: async (assessmentId: string, token: string): Promise<ApiResponse<any>> => {
     console.log("[assessment.service] getAssessmentFull called:", { assessmentId, hasToken: !!token });
     // Use Next.js API route instead of calling backend directly
-    // This allows the route to try AIML endpoint first, then fall back to generic endpoint
+    // The API route will handle routing to AIML service if needed
     const response = await apiClient.get<ApiResponse<any>>(
       `/api/assessment/get-assessment-full?assessmentId=${assessmentId}&token=${token}`
     );
