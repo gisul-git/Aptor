@@ -627,8 +627,8 @@ export default function AIMLTestTakePage() {
         responseType: typeof response,
         responseKeys: response ? Object.keys(response) : [],
         hasData: !!(response?.data),
-        hasQuestions: !!(response?.questions || response?.data?.questions),
-        questionsCount: (response?.questions || response?.data?.questions)?.length || 0,
+        hasQuestions: !!(response?.data?.questions),
+        questionsCount: (response?.data?.questions)?.length || 0,
       })
       
       // AIML service's getTestForCandidate already extracts response.data from axios

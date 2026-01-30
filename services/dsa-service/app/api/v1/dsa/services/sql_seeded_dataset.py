@@ -3,7 +3,7 @@ from typing import Dict, Any, List
 
 import httpx
 
-from ..config import SQL_ENGINE_URL, get_dsa_settings
+from ..config import SQL_ENGINE_URL, get_dsa_settings, DSASettings
 
 logger = logging.getLogger("backend")
 
@@ -22,13 +22,16 @@ async def fetch_seeded_sql_schema() -> Dict[str, Any]:
       Dict[str, List[List[Any]]]
     where each row is a list of values in the same order as schemas[table].columns keys.
     """
-    # Prefer value from settings in case it was overridden at runtime
-    settings = get_dsa_settings()
-    base_url = getattr(settings, "sql_engine_url", None) or SQL_ENGINE_URL
+    # Always get fresh settings (not cached) to pick up .env changes
+    settings = DSASettings()
+    base_url = settings.sql_engine_url
 
     base = (base_url or "").rstrip("/")
     if not base:
-        raise RuntimeError("SQL_ENGINE_URL is not configured")
+        raise RuntimeError(
+            "SQL_ENGINE_URL is not configured. Please set SQL_ENGINE_URL in your .env file. "
+            "Example: SQL_ENGINE_URL=https://sql-engine.internal.delightfulpebble-b20f7903.centralindia.azurecontainerapps.io/api"
+        )
 
     url = f"{base}/schema"
     logger.info(f"[SQL Seeded Dataset] Fetching seeded schema from {url}")

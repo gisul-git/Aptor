@@ -481,19 +481,119 @@ async def evaluate_sql_answer(
         
         test_status = "PASSED" if (test_result and test_result.get("passed", False)) else "FAILED"
         test_details = ""
+        expected_output = ""
+        user_output = ""
+        
         if test_result:
             test_details = f"\nTest Execution Result: {test_status}\n"
             if test_result.get("error"):
                 test_details += f"Error: {test_result.get('error')}\n"
-            if test_result.get("user_result"):
-                test_details += f"User Query Result: {test_result.get('user_result')}\n"
-            if test_result.get("reference_result"):
-                test_details += f"Expected Result: {test_result.get('reference_result')}\n"
+            
+            # Extract expected output - prioritize direct expected_output field, then reference_result
+            if test_result.get("expected_output"):
+                expected_output = str(test_result.get("expected_output"))
+            else:
+                # Fallback to extracting from reference_result
+                reference_result = test_result.get("reference_result")
+                if reference_result:
+                    if isinstance(reference_result, dict):
+                        expected_output = reference_result.get("stdout", "") or reference_result.get("output", "") or ""
+                    elif isinstance(reference_result, str):
+                        expected_output = reference_result
+                    else:
+                        expected_output = str(reference_result) if reference_result else ""
+            
+            # Extract user output - prioritize direct user_output field, then user_result
+            if test_result.get("user_output"):
+                user_output = str(test_result.get("user_output"))
+            else:
+                # Fallback to extracting from user_result
+                user_result = test_result.get("user_result", {})
+                if isinstance(user_result, dict):
+                    user_output = user_result.get("stdout", "") or user_result.get("output", "") or ""
+                elif isinstance(user_result, str):
+                    user_output = user_result
+                else:
+                    user_output = str(user_result) if user_result else ""
+            
+            # Add outputs to test details
+            if user_output:
+                test_details += f"\nUser Query Output:\n{user_output[:2000]}\n"  # Limit to avoid token limits
+            if expected_output:
+                test_details += f"\nExpected Output:\n{expected_output[:2000]}\n"  # Limit to avoid token limits
         
         reference_context = f"\nReference Query (Expected Solution):\n{reference_query}\n" if reference_query else ""
         order_context = f"\nNote: Result order {'is' if order_sensitive else 'is NOT'} important for correctness.\n"
         
-        prompt = f"""{SYSTEM_PROMPT}
+        # Expected output context (if available)
+        expected_output_context = ""
+        if expected_output:
+            expected_output_context = f"\nEXPECTED OUTPUT (What the query should produce):\n```\n{expected_output[:2000]}\n```\n"
+        elif reference_query:
+            expected_output_context = "\nNote: Expected output is not available, but a reference query is provided above.\n"
+        
+        # SQL-specific evaluation prompt
+        sql_system_prompt = """You are an expert SQL evaluator for technical assessments. Your role is to evaluate SQL queries and provide detailed, actionable feedback.
+
+### SQL EVALUATION CRITERIA
+
+Evaluate SQL queries based on these criteria (NOT algorithmic time/space complexity):
+
+1. **Query Correctness (40%)**: Does the query produce the correct results?
+   - Correctness of logic and business requirements
+   - Proper handling of data relationships (JOINs, WHERE clauses)
+   - Correct use of aggregate functions, window functions, subqueries
+   - Handling of edge cases (NULL values, empty sets, duplicates)
+
+2. **Query Efficiency (25%)**: Is the query optimized for performance?
+   - Appropriate use of indexes (implicit through query structure)
+   - Efficient JOIN strategies (INNER, LEFT, RIGHT, FULL OUTER)
+   - Use of WHERE clauses to filter early
+   - Avoidance of unnecessary subqueries or correlated subqueries
+   - Use of CTEs (Common Table Expressions) for readability and potential optimization
+   - Appropriate use of window functions vs. subqueries
+   - Avoidance of SELECT * when not needed
+
+3. **SQL Best Practices (15%)**: Does the query follow SQL conventions?
+   - Readable formatting and indentation
+   - Clear and meaningful aliases
+   - Proper use of SQL keywords (DISTINCT, GROUP BY, HAVING, ORDER BY)
+   - Consistent naming conventions
+   - Appropriate use of comments (if needed)
+
+4. **Edge Case Handling (10%)**: How well does the query handle edge cases?
+   - NULL value handling (IS NULL, IS NOT NULL, COALESCE, NULLIF)
+   - Empty result sets
+   - Duplicate records (DISTINCT, GROUP BY)
+   - Data type considerations
+   - Boundary conditions
+
+5. **Alternative Solutions Awareness (10%)**: Does the candidate show awareness of different approaches?
+   - Use of different JOIN types when appropriate
+   - Window functions vs. subqueries
+   - CTEs vs. nested subqueries
+   - EXISTS vs. IN vs. JOIN for subqueries
+
+### IMPORTANT NOTES FOR SQL EVALUATION
+
+- **DO NOT** mention "O(n) time complexity" or "O(1) space complexity" - these are algorithmic concepts, not SQL concepts
+- **DO** mention query performance, execution plans, index usage, and optimization opportunities
+- **DO** evaluate query structure, readability, and maintainability
+- **DO** consider database-specific optimizations (though keep it generic)
+- **DO** provide feedback on SQL-specific best practices
+
+### EVALUATION OUTPUT
+
+Return a JSON object with the structure defined in the main system prompt, but focus your feedback on SQL-specific aspects:
+- Query correctness and logic
+- Query optimization and efficiency
+- SQL syntax and best practices
+- Edge case handling in SQL context
+- Alternative SQL approaches
+
+Provide constructive feedback that helps candidates improve their SQL skills."""
+
+        prompt = f"""{sql_system_prompt}
 
 Evaluate the following SQL query:
 
@@ -506,11 +606,38 @@ CANDIDATE QUERY:
 
 MAX MARKS: {max_marks}
 DIFFICULTY: {difficulty}
-{schemas_context}{reference_context}{order_context}{test_details}
+{schemas_context}{reference_context}{order_context}{expected_output_context}{test_details}
 
 The query has {test_status.lower()} the execution test.
-Provide detailed evaluation including efficiency, best practices, and alternative approaches.
-Focus on query correctness, efficiency, SQL best practices, edge case handling, and awareness of alternative solutions."""
+
+### SCORING GUIDELINES (SQL-SPECIFIC):
+
+**PRIMARY FACTOR: Query Correctness (40% of score)**
+- If the query produces the EXACT expected output: Award 40% of max_marks for correctness
+- If the query produces similar but not exact output: Award 20-35% based on how close it is
+- If the query fails or produces incorrect output: Award 0-15% based on approach correctness
+
+**Secondary Factors (60% of score):**
+- Query Efficiency (25%): JOIN optimization, index usage, query structure
+- SQL Best Practices (15%): Formatting, readability, naming conventions
+- Edge Case Handling (10%): NULL handling, empty sets, duplicates
+- Alternative Solutions (10%): Awareness of different SQL approaches
+
+**FINAL SCORE CALCULATION:**
+- Base score = Correctness (40%) + Efficiency (25%) + Best Practices (15%) + Edge Cases (10%) + Alternatives (10%)
+- If test PASSED: Minimum score should be 80% of max_marks (query is correct)
+- If test FAILED: Maximum score should be 50% of max_marks (query has correctness issues)
+- Adjust within these ranges based on quality factors
+
+Provide detailed SQL-specific evaluation focusing on:
+- Query correctness compared to expected output (if provided)
+- Query efficiency and optimization opportunities
+- SQL best practices and code quality
+- Edge case handling (NULLs, empty sets, duplicates)
+- Alternative SQL approaches (different JOIN types, window functions, CTEs, etc.)
+
+DO NOT mention algorithmic time/space complexity (O(n), O(1), etc.) as these concepts don't apply to SQL queries.
+Instead, focus on query performance, index usage, JOIN efficiency, and SQL-specific optimizations."""
 
         response = await _call_openai_with_retry(client, prompt)
         result = _parse_json_response(response)
@@ -520,16 +647,28 @@ Focus on query correctness, efficiency, SQL best practices, edge case handling, 
         result["question_id"] = question_id
         result["section"] = section or ""
         
-        # Adjust score based on test result
+        # Adjust score based on test result and SQL-specific criteria
         if test_result:
-            if not test_result.get("passed", False):
-                # If test failed, cap the score at 50% of max_marks
+            test_passed = test_result.get("passed", False)
+            
+            if not test_passed:
+                # If test failed, cap the score at 50% of max_marks (SQL-specific: query has correctness issues)
                 max_possible = max_marks * 0.5
                 if result.get("score", 0) > max_possible:
                     result["score"] = max_possible
                     result["flags"]["requires_human_review"] = True
                     result["answer_log"]["partial_credit_reasoning"] = (
-                        "Query did not pass execution test. Partial credit awarded for correct approach or structure."
+                        "Query did not pass execution test. Partial credit awarded for correct approach, "
+                        "query structure, or SQL best practices demonstrated."
+                    )
+            else:
+                # If test passed, ensure minimum score is 80% (SQL-specific: query is correct)
+                min_score = max_marks * 0.8
+                if result.get("score", 0) < min_score:
+                    result["score"] = min_score
+                    logger.info(
+                        f"SQL query passed test but AI score was below 80%. "
+                        f"Adjusted from {result.get('score', 0)} to {min_score}"
                     )
         
         # Validate and normalize scores

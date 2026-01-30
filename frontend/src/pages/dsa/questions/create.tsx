@@ -693,7 +693,7 @@ export default function QuestionCreatePage() {
       } else if (err.message) {
         errorMessage = `${errorMessage} Error: ${err.message}`
       } else if (err.code === 'ERR_NETWORK') {
-        errorMessage = 'Network error. Make sure the SQL execution engine is running on port 3000.'
+        errorMessage = `Network error. Make sure the SQL execution engine is running. Check NEXT_PUBLIC_SQL_ENGINE_URL environment variable.`
       }
       setError(errorMessage)
       alert(`❌ ${errorMessage}`)
