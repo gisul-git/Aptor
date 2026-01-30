@@ -1895,14 +1895,69 @@ export default function TestTakePage() {
         // Normalize SQL query to single line with \n characters
         sqlQuery = sqlQuery.replace(/\r\n/g, '\n').replace(/\r/g, '\n')
         
-        // Call SQL execution engine through backend proxy to avoid CORS issues
-        // Backend reads SQL_ENGINE_URL from environment variable
-        const result = await dsaService.proxySQLExecute({
+        // Call SQL execution engine directly from frontend
+        // URL must be set in NEXT_PUBLIC_SQL_ENGINE_URL environment variable
+        const baseUrl = process.env.NEXT_PUBLIC_SQL_ENGINE_URL
+        if (!baseUrl) {
+          throw new Error('NEXT_PUBLIC_SQL_ENGINE_URL environment variable is not set. Please configure it in your .env file.')
+        }
+        const sqlEngineUrl = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl
+        
+        console.log('[SQL Run] SQL Engine URL:', sqlEngineUrl)
+        console.log('[SQL Run] Sending query:', sqlQuery.substring(0, 100) + (sqlQuery.length > 100 ? '...' : ''))
+        
+        const requestBody = {
           questionId: currentQuestion.id,
           code: sqlQuery,
           schemas: currentQuestion.schemas || null,
           sample_data: currentQuestion.sample_data || null,
+        }
+        
+        const executeResponse = await fetch(`${sqlEngineUrl}/api/execute`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(requestBody),
         })
+        
+        if (!executeResponse.ok) {
+          const text = await executeResponse.text()
+          if (text.trim().startsWith('<!DOCTYPE') || text.trim().startsWith('<html')) {
+            throw new Error(`SQL engine returned HTML (likely 404). Make sure the SQL execution engine is running on ${sqlEngineUrl}`)
+          }
+          throw new Error(`HTTP ${executeResponse.status}: ${text.substring(0, 200)}`)
+        }
+        
+        const contentType = executeResponse.headers.get('content-type') || ''
+        let responseText = ''
+        
+        try {
+          responseText = await executeResponse.text()
+        } catch (e: any) {
+          throw new Error(`Failed to read response: ${e?.message || String(e)}`)
+        }
+        
+        if (!contentType.includes('application/json')) {
+          throw new Error(`Expected JSON but got ${contentType}. Response: ${responseText.substring(0, 500)}`)
+        }
+        
+        let executeResult
+        try {
+          executeResult = JSON.parse(responseText)
+        } catch (e: any) {
+          console.error('Failed to parse JSON response:', responseText)
+          throw new Error(`Invalid JSON response from SQL engine. Response: ${responseText.substring(0, 500)}`)
+        }
+        
+        // Normalize the result to match expected format
+        const result = {
+          success: executeResult.success !== false,
+          output: executeResult.output || executeResult.actualOutput || [],
+          error: executeResult.error || null,
+          time: executeResult.time || null,
+          memory: executeResult.memory || null,
+        }
         
         if (result.success) {
           // Format output - result.output is an array of objects (from normalizeResult)
