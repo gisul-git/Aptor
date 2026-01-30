@@ -1,29 +1,30 @@
-name: Build and Deploy Auth Service to Azure Container Apps
+name: Build and Deploy Employee Service to Azure Container Apps
 
 on:
   push:
     branches:
       - dev
     paths:
-      - 'services/auth-service/**'
-      - '.github/workflows/deploy-auth-service.yml'
+      - 'services/employee-service/**'
+      - '.github/workflows/deploy-employee-service.yml'
   pull_request:
     types: [closed]
     branches:
       - dev
     paths:
-      - 'services/auth-service/**'
-  workflow_dispatch:
+      - 'services/employee-service/**'
+  workflow_dispatch: # Allow manual triggering
 
 env:
   AZURE_RESOURCE_GROUP: Aaptor
-  CONTAINER_APP_NAME: auth-service
-  DOCKER_IMAGE_NAME: auth-service
-  SERVICE_PATH: services/auth-service
+  CONTAINER_APP_NAME: employee-service
+  DOCKER_IMAGE_NAME: employee-service
+  SERVICE_PATH: services/employee-service
 
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
+    # Only run on push to dev, merged PRs, or manual dispatch
     if: |
       github.event_name == 'push' ||
       (github.event_name == 'pull_request' && github.event.pull_request.merged == true) ||
@@ -80,5 +81,6 @@ jobs:
 
       - name: Verify deployment
         run: |
-          echo "✅ Deployment completed successfully!"
-          echo "📦 Image: ${{ secrets.ACR_LOGIN_SERVER }}/${{ env.DOCKER_IMAGE_NAME }}:${{ github.sha }}"
+          echo "Deployment completed successfully!"
+          echo "Image: ${{ secrets.ACR_LOGIN_SERVER }}/${{ env.DOCKER_IMAGE_NAME }}:${{ github.sha }}"
+
