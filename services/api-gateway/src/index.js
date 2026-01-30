@@ -108,6 +108,10 @@ async function verifyToken(req, res, next) {
     /^\/api\/v1\/aiml\/tests\/[^/]+\/start$/,
     /^\/api\/v1\/aiml\/tests\/[^/]+\/public$/,
     /^\/api\/v1\/aiml\/tests\/[^/]+\/full$/,
+    // Proctoring endpoints - candidates need to record violations without auth
+    /^\/api\/v1\/proctor\/record$/,
+    /^\/api\/v1\/proctor\/upload$/,
+    /^\/api\/v1\/proctor\/start-session$/,
   ];
   
   // Check if path matches candidate public patterns

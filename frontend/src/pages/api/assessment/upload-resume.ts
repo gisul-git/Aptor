@@ -60,7 +60,7 @@ export default async function handler(
         }
       )
       
-      console.log(`[upload-resume] DSA resume upload response:`, dsaResponse.data)
+      console.log(`[upload-resume] DSA resume upload response :`, dsaResponse.data)
       
       // Clean up temp file
       fs.unlinkSync(resumeFile.filepath)

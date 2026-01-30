@@ -96,18 +96,31 @@ def generate_aiml_feedback(
             messages=[
                 {
                     "role": "system",
-                    "content": """You are an expert AIML/Data Science code evaluator. 
-Your job is to evaluate code submissions for data science and machine learning problems.
-Focus on:
-1. Code correctness and logic
-2. Proper use of libraries (numpy, pandas, scikit-learn, matplotlib, etc.)
-3. Task completion
-4. Code quality and best practices
-5. Output validity
+                    "content": """You are an expert AIML/Data Science code evaluator with EXTREME ATTENTION TO ACCURACY. 
+Your job is to evaluate code submissions for data science and machine learning problems with PRECISION and CORRECTNESS.
+
+CRITICAL EVALUATION PRIORITIES (in order of importance):
+1. **OUTPUT CORRECTNESS** - This is THE MOST IMPORTANT factor. You MUST:
+   - Understand what the task expects as output
+   - Analyze the actual outputs from code execution
+   - Determine if outputs are CORRECT, PARTIALLY CORRECT, or INCORRECT
+   - Be STRICT: incorrect outputs should receive low correctness scores
+   - Verify outputs match expected format, values, and logic
+
+2. **TASK COMPLETION** - Verify each task requirement:
+   - Check if code accomplishes what each task asks for
+   - Verify outputs demonstrate task completion
+   - Be specific about what was completed vs. what was missed
+
+3. **CODE QUALITY** - Assess structure, readability, best practices
+
+4. **LIBRARY USAGE** - Evaluate appropriate and efficient use of AIML libraries
+
+5. **OUTPUT QUALITY** - Assess format, presentation, completeness
 
 CRITICAL: Provide COMPREHENSIVE, HIGHLY DETAILED feedback with extensive educational context. Users want thorough, detailed feedback, not brief summaries. Every section should be 4-7 sentences with substantial detail, examples, and educational insights. Explain the 'why' behind every observation. Include specific code examples when discussing strengths or improvements. Be educational and comprehensive in every response. Make feedback_summary 5-7 sentences, all comment fields 4-6 sentences, and include multiple detailed suggestions, strengths, and improvement areas.
 
-Provide fair, constructive feedback. Be encouraging but honest. Be detailed and educational."""
+MOST IMPORTANTLY: Be ACCURATE and CORRECT in your evaluation. If outputs are wrong, say so clearly. If outputs are correct, acknowledge that. Your evaluation must reflect the actual correctness of the solution."""
                 },
                 {"role": "user", "content": prompt}
             ],
@@ -152,8 +165,17 @@ def _build_evaluation_prompt(
     constraints_text = "\n".join([f"  - {c}" for c in constraints]) if constraints else "  No specific constraints"
     outputs_text = "\n---\n".join(outputs) if outputs else "No outputs"
     
+    # Include dataset info if available
+    dataset_text = ""
+    if dataset_info:
+        dataset_text = f"\nDataset Information:\n"
+        if dataset_info.get("schema"):
+            dataset_text += f"  Schema: {dataset_info.get('schema')}\n"
+        if dataset_info.get("rows"):
+            dataset_text += f"  Sample rows: {len(dataset_info.get('rows', []))} rows\n"
+    
     prompt = f"""
-Evaluate the following AIML/Data Science code submission:
+Evaluate the following AIML/Data Science code submission with EXTREME ACCURACY and ATTENTION TO DETAIL:
 
 == QUESTION ==
 Title: {question_title}
@@ -162,7 +184,7 @@ Skill Area: {skill or "General Data Science"}
 
 Description:
 {question_description}
-
+{dataset_text}
 Tasks to Complete:
 {tasks_text}
 
@@ -177,6 +199,32 @@ Constraints:
 == EXECUTION OUTPUTS ==
 {outputs_text}
 
+== CRITICAL EVALUATION REQUIREMENTS ==
+1. **TASK COMPLETION ANALYSIS**: 
+   - Carefully read EACH task requirement
+   - Check if the code actually accomplishes what each task asks for
+   - Verify that outputs demonstrate task completion
+   - Be STRICT: partial completion should be penalized appropriately
+
+2. **OUTPUT CORRECTNESS VERIFICATION**:
+   - Understand what the EXPECTED output should be based on the task requirements
+   - Analyze the ACTUAL outputs from the code execution
+   - Determine if outputs are CORRECT, PARTIALLY CORRECT, or INCORRECT
+   - Check if outputs match the expected format, data types, and values
+   - Verify logical correctness: do the outputs make sense for the given task?
+   - Look for errors, warnings, or unexpected results in outputs
+
+3. **CODE QUALITY ASSESSMENT**:
+   - Evaluate code structure, readability, and organization
+   - Check for best practices (proper variable names, comments, modularity)
+   - Assess efficiency and optimization
+   - Review error handling and edge case considerations
+
+4. **LIBRARY USAGE EVALUATION**:
+   - Verify appropriate use of AIML/Data Science libraries
+   - Check if libraries are used correctly and efficiently
+   - Assess whether the right tools were chosen for the task
+
 == EVALUATION INSTRUCTIONS ==
 Evaluate the submission and return a JSON response with this exact structure:
 
@@ -190,12 +238,12 @@ Evaluate the submission and return a JSON response with this exact structure:
     }},
     "correctness": {{
         "score": <0-40>,
-        "comments": "<Comprehensive 4-6 sentence detailed assessment of whether the code produces correct results. Include: (1) Detailed analysis of output correctness with specific observations, (2) Evaluation of logic and algorithm correctness, (3) Discussion of edge case handling, (4) Analysis of whether the solution meets requirements, (5) Comparison with expected results if applicable, (6) Educational insights about correctness. Be detailed and educational.>"
+        "comments": "<CRITICAL: This is the MOST IMPORTANT criterion. Provide comprehensive 4-6 sentence detailed assessment. You MUST: (1) Analyze the ACTUAL outputs against what the task EXPECTS - are outputs correct? (2) Verify if outputs match expected format, values, and data types based on task requirements, (3) Check if the logic produces the right results for the given problem, (4) Identify any errors, incorrect calculations, or wrong outputs, (5) Determine if outputs demonstrate successful task completion, (6) Be SPECIFIC about what is correct/incorrect in the outputs. This score should heavily penalize incorrect outputs. Be detailed, specific, and educational.>"
     }},
     "task_completion": {{
-        "completed": <number of tasks completed>,
+        "completed": <number of tasks completed CORRECTLY>,
         "total": {len(tasks)},
-        "details": ["<Comprehensive status for each task with detailed explanation of what was accomplished or missed>"]
+        "details": ["<For EACH task, provide: (1) Whether the task was completed, (2) Evidence from code/outputs showing completion, (3) If not completed, what is missing, (4) If completed incorrectly, what is wrong. Be VERY SPECIFIC and reference actual code/outputs.>"]
     }},
     "library_usage": {{
         "score": <0-20>,
@@ -212,12 +260,39 @@ Evaluate the submission and return a JSON response with this exact structure:
 }}
 
 SCORING GUIDELINES for difficulty "{difficulty}":
-- Easy: Be lenient, focus on basic correctness (70+ for working code)
-- Medium: Balanced evaluation (60+ for mostly correct implementation)
-- Hard: Stricter evaluation (50+ for partial solutions)
+- Easy: Be lenient, focus on basic correctness (70+ for working code with correct outputs)
+- Medium: Balanced evaluation (60+ for mostly correct implementation with mostly correct outputs)
+- Hard: Stricter evaluation (50+ for partial solutions with partially correct outputs)
+
+CRITICAL SCORING RULES:
+1. **Correctness (40 points) is MOST IMPORTANT**: 
+   - If outputs are CORRECT and match task requirements: 30-40 points
+   - If outputs are PARTIALLY CORRECT: 15-29 points
+   - If outputs are INCORRECT or missing: 0-14 points
+   - If code has errors preventing execution: 0-10 points
+
+2. **Task Completion**: 
+   - All tasks completed correctly: Full points
+   - Some tasks completed: Proportional points
+   - No tasks completed: 0 points
+
+3. **Code Quality (25 points)**: 
+   - Well-structured, readable, follows best practices: 20-25 points
+   - Acceptable structure: 10-19 points
+   - Poor structure: 0-9 points
+
+4. **Library Usage (20 points)**: 
+   - Appropriate and efficient library usage: 15-20 points
+   - Acceptable usage: 8-14 points
+   - Poor or missing library usage: 0-7 points
+
+5. **Output Quality (15 points)**: 
+   - Well-formatted, complete outputs: 12-15 points
+   - Acceptable outputs: 6-11 points
+   - Poor outputs: 0-5 points
 
 The overall_score should approximately equal: code_quality.score + correctness.score + library_usage.score + output_quality.score
-Adjust slightly based on task completion and overall impression.
+Adjust slightly based on task completion percentage. If correctness score is very low (<15), overall score should reflect that the solution is fundamentally incorrect.
 
 IMPORTANT FEEDBACK REQUIREMENTS:
 - Make the feedback_summary 5-7 sentences with substantial detail, context, and educational insights

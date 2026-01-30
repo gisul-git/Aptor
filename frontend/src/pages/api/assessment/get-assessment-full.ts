@@ -111,7 +111,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     try {
       const aimlUrl = `/api/v1/aiml/tests/${assessmentId}/full`;
       const fullAimlUrl = `${API_GATEWAY_URL}${aimlUrl}`;
-      console.log(`[get-assessment-full] 🔵 Attempting AIML endpoint:`, {
+      console.log(`[get-assessment-full] 🔵 Attempting AIML /full endpoint:`, {
         testId: assessmentId,
         url: aimlUrl,
         fullUrl: fullAimlUrl,
@@ -119,6 +119,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         timestamp: new Date().toISOString(),
       });
       
+      // The /full endpoint doesn't require token (public endpoint)
       const aimlResponse = await backendClient.get(aimlUrl);
       
       console.log("[get-assessment-full] ✅ AIML endpoint succeeded:", {
@@ -127,13 +128,51 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         hasData: !!aimlResponse.data,
         dataType: typeof aimlResponse.data,
         dataKeys: aimlResponse.data ? Object.keys(aimlResponse.data) : [],
-        dataPreview: aimlResponse.data ? JSON.stringify(aimlResponse.data).substring(0, 200) : 'no data',
+        fullResponse: JSON.stringify(aimlResponse.data, null, 2),
       });
       
       // AIML endpoint returns { success: true, message: "...", data: {...} }
-      // Return it as-is for the frontend (same structure as generic endpoint)
-      console.log("[get-assessment-full] ✅ Returning AIML response to frontend");
-      return res.status(aimlResponse.status || 200).json(aimlResponse.data);
+      // Extract the actual test data from response.data.data
+      const aimlData = aimlResponse.data;
+      console.log("[get-assessment-full] 🔍 Raw aimlData structure:", {
+        hasSuccess: !!aimlData?.success,
+        hasData: !!aimlData?.data,
+        aimlDataKeys: aimlData ? Object.keys(aimlData) : [],
+        aimlDataFull: JSON.stringify(aimlData, null, 2),
+      });
+      
+      const testData = aimlData?.data || aimlData; // Extract nested data, or use entire response if no nested data
+      
+      console.log("[get-assessment-full] 🔍 Extracted testData:", {
+        testDataType: typeof testData,
+        testDataKeys: testData ? Object.keys(testData) : [],
+        hasSchedule: !!(testData?.schedule),
+        scheduleKeys: testData?.schedule ? Object.keys(testData.schedule) : [],
+        hasProctoringSettingsTop: !!(testData?.proctoringSettings),
+        proctoringSettingsTop: testData?.proctoringSettings,
+        hasProctoringSettingsSchedule: !!(testData?.schedule?.proctoringSettings),
+        proctoringSettingsSchedule: testData?.schedule?.proctoringSettings,
+        testDataFull: JSON.stringify(testData, null, 2),
+      });
+      
+      // Return in the same format as generic endpoint: { success: true, data: {...} }
+      // where data contains the actual assessment/test object with proctoringSettings
+      const responsePayload = {
+        success: aimlData?.success ?? true,
+        message: aimlData?.message ?? "Assessment fetched successfully",
+        data: testData, // Return the actual test_dict with proctoringSettings
+      };
+      
+      console.log("[get-assessment-full] 📤 Returning response payload:", {
+        hasSuccess: !!responsePayload.success,
+        hasData: !!responsePayload.data,
+        dataKeys: responsePayload.data ? Object.keys(responsePayload.data) : [],
+        hasProctoringSettingsInData: !!(responsePayload.data?.proctoringSettings || responsePayload.data?.schedule?.proctoringSettings),
+        proctoringSettingsInData: responsePayload.data?.proctoringSettings || responsePayload.data?.schedule?.proctoringSettings,
+        responsePayloadFull: JSON.stringify(responsePayload, null, 2),
+      });
+      
+      return res.status(aimlResponse.status || 200).json(responsePayload);
     } catch (aimlError: any) {
       const aimlStatus = aimlError?.response?.status;
       const aimlStatusText = aimlError?.response?.statusText;

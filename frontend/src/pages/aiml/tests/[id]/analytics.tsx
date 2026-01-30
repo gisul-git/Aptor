@@ -99,11 +99,29 @@ export default function AnalyticsPage() {
   const { id: testIdParam, candidate: candidateUserId } = router.query
   const testId = typeof testIdParam === 'string' ? testIdParam : undefined
   
+  // State declarations first
+  const [candidates, setCandidates] = useState<Candidate[]>([])
+  const [selectedCandidate, setSelectedCandidate] = useState<string | null>(null)
+  
   // React Query hooks
   const { data: testInfoData, isLoading: loadingTestInfo } = useAIMLTest(testId)
-  const { data: candidatesData, isLoading: loadingCandidates, refetch: refetchCandidates } = useAIMLCandidates(testId)
-  const selectedCandidateUserId = typeof candidateUserId === 'string' ? candidateUserId : undefined
+  const { data: candidatesData, isLoading: loadingCandidates, refetch: refetchCandidates, error: candidatesError } = useAIMLCandidates(testId)
+  // Use selectedCandidate state or URL param for analytics query
+  const selectedCandidateUserId = selectedCandidate || (typeof candidateUserId === 'string' ? candidateUserId : undefined)
   const { data: analyticsData, isLoading: loadingAnalytics, refetch: refetchAnalytics } = useAIMLCandidateAnalytics(testId, selectedCandidateUserId)
+
+  // Debug logging for React Query data
+  console.log('[AIML Analytics] 🔍 React Query Data:', {
+    testId,
+    testInfoData: testInfoData ? 'exists' : 'null',
+    candidatesData: candidatesData ? `exists (${Array.isArray(candidatesData) ? candidatesData.length : 'not array'})` : 'null',
+    candidatesDataType: typeof candidatesData,
+    candidatesDataIsArray: Array.isArray(candidatesData),
+    loadingCandidates,
+    candidatesError: candidatesError ? candidatesError.message : null,
+    selectedCandidateUserId,
+    analyticsData: analyticsData ? 'exists' : 'null'
+  })
   
   // Mutations
   const addCandidateMutation = useAddAIMLCandidate()
@@ -112,9 +130,6 @@ export default function AnalyticsPage() {
   const sendInvitationsToAllMutation = useSendAIMLInvitationsToAll()
   const sendFeedbackMutation = useSendAIMLFeedback()
   const updateTestMutation = useUpdateAIMLTest()
-  
-  const [candidates, setCandidates] = useState<Candidate[]>([])
-  const [selectedCandidate, setSelectedCandidate] = useState<string | null>(null)
   const [analytics, setAnalytics] = useState<CandidateAnalytics | null>(null)
   const [loading, setLoading] = useState(true)
   const [proctorLogs, setProctorLogs] = useState<any[]>([])
@@ -244,72 +259,99 @@ export default function AnalyticsPage() {
     setShowProctorLogs(true)
   }
 
+  // Sync React Query data to local state
+  useEffect(() => {
+    if (testInfoData) {
+      setTestInfo(testInfoData)
+      // Load email template if exists, otherwise use default
+      if (testInfoData?.invitationTemplate) {
+        setEmailTemplate(testInfoData.invitationTemplate)
+      } else {
+        // Use default template
+        setEmailTemplate({
+          logoUrl: "",
+          companyName: "",
+          message: "You have been invited to take an AIML test. Please click the link below to start.",
+          footer: "",
+          sentBy: "AI Assessment Platform"
+        })
+      }
+    }
+  }, [testInfoData])
+
+  // Sync candidates data from React Query
+  useEffect(() => {
+    console.log('[AIML Analytics] 🔄 Syncing candidates data:', {
+      candidatesData,
+      isArray: Array.isArray(candidatesData),
+      length: Array.isArray(candidatesData) ? candidatesData.length : 'N/A',
+      type: typeof candidatesData,
+      hasData: !!candidatesData
+    })
+    
+    if (candidatesData && Array.isArray(candidatesData)) {
+      console.log('[AIML Analytics] ✅ Setting candidates:', {
+        count: candidatesData.length,
+        candidates: candidatesData.map((c: any) => ({
+          user_id: c.user_id,
+          name: c.name,
+          email: c.email,
+          has_submitted: c.has_submitted,
+          submission_score: c.submission_score
+        }))
+      })
+      setCandidates(candidatesData)
+    } else {
+      console.warn('[AIML Analytics] ⚠️ Candidates data is not valid array:', {
+        candidatesData,
+        type: typeof candidatesData,
+        isArray: Array.isArray(candidatesData)
+      })
+      // Clear candidates if data is invalid
+      setCandidates([])
+    }
+  }, [candidatesData])
+
+  // Sync analytics data from React Query
+  useEffect(() => {
+    if (analyticsData) {
+      console.log('[AIML Analytics] 📊 Syncing analytics data:', analyticsData)
+      setAnalytics(analyticsData)
+      // Fetch proctor logs when analytics data is loaded
+      if (selectedCandidateUserId && analyticsData.candidate?.email) {
+        fetchProctorLogs(selectedCandidateUserId)
+        fetchReferencePhoto(analyticsData.candidate.email)
+      }
+    } else if (selectedCandidateUserId && !loadingAnalytics) {
+      // Clear analytics if no data and not loading (query completed but no data)
+      console.log('[AIML Analytics] ⚠️ No analytics data found for candidate:', selectedCandidateUserId)
+      setAnalytics(null)
+    }
+  }, [analyticsData, selectedCandidateUserId, loadingAnalytics])
+
+  // Initial data fetch and setup
   useEffect(() => {
     if (!testId || typeof testId !== 'string') return
 
-    const fetchData = async () => {
-      try {
-        setLoading(true)
-        
-        // Fetch test info
-        try {
-          const testResponse = await aimlApi.get(`/tests/${testId}`)
-          setTestInfo(testResponse.data)
-          
-          // Load email template if exists, otherwise use default
-          if (testResponse.data?.invitationTemplate) {
-            setEmailTemplate(testResponse.data.invitationTemplate)
-          } else {
-            // Use default template
-            setEmailTemplate({
-              logoUrl: "",
-              companyName: "",
-              message: "You have been invited to take an AIML test. Please click the link below to start.",
-              footer: "",
-              sentBy: "AI Assessment Platform"
-            })
-          }
-        } catch (error) {
-          console.error('Error fetching test info:', error)
-        }
-        
-        // Fetch candidates
-        const response = await aimlApi.get(`/tests/${testId}/candidates`)
-        const candidatesData = response.data || []
-        setCandidates(candidatesData)
-        
-        // If candidate query param is set, load that candidate's analytics
-        if (candidateUserId && typeof candidateUserId === 'string') {
-          setSelectedCandidate(candidateUserId)
-          fetchAnalytics(candidateUserId)
-          // Try to fetch reference photo if candidate email is available
-          const candidate = candidatesData.find((c: any) => c.user_id === candidateUserId)
-          console.log('[AIML Analytics] 🔍 Initial candidate load for reference photo:', {
-            candidateUserId,
-            candidateFound: !!candidate,
-            candidateEmail: candidate?.email
-          })
-          if (candidate?.email) {
-            console.log('[AIML Analytics] 📞 Scheduling fetchReferencePhoto with email:', candidate.email)
-            setTimeout(() => fetchReferencePhoto(candidate.email), 100)
-          } else {
-            console.warn('[AIML Analytics] ⚠️ Candidate email not found in initial load')
-          }
-        }
-      } catch (error) {
-        console.error('Error fetching data:', error)
-        alert('Failed to load data')
-      } finally {
-        setLoading(false)
-      }
+    // If candidate query param is set, select that candidate
+    if (candidateUserId && typeof candidateUserId === 'string') {
+      setSelectedCandidate(candidateUserId)
     }
-
-    fetchData()
-  }, [testId, candidateUserId])
+    
+    // Set loading to false once React Query has started fetching
+    if (testInfoData !== undefined || candidatesData !== undefined) {
+      setLoading(false)
+    }
+  }, [testId, candidateUserId, testInfoData, candidatesData])
 
   const handleCandidateSelect = (userId: string) => {
     setSelectedCandidate(userId)
-    fetchAnalytics(userId)
+    // Update URL to include candidate parameter (this will trigger React Query to fetch analytics)
+    router.push({
+      pathname: router.pathname,
+      query: { ...router.query, candidate: userId }
+    }, undefined, { shallow: true })
+    
     // Try to fetch reference photo if candidate email is available
     const candidate = candidates.find(c => c.user_id === userId)
     console.log('[AIML Analytics] 👤 Candidate selected for reference photo:', {
@@ -545,7 +587,10 @@ export default function AnalyticsPage() {
     }
   }, [testInfo])
 
-  if (loading) {
+  // Use React Query loading states
+  const isLoading = loading || loadingTestInfo || loadingCandidates || (selectedCandidateUserId && loadingAnalytics)
+
+  if (isLoading && !testInfo && !candidatesData) {
     return (
       <div className="container">
         <div className="card">
@@ -556,6 +601,14 @@ export default function AnalyticsPage() {
   }
 
   // Calculate overall statistics
+  console.log('[AIML Analytics] 📊 Calculating statistics:', {
+    candidatesLength: candidates.length,
+    candidates: candidates,
+    candidatesData: candidatesData,
+    loadingCandidates,
+    candidatesError: candidatesError ? candidatesError.message : null
+  })
+  
   const submittedCandidates = candidates.filter(c => c.has_submitted)
   const totalCandidates = candidates.length
   const submittedCount = submittedCandidates.length
@@ -564,6 +617,14 @@ export default function AnalyticsPage() {
     : 0
   const passedCount = submittedCandidates.filter(c => (c.submission_score || 0) >= 60).length
   const failedCount = submittedCandidates.filter(c => (c.submission_score || 0) < 60).length
+  
+  console.log('[AIML Analytics] 📊 Statistics calculated:', {
+    totalCandidates,
+    submittedCount,
+    avgScore,
+    passedCount,
+    failedCount
+  })
 
   return (
     <div className="container">
@@ -741,8 +802,33 @@ export default function AnalyticsPage() {
             </div>
           </div>
           
+          {(() => {
+            console.log('[AIML Analytics] 🎨 Rendering candidates section:', {
+              candidatesLength: candidates.length,
+              candidates: candidates,
+              candidatesData: candidatesData,
+              loadingCandidates,
+              candidatesError: candidatesError ? candidatesError.message : null
+            })
+            return null
+          })()}
           {candidates.length === 0 ? (
-            <p style={{ color: "#64748b", fontSize: "0.875rem" }}>No candidates added yet.</p>
+            <div>
+              <p style={{ color: "#64748b", fontSize: "0.875rem" }}>No candidates added yet.</p>
+              {loadingCandidates && (
+                <p style={{ color: "#64748b", fontSize: "0.75rem", marginTop: "0.5rem" }}>Loading candidates...</p>
+              )}
+              {candidatesError && (
+                <p style={{ color: "#ef4444", fontSize: "0.75rem", marginTop: "0.5rem" }}>
+                  Error: {candidatesError.message}
+                </p>
+              )}
+              {candidatesData && !Array.isArray(candidatesData) && (
+                <p style={{ color: "#f59e0b", fontSize: "0.75rem", marginTop: "0.5rem" }}>
+                  Warning: Candidates data is not an array. Type: {typeof candidatesData}
+                </p>
+              )}
+            </div>
           ) : (
             <div style={{ overflowX: "auto" }}>
               <table style={{ width: "100%", borderCollapse: "collapse" }}>
@@ -883,10 +969,37 @@ export default function AnalyticsPage() {
               >
                 📊 Overall Analytics
               </button>
+              {(() => {
+                console.log('[AIML Analytics] 🎨 Rendering candidates sidebar:', {
+                  candidatesLength: candidates.length,
+                  candidates: candidates,
+                  candidatesData: candidatesData,
+                  loadingCandidates,
+                  candidatesError: candidatesError ? candidatesError.message : null
+                })
+                return null
+              })()}
               {candidates.length === 0 ? (
-                <p style={{ fontSize: "0.875rem", color: "#64748b" }}>
-                  No candidates found
-                </p>
+                <div>
+                  <p style={{ fontSize: "0.875rem", color: "#64748b" }}>
+                    No candidates found
+                  </p>
+                  {loadingCandidates && (
+                    <p style={{ fontSize: "0.75rem", color: "#64748b", marginTop: "0.5rem" }}>Loading candidates...</p>
+                  )}
+                  {candidatesError && (
+                    <p style={{ fontSize: "0.75rem", color: "#ef4444", marginTop: "0.5rem" }}>
+                      Error: {candidatesError.message}
+                    </p>
+                  )}
+                  <div style={{ marginTop: "1rem", fontSize: "0.75rem", color: "#64748b", textAlign: "left" }}>
+                    <p><strong>Debug Info:</strong></p>
+                    <p>Candidates state: {candidates.length} items</p>
+                    <p>CandidatesData: {candidatesData ? (Array.isArray(candidatesData) ? `${candidatesData.length} items` : `Not array (${typeof candidatesData})`) : 'null'}</p>
+                    <p>Loading: {loadingCandidates ? 'Yes' : 'No'}</p>
+                    <p>Error: {candidatesError ? candidatesError.message : 'None'}</p>
+                  </div>
+                </div>
               ) : (
                 <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
                   {candidates.map((candidate) => (
@@ -1339,13 +1452,13 @@ export default function AnalyticsPage() {
                         <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginBottom: "1rem" }}>
                           <Lightbulb size={24} className="text-emerald-600" />
                           <h4 style={{ fontSize: "1.125rem", fontWeight: 600, color: "#166534", margin: 0 }}>
-                            AI Evaluation
+                            AI Evaluation & Feedback
                           </h4>
                           <span style={{
                             marginLeft: "auto",
-                            padding: "0.25rem 0.75rem",
-                            borderRadius: "9999px",
-                            fontSize: "0.875rem",
+                            padding: "0.5rem 1rem",
+                            borderRadius: "0.5rem",
+                            fontSize: "1rem",
                             fontWeight: 700,
                             backgroundColor: qa.ai_feedback.overall_score >= 70 ? "#dcfce7" : qa.ai_feedback.overall_score >= 50 ? "#fef3c7" : "#fee2e2",
                             color: qa.ai_feedback.overall_score >= 70 ? "#166534" : qa.ai_feedback.overall_score >= 50 ? "#92400e" : "#991b1b",
@@ -1385,31 +1498,54 @@ export default function AnalyticsPage() {
                         {/* Score Breakdown */}
                         <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "1rem", marginBottom: "1rem" }}>
                           {qa.ai_feedback.code_quality && (
-                            <div style={{ padding: "0.75rem", backgroundColor: "#ffffff", borderRadius: "0.5rem" }}>
-                              <div style={{ fontSize: "0.75rem", color: "#64748b", marginBottom: "0.25rem" }}>Code Quality</div>
-                              <div style={{ fontSize: "1rem", fontWeight: 600 }}>{qa.ai_feedback.code_quality.score}/25</div>
-                              <div style={{ fontSize: "0.75rem", color: "#64748b", marginTop: "0.25rem" }}>{qa.ai_feedback.code_quality.comments}</div>
+                            <div style={{ padding: "1rem", backgroundColor: "#ffffff", borderRadius: "0.5rem", border: "1px solid #e2e8f0" }}>
+                              <div style={{ fontSize: "0.875rem", fontWeight: 600, color: "#1e293b", marginBottom: "0.5rem" }}>Code Quality</div>
+                              <div style={{ fontSize: "1.25rem", fontWeight: 700, marginBottom: "0.5rem" }}>
+                                {qa.ai_feedback.code_quality.score}/25
+                              </div>
+                              <div style={{ fontSize: "0.875rem", color: "#475569", lineHeight: "1.6" }}>
+                                {qa.ai_feedback.code_quality.comments}
+                              </div>
                             </div>
                           )}
                           {qa.ai_feedback.correctness && (
-                            <div style={{ padding: "0.75rem", backgroundColor: "#ffffff", borderRadius: "0.5rem" }}>
-                              <div style={{ fontSize: "0.75rem", color: "#64748b", marginBottom: "0.25rem" }}>Correctness</div>
-                              <div style={{ fontSize: "1rem", fontWeight: 600 }}>{qa.ai_feedback.correctness.score}/40</div>
-                              <div style={{ fontSize: "0.75rem", color: "#64748b", marginTop: "0.25rem" }}>{qa.ai_feedback.correctness.comments}</div>
+                            <div style={{ padding: "1rem", backgroundColor: "#ffffff", borderRadius: "0.5rem", border: "1px solid #e2e8f0" }}>
+                              <div style={{ fontSize: "0.875rem", fontWeight: 600, color: "#1e293b", marginBottom: "0.5rem" }}>
+                                Correctness (Most Important)
+                              </div>
+                              <div style={{ 
+                                fontSize: "1.25rem", 
+                                fontWeight: 700, 
+                                marginBottom: "0.5rem",
+                                color: qa.ai_feedback.correctness.score >= 30 ? "#166534" : qa.ai_feedback.correctness.score >= 15 ? "#92400e" : "#991b1b"
+                              }}>
+                                {qa.ai_feedback.correctness.score}/40
+                              </div>
+                              <div style={{ fontSize: "0.875rem", color: "#475569", lineHeight: "1.6" }}>
+                                {qa.ai_feedback.correctness.comments}
+                              </div>
                             </div>
                           )}
                           {qa.ai_feedback.library_usage && (
-                            <div style={{ padding: "0.75rem", backgroundColor: "#ffffff", borderRadius: "0.5rem" }}>
-                              <div style={{ fontSize: "0.75rem", color: "#64748b", marginBottom: "0.25rem" }}>Library Usage</div>
-                              <div style={{ fontSize: "1rem", fontWeight: 600 }}>{qa.ai_feedback.library_usage.score}/20</div>
-                              <div style={{ fontSize: "0.75rem", color: "#64748b", marginTop: "0.25rem" }}>{qa.ai_feedback.library_usage.comments}</div>
+                            <div style={{ padding: "1rem", backgroundColor: "#ffffff", borderRadius: "0.5rem", border: "1px solid #e2e8f0" }}>
+                              <div style={{ fontSize: "0.875rem", fontWeight: 600, color: "#1e293b", marginBottom: "0.5rem" }}>Library Usage</div>
+                              <div style={{ fontSize: "1.25rem", fontWeight: 700, marginBottom: "0.5rem" }}>
+                                {qa.ai_feedback.library_usage.score}/20
+                              </div>
+                              <div style={{ fontSize: "0.875rem", color: "#475569", lineHeight: "1.6" }}>
+                                {qa.ai_feedback.library_usage.comments}
+                              </div>
                             </div>
                           )}
                           {qa.ai_feedback.output_quality && (
-                            <div style={{ padding: "0.75rem", backgroundColor: "#ffffff", borderRadius: "0.5rem" }}>
-                              <div style={{ fontSize: "0.75rem", color: "#64748b", marginBottom: "0.25rem" }}>Output Quality</div>
-                              <div style={{ fontSize: "1rem", fontWeight: 600 }}>{qa.ai_feedback.output_quality.score}/15</div>
-                              <div style={{ fontSize: "0.75rem", color: "#64748b", marginTop: "0.25rem" }}>{qa.ai_feedback.output_quality.comments}</div>
+                            <div style={{ padding: "1rem", backgroundColor: "#ffffff", borderRadius: "0.5rem", border: "1px solid #e2e8f0" }}>
+                              <div style={{ fontSize: "0.875rem", fontWeight: 600, color: "#1e293b", marginBottom: "0.5rem" }}>Output Quality</div>
+                              <div style={{ fontSize: "1.25rem", fontWeight: 700, marginBottom: "0.5rem" }}>
+                                {qa.ai_feedback.output_quality.score}/15
+                              </div>
+                              <div style={{ fontSize: "0.875rem", color: "#475569", lineHeight: "1.6" }}>
+                                {qa.ai_feedback.output_quality.comments}
+                              </div>
                             </div>
                           )}
                         </div>
@@ -1454,21 +1590,43 @@ export default function AnalyticsPage() {
 
                         {/* Areas for Improvement */}
                         {qa.ai_feedback.areas_for_improvement && qa.ai_feedback.areas_for_improvement.length > 0 && (
-                          <div style={{ marginBottom: "1rem", padding: "0.75rem", backgroundColor: "#fee2e2", borderRadius: "0.5rem", border: "1px solid #ef4444" }}>
+                          <div style={{ marginBottom: "1rem", padding: "1rem", backgroundColor: "#fee2e2", borderRadius: "0.5rem", border: "1px solid #ef4444" }}>
                             <h5 style={{ 
                               fontSize: "0.875rem", 
                               fontWeight: 600, 
                               color: "#991b1b", 
-                              marginBottom: "0.5rem",
+                              marginBottom: "0.75rem",
                               display: "flex",
                               alignItems: "center",
                               gap: "0.5rem"
                             }}>
-                              <AlertTriangle size={16} /> Areas for Improvement
+                              <AlertTriangle size={16} /> Issues & Areas for Improvement
                             </h5>
                             <ul style={{ margin: 0, paddingLeft: "1.25rem", fontSize: "0.875rem", color: "#dc2626", lineHeight: "1.8" }}>
                               {qa.ai_feedback.areas_for_improvement.map((area, idx) => (
-                                <li key={idx} style={{ marginBottom: "0.5rem" }}>{area}</li>
+                                <li key={idx} style={{ marginBottom: "0.75rem" }}>{area}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+
+                        {/* Deduction Reasons - Show specific issues */}
+                        {qa.ai_feedback.deduction_reasons && qa.ai_feedback.deduction_reasons.length > 0 && (
+                          <div style={{ marginBottom: "1rem", padding: "1rem", backgroundColor: "#fef3c7", borderRadius: "0.5rem", border: "1px solid #f59e0b" }}>
+                            <h5 style={{ 
+                              fontSize: "0.875rem", 
+                              fontWeight: 600, 
+                              color: "#92400e", 
+                              marginBottom: "0.75rem",
+                              display: "flex",
+                              alignItems: "center",
+                              gap: "0.5rem"
+                            }}>
+                              <AlertTriangle size={16} /> Specific Issues Found in Code
+                            </h5>
+                            <ul style={{ margin: 0, paddingLeft: "1.25rem", fontSize: "0.875rem", color: "#92400e", lineHeight: "1.8" }}>
+                              {qa.ai_feedback.deduction_reasons.map((reason, idx) => (
+                                <li key={idx} style={{ marginBottom: "0.75rem" }}>{reason}</li>
                               ))}
                             </ul>
                           </div>
