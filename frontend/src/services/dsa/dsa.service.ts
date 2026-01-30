@@ -398,8 +398,39 @@ export const dsaService = {
     started_at: string;
     submitted_at: string;
     time_spent_seconds: number;
+    execution_engine_passed?: boolean;
+    execution_engine_output?: string;
+    execution_engine_time?: number;
+    execution_engine_memory?: number;
   }): Promise<ApiResponse<any>> => {
     const response = await apiClient.post<ApiResponse<any>>('/api/v1/dsa/assessment/submit-sql', data);
+    return response.data;
+  },
+
+  /**
+   * Proxy SQL execution engine execute endpoint (to avoid CORS)
+   */
+  proxySQLExecute: async (data: {
+    questionId: string;
+    code: string;
+    schemas?: any;
+    sample_data?: any;
+  }): Promise<any> => {
+    const response = await apiClient.post<any>('/api/v1/dsa/assessment/sql-engine/execute', data);
+    return response.data;
+  },
+
+  /**
+   * Proxy SQL execution engine submit endpoint (to avoid CORS)
+   */
+  proxySQLSubmit: async (data: {
+    questionId: string;
+    code: string;
+    expectedOutput?: any[];
+    schemas?: any;
+    sample_data?: any;
+  }): Promise<any> => {
+    const response = await apiClient.post<any>('/api/v1/dsa/assessment/sql-engine/submit', data);
     return response.data;
   },
 

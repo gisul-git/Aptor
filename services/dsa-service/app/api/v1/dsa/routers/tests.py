@@ -1895,6 +1895,12 @@ class QuestionSubmission(BaseModel):
     question_id: str
     code: str
     language: str
+    # SQL-specific: Execution engine results (only for SQL questions)
+    execution_engine_passed: Optional[bool] = None
+    execution_engine_output: Optional[str] = None
+    execution_engine_expected_output: Optional[str] = None
+    execution_engine_time: Optional[float] = None
+    execution_engine_memory: Optional[float] = None
 
 class FinalTestSubmissionRequest(BaseModel):
     question_submissions: List[QuestionSubmission]
@@ -1924,26 +1930,123 @@ async def process_ai_feedback_background(
     try:
         logger.info(f"Starting background AI feedback generation for submission {submission_id}")
         
-        # Run AI feedback generation in thread pool to avoid blocking
-        loop = asyncio.get_event_loop()
-        ai_feedback = await loop.run_in_executor(
-            None,  # Use default ThreadPoolExecutor
-            lambda: generate_code_feedback(
-                source_code=source_code,
-                language=language,
-                question_title=question_title,
+        # Check if this is a SQL question - use SQL-specific evaluation
+        is_sql = language.lower() == "sql"
+        
+        if is_sql:
+            # Use SQL-specific evaluation from unified_ai_evaluation
+            from ...assessments.services.unified_ai_evaluation import evaluate_sql_answer
+            
+            # Get question details for SQL evaluation
+            question = await db.questions.find_one({"_id": ObjectId(question_id)})
+            if not question:
+                logger.error(f"Question {question_id} not found for SQL evaluation")
+                return
+            
+            # Extract expected output and user output from test results
+            expected_output = ""
+            user_output = ""
+            test_passed = total_passed > 0
+            
+            if all_test_results and len(all_test_results) > 0:
+                test_result = all_test_results[0]
+                expected_output = test_result.get("expected_output", "") or ""
+                user_output = test_result.get("user_output", "") or test_result.get("actual_output", "") or ""
+                test_passed = test_result.get("passed", False)
+            
+            # Get reference query and schemas
+            reference_query = question.get("reference_query")
+            schemas = question.get("schemas", {})
+            evaluation = question.get("evaluation", {})
+            order_sensitive = evaluation.get("order_sensitive", False)
+            difficulty = question.get("difficulty", "Medium")
+            max_marks = question.get("marks", 100)
+            
+            # Prepare test result for SQL evaluation
+            test_result_data = {
+                "passed": test_passed,
+                "user_output": user_output,
+                "expected_output": expected_output,
+                "error": None,
+            }
+            
+            # Use SQL-specific evaluation
+            ai_evaluation = await evaluate_sql_answer(
+                question_id=question_id,
                 question_description=question_description,
-                test_results=all_test_results,
-                total_passed=total_passed,
-                total_tests=total_tests,
-                time_spent_seconds=None,
-                public_passed=public_passed,
-                public_total=public_total,
-                hidden_passed=hidden_passed,
-                hidden_total=hidden_total,
-                starter_code=starter_code,
+                user_query=source_code,
+                reference_query=reference_query,
+                max_marks=max_marks,
+                section=None,
+                schemas=schemas,
+                test_result=test_result_data,
+                order_sensitive=order_sensitive,
+                difficulty=difficulty,
+                use_cache=True
             )
-        )
+            
+            # Transform unified evaluation format to SQL-specific ai_feedback format
+            # SQL-specific: No time/space complexity, focus on query optimization
+            efficiency_feedback = ai_evaluation.get("criteria_scores", {}).get("efficiency", {}).get("feedback", "")
+            code_quality_feedback = ai_evaluation.get("criteria_scores", {}).get("code_quality", {}).get("feedback", "")
+            if not code_quality_feedback:
+                # Fallback to best_practices if code_quality not available
+                code_quality_feedback = ai_evaluation.get("criteria_scores", {}).get("best_practices", {}).get("feedback", "")
+            
+            # Transform areas_of_improvement from complex structure to simple array
+            areas_for_improvement = []
+            for area in ai_evaluation.get("areas_of_improvement", []):
+                skill = area.get("skill", "")
+                gap = area.get("gap_analysis", "")
+                if skill and gap:
+                    areas_for_improvement.append(f"{skill}: {gap}")
+                elif skill:
+                    areas_for_improvement.append(skill)
+                elif gap:
+                    areas_for_improvement.append(gap)
+            
+            ai_feedback = {
+                "overall_score": int(ai_evaluation.get("score", 0)),
+                "feedback_summary": ai_evaluation.get("feedback", {}).get("summary", ""),
+                "one_liner": ai_evaluation.get("feedback", {}).get("summary", "")[:100] if ai_evaluation.get("feedback", {}).get("summary") else "",
+                "code_quality": {
+                    "score": int(ai_evaluation.get("criteria_scores", {}).get("code_quality", {}).get("score", 0) or ai_evaluation.get("criteria_scores", {}).get("best_practices", {}).get("score", 0)),
+                    "comments": code_quality_feedback
+                },
+                "efficiency": {
+                    "time_complexity": "N/A",  # Not applicable to SQL queries
+                    "space_complexity": "N/A",  # Not applicable to SQL queries
+                    "comments": efficiency_feedback  # SQL-specific: query optimization, index usage, JOIN efficiency
+                },
+                "correctness": {
+                    "score": int(ai_evaluation.get("criteria_scores", {}).get("accuracy", {}).get("score", 0)),
+                    "comments": ai_evaluation.get("criteria_scores", {}).get("accuracy", {}).get("feedback", "")
+                },
+                "suggestions": ai_evaluation.get("feedback", {}).get("suggestions", []),
+                "strengths": ai_evaluation.get("feedback", {}).get("strengths", []),
+                "areas_for_improvement": areas_for_improvement,
+            }
+        else:
+            # Use regular code feedback for non-SQL questions
+            loop = asyncio.get_event_loop()
+            ai_feedback = await loop.run_in_executor(
+                None,  # Use default ThreadPoolExecutor
+                lambda: generate_code_feedback(
+                    source_code=source_code,
+                    language=language,
+                    question_title=question_title,
+                    question_description=question_description,
+                    test_results=all_test_results,
+                    total_passed=total_passed,
+                    total_tests=total_tests,
+                    time_spent_seconds=None,
+                    public_passed=public_passed,
+                    public_total=public_total,
+                    hidden_passed=hidden_passed,
+                    hidden_total=hidden_total,
+                    starter_code=starter_code,
+                )
+            )
         
         # Update submission with AI feedback
         await db.submissions.update_one(
@@ -2073,30 +2176,29 @@ async def process_question_evaluation_background(
                 status = "syntax_error" if user_result.get("status_id") == 6 else "error"
                 message = user_result.get("stderr") or user_result.get("compile_output") or "SQL execution failed"
                 
+                # SQL-specific error test result (no input field, no public/hidden)
                 all_test_results = [{
                     "test_number": 1,
-                    "input": "",
                     "expected_output": "",
                     "user_output": "",
                     "status": status,
                     "status_id": user_result.get("status_id", 0),
                     "passed": False,
-                    "stderr": message,
+                    "error": message,  # SQL-specific: use 'error' instead of 'stderr'
+                    "time": user_result.get("time"),
+                    "memory": user_result.get("memory"),
                 }]
                 
+                # SQL-specific: Update without public/hidden fields
                 await db.submissions.update_one(
                     {"_id": ObjectId(submission_id)},
                     {"$set": {
                         "status": status,
                         "test_results": all_test_results,
-                        "public_results": [],
-                        "hidden_results_full": [],
                         "passed_testcases": 0,
                         "total_testcases": 1,
-                        "public_passed": 0,
-                        "public_total": 0,
-                        "hidden_passed": 0,
-                        "hidden_total": 1,
+                        "execution_time": user_result.get("time"),
+                        "memory_used": user_result.get("memory"),
                     }}
                 )
                 
@@ -2148,11 +2250,10 @@ async def process_question_evaluation_background(
                 status = "accepted" if passed else "error"
                 message = "Query executed successfully" if passed else "Query execution failed"
             
-            # Format test results
+            # Format SQL test results (cleaner structure - no input, no public/hidden)
             all_test_results = [{
                 "test_number": 1,
-                "input": "",
-                "expected_output": expected_output or "",
+                "expected_output": expected_output or "",  # CRITICAL: Save expected output
                 "user_output": user_output,
                 "status": status,
                 "status_id": user_result.get("status_id", 3 if passed else 0),
@@ -2161,23 +2262,16 @@ async def process_question_evaluation_background(
                 "memory": user_result.get("memory"),
             }]
             
-            public_results = all_test_results if passed else []
-            full_hidden_results = all_test_results
-            
-            # Update submission with test results
+            # SQL-specific: Update without public/hidden fields
             await db.submissions.update_one(
                 {"_id": ObjectId(submission_id)},
                 {"$set": {
                     "status": status,
                     "test_results": all_test_results,
-                    "public_results": public_results,
-                    "hidden_results_full": full_hidden_results,
                     "passed_testcases": 1 if passed else 0,
                     "total_testcases": 1,
-                    "public_passed": 1 if passed else 0,
-                    "public_total": 1 if passed else 0,
-                    "hidden_passed": 1 if passed else 0,
-                    "hidden_total": 1,
+                    "execution_time": user_result.get("time"),
+                    "memory_used": user_result.get("memory"),
                 }}
             )
             
@@ -2369,18 +2463,33 @@ async def process_question_evaluation_background(
                     status = "no_code_written"
         
         # Update submission with test results
-        update_data = {
-            "status": status,
-            "test_results": all_test_results,
-            "public_results": public_results,
-            "hidden_results_full": full_hidden_results,
-            "passed_testcases": total_passed,
-            "total_testcases": total_tests,
-            "public_passed": public_passed,
-            "public_total": public_total,
-            "hidden_passed": hidden_passed,
-            "hidden_total": hidden_total,
-        }
+        # SQL questions: Cleaner structure without public/hidden fields
+        # DSA questions: Full structure with public/hidden fields
+        if is_sql_question:
+            # SQL-specific: Only include necessary fields (no public/hidden distinction)
+            update_data = {
+                "status": status,
+                "test_results": all_test_results,
+                "passed_testcases": total_passed,
+                "total_testcases": total_tests,
+                # Calculate execution_time and memory_used from test results
+                "execution_time": sum(float(r.get("time", 0) or 0) for r in all_test_results) if all_test_results else None,
+                "memory_used": max((float(r.get("memory", 0) or 0) for r in all_test_results), default=None) if all_test_results else None,
+            }
+        else:
+            # DSA questions: Include all fields (public/hidden distinction)
+            update_data = {
+                "status": status,
+                "test_results": all_test_results,
+                "public_results": public_results,
+                "hidden_results_full": full_hidden_results,
+                "passed_testcases": total_passed,
+                "total_testcases": total_tests,
+                "public_passed": public_passed,
+                "public_total": public_total,
+                "hidden_passed": hidden_passed,
+                "hidden_total": hidden_total,
+            }
         
         if is_starter_only:
             update_data["score"] = 0
@@ -2531,27 +2640,114 @@ async def final_submit_test(
         
         # Create submission record immediately with "processing" status
         # Test case execution and AI feedback will happen in background
-        submission_data = {
-            "user_id": user_id,
-            "question_id": question_id,
-            "test_id": test_id,
-            "language": q_sub.language if not is_sql_question else "sql",
-            "code": q_sub.code,  # CRITICAL: Save the actual code submitted by user
-            "status": "processing",  # Will be updated after test case execution
-            "test_results": [],
-            "public_results": [],
-            "hidden_results_full": [],
-            "passed_testcases": 0,
-            "total_testcases": 0,
-            "public_passed": 0,
-            "public_total": 0,
-            "hidden_passed": 0,
-            "hidden_total": 0,
-            "ai_feedback": None,  # Will be generated in background
-            "score": 0,  # Will be updated after AI feedback
-            "created_at": datetime.utcnow(),
-            "is_final_submission": True,
-        }
+        if is_sql_question:
+            # Check if execution engine results are provided (from frontend)
+            if (q_sub.execution_engine_passed is not None and 
+                q_sub.execution_engine_output is not None and
+                q_sub.execution_engine_expected_output is not None):
+                # Use execution engine results directly - no need to re-execute
+                logger.info(f"[final-submit] SQL question {question_id}: Using execution engine results (passed={q_sub.execution_engine_passed})")
+                
+                # Format test result with execution engine data
+                sql_test_result = {
+                    "test_number": 1,
+                    "expected_output": q_sub.execution_engine_expected_output,
+                    "user_output": q_sub.execution_engine_output,
+                    "status": "accepted" if q_sub.execution_engine_passed else "wrong_answer",
+                    "status_id": 3 if q_sub.execution_engine_passed else 4,
+                    "passed": q_sub.execution_engine_passed,
+                    "time": q_sub.execution_engine_time,
+                    "memory": q_sub.execution_engine_memory,
+                }
+                
+                # SQL-specific: Cleaner structure without public/hidden fields
+                submission_data = {
+                    "user_id": user_id,
+                    "question_id": question_id,
+                    "test_id": test_id,
+                    "language": "sql",
+                    "code": q_sub.code,  # User written query
+                    "status": "accepted" if q_sub.execution_engine_passed else "wrong_answer",
+                    "test_results": [sql_test_result],
+                    "passed_testcases": 1 if q_sub.execution_engine_passed else 0,
+                    "total_testcases": 1,
+                    "execution_time": q_sub.execution_engine_time,
+                    "memory_used": q_sub.execution_engine_memory,
+                    "ai_feedback": None,  # Will be generated in background
+                    "score": 0,  # Will be updated after AI feedback
+                    "created_at": datetime.utcnow(),
+                    "is_final_submission": True,
+                }
+                
+                # Save submission immediately
+                submission_result = await db.submissions.insert_one(submission_data)
+                submission_id = str(submission_result.inserted_id)
+                
+                # Schedule AI feedback generation in background with execution engine results
+                asyncio.create_task(process_ai_feedback_background(
+                    submission_id=submission_id,
+                    test_id=test_id,
+                    user_id=user_id,
+                    question_id=question_id,
+                    source_code=q_sub.code,  # User written query
+                    language="sql",
+                    question_title=question.get("title", ""),
+                    question_description=question.get("description", ""),
+                    all_test_results=[sql_test_result],
+                    total_passed=1 if q_sub.execution_engine_passed else 0,
+                    total_tests=1,
+                    public_passed=1 if q_sub.execution_engine_passed else 0,
+                    public_total=1,
+                    hidden_passed=0,
+                    hidden_total=0,
+                    starter_code=question.get("starter_query")
+                ))
+                
+                logger.info(f"Saved SQL submission {submission_id} with execution engine results, scheduled AI feedback in background")
+                return submission_id
+            else:
+                # No execution engine results - use old flow (shouldn't happen in final-submit, but keep for compatibility)
+                logger.warning(f"[final-submit] SQL question {question_id}: No execution engine results provided, using background evaluation")
+                submission_data = {
+                    "user_id": user_id,
+                    "question_id": question_id,
+                    "test_id": test_id,
+                    "language": "sql",
+                    "code": q_sub.code,  # CRITICAL: Save the actual code submitted by user
+                    "status": "processing",  # Will be updated after test case execution
+                    "test_results": [],
+                    "passed_testcases": 0,
+                    "total_testcases": 0,
+                    "execution_time": None,
+                    "memory_used": None,
+                    "ai_feedback": None,  # Will be generated in background
+                    "score": 0,  # Will be updated after AI feedback
+                    "created_at": datetime.utcnow(),
+                    "is_final_submission": True,
+                }
+        else:
+            # DSA questions: Full structure with public/hidden fields
+            submission_data = {
+                "user_id": user_id,
+                "question_id": question_id,
+                "test_id": test_id,
+                "language": q_sub.language,
+                "code": q_sub.code,  # CRITICAL: Save the actual code submitted by user
+                "status": "processing",  # Will be updated after test case execution
+                "test_results": [],
+                "public_results": [],
+                "hidden_results_full": [],
+                "passed_testcases": 0,
+                "total_testcases": 0,
+                "public_passed": 0,
+                "public_total": 0,
+                "hidden_passed": 0,
+                "hidden_total": 0,
+                "ai_feedback": None,  # Will be generated in background
+                "score": 0,  # Will be updated after AI feedback
+                "created_at": datetime.utcnow(),
+                "is_final_submission": True,
+            }
         
         # Save submission immediately
         submission_result = await db.submissions.insert_one(submission_data)
@@ -2604,6 +2800,7 @@ async def final_submit_test(
             
             if not schemas:
                 logger.warning(f"SQL question {question_id} has no table schemas defined")
+                # SQL-specific error submission (no schemas)
                 submission_data = {
                     "user_id": user_id,
                     "question_id": question_id,
@@ -2611,9 +2808,19 @@ async def final_submit_test(
                     "language": "sql",
                     "code": q_sub.code,
                     "status": "error",
-                    "test_results": [],
+                    "test_results": [{
+                        "test_number": 1,
+                        "expected_output": "",
+                        "user_output": "",
+                        "status": "error",
+                        "status_id": 0,
+                        "passed": False,
+                        "error": "Question has no table schemas defined",
+                    }],
                     "passed_testcases": 0,
-                    "total_testcases": 0,
+                    "total_testcases": 1,
+                    "execution_time": None,
+                    "memory_used": None,
                     "ai_feedback": {"error": "Question has no table schemas defined"},
                     "score": 0,
                     "created_at": datetime.utcnow(),
@@ -2637,6 +2844,7 @@ async def final_submit_test(
                 status = "syntax_error" if user_result.get("status_id") == 6 else "error"
                 message = user_result.get("stderr") or user_result.get("compile_output") or "SQL execution failed"
                 
+                # SQL-specific error submission structure
                 submission_data = {
                     "user_id": user_id,
                     "question_id": question_id,
@@ -2646,22 +2854,19 @@ async def final_submit_test(
                     "status": status,
                     "test_results": [{
                         "test_number": 1,
-                        "input": "",
-                        "expected_output": "",
+                        "expected_output": "",  # No expected output for errors
                         "user_output": "",
                         "status": status,
                         "status_id": user_result.get("status_id", 0),
                         "passed": False,
-                        "stderr": message,
+                        "error": message,  # SQL-specific: use 'error' instead of 'stderr'
+                        "time": user_result.get("time"),
+                        "memory": user_result.get("memory"),
                     }],
-                    "public_results": [],
-                    "hidden_results_full": [],
                     "passed_testcases": 0,
                     "total_testcases": 1,
-                    "public_passed": 0,
-                    "public_total": 0,
-                    "hidden_passed": 0,
-                    "hidden_total": 1,
+                    "execution_time": user_result.get("time"),
+                    "memory_used": user_result.get("memory"),
                     "ai_feedback": None,
                     "score": 0,
                     "created_at": datetime.utcnow(),
@@ -2716,6 +2921,31 @@ async def final_submit_test(
                 else:
                     expected_output = ref_result.get("stdout", "").strip()
                     passed = compare_sql_results(user_output, expected_output, order_sensitive)
+                    
+                    # CRITICAL: Double-check the result with safety checks
+                    if passed:
+                        # Parse headers to verify they actually match
+                        from ..routers.assessment import parse_sql_table_output
+                        user_h, user_r = parse_sql_table_output(user_output)
+                        exp_h, exp_r = parse_sql_table_output(expected_output)
+                        
+                        # If headers don't match, force False
+                        if user_h != exp_h:
+                            logger.error(
+                                f"⚠️⚠️⚠️ CRITICAL: Comparison returned True but headers don't match in final-submit! "
+                                f"User headers ({len(user_h)}): {user_h}\n"
+                                f"Expected headers ({len(exp_h)}): {exp_h}\n"
+                                f"FORCING passed=False"
+                            )
+                            passed = False
+                        elif len(user_r) != len(exp_r):
+                            logger.error(
+                                f"⚠️ Comparison returned True but row counts don't match in final-submit! "
+                                f"User: {len(user_r)} rows, Expected: {len(exp_r)} rows. "
+                                f"Forcing passed=False"
+                            )
+                            passed = False
+                    
                     status = "accepted" if passed else "wrong_answer"
                     message = "Query produces correct results!" if passed else "Query output does not match expected results"
             else:
@@ -2724,23 +2954,20 @@ async def final_submit_test(
                 status = "accepted" if passed else "error"
                 message = "Query executed successfully" if passed else "Query execution failed"
             
-            # Format test results for AI feedback
-            all_test_results = [{
+            # Format test results for SQL (cleaner structure - no unnecessary fields)
+            # SQL only has one test case, no input, no public/hidden distinction
+            sql_test_result = {
                 "test_number": 1,
-                "input": "",
-                "expected_output": expected_output or "",
+                "expected_output": expected_output or "",  # CRITICAL: Save expected output
                 "user_output": user_output,
                 "status": status,
                 "status_id": user_result.get("status_id", 3 if passed else 0),
                 "passed": passed,
                 "time": user_result.get("time"),
                 "memory": user_result.get("memory"),
-            }]
+            }
             
-            public_results = all_test_results if passed else []
-            full_hidden_results = all_test_results
-            
-            # Create submission record
+            # Create SQL-specific submission record (cleaner structure - NO public/hidden fields)
             submission_data = {
                 "user_id": user_id,
                 "question_id": question_id,
@@ -2748,17 +2975,17 @@ async def final_submit_test(
                 "language": "sql",
                 "code": q_sub.code,
                 "status": status,
-                "test_results": all_test_results,
-                "public_results": public_results,
-                "hidden_results_full": full_hidden_results,
+                # SQL-specific: single test result (no public/hidden distinction)
+                "test_results": [sql_test_result],
+                # SQL-specific: simple pass/fail counts (NO public/hidden fields)
                 "passed_testcases": 1 if passed else 0,
                 "total_testcases": 1,
-                "public_passed": 1 if passed else 0,
-                "public_total": 1 if passed else 0,
-                "hidden_passed": 1 if passed else 0,
-                "hidden_total": 1,
-                "ai_feedback": None,  # Will be generated in background
-                "score": 0,  # Will be updated in background
+                # Execution metrics
+                "execution_time": user_result.get("time"),
+                "memory_used": user_result.get("memory"),
+                # AI feedback and score (will be generated in background)
+                "ai_feedback": None,
+                "score": 0,
                 "created_at": datetime.utcnow(),
                 "is_final_submission": True,
             }
@@ -2768,6 +2995,7 @@ async def final_submit_test(
             submission_id = str(submission_result.inserted_id)
             
             # Schedule AI feedback generation in background for SQL
+            # Use sql_test_result as all_test_results (SQL only has one test case)
             background_tasks.add_task(
                 process_ai_feedback_background,
                 submission_id=submission_id,
@@ -2778,13 +3006,13 @@ async def final_submit_test(
                 language="sql",
                 question_title=question.get("title", ""),
                 question_description=question.get("description", ""),
-                all_test_results=all_test_results,
+                all_test_results=[sql_test_result],  # Use sql_test_result, not all_test_results
                 total_passed=1 if passed else 0,
                 total_tests=1,
-                public_passed=1 if passed else 0,
-                public_total=1 if passed else 0,
-                hidden_passed=1 if passed else 0,
-                hidden_total=1,
+                public_passed=0,  # SQL doesn't have public/hidden - set to 0
+                public_total=0,   # SQL doesn't have public/hidden - set to 0
+                hidden_passed=0,  # SQL doesn't have public/hidden - set to 0
+                hidden_total=0,   # SQL doesn't have public/hidden - set to 0
                 starter_code=question.get("starter_query")
             )
             logger.info(f"Saved SQL submission {submission_id} and scheduled AI feedback generation in background")

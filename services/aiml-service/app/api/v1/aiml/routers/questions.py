@@ -118,6 +118,634 @@ async def get_questions(
         result.append(question_dict)
     return result
 
+# Dataset routes must be defined BEFORE the generic /{question_id} route
+# FastAPI matches routes in order, so more specific routes must come first
+
+@router.get("/{question_id}/dataset-download")
+async def download_dataset_for_candidate(
+    question_id: str,
+    format: Optional[str] = Query(None, description="Dataset format: csv, json, parquet, avro, pdf. If not provided, uses the format stored in the dataset."),
+    test_id: str = Query(..., description="Test ID for access validation"),
+    user_id: str = Query(..., description="User ID from link token")
+):
+    """
+    Download dataset file directly for candidate (returns raw file content).
+    This endpoint returns the file directly with proper Content-Type headers,
+    making it easy to use with pandas: pd.read_csv(url) or pd.read_json(url)
+    Uses the format stored in the dataset if format parameter is not provided.
+    """
+    from fastapi.responses import Response
+    
+    logger.info(f"[DATASET-DOWNLOAD] Request received - question_id: {question_id}, test_id: {test_id}, user_id: {user_id}, format: {format}")
+    
+    try:
+        db = get_database()
+        logger.info(f"[DATASET-DOWNLOAD] Database connection obtained")
+        
+        if not ObjectId.is_valid(question_id):
+            logger.error(f"[DATASET-DOWNLOAD] Invalid question_id format: {question_id}")
+            raise HTTPException(status_code=400, detail="Invalid question ID")
+        if not ObjectId.is_valid(test_id):
+            logger.error(f"[DATASET-DOWNLOAD] Invalid test_id format: {test_id}")
+            raise HTTPException(status_code=400, detail="Invalid test ID")
+
+        logger.info(f"[DATASET-DOWNLOAD] Validating test_id: {test_id}")
+        # Validate that the question belongs to the test
+        test = await db.tests.find_one({"_id": ObjectId(test_id)})
+        if not test:
+            logger.error(f"[DATASET-DOWNLOAD] Test not found in database: {test_id}")
+            raise HTTPException(status_code=404, detail="Test not found")
+        logger.info(f"[DATASET-DOWNLOAD] Test found: {test_id}, is_published: {test.get('is_published', False)}")
+
+        if not test.get("is_published", False):
+            logger.error(f"[DATASET-DOWNLOAD] Test is not published: {test_id}")
+            raise HTTPException(status_code=403, detail="Test is not published")
+
+        question_ids = test.get("question_ids", [])
+        logger.info(f"[DATASET-DOWNLOAD] Test question_ids: {question_ids}, looking for: {question_id}")
+        if question_id not in [str(qid) for qid in question_ids]:
+            logger.error(f"[DATASET-DOWNLOAD] Question {question_id} does not belong to test {test_id}")
+            raise HTTPException(status_code=403, detail="Question does not belong to this test")
+        logger.info(f"[DATASET-DOWNLOAD] Question belongs to test - validated")
+
+        logger.info(f"[DATASET-DOWNLOAD] Fetching question: {question_id}")
+        # Get the question
+        question = await db.questions.find_one({"_id": ObjectId(question_id)})
+        if not question:
+            logger.error(f"[DATASET-DOWNLOAD] Question not found in database: {question_id}")
+            raise HTTPException(status_code=404, detail="Question not found")
+        logger.info(f"[DATASET-DOWNLOAD] Question found: {question_id}")
+
+        dataset = question.get("dataset")
+        if not dataset:
+            logger.error(f"[DATASET-DOWNLOAD] Question {question_id} does not have a dataset")
+            raise HTTPException(status_code=404, detail="Question does not have a dataset")
+        logger.info(f"[DATASET-DOWNLOAD] Dataset found for question {question_id}, format: {dataset.get('format', 'not specified')}")
+        
+        # Use stored format if format parameter is not provided
+        if format is None:
+            format = dataset.get("format", "csv")  # Default to csv if format not stored
+        logger.info(f"[DATASET-DOWNLOAD] Using format: {format}")
+
+        schema = dataset.get("schema", [])
+        rows = dataset.get("rows", [])
+
+        logger.info(f"[DATASET-DOWNLOAD] Dataset schema length: {len(schema)}, rows count: {len(rows)}")
+        if not schema or not rows:
+            logger.error(f"[DATASET-DOWNLOAD] Dataset is empty - schema: {len(schema)}, rows: {len(rows)}")
+            raise HTTPException(status_code=400, detail="Dataset is empty")
+
+        # Convert dataset to requested format
+        try:
+            import pandas as pd
+        except ImportError:
+            raise HTTPException(status_code=500, detail="pandas library not installed")
+
+        import io
+
+        # Create DataFrame from dataset
+        # Get column names from schema
+        column_names = [col["name"] for col in schema]
+        
+        df_data = []
+        for row in rows:
+            row_dict = {}
+            for i, col in enumerate(schema):
+                if i < len(row):
+                    row_dict[col["name"]] = row[i]
+                else:
+                    row_dict[col["name"]] = None
+            df_data.append(row_dict)
+
+        # Create DataFrame with explicit column order
+        df = pd.DataFrame(df_data, columns=column_names)
+        format_lower = format.lower()
+
+        if format_lower == "csv":
+            logger.info(f"[DATASET-DOWNLOAD] Generating CSV format for question {question_id}")
+            csv_buffer = io.StringIO()
+            # Ensure column names are properly set
+            if df.empty:
+                # If DataFrame is empty, create with schema columns
+                df = pd.DataFrame(columns=[col["name"] for col in schema])
+            df.to_csv(csv_buffer, index=False, encoding='utf-8')
+            csv_content = csv_buffer.getvalue()
+            logger.info(f"[DATASET-DOWNLOAD] CSV generated successfully, size: {len(csv_content)} bytes")
+            return Response(
+                content=csv_content.encode('utf-8'),
+                media_type="text/csv; charset=utf-8",
+                headers={
+                    "Content-Disposition": f'attachment; filename="dataset_{question_id}.csv"',
+                    "Content-Type": "text/csv; charset=utf-8"
+                }
+            )
+
+        elif format_lower == "json":
+            json_data = df.to_dict(orient="records")
+            import json as json_lib
+            return Response(
+                content=json_lib.dumps(json_data, indent=2),
+                media_type="application/json",
+                headers={
+                    "Content-Disposition": f'attachment; filename="dataset_{question_id}.json"'
+                }
+            )
+
+        elif format_lower == "parquet":
+            parquet_buffer = io.BytesIO()
+            df.to_parquet(parquet_buffer, index=False)
+            import base64
+            return Response(
+                content=parquet_buffer.getvalue(),
+                media_type="application/octet-stream",
+                headers={
+                    "Content-Disposition": f'attachment; filename="dataset_{question_id}.parquet"',
+                    "Content-Type": "application/octet-stream"
+                }
+            )
+
+        elif format_lower == "avro":
+            try:
+                from fastavro import writer, parse_schema  # type: ignore
+                import io as io_module
+
+                # Convert schema to Avro format
+                avro_fields = []
+                for col in schema:
+                    avro_type = "string"
+                    if col["type"] == "int":
+                        avro_type = "int"
+                    elif col["type"] == "float":
+                        avro_type = "double"
+                    elif col["type"] == "bool":
+                        avro_type = "boolean"
+
+                avro_fields.append({
+                    "name": col["name"],
+                    "type": avro_type
+                })
+
+                avro_schema = {
+                    "type": "record",
+                    "name": "Dataset",
+                    "fields": avro_fields
+                }
+
+                avro_buffer = io_module.BytesIO()
+                records = df.to_dict(orient="records")
+                writer(avro_buffer, parse_schema(avro_schema), records)
+
+                return Response(
+                    content=avro_buffer.getvalue(),
+                    media_type="application/avro",
+                    headers={
+                        "Content-Disposition": f'attachment; filename="dataset_{question_id}.avro"',
+                        "Content-Type": "application/avro"
+                    }
+                )
+            except ImportError:
+                raise HTTPException(status_code=500, detail="fastavro library not installed for Avro support")
+
+        elif format_lower == "pdf":
+            try:
+                from reportlab.lib import colors
+                from reportlab.lib.pagesizes import letter
+                from reportlab.platypus import SimpleDocTemplate, Table, TableStyle
+                import io as io_module
+
+                pdf_buffer = io_module.BytesIO()
+                doc = SimpleDocTemplate(pdf_buffer, pagesize=letter)
+
+                # Prepare table data - header row first
+                table_data = [[schema_col["name"] for schema_col in schema]]
+                # Then data rows
+                for row in rows:
+                    table_data.append([str(val) if val is not None else "" for val in row])
+
+                # Create table
+                table = Table(table_data)
+                table.setStyle(TableStyle([
+                    ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+                    ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                    ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                    ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                    ('FONTSIZE', (0, 0), (-1, 0), 14),
+                    ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+                    ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+                    ('GRID', (0, 0), (-1, -1), 1, colors.black)
+                ]))
+
+                doc.build([table])
+
+                return Response(
+                    content=pdf_buffer.getvalue(),
+                    media_type="application/pdf",
+                    headers={
+                        "Content-Disposition": f'attachment; filename="dataset_{question_id}.pdf"',
+                        "Content-Type": "application/pdf"
+                    }
+                )
+            except ImportError:
+                raise HTTPException(status_code=500, detail="reportlab library not installed for PDF support")
+
+        else:
+            raise HTTPException(status_code=400, detail=f"Unsupported format for direct download: {format}. Supported formats: csv, json, parquet, avro, pdf")
+
+    except HTTPException as http_exc:
+        logger.error(f"[DATASET-DOWNLOAD] HTTPException - status: {http_exc.status_code}, detail: {http_exc.detail}")
+        raise
+    except Exception as exc:
+        logger.exception(f"[DATASET-DOWNLOAD] Unexpected error downloading dataset for candidate: {exc}")
+        logger.error(f"[DATASET-DOWNLOAD] Error type: {type(exc).__name__}, message: {str(exc)}")
+        raise HTTPException(status_code=500, detail=f"Failed to download dataset: {str(exc)}")
+
+
+@router.get("/{question_id}/dataset-preview", response_model=dict)
+async def get_dataset_preview(
+    question_id: str,
+    format: str = Query("csv", description="Dataset format: csv, json, pdf, parquet, avro"),
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
+    """
+    Get dataset preview in the specified format.
+    """
+    try:
+        db = get_database()
+        if not ObjectId.is_valid(question_id):
+            raise HTTPException(status_code=400, detail="Invalid question ID")
+        
+        question = await db.questions.find_one({"_id": ObjectId(question_id)})
+        if not question:
+            raise HTTPException(status_code=404, detail="Question not found")
+        
+        # Check ownership
+        user_id = current_user.get("id") or current_user.get("_id")
+        if not user_id:
+            raise HTTPException(status_code=400, detail="Invalid user ID")
+        user_id = str(user_id).strip()
+        
+        question_created_by = question.get("created_by")
+        if question_created_by and str(question_created_by).strip() != user_id.strip():
+            raise HTTPException(status_code=403, detail="You don't have permission to access this question")
+        
+        dataset = question.get("dataset")
+        if not dataset:
+            raise HTTPException(status_code=404, detail="Question does not have a dataset")
+        
+        schema = dataset.get("schema", [])
+        rows = dataset.get("rows", [])
+        
+        if not schema or not rows:
+            raise HTTPException(status_code=400, detail="Dataset is empty")
+        
+        # Convert dataset to requested format
+        try:
+            import pandas as pd
+        except ImportError:
+            raise HTTPException(status_code=500, detail="pandas library not installed. Please install pandas for dataset conversion support.")
+        
+        import io
+        import json as json_lib
+        
+        # Create DataFrame from dataset - dynamically use schema column names
+        column_names = [col["name"] for col in schema]
+        
+        df_data = []
+        for row in rows:
+            row_dict = {}
+            for i, col in enumerate(schema):
+                if i < len(row):
+                    row_dict[col["name"]] = row[i]
+                else:
+                    row_dict[col["name"]] = None
+            df_data.append(row_dict)
+        
+        # Create DataFrame with explicit column order from schema
+        df = pd.DataFrame(df_data, columns=column_names)
+        
+        # Convert to requested format
+        format_lower = format.lower()
+        
+        if format_lower == "csv":
+            csv_buffer = io.StringIO()
+            df.to_csv(csv_buffer, index=False)
+            return {
+                "format": "csv",
+                "content": csv_buffer.getvalue(),
+                "mime_type": "text/csv"
+            }
+        
+        elif format_lower == "json":
+            json_data = df.to_dict(orient="records")
+            return {
+                "format": "json",
+                "content": json_lib.dumps(json_data, indent=2),
+                "mime_type": "application/json"
+            }
+        
+        elif format_lower == "parquet":
+            try:
+                parquet_buffer = io.BytesIO()
+                df.to_parquet(parquet_buffer, index=False)
+                import base64
+                return {
+                    "format": "parquet",
+                    "content": base64.b64encode(parquet_buffer.getvalue()).decode("utf-8"),
+                    "mime_type": "application/octet-stream",
+                    "is_binary": True
+                }
+            except ImportError as e:
+                raise HTTPException(status_code=500, detail="pyarrow library not installed for Parquet support. Please install pyarrow using: pip install pyarrow")
+            except Exception as e:
+                if "pyarrow" in str(e).lower() or "fastparquet" in str(e).lower():
+                    raise HTTPException(status_code=500, detail="Parquet support requires pyarrow. Please install using: pip install pyarrow")
+                raise
+        
+        elif format_lower == "avro":
+            try:
+                from fastavro import writer, parse_schema  # type: ignore
+                import io as io_module
+                
+                # Convert schema to Avro format
+                avro_fields = []
+                for col in schema:
+                    avro_type = "string"
+                    if col["type"] == "int":
+                        avro_type = "int"
+                    elif col["type"] == "float":
+                        avro_type = "double"
+                    elif col["type"] == "bool":
+                        avro_type = "boolean"
+                    
+                    avro_fields.append({
+                        "name": col["name"],
+                        "type": avro_type
+                    })
+                
+                avro_schema = {
+                    "type": "record",
+                    "name": "Dataset",
+                    "fields": avro_fields
+                }
+                
+                avro_buffer = io_module.BytesIO()
+                records = df.to_dict(orient="records")
+                writer(avro_buffer, parse_schema(avro_schema), records)
+                
+                import base64
+                return {
+                    "format": "avro",
+                    "content": base64.b64encode(avro_buffer.getvalue()).decode("utf-8"),
+                    "mime_type": "application/avro",
+                    "is_binary": True
+                }
+            except ImportError:
+                raise HTTPException(status_code=500, detail="fastavro library not installed for Avro support")
+        
+        elif format_lower == "pdf":
+            try:
+                from reportlab.lib import colors
+                from reportlab.lib.pagesizes import letter
+                from reportlab.platypus import SimpleDocTemplate, Table, TableStyle
+                import io as io_module
+                
+                pdf_buffer = io_module.BytesIO()
+                doc = SimpleDocTemplate(pdf_buffer, pagesize=letter)
+                
+                # Prepare table data - header row first
+                table_data = [[schema_col["name"] for schema_col in schema]]
+                # Then data rows
+                for row in rows:
+                    table_data.append([str(val) if val is not None else "" for val in row])
+                
+                # Create table
+                table = Table(table_data)
+                table.setStyle(TableStyle([
+                    ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+                    ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                    ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                    ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                    ('FONTSIZE', (0, 0), (-1, 0), 14),
+                    ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+                    ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+                    ('GRID', (0, 0), (-1, -1), 1, colors.black)
+                ]))
+                
+                doc.build([table])
+                
+                import base64
+                return {
+                    "format": "pdf",
+                    "content": base64.b64encode(pdf_buffer.getvalue()).decode("utf-8"),
+                    "mime_type": "application/pdf",
+                    "is_binary": True
+                }
+            except ImportError:
+                raise HTTPException(status_code=500, detail="reportlab library not installed for PDF support")
+        
+        else:
+            raise HTTPException(status_code=400, detail=f"Unsupported format: {format}. Supported formats: csv, json, parquet, avro, pdf")
+        
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception(f"Error generating dataset preview: {exc}")
+        raise HTTPException(status_code=500, detail=f"Failed to generate dataset preview: {str(exc)}")
+
+
+@router.get("/{question_id}/dataset", response_model=dict)
+async def get_dataset_for_candidate(
+    question_id: str,
+    format: str = Query("csv", description="Dataset format: csv, json, pdf, parquet, avro"),
+    test_id: str = Query(..., description="Test ID for access validation"),
+    user_id: str = Query(..., description="User ID from link token")
+):
+    """
+    Get dataset for candidate (no authentication required, validated by test access).
+    This endpoint allows candidates to access datasets without authentication.
+    """
+    try:
+        db = get_database()
+        if not ObjectId.is_valid(question_id):
+            raise HTTPException(status_code=400, detail="Invalid question ID")
+        if not ObjectId.is_valid(test_id):
+            raise HTTPException(status_code=400, detail="Invalid test ID")
+
+        # Validate that the question belongs to the test
+        test = await db.tests.find_one({"_id": ObjectId(test_id)})
+        if not test:
+            raise HTTPException(status_code=404, detail="Test not found")
+
+        if not test.get("is_published", False):
+            raise HTTPException(status_code=403, detail="Test is not published")
+
+        question_ids = test.get("question_ids", [])
+        if question_id not in [str(qid) for qid in question_ids]:
+            raise HTTPException(status_code=403, detail="Question does not belong to this test")
+
+        # Get the question
+        question = await db.questions.find_one({"_id": ObjectId(question_id)})
+        if not question:
+            raise HTTPException(status_code=404, detail="Question not found")
+
+        dataset = question.get("dataset")
+        if not dataset:
+            raise HTTPException(status_code=404, detail="Question does not have a dataset")
+
+        schema = dataset.get("schema", [])
+        rows = dataset.get("rows", [])
+
+        if not schema or not rows:
+            raise HTTPException(status_code=400, detail="Dataset is empty")
+
+        # Convert dataset to requested format (same logic as dataset-preview)
+        try:
+            import pandas as pd
+        except ImportError:
+            raise HTTPException(status_code=500, detail="pandas library not installed. Please install pandas for dataset conversion support.")
+
+        import io
+        import json as json_lib
+
+        # Create DataFrame from dataset - dynamically use schema column names
+        column_names = [col["name"] for col in schema]
+        
+        df_data = []
+        for row in rows:
+            row_dict = {}
+            for i, col in enumerate(schema):
+                if i < len(row):
+                    row_dict[col["name"]] = row[i]
+                else:
+                    row_dict[col["name"]] = None
+            df_data.append(row_dict)
+
+        # Create DataFrame with explicit column order from schema
+        df = pd.DataFrame(df_data, columns=column_names)
+
+        # Convert to requested format
+        format_lower = format.lower()
+
+        if format_lower == "csv":
+            csv_buffer = io.StringIO()
+            df.to_csv(csv_buffer, index=False)
+            return {
+                "format": "csv",
+                "content": csv_buffer.getvalue(),
+                "mime_type": "text/csv"
+            }
+
+        elif format_lower == "json":
+            json_data = df.to_dict(orient="records")
+            return {
+                "format": "json",
+                "content": json_lib.dumps(json_data, indent=2),
+                "mime_type": "application/json"
+            }
+
+        elif format_lower == "parquet":
+            parquet_buffer = io.BytesIO()
+            df.to_parquet(parquet_buffer, index=False)
+            import base64
+            return {
+                "format": "parquet",
+                "content": base64.b64encode(parquet_buffer.getvalue()).decode("utf-8"),
+                "mime_type": "application/octet-stream",
+                "is_binary": True
+            }
+
+        elif format_lower == "avro":
+            try:
+                from fastavro import writer, parse_schema  # type: ignore
+                import io as io_module
+
+                # Convert schema to Avro format
+                avro_fields = []
+                for col in schema:
+                    avro_type = "string"
+                    if col["type"] == "int":
+                        avro_type = "int"
+                    elif col["type"] == "float":
+                        avro_type = "double"
+                    elif col["type"] == "bool":
+                        avro_type = "boolean"
+
+                avro_fields.append({
+                    "name": col["name"],
+                    "type": avro_type
+                })
+
+                avro_schema = {
+                    "type": "record",
+                    "name": "Dataset",
+                    "fields": avro_fields
+                }
+
+                avro_buffer = io_module.BytesIO()
+                records = df.to_dict(orient="records")
+                writer(avro_buffer, parse_schema(avro_schema), records)
+
+                import base64
+                return {
+                    "format": "avro",
+                    "content": base64.b64encode(avro_buffer.getvalue()).decode("utf-8"),
+                    "mime_type": "application/avro",
+                    "is_binary": True
+                }
+            except ImportError:
+                raise HTTPException(status_code=500, detail="fastavro library not installed for Avro support")
+
+        elif format_lower == "pdf":
+            try:
+                from reportlab.lib import colors
+                from reportlab.lib.pagesizes import letter
+                from reportlab.platypus import SimpleDocTemplate, Table, TableStyle
+                import io as io_module
+
+                pdf_buffer = io_module.BytesIO()
+                doc = SimpleDocTemplate(pdf_buffer, pagesize=letter)
+
+                # Prepare table data - header row first
+                table_data = [[schema_col["name"] for schema_col in schema]]
+                # Then data rows
+                for row in rows:
+                    table_data.append([str(val) if val is not None else "" for val in row])
+
+                # Create table
+                table = Table(table_data)
+                table.setStyle(TableStyle([
+                    ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+                    ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                    ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                    ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                    ('FONTSIZE', (0, 0), (-1, 0), 14),
+                    ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+                    ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+                    ('GRID', (0, 0), (-1, -1), 1, colors.black)
+                ]))
+
+                doc.build([table])
+
+                import base64
+                return {
+                    "format": "pdf",
+                    "content": base64.b64encode(pdf_buffer.getvalue()).decode("utf-8"),
+                    "mime_type": "application/pdf",
+                    "is_binary": True
+                }
+            except ImportError:
+                raise HTTPException(status_code=500, detail="reportlab library not installed for PDF support")
+
+        else:
+            raise HTTPException(status_code=400, detail=f"Unsupported format: {format}. Supported formats: csv, json, parquet, avro, pdf")
+
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception(f"Error generating dataset for candidate: {exc}")
+        raise HTTPException(status_code=500, detail=f"Failed to generate dataset: {str(exc)}")
+
+
 @router.get("/{question_id}", response_model=dict)
 async def get_question(
     question_id: str,
@@ -639,604 +1267,4 @@ async def suggest_topics(
     except Exception as exc:
         logger.exception(f"Error generating topic suggestions: {exc}")
         raise HTTPException(status_code=500, detail=f"Failed to generate topic suggestions: {str(exc)}")
-
-
-@router.get("/{question_id}/dataset-preview", response_model=dict)
-async def get_dataset_preview(
-    question_id: str,
-    format: str = Query("csv", description="Dataset format: csv, json, pdf, parquet, avro"),
-    current_user: Dict[str, Any] = Depends(get_current_user)
-):
-    """
-    Get dataset preview in the specified format.
-    """
-    try:
-        db = get_database()
-        if not ObjectId.is_valid(question_id):
-            raise HTTPException(status_code=400, detail="Invalid question ID")
-        
-        question = await db.questions.find_one({"_id": ObjectId(question_id)})
-        if not question:
-            raise HTTPException(status_code=404, detail="Question not found")
-        
-        # Check ownership
-        user_id = current_user.get("id") or current_user.get("_id")
-        if not user_id:
-            raise HTTPException(status_code=400, detail="Invalid user ID")
-        user_id = str(user_id).strip()
-        
-        question_created_by = question.get("created_by")
-        if question_created_by and str(question_created_by).strip() != user_id.strip():
-            raise HTTPException(status_code=403, detail="You don't have permission to access this question")
-        
-        dataset = question.get("dataset")
-        if not dataset:
-            raise HTTPException(status_code=404, detail="Question does not have a dataset")
-        
-        schema = dataset.get("schema", [])
-        rows = dataset.get("rows", [])
-        
-        if not schema or not rows:
-            raise HTTPException(status_code=400, detail="Dataset is empty")
-        
-        # Convert dataset to requested format
-        try:
-            import pandas as pd
-        except ImportError:
-            raise HTTPException(status_code=500, detail="pandas library not installed. Please install pandas for dataset conversion support.")
-        
-        import io
-        import json as json_lib
-        
-        # Create DataFrame from dataset - dynamically use schema column names
-        column_names = [col["name"] for col in schema]
-        
-        df_data = []
-        for row in rows:
-            row_dict = {}
-            for i, col in enumerate(schema):
-                if i < len(row):
-                    row_dict[col["name"]] = row[i]
-                else:
-                    row_dict[col["name"]] = None
-            df_data.append(row_dict)
-        
-        # Create DataFrame with explicit column order from schema
-        df = pd.DataFrame(df_data, columns=column_names)
-        
-        # Convert to requested format
-        format_lower = format.lower()
-        
-        if format_lower == "csv":
-            csv_buffer = io.StringIO()
-            df.to_csv(csv_buffer, index=False)
-            return {
-                "format": "csv",
-                "content": csv_buffer.getvalue(),
-                "mime_type": "text/csv"
-            }
-        
-        elif format_lower == "json":
-            json_data = df.to_dict(orient="records")
-            return {
-                "format": "json",
-                "content": json_lib.dumps(json_data, indent=2),
-                "mime_type": "application/json"
-            }
-        
-        elif format_lower == "parquet":
-            try:
-                parquet_buffer = io.BytesIO()
-                df.to_parquet(parquet_buffer, index=False)
-                import base64
-                return {
-                    "format": "parquet",
-                    "content": base64.b64encode(parquet_buffer.getvalue()).decode("utf-8"),
-                    "mime_type": "application/octet-stream",
-                    "is_binary": True
-                }
-            except ImportError as e:
-                raise HTTPException(status_code=500, detail="pyarrow library not installed for Parquet support. Please install pyarrow using: pip install pyarrow")
-            except Exception as e:
-                if "pyarrow" in str(e).lower() or "fastparquet" in str(e).lower():
-                    raise HTTPException(status_code=500, detail="Parquet support requires pyarrow. Please install using: pip install pyarrow")
-                raise
-        
-        elif format_lower == "avro":
-            try:
-                from fastavro import writer, parse_schema  # type: ignore
-                import io as io_module
-                
-                # Convert schema to Avro format
-                avro_fields = []
-                for col in schema:
-                    avro_type = "string"
-                    if col["type"] == "int":
-                        avro_type = "int"
-                    elif col["type"] == "float":
-                        avro_type = "double"
-                    elif col["type"] == "bool":
-                        avro_type = "boolean"
-                    
-                    avro_fields.append({
-                        "name": col["name"],
-                        "type": avro_type
-                    })
-                
-                avro_schema = {
-                    "type": "record",
-                    "name": "Dataset",
-                    "fields": avro_fields
-                }
-                
-                avro_buffer = io_module.BytesIO()
-                records = df.to_dict(orient="records")
-                writer(avro_buffer, parse_schema(avro_schema), records)
-                
-                import base64
-                return {
-                    "format": "avro",
-                    "content": base64.b64encode(avro_buffer.getvalue()).decode("utf-8"),
-                    "mime_type": "application/avro",
-                    "is_binary": True
-                }
-            except ImportError:
-                raise HTTPException(status_code=500, detail="fastavro library not installed for Avro support")
-        
-        elif format_lower == "pdf":
-            try:
-                from reportlab.lib import colors
-                from reportlab.lib.pagesizes import letter
-                from reportlab.platypus import SimpleDocTemplate, Table, TableStyle
-                import io as io_module
-                
-                pdf_buffer = io_module.BytesIO()
-                doc = SimpleDocTemplate(pdf_buffer, pagesize=letter)
-                
-                # Prepare table data - header row first
-                table_data = [[schema_col["name"] for schema_col in schema]]
-                # Then data rows
-                for row in rows:
-                    table_data.append([str(val) if val is not None else "" for val in row])
-                
-                # Create table
-                table = Table(table_data)
-                table.setStyle(TableStyle([
-                    ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
-                    ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-                    ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-                    ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-                    ('FONTSIZE', (0, 0), (-1, 0), 14),
-                    ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
-                    ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
-                    ('GRID', (0, 0), (-1, -1), 1, colors.black)
-                ]))
-                
-                doc.build([table])
-                
-                import base64
-                return {
-                    "format": "pdf",
-                    "content": base64.b64encode(pdf_buffer.getvalue()).decode("utf-8"),
-                    "mime_type": "application/pdf",
-                    "is_binary": True
-                }
-            except ImportError:
-                raise HTTPException(status_code=500, detail="reportlab library not installed for PDF support")
-        
-        else:
-            raise HTTPException(status_code=400, detail=f"Unsupported format: {format}. Supported formats: csv, json, parquet, avro, pdf")
-        
-    except HTTPException:
-        raise
-    except Exception as exc:
-        logger.exception(f"Error generating dataset preview: {exc}")
-        raise HTTPException(status_code=500, detail=f"Failed to generate dataset preview: {str(exc)}")
-
-
-@router.get("/{question_id}/dataset", response_model=dict)
-async def get_dataset_for_candidate(
-    question_id: str,
-    format: str = Query("csv", description="Dataset format: csv, json, pdf, parquet, avro"),
-    test_id: str = Query(..., description="Test ID for access validation"),
-    user_id: str = Query(..., description="User ID from link token")
-):
-    """
-    Get dataset for candidate (no authentication required, validated by test access).
-    This endpoint allows candidates to access datasets without authentication.
-    """
-    try:
-        db = get_database()
-        if not ObjectId.is_valid(question_id):
-            raise HTTPException(status_code=400, detail="Invalid question ID")
-        if not ObjectId.is_valid(test_id):
-            raise HTTPException(status_code=400, detail="Invalid test ID")
-
-        # Validate that the question belongs to the test
-        test = await db.tests.find_one({"_id": ObjectId(test_id)})
-        if not test:
-            raise HTTPException(status_code=404, detail="Test not found")
-
-        if not test.get("is_published", False):
-            raise HTTPException(status_code=403, detail="Test is not published")
-
-        question_ids = test.get("question_ids", [])
-        if question_id not in [str(qid) for qid in question_ids]:
-            raise HTTPException(status_code=403, detail="Question does not belong to this test")
-
-        # Get the question
-        question = await db.questions.find_one({"_id": ObjectId(question_id)})
-        if not question:
-            raise HTTPException(status_code=404, detail="Question not found")
-
-        dataset = question.get("dataset")
-        if not dataset:
-            raise HTTPException(status_code=404, detail="Question does not have a dataset")
-
-        schema = dataset.get("schema", [])
-        rows = dataset.get("rows", [])
-
-        if not schema or not rows:
-            raise HTTPException(status_code=400, detail="Dataset is empty")
-
-        # Convert dataset to requested format (same logic as dataset-preview)
-        try:
-            import pandas as pd
-        except ImportError:
-            raise HTTPException(status_code=500, detail="pandas library not installed. Please install pandas for dataset conversion support.")
-
-        import io
-        import json as json_lib
-
-        # Create DataFrame from dataset - dynamically use schema column names
-        column_names = [col["name"] for col in schema]
-        
-        df_data = []
-        for row in rows:
-            row_dict = {}
-            for i, col in enumerate(schema):
-                if i < len(row):
-                    row_dict[col["name"]] = row[i]
-                else:
-                    row_dict[col["name"]] = None
-            df_data.append(row_dict)
-
-        # Create DataFrame with explicit column order from schema
-        df = pd.DataFrame(df_data, columns=column_names)
-
-        # Convert to requested format
-        format_lower = format.lower()
-
-        if format_lower == "csv":
-            csv_buffer = io.StringIO()
-            df.to_csv(csv_buffer, index=False)
-            return {
-                "format": "csv",
-                "content": csv_buffer.getvalue(),
-                "mime_type": "text/csv"
-            }
-
-        elif format_lower == "json":
-            json_data = df.to_dict(orient="records")
-            return {
-                "format": "json",
-                "content": json_lib.dumps(json_data, indent=2),
-                "mime_type": "application/json"
-            }
-
-        elif format_lower == "parquet":
-            parquet_buffer = io.BytesIO()
-            df.to_parquet(parquet_buffer, index=False)
-            import base64
-            return {
-                "format": "parquet",
-                "content": base64.b64encode(parquet_buffer.getvalue()).decode("utf-8"),
-                "mime_type": "application/octet-stream",
-                "is_binary": True
-            }
-
-        elif format_lower == "avro":
-            try:
-                from fastavro import writer, parse_schema  # type: ignore
-                import io as io_module
-
-                # Convert schema to Avro format
-                avro_fields = []
-                for col in schema:
-                    avro_type = "string"
-                    if col["type"] == "int":
-                        avro_type = "int"
-                    elif col["type"] == "float":
-                        avro_type = "double"
-                    elif col["type"] == "bool":
-                        avro_type = "boolean"
-
-                    avro_fields.append({
-                        "name": col["name"],
-                        "type": avro_type
-                    })
-
-                avro_schema = {
-                    "type": "record",
-                    "name": "Dataset",
-                    "fields": avro_fields
-                }
-
-                avro_buffer = io_module.BytesIO()
-                records = df.to_dict(orient="records")
-                writer(avro_buffer, parse_schema(avro_schema), records)
-
-                import base64
-                return {
-                    "format": "avro",
-                    "content": base64.b64encode(avro_buffer.getvalue()).decode("utf-8"),
-                    "mime_type": "application/avro",
-                    "is_binary": True
-                }
-            except ImportError:
-                raise HTTPException(status_code=500, detail="fastavro library not installed for Avro support")
-
-        elif format_lower == "pdf":
-            try:
-                from reportlab.lib import colors
-                from reportlab.lib.pagesizes import letter
-                from reportlab.platypus import SimpleDocTemplate, Table, TableStyle
-                import io as io_module
-
-                pdf_buffer = io_module.BytesIO()
-                doc = SimpleDocTemplate(pdf_buffer, pagesize=letter)
-
-                # Prepare table data - header row first
-                table_data = [[schema_col["name"] for schema_col in schema]]
-                # Then data rows
-                for row in rows:
-                    table_data.append([str(val) if val is not None else "" for val in row])
-
-                # Create table
-                table = Table(table_data)
-                table.setStyle(TableStyle([
-                    ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
-                    ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-                    ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-                    ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-                    ('FONTSIZE', (0, 0), (-1, 0), 14),
-                    ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
-                    ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
-                    ('GRID', (0, 0), (-1, -1), 1, colors.black)
-                ]))
-
-                doc.build([table])
-
-                import base64
-                return {
-                    "format": "pdf",
-                    "content": base64.b64encode(pdf_buffer.getvalue()).decode("utf-8"),
-                    "mime_type": "application/pdf",
-                    "is_binary": True
-                }
-            except ImportError:
-                raise HTTPException(status_code=500, detail="reportlab library not installed for PDF support")
-
-        else:
-            raise HTTPException(status_code=400, detail=f"Unsupported format: {format}. Supported formats: csv, json, parquet, avro, pdf")
-
-    except HTTPException:
-        raise
-    except Exception as exc:
-        logger.exception(f"Error generating dataset for candidate: {exc}")
-        raise HTTPException(status_code=500, detail=f"Failed to generate dataset: {str(exc)}")
-
-
-@router.get("/{question_id}/dataset-download")
-async def download_dataset_for_candidate(
-    question_id: str,
-    format: Optional[str] = Query(None, description="Dataset format: csv, json, parquet, avro, pdf. If not provided, uses the format stored in the dataset."),
-    test_id: str = Query(..., description="Test ID for access validation"),
-    user_id: str = Query(..., description="User ID from link token")
-):
-    """
-    Download dataset file directly for candidate (returns raw file content).
-    This endpoint returns the file directly with proper Content-Type headers,
-    making it easy to use with pandas: pd.read_csv(url) or pd.read_json(url)
-    Uses the format stored in the dataset if format parameter is not provided.
-    """
-    from fastapi.responses import Response
-    
-    try:
-        db = get_database()
-        if not ObjectId.is_valid(question_id):
-            raise HTTPException(status_code=400, detail="Invalid question ID")
-        if not ObjectId.is_valid(test_id):
-            raise HTTPException(status_code=400, detail="Invalid test ID")
-
-        # Validate that the question belongs to the test
-        test = await db.tests.find_one({"_id": ObjectId(test_id)})
-        if not test:
-            raise HTTPException(status_code=404, detail="Test not found")
-
-        if not test.get("is_published", False):
-            raise HTTPException(status_code=403, detail="Test is not published")
-
-        question_ids = test.get("question_ids", [])
-        if question_id not in [str(qid) for qid in question_ids]:
-            raise HTTPException(status_code=403, detail="Question does not belong to this test")
-
-        # Get the question
-        question = await db.questions.find_one({"_id": ObjectId(question_id)})
-        if not question:
-            raise HTTPException(status_code=404, detail="Question not found")
-
-        dataset = question.get("dataset")
-        if not dataset:
-            raise HTTPException(status_code=404, detail="Question does not have a dataset")
-        
-        # Use stored format if format parameter is not provided
-        if format is None:
-            format = dataset.get("format", "csv")  # Default to csv if format not stored
-
-        schema = dataset.get("schema", [])
-        rows = dataset.get("rows", [])
-
-        if not schema or not rows:
-            raise HTTPException(status_code=400, detail="Dataset is empty")
-
-        # Convert dataset to requested format
-        try:
-            import pandas as pd
-        except ImportError:
-            raise HTTPException(status_code=500, detail="pandas library not installed")
-
-        import io
-
-        # Create DataFrame from dataset
-        # Get column names from schema
-        column_names = [col["name"] for col in schema]
-        
-        df_data = []
-        for row in rows:
-            row_dict = {}
-            for i, col in enumerate(schema):
-                if i < len(row):
-                    row_dict[col["name"]] = row[i]
-                else:
-                    row_dict[col["name"]] = None
-            df_data.append(row_dict)
-
-        # Create DataFrame with explicit column order
-        df = pd.DataFrame(df_data, columns=column_names)
-        format_lower = format.lower()
-
-        if format_lower == "csv":
-            csv_buffer = io.StringIO()
-            # Ensure column names are properly set
-            if df.empty:
-                # If DataFrame is empty, create with schema columns
-                df = pd.DataFrame(columns=[col["name"] for col in schema])
-            df.to_csv(csv_buffer, index=False, encoding='utf-8')
-            csv_content = csv_buffer.getvalue()
-            return Response(
-                content=csv_content.encode('utf-8'),
-                media_type="text/csv; charset=utf-8",
-                headers={
-                    "Content-Disposition": f'attachment; filename="dataset_{question_id}.csv"',
-                    "Content-Type": "text/csv; charset=utf-8"
-                }
-            )
-
-        elif format_lower == "json":
-            json_data = df.to_dict(orient="records")
-            import json as json_lib
-            return Response(
-                content=json_lib.dumps(json_data, indent=2),
-                media_type="application/json",
-                headers={
-                    "Content-Disposition": f'attachment; filename="dataset_{question_id}.json"'
-                }
-            )
-
-        elif format_lower == "parquet":
-            parquet_buffer = io.BytesIO()
-            df.to_parquet(parquet_buffer, index=False)
-            import base64
-            return Response(
-                content=parquet_buffer.getvalue(),
-                media_type="application/octet-stream",
-                headers={
-                    "Content-Disposition": f'attachment; filename="dataset_{question_id}.parquet"',
-                    "Content-Type": "application/octet-stream"
-                }
-            )
-
-        elif format_lower == "avro":
-            try:
-                from fastavro import writer, parse_schema  # type: ignore
-                import io as io_module
-
-                # Convert schema to Avro format
-                avro_fields = []
-                for col in schema:
-                    avro_type = "string"
-                    if col["type"] == "int":
-                        avro_type = "int"
-                    elif col["type"] == "float":
-                        avro_type = "double"
-                    elif col["type"] == "bool":
-                        avro_type = "boolean"
-
-                    avro_fields.append({
-                        "name": col["name"],
-                        "type": avro_type
-                    })
-
-                avro_schema = {
-                    "type": "record",
-                    "name": "Dataset",
-                    "fields": avro_fields
-                }
-
-                avro_buffer = io_module.BytesIO()
-                records = df.to_dict(orient="records")
-                writer(avro_buffer, parse_schema(avro_schema), records)
-
-                return Response(
-                    content=avro_buffer.getvalue(),
-                    media_type="application/avro",
-                    headers={
-                        "Content-Disposition": f'attachment; filename="dataset_{question_id}.avro"',
-                        "Content-Type": "application/avro"
-                    }
-                )
-            except ImportError:
-                raise HTTPException(status_code=500, detail="fastavro library not installed for Avro support")
-
-        elif format_lower == "pdf":
-            try:
-                from reportlab.lib import colors
-                from reportlab.lib.pagesizes import letter
-                from reportlab.platypus import SimpleDocTemplate, Table, TableStyle
-                import io as io_module
-
-                pdf_buffer = io_module.BytesIO()
-                doc = SimpleDocTemplate(pdf_buffer, pagesize=letter)
-
-                # Prepare table data - header row first
-                table_data = [[schema_col["name"] for schema_col in schema]]
-                # Then data rows
-                for row in rows:
-                    table_data.append([str(val) if val is not None else "" for val in row])
-
-                # Create table
-                table = Table(table_data)
-                table.setStyle(TableStyle([
-                    ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
-                    ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-                    ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-                    ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-                    ('FONTSIZE', (0, 0), (-1, 0), 14),
-                    ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
-                    ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
-                    ('GRID', (0, 0), (-1, -1), 1, colors.black)
-                ]))
-
-                doc.build([table])
-
-                return Response(
-                    content=pdf_buffer.getvalue(),
-                    media_type="application/pdf",
-                    headers={
-                        "Content-Disposition": f'attachment; filename="dataset_{question_id}.pdf"',
-                        "Content-Type": "application/pdf"
-                    }
-                )
-            except ImportError:
-                raise HTTPException(status_code=500, detail="reportlab library not installed for PDF support")
-
-        else:
-            raise HTTPException(status_code=400, detail=f"Unsupported format for direct download: {format}. Supported formats: csv, json, parquet, avro, pdf")
-
-    except HTTPException:
-        raise
-    except Exception as exc:
-        logger.exception(f"Error downloading dataset for candidate: {exc}")
-        raise HTTPException(status_code=500, detail=f"Failed to download dataset: {str(exc)}")
 

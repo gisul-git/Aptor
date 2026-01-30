@@ -112,6 +112,8 @@ async function verifyToken(req, res, next) {
     /^\/api\/v1\/aiml\/tests\/save-reference-face$/, // AIML reference photo save
     /^\/api\/v1\/dsa\/tests\/get-reference-photo$/, // DSA reference photo retrieval
     /^\/api\/v1\/dsa\/tests\/save-reference-face$/, // DSA reference photo save
+    // AIML dataset download endpoint for candidates
+    /^\/api\/v1\/aiml\/questions\/[^/]+\/dataset-download$/,
     // Proctoring endpoints - candidates need to record violations without auth
     /^\/api\/v1\/proctor\/record$/,
     /^\/api\/v1\/proctor\/upload$/,

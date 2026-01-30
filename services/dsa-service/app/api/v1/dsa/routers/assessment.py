@@ -17,6 +17,7 @@ SQL Support:
 """
 import logging
 import re
+import httpx
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -28,6 +29,7 @@ from ..database import get_dsa_database as get_database
 from ..utils.judge0 import run_all_test_cases, run_test_case, LANGUAGE_IDS
 from ..services.ai_feedback import generate_code_feedback
 from ...assessments.services.unified_ai_evaluation import evaluate_sql_answer
+from ..config import SQL_ENGINE_URL, get_dsa_settings, DSASettings
 
 # Stub functions for deprecated code_wrapper functionality
 # TODO: Update to use universal_code_wrapper_v2.py for new JSON-based system
@@ -1148,6 +1150,11 @@ class SubmitSQLRequest(BaseModel):
     started_at: Optional[str] = None
     submitted_at: Optional[str] = None
     time_spent_seconds: Optional[int] = None
+    # Execution engine results - if provided, backend will use these instead of re-executing
+    execution_engine_passed: Optional[bool] = None
+    execution_engine_output: Optional[str] = None
+    execution_engine_time: Optional[float] = None
+    execution_engine_memory: Optional[float] = None
 
 
 def build_sql_script(
@@ -1361,17 +1368,41 @@ def compare_sql_results(user_output: str, expected_output: str, order_sensitive:
     user_headers, user_rows = parse_sql_table_output(user_output)
     expected_headers, expected_rows = parse_sql_table_output(expected_output)
     
+    # Log parsing results for debugging
+    logger.info(
+        f"SQL comparison - Parsed results:\n"
+        f"  User: {len(user_headers)} headers = {user_headers}, {len(user_rows)} rows\n"
+        f"  Expected: {len(expected_headers)} headers = {expected_headers}, {len(expected_rows)} rows"
+    )
+    
     # CRITICAL: Compare headers first - must match exactly (column names and order)
     # If headers don't match, test case FAILS immediately
     if user_headers != expected_headers:
-        logger.warning(
-            f"Header mismatch detected:\n"
+        missing_cols = set(expected_headers) - set(user_headers)
+        extra_cols = set(user_headers) - set(expected_headers)
+        logger.error(
+            f"❌❌❌ Header mismatch detected - TEST CASE FAILED:\n"
             f"  User headers ({len(user_headers)}): {user_headers}\n"
             f"  Expected headers ({len(expected_headers)}): {expected_headers}\n"
-            f"  Missing in user: {set(expected_headers) - set(user_headers)}\n"
-            f"  Extra in user: {set(user_headers) - set(expected_headers)}"
+            f"  Missing in user: {missing_cols}\n"
+            f"  Extra in user: {extra_cols}\n"
+            f"  Returning False - test case MUST FAIL"
+        )
+        # Force return False - headers don't match
+        return False
+    
+    # Double-check header count as safety measure
+    if len(user_headers) != len(expected_headers):
+        logger.error(
+            f"❌❌❌ Header count mismatch:\n"
+            f"  User: {len(user_headers)} headers\n"
+            f"  Expected: {len(expected_headers)} headers\n"
+            f"  Returning False"
         )
         return False
+    
+    # If we get here, headers match - log for debugging
+    logger.info(f"✅ Headers match: {user_headers}")
     
     # Compare number of rows
     if len(user_rows) != len(expected_rows):
@@ -1514,18 +1545,52 @@ async def submit_sql(
     if not schemas:
         raise HTTPException(status_code=400, detail="Question has no table schemas defined")
     
-    # Execute user's query
-    user_sql_script = build_sql_script(
-        schemas=schemas,
-        sample_data=sample_data,
-        user_query=request.sql_query
+    # Check if execution engine results are provided - if so, use them directly
+    use_execution_engine_result = (
+        request.execution_engine_passed is not None and 
+        request.execution_engine_output is not None
     )
     
-    logger.info(f"Executing user SQL script...")
-    user_result = await execute_sql_with_judge0(user_sql_script)
+    if use_execution_engine_result:
+        logger.info(
+            f"Using execution engine result: passed={request.execution_engine_passed}, "
+            f"output_length={len(request.execution_engine_output)}"
+        )
+        # Use execution engine's result directly
+        passed = bool(request.execution_engine_passed)
+        user_output = request.execution_engine_output
+        user_result = {
+            "success": True,
+            "stdout": user_output,
+            "time": request.execution_engine_time,
+            "memory": request.execution_engine_memory,
+            "status_id": 3 if passed else 4,
+        }
+        # Still need expected output for display, so execute reference query if available
+        expected_output = None
+        if reference_query:
+            ref_sql_script = build_sql_script(
+                schemas=schemas,
+                sample_data=sample_data,
+                user_query=reference_query
+            )
+            logger.info(f"Executing reference SQL script for expected output...")
+            ref_result = await execute_sql_with_judge0(ref_sql_script)
+            if ref_result["success"]:
+                expected_output = ref_result.get("stdout", "").strip()
+    else:
+        # Execute user's query (fallback if execution engine result not provided)
+        user_sql_script = build_sql_script(
+            schemas=schemas,
+            sample_data=sample_data,
+            user_query=request.sql_query
+        )
+        
+        logger.info(f"Executing user SQL script...")
+        user_result = await execute_sql_with_judge0(user_sql_script)
     
-    # Check for execution errors
-    if not user_result["success"] and user_result["status_id"] != 3:
+    # Check for execution errors (only if we executed the query ourselves)
+    if not use_execution_engine_result and not user_result["success"] and user_result["status_id"] != 3:
         error_msg = user_result.get("stderr") or user_result.get("compile_output") or "Query execution failed"
         
         response = {
@@ -1561,10 +1626,12 @@ async def submit_sql(
         
         return response
     
-    user_output = (user_result.get("stdout") or "").strip()
+    # Get user output (either from execution engine or from our execution)
+    if not use_execution_engine_result:
+        user_output = (user_result.get("stdout") or "").strip()
     
-    # If there's a reference query, execute it and compare
-    if reference_query:
+    # If execution engine result was not provided, execute and compare
+    if not use_execution_engine_result and reference_query:
         ref_sql_script = build_sql_script(
             schemas=schemas,
             sample_data=sample_data,
@@ -1583,25 +1650,87 @@ async def submit_sql(
             )
         
         expected_output = ref_result.get("stdout", "").strip()
-        # STRICT matching: test case only passes if outputs match exactly
-        # This is the authoritative comparison - ignore SQL engine's result
-        passed = compare_sql_results(user_output, expected_output, order_sensitive)
+        
+        # Log outputs before comparison for debugging
+        logger.info(
+            f"SQL comparison for question {request.question_id}:\n"
+            f"  User output (length {len(user_output)}):\n{repr(user_output)}\n"
+            f"  Expected output (length {len(expected_output)}):\n{repr(expected_output)}"
+        )
+        
+        # CRITICAL: Validate that we have both outputs before comparing
+        if not expected_output or not expected_output.strip():
+            logger.error(
+                f"❌ Expected output is empty for question {request.question_id}. "
+                f"Cannot perform comparison. Test case FAILED."
+            )
+            passed = False
+        elif not user_output or not user_output.strip():
+            logger.error(
+                f"❌ User output is empty for question {request.question_id}. "
+                f"Test case FAILED."
+            )
+            passed = False
+        else:
+            # STRICT matching: test case only passes if outputs match exactly
+            # This is the authoritative comparison
+            passed = compare_sql_results(user_output, expected_output, order_sensitive)
+            
+            # CRITICAL: Double-check the result - if outputs are different lengths or formats, force False
+            # This is a safety check to prevent false positives
+            if passed:
+                # Parse headers to verify they actually match
+                user_h, user_r = parse_sql_table_output(user_output)
+                exp_h, exp_r = parse_sql_table_output(expected_output)
+                
+                # If headers don't match, force False
+                if user_h != exp_h:
+                    logger.error(
+                        f"⚠️⚠️⚠️ CRITICAL: Comparison returned True but headers don't match! "
+                        f"User headers ({len(user_h)}): {user_h}\n"
+                        f"Expected headers ({len(exp_h)}): {exp_h}\n"
+                        f"Missing: {set(exp_h) - set(user_h)}, Extra: {set(user_h) - set(exp_h)}\n"
+                        f"FORCING passed=False"
+                    )
+                    passed = False
+                elif len(user_r) != len(exp_r):
+                    logger.error(
+                        f"⚠️ Comparison returned True but row counts don't match! "
+                        f"User: {len(user_r)} rows, Expected: {len(exp_r)} rows. "
+                        f"Forcing passed=False"
+                    )
+                    passed = False
         
         # Log comparison result for debugging
         if not passed:
-            logger.warning(
-                f"SQL output mismatch for question {request.question_id}. "
+            logger.error(
+                f"❌ SQL output mismatch for question {request.question_id}. "
+                f"Comparison returned False. Test case FAILED.\n"
                 f"User output:\n{user_output[:500]}\n\nExpected output:\n{expected_output[:500]}"
             )
+            # Ensure passed is explicitly False
+            passed = False
         else:
-            logger.info(f"SQL output match confirmed for question {request.question_id}")
+            logger.warning(
+                f"⚠️ SQL output comparison returned TRUE for question {request.question_id}. "
+                f"Verify this is correct - outputs should match exactly."
+            )
+            # Ensure passed is explicitly True
+            passed = True
         
-    else:
+    elif not use_execution_engine_result:
         # No reference query - just check if query executed successfully
         # But this should rarely happen - SQL questions should have reference queries
         passed = user_result["success"]
         expected_output = None
         logger.warning(f"SQL question {request.question_id} has no reference query for comparison")
+    
+    # If using execution engine result, passed is already set above
+    if use_execution_engine_result:
+        logger.info(
+            f"Using execution engine result for question {request.question_id}: "
+            f"passed={passed}, test_case_count={'1/1' if passed else '0/1'}"
+        )
     
     # AI Evaluation
     ai_evaluation = None
@@ -1609,6 +1738,16 @@ async def submit_sql(
     ai_max_marks = question.get("marks", 100)
     
     try:
+        # Prepare test result with expected output for AI evaluation
+        test_result_data = {
+            "passed": passed,
+            "user_result": user_result,
+            "reference_result": ref_result if reference_query else None,
+            "error": user_result.get("stderr") if not user_result.get("success") else None,
+            "expected_output": expected_output if expected_output else None,  # Include expected output
+            "user_output": user_output if user_output else None,  # Include user output
+        }
+        
         ai_evaluation = await evaluate_sql_answer(
             question_id=request.question_id,
             question_description=question.get("questionText") or question.get("question", ""),
@@ -1617,12 +1756,7 @@ async def submit_sql(
             max_marks=ai_max_marks,
             section=None,
             schemas=schemas,
-            test_result={
-                "passed": passed,
-                "user_result": user_result,
-                "reference_result": ref_result if reference_query else None,
-                "error": user_result.get("stderr") if not user_result.get("success") else None
-            },
+            test_result=test_result_data,
             order_sensitive=order_sensitive,
             difficulty=question.get("difficulty", "Medium")
         )
@@ -1647,6 +1781,7 @@ async def submit_sql(
         message = "Query output does not match expected results"
     
     # Create test case result structure for consistency with coding questions
+    # CRITICAL: passed status must reflect strict comparison result
     test_case_result = {
         "id": "sql_test_1",
         "test_number": 1,
@@ -1657,13 +1792,22 @@ async def submit_sql(
         "status_id": 3 if passed else 4,  # 3 = accepted, 4 = wrong answer
         "time": user_result.get("time"),
         "memory": user_result.get("memory"),
-        "passed": passed,
+        "passed": bool(passed),  # Ensure boolean, explicitly use comparison result
     }
+    
+    # CRITICAL: public_summary must reflect the actual comparison result
+    # If headers don't match or data doesn't match, passed should be 0
+    public_summary_passed = 1 if passed else 0
+    
+    logger.info(
+        f"SQL submission result for question {request.question_id}: "
+        f"passed={passed}, status={status}, public_summary_passed={public_summary_passed}"
+    )
     
     response = {
         "question_id": request.question_id,
         "status": status,
-        "passed": passed,
+        "passed": bool(passed),  # Ensure boolean
         "message": message,
         "user_output": user_output,
         "expected_output": expected_output if not passed else None,  # Only show expected on failure
@@ -1677,12 +1821,13 @@ async def submit_sql(
         "public_results": [test_case_result],  # Single test case for SQL
         "public_summary": {
             "total": 1,
-            "passed": 1 if passed else 0
+            "passed": public_summary_passed  # Use explicit variable to ensure correctness
         },
     }
     
     # Save submission if user_id provided
     if user_id:
+        # Save to sql_submissions for tracking
         submission_record = {
             "user_id": user_id,
             "question_id": request.question_id,
@@ -1704,6 +1849,289 @@ async def submit_sql(
         }
         insert_result = await db.sql_submissions.insert_one(submission_record)
         response["submission_id"] = str(insert_result.inserted_id)
-        logger.info(f"Saved SQL submission for user {user_id}")
+        
+        # CRITICAL: Also save to submissions collection with test case counts (0/1 or 1/1)
+        # This is what analytics uses to display test case counts
+        # Use execution engine's passed status to determine test case count
+        passed_testcases = 1 if passed else 0
+        total_testcases = 1
+        
+        submission_data = {
+            "user_id": user_id,
+            "question_id": request.question_id,
+            "test_id": None,  # Will be set during final-submit
+            "language": "sql",
+            "code": request.sql_query,
+            "status": status,
+            "test_results": [test_case_result],  # Single test case for SQL
+            "passed_testcases": passed_testcases,  # 0 or 1 based on execution engine result
+            "total_testcases": total_testcases,  # Always 1 for SQL
+            "public_passed": passed_testcases,
+            "public_total": total_testcases,
+            "hidden_passed": 0,
+            "hidden_total": 0,
+            "execution_time": user_result.get("time"),
+            "memory_used": user_result.get("memory"),
+            "ai_feedback": ai_evaluation,
+            "score": ai_score,
+            "max_score": ai_max_marks,
+            "created_at": datetime.utcnow(),
+            "is_final_submission": False,  # This is a regular submission, not final
+        }
+        submission_insert = await db.submissions.insert_one(submission_data)
+        response["submission_record_id"] = str(submission_insert.inserted_id)
+        
+        logger.info(
+            f"Saved SQL submission for user {user_id}: "
+            f"passed={passed}, test_cases={passed_testcases}/{total_testcases}"
+        )
     
     return response
+
+
+# ============================================================================
+# SQL EXECUTION ENGINE PROXY ENDPOINTS
+# These endpoints proxy requests to the SQL execution engine to avoid CORS issues
+# ============================================================================
+
+class SQLExecuteRequest(BaseModel):
+    """Request for executing SQL via SQL execution engine"""
+    questionId: str
+    code: str
+    schemas: Optional[Dict[str, Any]] = None
+    sample_data: Optional[Dict[str, Any]] = None
+
+
+class SQLSubmitRequest(BaseModel):
+    """Request for submitting SQL via SQL execution engine"""
+    questionId: str
+    code: str
+    expectedOutput: Optional[List[Dict[str, Any]]] = None
+    schemas: Optional[Dict[str, Any]] = None
+    sample_data: Optional[Dict[str, Any]] = None
+
+
+@router.post("/assessment/sql-engine/execute")
+async def proxy_sql_execute(request: SQLExecuteRequest):
+    """
+    Proxy endpoint for SQL execution engine /api/execute
+    This avoids CORS issues by routing requests through the backend
+    """
+    logger.info(f"Proxying SQL execute request for question {request.questionId}")
+    
+    settings = get_dsa_settings()
+    sql_engine_url = getattr(settings, "sql_engine_url", None) or SQL_ENGINE_URL
+    
+    if not sql_engine_url:
+        raise HTTPException(
+            status_code=500,
+            detail="SQL_ENGINE_URL is not configured. Please set it in the .env file."
+        )
+    
+    logger.info(f"Using SQL engine URL from environment: {sql_engine_url}")
+    
+    # Remove /api suffix if present (we'll add it back)
+    base_url = sql_engine_url.rstrip('/')
+    if base_url.endswith('/api'):
+        base_url = base_url[:-4]
+    
+    # Try /api/execute first
+    url = f"{base_url}/api/execute"
+    logger.info(f"Proxying to SQL engine: {url}")
+    
+    timeout = httpx.Timeout(connect=10.0, read=30.0, write=10.0, pool=10.0)
+    
+    try:
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            response = await client.post(
+                url,
+                json={
+                    "questionId": request.questionId,
+                    "code": request.code,
+                    "schemas": request.schemas,
+                    "sample_data": request.sample_data,
+                },
+                headers={"Content-Type": "application/json"},
+            )
+            response.raise_for_status()
+            
+            # Check if response is HTML (error page)
+            response_text = response.text
+            if response_text.strip().startswith('<!DOCTYPE') or 'text/html' in response.headers.get('content-type', ''):
+                logger.warning(f"SQL engine returned HTML for {url}, trying alternative endpoint /execute")
+                # Try without /api prefix
+                alt_url = f"{base_url}/execute"
+                alt_response = await client.post(
+                    alt_url,
+                    json={
+                        "questionId": request.questionId,
+                        "code": request.code,
+                        "schemas": request.schemas,
+                        "sample_data": request.sample_data,
+                    },
+                    headers={"Content-Type": "application/json"},
+                )
+                alt_response.raise_for_status()
+                return alt_response.json()
+            
+            return response.json()
+    except httpx.HTTPStatusError as e:
+        # Check if response is HTML error page
+        response_text = e.response.text if hasattr(e.response, 'text') else str(e.response.content)
+        if response_text.strip().startswith('<!DOCTYPE') or 'text/html' in e.response.headers.get('content-type', ''):
+            logger.warning(f"SQL engine returned HTML error page for {url}, trying alternative endpoint /execute")
+            # Try without /api prefix
+            try:
+                alt_url = f"{base_url}/execute"
+                async with httpx.AsyncClient(timeout=timeout) as client:
+                    alt_response = await client.post(
+                        alt_url,
+                        json={
+                            "questionId": request.questionId,
+                            "code": request.code,
+                            "schemas": request.schemas,
+                            "sample_data": request.sample_data,
+                        },
+                        headers={"Content-Type": "application/json"},
+                    )
+                    alt_response.raise_for_status()
+                    return alt_response.json()
+            except Exception as alt_e:
+                logger.error(f"Alternative endpoint also failed: {alt_e}")
+                raise HTTPException(
+                    status_code=503,
+                    detail=f"SQL execution engine is unavailable. Tried both {url} and {alt_url}. The service may be down or the endpoint path is incorrect."
+                )
+        
+        logger.error(f"SQL engine HTTP error: {e.response.status_code} - {response_text[:500]}")
+        raise HTTPException(
+            status_code=e.response.status_code,
+            detail=f"SQL execution engine error: {response_text[:200]}"
+        )
+    except httpx.RequestError as e:
+        logger.error(f"SQL engine connection error: {e}")
+        raise HTTPException(
+            status_code=503,
+            detail=f"Failed to connect to SQL execution engine at {url}. Error: {str(e)}"
+        )
+    except Exception as e:
+        logger.error(f"Unexpected error proxying to SQL engine: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Unexpected error: {str(e)}"
+        )
+
+
+@router.post("/assessment/sql-engine/submit")
+async def proxy_sql_submit(request: SQLSubmitRequest):
+    """
+    Proxy endpoint for SQL execution engine /api/submit
+    This avoids CORS issues by routing requests through the backend
+    """
+    logger.info(f"Proxying SQL submit request for question {request.questionId}")
+    
+    # Always get fresh settings (not cached) to pick up .env changes
+    settings = DSASettings()
+    sql_engine_url = settings.sql_engine_url
+    
+    if not sql_engine_url:
+        raise HTTPException(
+            status_code=500,
+            detail="SQL_ENGINE_URL is not configured. Please set it in the .env file."
+        )
+    
+    logger.info(f"Using SQL engine URL from environment: {sql_engine_url}")
+    
+    # Remove /api suffix if present (we'll add it back)
+    base_url = sql_engine_url.rstrip('/')
+    if base_url.endswith('/api'):
+        base_url = base_url[:-4]
+    
+    # Try /api/submit first
+    url = f"{base_url}/api/submit"
+    logger.info(f"Proxying to SQL engine: {url}")
+    
+    timeout = httpx.Timeout(connect=10.0, read=30.0, write=10.0, pool=10.0)
+    
+    try:
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            response = await client.post(
+                url,
+                json={
+                    "questionId": request.questionId,
+                    "code": request.code,
+                    "expectedOutput": request.expectedOutput,
+                    "schemas": request.schemas,
+                    "sample_data": request.sample_data,
+                },
+                headers={"Content-Type": "application/json"},
+            )
+            response.raise_for_status()
+            
+            # Check if response is HTML (error page)
+            response_text = response.text
+            if response_text.strip().startswith('<!DOCTYPE') or 'text/html' in response.headers.get('content-type', ''):
+                logger.warning(f"SQL engine returned HTML for {url}, trying alternative endpoint /submit")
+                # Try without /api prefix
+                alt_url = f"{base_url}/submit"
+                alt_response = await client.post(
+                    alt_url,
+                    json={
+                        "questionId": request.questionId,
+                        "code": request.code,
+                        "expectedOutput": request.expectedOutput,
+                        "schemas": request.schemas,
+                        "sample_data": request.sample_data,
+                    },
+                    headers={"Content-Type": "application/json"},
+                )
+                alt_response.raise_for_status()
+                return alt_response.json()
+            
+            return response.json()
+    except httpx.HTTPStatusError as e:
+        # Check if response is HTML error page
+        response_text = e.response.text if hasattr(e.response, 'text') else str(e.response.content)
+        if response_text.strip().startswith('<!DOCTYPE') or 'text/html' in e.response.headers.get('content-type', ''):
+            logger.warning(f"SQL engine returned HTML error page for {url}, trying alternative endpoint /submit")
+            # Try without /api prefix
+            try:
+                alt_url = f"{base_url}/submit"
+                async with httpx.AsyncClient(timeout=timeout) as client:
+                    alt_response = await client.post(
+                        alt_url,
+                        json={
+                            "questionId": request.questionId,
+                            "code": request.code,
+                            "expectedOutput": request.expectedOutput,
+                            "schemas": request.schemas,
+                            "sample_data": request.sample_data,
+                        },
+                        headers={"Content-Type": "application/json"},
+                    )
+                    alt_response.raise_for_status()
+                    return alt_response.json()
+            except Exception as alt_e:
+                logger.error(f"Alternative endpoint also failed: {alt_e}")
+                raise HTTPException(
+                    status_code=503,
+                    detail=f"SQL execution engine is unavailable. Tried both {url} and {alt_url}. The service may be down or the endpoint path is incorrect."
+                )
+        
+        logger.error(f"SQL engine HTTP error: {e.response.status_code} - {response_text[:500]}")
+        raise HTTPException(
+            status_code=e.response.status_code,
+            detail=f"SQL execution engine error: {response_text[:200]}"
+        )
+    except httpx.RequestError as e:
+        logger.error(f"SQL engine connection error: {e}")
+        raise HTTPException(
+            status_code=503,
+            detail=f"Failed to connect to SQL execution engine at {url}. Error: {str(e)}"
+        )
+    except Exception as e:
+        logger.error(f"Unexpected error proxying to SQL engine: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Unexpected error: {str(e)}"
+        )

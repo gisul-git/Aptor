@@ -204,12 +204,12 @@ async def get_seeded_schema():
     }
     """
     try:
-        from ..config import SQL_ENGINE_URL, get_dsa_settings
-        settings = get_dsa_settings()
-        sql_engine_url = getattr(settings, "sql_engine_url", None) or SQL_ENGINE_URL
+        from ..config import DSASettings
+        # Always get fresh settings (not cached) to pick up .env changes
+        settings = DSASettings()
+        sql_engine_url = settings.sql_engine_url
         logger.info(f"[Admin Router] Fetching seeded SQL schema from SQL execution engine")
-        logger.info(f"[Admin Router] SQL Engine URL: {sql_engine_url}")
-        logger.info(f"[Admin Router] Full endpoint URL: {sql_engine_url.rstrip('/')}/schema")
+        logger.info(f"[Admin Router] SQL Engine URL from environment: {sql_engine_url}")
         
         schema_data = await fetch_seeded_sql_schema()
         

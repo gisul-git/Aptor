@@ -660,8 +660,63 @@ export default function QuestionCreatePage() {
     setError(null)
 
     try {
-      const response = await dsaApi.get('/admin/seeded-schema')
-      const data = response.data
+      // Call SQL execution engine directly from frontend
+      // URL must be set in NEXT_PUBLIC_SQL_ENGINE_URL environment variable
+      const baseUrl = process.env.NEXT_PUBLIC_SQL_ENGINE_URL
+      if (!baseUrl) {
+        throw new Error('NEXT_PUBLIC_SQL_ENGINE_URL environment variable is not set. Please configure it in your .env file.')
+      }
+      
+      // Remove /api suffix if present (we'll add it back for the endpoint)
+      let sqlEngineBase = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl
+      if (sqlEngineBase.endsWith('/api')) {
+        sqlEngineBase = sqlEngineBase.slice(0, -4)
+      }
+      
+      // Try /api/schema first, then /schema if that fails
+      let schemaUrl = `${sqlEngineBase}/api/schema`
+      console.log('[Load Seeded Schema] SQL Engine Base URL:', sqlEngineBase)
+      console.log('[Load Seeded Schema] Trying endpoint:', schemaUrl)
+      
+      let response = await fetch(schemaUrl, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      })
+      
+      if (!response.ok) {
+        const text = await response.text()
+        // If we got HTML (404 page) and tried /api/schema, try /schema directly
+        if ((text.trim().startsWith('<!DOCTYPE') || text.trim().startsWith('<html')) && schemaUrl.includes('/api/schema')) {
+          console.log('[Load Seeded Schema] /api/schema returned HTML, trying /schema directly')
+          schemaUrl = `${sqlEngineBase}/schema`
+          response = await fetch(schemaUrl, {
+            method: 'GET',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+          })
+          
+          if (!response.ok) {
+            const retryText = await response.text()
+            if (retryText.trim().startsWith('<!DOCTYPE') || retryText.trim().startsWith('<html')) {
+              throw new Error(`SQL engine returned HTML (likely 404). Tried both ${sqlEngineBase}/api/schema and ${sqlEngineBase}/schema. Make sure the SQL execution engine is running and the endpoint path is correct.`)
+            }
+            throw new Error(`HTTP ${response.status}: ${retryText.substring(0, 200)}`)
+          }
+        } else {
+          throw new Error(`HTTP ${response.status}: ${text.substring(0, 200)}`)
+        }
+      }
+      
+      const contentType = response.headers.get('content-type') || ''
+      if (!contentType.includes('application/json')) {
+        const text = await response.text()
+        throw new Error(`Expected JSON but got ${contentType}. Response: ${text.substring(0, 500)}`)
+      }
+      
+      const data = await response.json()
 
       if (data.schemas && Object.keys(data.schemas).length > 0) {
         // Set schemas
@@ -693,7 +748,7 @@ export default function QuestionCreatePage() {
       } else if (err.message) {
         errorMessage = `${errorMessage} Error: ${err.message}`
       } else if (err.code === 'ERR_NETWORK') {
-        errorMessage = 'Network error. Make sure the SQL execution engine is running on port 3000.'
+        errorMessage = `Network error. Make sure the SQL execution engine is running. Check NEXT_PUBLIC_SQL_ENGINE_URL environment variable.`
       }
       setError(errorMessage)
       alert(`❌ ${errorMessage}`)
