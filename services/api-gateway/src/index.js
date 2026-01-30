@@ -108,6 +108,8 @@ async function verifyToken(req, res, next) {
     /^\/api\/v1\/aiml\/tests\/[^/]+\/start$/,
     /^\/api\/v1\/aiml\/tests\/[^/]+\/public$/,
     /^\/api\/v1\/aiml\/tests\/[^/]+\/full$/,
+    // AIML dataset download endpoint for candidates
+    /^\/api\/v1\/aiml\/questions\/[^/]+\/dataset-download$/,
     // Proctoring endpoints - candidates need to record violations without auth
     /^\/api\/v1\/proctor\/record$/,
     /^\/api\/v1\/proctor\/upload$/,

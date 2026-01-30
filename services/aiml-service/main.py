@@ -72,6 +72,19 @@ app.add_middleware(
     max_age=600,
 )
 
+# Add request logging middleware
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request
+
+class LoggingMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        logger.info(f"[AIML-SERVICE] Incoming request: {request.method} {request.url.path}?{request.url.query}")
+        response = await call_next(request)
+        logger.info(f"[AIML-SERVICE] Response: {response.status_code} for {request.method} {request.url.path}")
+        return response
+
+app.add_middleware(LoggingMiddleware)
+
 # Include routers - note: routes with "/" in router become "/api/v1/aiml/tests/" (with trailing slash)
 app.include_router(aiml_tests.router, prefix="/api/v1/aiml/tests", tags=["aiml"])
 app.include_router(aiml_questions.router)

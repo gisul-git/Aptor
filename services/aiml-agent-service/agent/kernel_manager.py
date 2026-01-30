@@ -228,3 +228,4 @@ def interrupt_kernel(session_id: str):
             except Exception as e:
                 print(f"[KernelManager] Error interrupting kernel: {e}")
                 raise
+
