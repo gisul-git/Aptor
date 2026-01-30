@@ -1563,6 +1563,9 @@ async def get_test_question(
         question_dict["constraints"] = question["constraints"]
     if question.get("examples"):
         question_dict["examples"] = question["examples"]
+    # Optional SQL expected output snapshot (safe to show to candidates)
+    if question.get("sql_expected_output") is not None:
+        question_dict["sql_expected_output"] = question.get("sql_expected_output")
     
     logger.info(f"[get_test_question] Returning question {question_id} for test {test_id}, user {user_id}")
     

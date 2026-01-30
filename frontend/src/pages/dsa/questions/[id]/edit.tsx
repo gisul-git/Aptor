@@ -258,6 +258,12 @@ export default function QuestionEditPage() {
       const response = await dsaApi.get(`/questions/${questionId}`)
       const data = response.data
 
+      // Check if this is an SQL question and redirect to SQL edit page
+      if (data.question_type === 'SQL') {
+        router.push(`/dsa/questions/${questionId}/edit-sql`)
+        return
+      }
+
       // Populate form fields
       setTitle(data.title || '')
       setDescription(data.description || '')

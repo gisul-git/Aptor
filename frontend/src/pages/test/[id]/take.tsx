@@ -73,6 +73,7 @@ interface Question {
   sample_data?: Record<string, any[][]>
   starter_query?: string
   hints?: string[]
+  sql_expected_output?: string | any[]
 }
 
 // Timer mode types
@@ -1033,16 +1034,16 @@ export default function TestTakePage() {
       setToken('admin_preview_token')
     } else {
       // Normal mode - require token and userId
-      if (!safeTestId || !token || !userId) {
-        console.warn('[Test Load] Missing required params, cannot load test', {
-          testId: safeTestId,
-          hasToken: !!token,
-          userId,
-        })
-        if (!skipInitialCheck) {
-          setCheckingParams(false)
-        }
-        return
+    if (!safeTestId || !token || !userId) {
+      console.warn('[Test Load] Missing required params, cannot load test', {
+        testId: safeTestId,
+        hasToken: !!token,
+        userId,
+      })
+      if (!skipInitialCheck) {
+        setCheckingParams(false)
+      }
+      return
       }
     }
 
@@ -1074,61 +1075,61 @@ export default function TestTakePage() {
           // But keep backward compatibility if it is wrapped.
           submissionData = (subRes as any)?.data ?? subRes
 
-          if (submissionData.is_completed) {
-            router.push('/dashboard')
-            return
-          }
+        if (submissionData.is_completed) {
+          router.push('/dashboard')
+          return
+        }
 
-          // If submission exists and test has started (has started_at and no precheck_mode), clear precheck mode
-          if (submissionData.started_at && !submissionData.precheck_mode) {
-            setPrecheckMode(null)
-            setTestReadyToStart(false)
-          }
-        } catch (err: any) {
-          if (err?.response?.status === 404) {
-            // No submission yet -> start test
-            try {
+        // If submission exists and test has started (has started_at and no precheck_mode), clear precheck mode
+        if (submissionData.started_at && !submissionData.precheck_mode) {
+          setPrecheckMode(null)
+          setTestReadyToStart(false)
+        }
+      } catch (err: any) {
+        if (err?.response?.status === 404) {
+          // No submission yet -> start test
+          try {
               const startRes = await dsaService.startTest(safeTestId, nonNullUserId)
-              const data = startRes.data
+            const data = startRes.data
 
-              if (data.precheck_mode === true) {
-                setPrecheckMode({
-                  start_time: data.start_time,
-                  message:
-                    data.message ||
-                    'Test has not started yet. Please complete pre-checks and wait.',
-                })
+            if (data.precheck_mode === true) {
+              setPrecheckMode({
+                start_time: data.start_time,
+                message:
+                  data.message ||
+                  'Test has not started yet. Please complete pre-checks and wait.',
+              })
 
-                submissionData = {
-                  started_at: null,
-                  is_completed: false,
-                  precheck_mode: true,
-                }
-              } else {
-                submissionData = {
-                  started_at: data.started_at,
-                  is_completed: false,
-                  submissions: [],
-                }
-                // Clear precheck mode when test starts
-                setPrecheckMode(null)
-                setTestReadyToStart(false)
+              submissionData = {
+                started_at: null,
+                is_completed: false,
+                precheck_mode: true,
               }
-            } catch (startErr: any) {
-              const detail =
-                startErr?.response?.data?.detail ||
-                startErr?.response?.data?.message ||
-                'Failed to start test. Please try again.'
-              alert(detail)
-              router.push('/dashboard')
-              return
+            } else {
+              submissionData = {
+                started_at: data.started_at,
+                is_completed: false,
+                submissions: [],
+              }
+              // Clear precheck mode when test starts
+              setPrecheckMode(null)
+              setTestReadyToStart(false)
             }
-          } else {
-            console.error('[Test Load] Error fetching submission', err)
-            alert('Error loading test. Please try again.')
+          } catch (startErr: any) {
+            const detail =
+              startErr?.response?.data?.detail ||
+              startErr?.response?.data?.message ||
+              'Failed to start test. Please try again.'
+            alert(detail)
             router.push('/dashboard')
             return
           }
+        } else {
+          console.error('[Test Load] Error fetching submission', err)
+          alert('Error loading test. Please try again.')
+          router.push('/dashboard')
+          return
+        }
         }
       }
 
@@ -1254,7 +1255,7 @@ export default function TestTakePage() {
             }
             
             return {
-              id: `${q.id}-public-${idx}`,
+            id: `${q.id}-public-${idx}`,
               input: inputStr,
               expected: expectedStr,
             }
@@ -1851,7 +1852,7 @@ export default function TestTakePage() {
     const currentQuestion = questions[currentQuestionIndex]
     if (!currentQuestion) return
 
-    // Handle SQL questions - execute via Judge0 SQLite
+    // Handle SQL questions - execute via sql-execution-engine
     const isSQLQuestion = currentQuestion.question_type?.toUpperCase() === 'SQL'
     if (isSQLQuestion) {
       setRunning(true)
@@ -1864,21 +1865,71 @@ export default function TestTakePage() {
       }))
 
       try {
-        const sqlQuery = code[currentQuestion.id] || currentQuestion.starter_query || ''
+        let sqlQuery = code[currentQuestion.id] || currentQuestion.starter_query || ''
         
-        const response = await dsaService.runSQL({
-          question_id: currentQuestion.id,
-          sql_query: sqlQuery,
+        // Normalize SQL query to single line with \n characters
+        sqlQuery = sqlQuery.replace(/\r\n/g, '\n').replace(/\r/g, '\n')
+        
+        // Call sql-execution-engine directly
+        // Default to port 3010 (Docker mapping) or use environment variable
+        const sqlEngineUrl = process.env.NEXT_PUBLIC_SQL_ENGINE_URL || 'http://localhost:3010'
+        const response = await fetch(`${sqlEngineUrl}/api/execute`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            questionId: currentQuestion.id,
+            code: sqlQuery,
+            schemas: currentQuestion.schemas || null,
+            sample_data: currentQuestion.sample_data || null,
+          }),
         })
 
-        const result = response.data
+        // Check if response is OK
+        if (!response.ok) {
+          const text = await response.text()
+          // If it's HTML, it's likely a 404 or error page
+          if (text.trim().startsWith('<!DOCTYPE') || text.trim().startsWith('<html')) {
+            throw new Error(`SQL engine returned HTML (likely 404). Make sure the SQL execution engine is running on ${sqlEngineUrl}`)
+          }
+          throw new Error(`HTTP ${response.status}: ${text.substring(0, 200)}`)
+        }
+
+        // Check content type before parsing
+        const contentType = response.headers.get('content-type') || ''
+        if (!contentType.includes('application/json')) {
+          const text = await response.text()
+          // If it's HTML, provide helpful error
+          if (text.trim().startsWith('<!DOCTYPE') || text.trim().startsWith('<html')) {
+            throw new Error(`SQL engine returned HTML instead of JSON. Check if the endpoint /api/execute exists. Server: ${sqlEngineUrl}`)
+          }
+          throw new Error(`Expected JSON but got ${contentType}. Response: ${text.substring(0, 200)}`)
+        }
+
+        const result = await response.json()
         
-        if (result.status === 'executed') {
-          // Format output nicely
-          const outputLines = result.output?.split('\n') || []
-          const formattedOutput = outputLines.length > 0 
-            ? `✅ Query executed successfully!\n\n📊 Results:\n${result.output}`
-            : '✅ Query executed successfully (no output rows)'
+        if (result.success) {
+          // Format output - result.output is an array of objects (from normalizeResult)
+          let formattedOutput = ''
+          if (Array.isArray(result.output) && result.output.length > 0) {
+            // Convert array of objects to formatted table-like string
+            const headers = Object.keys(result.output[0] as Record<string, any>)
+            const rows = result.output.map((row: Record<string, any>) => Object.values(row))
+            
+            // Create a pipe-separated table format
+            formattedOutput = headers.join(' | ') + '\n'
+            formattedOutput += headers.map(() => '---').join(' | ') + '\n'
+            rows.forEach((row: any[]) => {
+              formattedOutput += row.map((val: any) => 
+                val === null || val === undefined ? 'NULL' : String(val)
+              ).join(' | ') + '\n'
+            })
+          } else if (result.output && typeof result.output === 'string') {
+            formattedOutput = result.output
+          } else {
+            formattedOutput = '✅ Query executed successfully (no output rows)'
+          }
           
           setOutput(prev => ({
             ...prev,
@@ -1892,7 +1943,7 @@ export default function TestTakePage() {
           setOutput(prev => ({
             ...prev,
             [currentQuestion.id]: {
-              stderr: `❌ ${result.message}\n\n${result.error || ''}`,
+              stderr: `❌ ${result.error || 'SQL execution failed'}`,
               status: 'error'
             }
           }))
@@ -1901,7 +1952,13 @@ export default function TestTakePage() {
         setQuestionStatus({ ...questionStatus, [currentQuestion.id]: 'attempted' })
       } catch (error: any) {
         console.error('SQL Run error:', error)
-        const errorMessage = error.response?.data?.detail || error.message || 'Failed to execute SQL query'
+        let errorMessage = error.message || 'Failed to execute SQL query'
+        
+        // Handle JSON parse errors
+        if (error.message && error.message.includes('JSON')) {
+          errorMessage = `Invalid response from SQL engine. Make sure the SQL execution engine is running on ${process.env.NEXT_PUBLIC_SQL_ENGINE_URL || 'http://localhost:3000'}`
+        }
+        
         setOutput(prev => ({
           ...prev,
           [currentQuestion.id]: {
@@ -1964,17 +2021,17 @@ export default function TestTakePage() {
         }
         
         return {
-          visible: true,
-          input: r.input,
+        visible: true,
+        input: r.input,
           expected: expectedValue,
-          output: r.user_output || r.stdout || '',
-          stdout: r.user_output || r.stdout || '',
-          stderr: r.stderr || '',
-          compile_output: r.compile_output || '',
-          time: r.time,
-          memory: r.memory,
-          status: r.status,
-          passed: r.passed,
+        output: r.user_output || r.stdout || '',
+        stdout: r.user_output || r.stdout || '',
+        stderr: r.stderr || '',
+        compile_output: r.compile_output || '',
+        time: r.time,
+        memory: r.memory,
+        status: r.status,
+        passed: r.passed,
         }
       })
       
@@ -2018,10 +2075,10 @@ export default function TestTakePage() {
       return
     }
 
-    // Handle SQL questions - submit via Judge0 SQLite
+    // Handle SQL questions - submit via sql-execution-engine
     const isSQLQuestion = currentQuestion.question_type?.toUpperCase() === 'SQL'
     if (isSQLQuestion) {
-      setRunning(true)
+      setSubmitting(true)
       setOutput(prev => ({
         ...prev,
         [currentQuestion.id]: {
@@ -2030,47 +2087,346 @@ export default function TestTakePage() {
         }
       }))
 
+      // Helper function to parse formatted table text into array of objects
+      const parseFormattedTableToArray = (text: string): any[] => {
+        if (!text || !text.trim()) return []
+        
+        const lines = text.trim().split('\n').filter(line => line.trim())
+        if (lines.length === 0) return []
+        
+        // Check if it's a pipe-separated table (markdown or plain)
+        const hasPipes = lines[0].includes('|')
+        
+        if (hasPipes) {
+          // Parse pipe-separated table
+          const rows: any[] = []
+          let headers: string[] = []
+          
+          for (let i = 0; i < lines.length; i++) {
+            const line = lines[i].trim()
+            if (!line) continue
+            
+            // Split by pipe and clean up
+            const cells = line.split('|').map(cell => cell.trim()).filter(cell => cell)
+            
+            // Skip separator rows (like "--- | ---")
+            if (cells.every(cell => /^[\s\-:]+$/.test(cell))) continue
+            
+            if (i === 0 || headers.length === 0) {
+              // First non-separator row is headers
+              headers = cells.map(h => h.toLowerCase().replace(/\s+/g, '_').replace(/[^\w]/g, ''))
+            } else {
+              // Data row
+              const row: any = {}
+              headers.forEach((header, idx) => {
+                const value = cells[idx] || null
+                // Try to parse as number, otherwise keep as string
+                if (value !== null && value !== undefined && value !== '') {
+                  const numValue = Number(value)
+                  row[header] = isNaN(numValue) ? value.trim() : numValue
+                } else {
+                  row[header] = null
+                }
+              })
+              if (Object.keys(row).length > 0) {
+                rows.push(row)
+              }
+            }
+          }
+          
+          return rows.length > 0 ? rows : []
+        } else {
+          // Try to parse as space-aligned columns
+          const rows: any[] = []
+          const firstLine = lines[0]
+          const columnPositions: number[] = []
+          
+          // Find column boundaries (multiple spaces indicate column separation)
+          let inWord = false
+          for (let i = 0; i < firstLine.length; i++) {
+            if (firstLine[i] !== ' ' && !inWord) {
+              columnPositions.push(i)
+              inWord = true
+            } else if (firstLine[i] === ' ' && inWord) {
+              inWord = false
+            }
+          }
+          
+          if (columnPositions.length > 0) {
+            // Extract headers from first line
+            const headers: string[] = []
+            for (let i = 0; i < columnPositions.length; i++) {
+              const start = columnPositions[i]
+              const end = i < columnPositions.length - 1 ? columnPositions[i + 1] : firstLine.length
+              const header = firstLine.substring(start, end).trim()
+              headers.push(header.toLowerCase().replace(/\s+/g, '_').replace(/[^\w]/g, ''))
+            }
+            
+            // Extract data rows
+            for (let lineIdx = 1; lineIdx < lines.length; lineIdx++) {
+              const line = lines[lineIdx]
+              const row: any = {}
+              for (let i = 0; i < headers.length; i++) {
+                const start = columnPositions[i]
+                const end = i < headers.length - 1 ? columnPositions[i + 1] : line.length
+                const value = line.substring(start, end).trim()
+                if (value) {
+                  const numValue = Number(value)
+                  row[headers[i]] = isNaN(numValue) ? value : numValue
+                } else {
+                  row[headers[i]] = null
+                }
+              }
+              if (Object.keys(row).length > 0) {
+                rows.push(row)
+              }
+            }
+            
+            return rows.length > 0 ? rows : []
+          }
+        }
+        
+        // If we can't parse it, return empty array
+        return []
+      }
+
       try {
-        const sqlQuery = code[currentQuestion.id] || currentQuestion.starter_query || ''
+        let sqlQuery = code[currentQuestion.id] || currentQuestion.starter_query || ''
+        
+        // Normalize SQL query to single line with \n characters
+        sqlQuery = sqlQuery.replace(/\r\n/g, '\n').replace(/\r/g, '\n')
+        
+        // Trim and validate SQL query
+        sqlQuery = sqlQuery.trim()
+        
+        if (!sqlQuery || sqlQuery.length === 0) {
+          setOutput(prev => ({
+            ...prev,
+            [currentQuestion.id]: {
+              stderr: '❌ Error: SQL query cannot be empty. Please write a query before submitting.',
+              status: 'error'
+            }
+          }))
+          setSubmitting(false)
+          return
+        }
+        
+        // Remove trailing semicolons if present (the engine handles this, but let's be consistent)
+        // Actually, keep semicolons as they're needed for multiple statements
+        // Just ensure the query is not just whitespace or comments
+        
+        // Check if query is just comments or whitespace
+        const queryWithoutComments = sqlQuery
+          .replace(/--.*$/gm, '') // Remove single-line comments
+          .replace(/\/\*[\s\S]*?\*\//g, '') // Remove multi-line comments
+          .trim()
+        
+        if (!queryWithoutComments || queryWithoutComments.length === 0) {
+          setOutput(prev => ({
+            ...prev,
+            [currentQuestion.id]: {
+              stderr: '❌ Error: SQL query cannot be empty or contain only comments. Please write a valid query.',
+              status: 'error'
+            }
+          }))
+          setSubmitting(false)
+          return
+        }
+        
         const startedAt = questionStartTimes[currentQuestion.id] || new Date().toISOString()
         const submittedAt = new Date().toISOString()
         const startTime = new Date(startedAt).getTime()
         const endTime = new Date(submittedAt).getTime()
         const timeSpentSeconds = Math.floor((endTime - startTime) / 1000)
         
-        const response = await dsaService.submitSQL({
-          question_id: currentQuestion.id,
-          sql_query: sqlQuery,
-          started_at: startedAt,
-          submitted_at: submittedAt,
-          time_spent_seconds: timeSpentSeconds,
-        })
-
-        const result = response.data
+        // Get expected output from question
+        // The submit endpoint requires expectedOutput, so we need to provide it
+        // If not available, we'll use an empty array as a fallback
+        let expectedOutput: any = []
+        if (currentQuestion.sql_expected_output) {
+          try {
+            // Try to parse as JSON if it's a string
+            if (typeof currentQuestion.sql_expected_output === 'string') {
+              try {
+                const parsed = JSON.parse(currentQuestion.sql_expected_output)
+                expectedOutput = Array.isArray(parsed) ? parsed : [parsed]
+              } catch (parseError) {
+                // Not JSON - try to parse as formatted table (pipe-separated, markdown, etc.)
+                expectedOutput = parseFormattedTableToArray(currentQuestion.sql_expected_output)
+              }
+            } else if (Array.isArray(currentQuestion.sql_expected_output)) {
+              expectedOutput = currentQuestion.sql_expected_output
+            } else {
+              expectedOutput = [currentQuestion.sql_expected_output]
+            }
+          } catch (e: any) {
+            // Last resort: try to parse as formatted table
+            expectedOutput = parseFormattedTableToArray(String(currentQuestion.sql_expected_output))
+          }
+        }
         
-        if (result.passed) {
+        
+        // Call sql-execution-engine submit endpoint
+        const sqlEngineUrl = process.env.NEXT_PUBLIC_SQL_ENGINE_URL || 'http://localhost:3010'
+        
+        console.log('[SQL Submit] ===== Starting Submit =====')
+        console.log('[SQL Submit] SQL Engine URL:', sqlEngineUrl)
+        console.log('[SQL Submit] Sending query:', sqlQuery.substring(0, 100) + (sqlQuery.length > 100 ? '...' : ''))
+        console.log('[SQL Submit] Question ID:', currentQuestion.id)
+        console.log('[SQL Submit] Expected Output:', expectedOutput)
+        
+        const requestBody = {
+          questionId: currentQuestion.id,
+          code: sqlQuery,
+          expectedOutput: expectedOutput,
+          schemas: currentQuestion.schemas || null,
+          sample_data: currentQuestion.sample_data || null,
+        }
+        console.log('[SQL Submit] Request body:', JSON.stringify(requestBody).substring(0, 500))
+        
+        const submitResponse = await fetch(`${sqlEngineUrl}/api/submit`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(requestBody),
+        })
+        
+        console.log('[SQL Submit] Response status:', submitResponse.status, submitResponse.statusText)
+        console.log('[SQL Submit] Response headers:', Object.fromEntries(submitResponse.headers.entries()))
+
+        // Check if response is OK and is JSON
+        if (!submitResponse.ok) {
+          const text = await submitResponse.text()
+          if (text.trim().startsWith('<!DOCTYPE') || text.trim().startsWith('<html')) {
+            throw new Error(`SQL engine returned HTML (likely 404). Make sure the SQL execution engine is running on ${sqlEngineUrl}`)
+          }
+          throw new Error(`HTTP ${submitResponse.status}: ${text.substring(0, 200)}`)
+        }
+
+        const contentType = submitResponse.headers.get('content-type') || ''
+        let responseText = ''
+        
+        // Read response as text first to handle errors better
+        try {
+          responseText = await submitResponse.text()
+        } catch (e: any) {
+          throw new Error(`Failed to read response: ${e?.message || String(e)}`)
+        }
+        
+        if (!contentType.includes('application/json')) {
+          throw new Error(`Expected JSON but got ${contentType}. Response: ${responseText.substring(0, 500)}`)
+        }
+        
+        // Try to parse JSON
+        let submitResult
+        try {
+          submitResult = JSON.parse(responseText)
+        } catch (e: any) {
+          console.error('Failed to parse JSON response:', responseText)
+          throw new Error(`Invalid JSON response from SQL engine. Response: ${responseText.substring(0, 500)}`)
+        }
+        
+        // Debug: Log the full response to see what we're getting
+        console.log('[SQL Submit] Full response from engine:', JSON.stringify(submitResult, null, 2))
+        console.log('[SQL Submit] actualOutput type:', typeof submitResult.actualOutput)
+        console.log('[SQL Submit] actualOutput value:', submitResult.actualOutput)
+        console.log('[SQL Submit] actualOutput is array:', Array.isArray(submitResult.actualOutput))
+        if (Array.isArray(submitResult.actualOutput)) {
+          console.log('[SQL Submit] actualOutput length:', submitResult.actualOutput.length)
+        }
+        
+        // Format actual output for display
+        let actualOutputText = ''
+        if (submitResult.actualOutput === null || submitResult.actualOutput === undefined) {
+          actualOutputText = '(no output - query returned null/undefined)'
+        } else if (Array.isArray(submitResult.actualOutput)) {
+          if (submitResult.actualOutput.length === 0) {
+            actualOutputText = '(no output rows - query returned empty result set)'
+          } else {
+            // Has rows - format as table
+            const headers = Object.keys(submitResult.actualOutput[0] as Record<string, any>)
+            const rows = submitResult.actualOutput.map((row: Record<string, any>) => Object.values(row))
+            actualOutputText = headers.join(' | ') + '\n'
+            actualOutputText += headers.map(() => '---').join(' | ') + '\n'
+            rows.forEach((row: any[]) => {
+              actualOutputText += row.map((val: any) => 
+                val === null || val === undefined ? 'NULL' : String(val)
+              ).join(' | ') + '\n'
+            })
+          }
+        } else if (typeof submitResult.actualOutput === 'string') {
+          actualOutputText = submitResult.actualOutput || '(empty string)'
+        } else {
+          actualOutputText = `(unexpected output type: ${typeof submitResult.actualOutput})`
+        }
+        
+        // Also save submission to backend for tracking
+        try {
+          await dsaService.submitSQL({
+            question_id: currentQuestion.id,
+            sql_query: sqlQuery,
+            started_at: startedAt,
+            submitted_at: submittedAt,
+            time_spent_seconds: timeSpentSeconds,
+          })
+        } catch (backendError) {
+          console.warn('Failed to save submission to backend:', backendError)
+          // Continue even if backend save fails
+        }
+        
+        if (submitResult.passed) {
           setOutput(prev => ({
             ...prev,
             [currentQuestion.id]: {
-              stdout: `✅ ${result.message}\n\n📊 Your Output:\n${result.user_output || '(empty)'}\n\n⏱️ Execution Time: ${result.time || 'N/A'}s\n💾 Memory: ${result.memory || 'N/A'} KB\n\n🏆 Score: ${result.score}/${result.max_score}`,
+              stdout: `✅ Query passed!\n\n📊 Your Output:\n${actualOutputText}\n\n${submitResult.reason ? `ℹ️ Note: ${submitResult.reason}` : ''}`,
               status: 'accepted'
             }
           }))
           setQuestionStatus({ ...questionStatus, [currentQuestion.id]: 'solved' })
         } else {
-          let outputMessage = `❌ ${result.message}\n\n📊 Your Output:\n${result.user_output || '(empty)'}`
+          // Query failed or didn't match expected output
+          let outputMessage = `❌ Query did not pass\n\n📊 Your Output:\n${actualOutputText}`
           
-          if (result.expected_output) {
-            outputMessage += `\n\n📋 Expected Output:\n${result.expected_output}`
+          // Add debug info about actual output structure
+          if (submitResult.actualOutput !== null && submitResult.actualOutput !== undefined) {
+            if (Array.isArray(submitResult.actualOutput)) {
+              outputMessage += `\n\n🔍 Debug Info:\n- Actual output is an array with ${submitResult.actualOutput.length} row(s)`
+              if (submitResult.actualOutput.length > 0) {
+                outputMessage += `\n- First row keys: ${Object.keys(submitResult.actualOutput[0]).join(', ')}`
+                outputMessage += `\n- First row sample: ${JSON.stringify(submitResult.actualOutput[0])}`
+              }
+            } else {
+              outputMessage += `\n\n🔍 Debug Info:\n- Actual output type: ${typeof submitResult.actualOutput}`
+              outputMessage += `\n- Actual output value: ${JSON.stringify(submitResult.actualOutput)}`
+            }
+          } else {
+            outputMessage += `\n\n🔍 Debug Info:\n- Actual output is null/undefined`
           }
           
-          outputMessage += `\n\n🏆 Score: ${result.score}/${result.max_score}`
+          if (submitResult.error) {
+            // Provide more helpful error messages
+            let errorMsg = submitResult.error
+            if (submitResult.error.includes('incomplete input')) {
+              errorMsg = `Incomplete SQL query. Please ensure your query is complete and properly terminated.\n\nCommon issues:\n- Missing FROM clause in SELECT statement\n- Unclosed parentheses or quotes\n- Incomplete WHERE clause\n- Missing semicolon (if using multiple statements)\n\nError details: ${submitResult.error}`
+            } else if (submitResult.error.includes('syntax error')) {
+              errorMsg = `SQL syntax error: ${submitResult.error}\n\nPlease check your query syntax.`
+            } else if (submitResult.error.includes('no such table')) {
+              errorMsg = `Table not found: ${submitResult.error}\n\nPlease check the table name and ensure it exists in the schema.`
+            } else if (submitResult.error.includes('no such column')) {
+              errorMsg = `Column not found: ${submitResult.error}\n\nPlease check the column name and ensure it exists in the table.`
+            }
+            
+            outputMessage = `❌ Execution Error: ${errorMsg}\n\n📊 Your Output:\n${actualOutputText}`
+          } else if (submitResult.reason) {
+            outputMessage += `\n\nℹ️ Reason: ${submitResult.reason}`
+          }
           
           setOutput(prev => ({
             ...prev,
             [currentQuestion.id]: {
               stdout: outputMessage,
-              status: 'wrong_answer'
+              status: submitResult.error ? 'error' : 'wrong_answer'
             }
           }))
           setQuestionStatus({ ...questionStatus, [currentQuestion.id]: 'attempted' })
@@ -2078,12 +2434,12 @@ export default function TestTakePage() {
 
         // Add to submission history
         const historyEntry: SubmissionHistoryEntry = {
-          id: result.submission_id || `sql-${currentQuestion.id}-${Date.now()}`,
-          status: result.status,
-          passed: result.passed ? 1 : 0,
+          id: `sql-${currentQuestion.id}-${Date.now()}`,
+          status: submitResult.passed ? 'accepted' : (submitResult.error ? 'error' : 'wrong_answer'),
+          passed: submitResult.passed ? 1 : 0,
           total: 1,
-          score: result.score || 0,
-          max_score: result.max_score || 100,
+          score: submitResult.passed ? 100 : 0,
+          max_score: 100,
           created_at: new Date().toISOString(),
           results: [],
         }
@@ -2101,7 +2457,7 @@ export default function TestTakePage() {
         }))
 
         // Auto-navigate to next question after successful submission
-        if (questions.length > 1) {
+        if (submitResult.passed && questions.length > 1) {
           const currentIndex = questions.findIndex(q => q.id === currentQuestion.id)
           if (currentIndex < questions.length - 1) {
             console.log('[Submit] Auto-navigating to next question:', currentIndex + 1)
@@ -2114,7 +2470,13 @@ export default function TestTakePage() {
 
       } catch (error: any) {
         console.error('SQL Submit error:', error)
-        const errorMessage = error.response?.data?.detail || error.message || 'Failed to submit SQL query'
+        let errorMessage = error.message || 'Failed to submit SQL query'
+        
+        // Handle JSON parse errors
+        if (error.message && error.message.includes('JSON')) {
+          errorMessage = `Invalid response from SQL engine. Make sure the SQL execution engine is running on ${process.env.NEXT_PUBLIC_SQL_ENGINE_URL || 'http://localhost:3010'}`
+        }
+        
         setOutput(prev => ({
           ...prev,
           [currentQuestion.id]: {
@@ -2124,7 +2486,7 @@ export default function TestTakePage() {
         }))
         setQuestionStatus({ ...questionStatus, [currentQuestion.id]: 'attempted' })
       } finally {
-        setRunning(false)
+        setSubmitting(false)
       }
       return
     }
@@ -2713,15 +3075,23 @@ export default function TestTakePage() {
         <Split
           className="flex h-full"
           direction="horizontal"
-          minSize={[200, 300, 400]}
-          sizes={[20, 35, 45]}
-          gutterSize={4}
-          gutterStyle={() => ({
-            backgroundColor: '#1e293b',
+          // Outer split: left = question list, right = main area (description/schema + editor)
+          minSize={[200, 480]}
+          sizes={[20, 80]}
+          gutterSize={10}
+          snapOffset={0}
+          dragInterval={1}
+          gutterStyle={(dimension, gutterSize, index) => ({
+            backgroundColor: '#64748b',
             cursor: 'col-resize',
+            width: '10px',
+            zIndex: '10',
+            transition: 'background-color 0.2s',
           })}
+          gutterAlign="center"
         >
-          <div className="h-full overflow-hidden">
+          {/* Left: Question sidebar */}
+          <div className="h-full overflow-hidden min-w-0 border-r border-slate-800">
             <QuestionSidebar
               testTitle={testForRender.title}
               questions={questions}
@@ -2735,11 +3105,36 @@ export default function TestTakePage() {
             />
           </div>
 
-          <div className="h-full overflow-hidden">
-            <QuestionTabs question={currentQuestion} />
-          </div>
+          {/* Right: inner split between Description/Schema and Editor */}
+          <Split
+            className="flex h-full"
+            direction="horizontal"
+            // Inner split: left = description/schema, right = SQL/coding editor
+            minSize={[200, 300]}
+            sizes={[35, 65]}
+            gutterSize={10}
+            snapOffset={0}
+            dragInterval={1}
+            gutterStyle={(dimension, gutterSize, index) => ({
+              backgroundColor: '#64748b',
+              cursor: 'col-resize',
+              width: '10px',
+              zIndex: '10',
+              transition: 'background-color 0.2s',
+            })}
+            gutterAlign="center"
+            onDragEnd={() => {
+              // Force reflow to ensure layout updates
+              window.dispatchEvent(new Event('resize'))
+            }}
+          >
+            {/* Middle: Description / Schema (QuestionTabs) */}
+            <div className="h-full overflow-hidden min-w-0 bg-slate-950">
+              <QuestionTabs question={currentQuestion} />
+            </div>
 
-          <div className="h-full overflow-hidden bg-slate-950 flex flex-col" ref={editorRef}>
+            {/* Right: Editor (coding / SQL) */}
+            <div className="h-full overflow-hidden min-w-0 bg-slate-950 flex flex-col" ref={editorRef}>
             {/* Conditionally render SQL or Coding editor based on question_type */}
             <div className="flex-1 overflow-hidden">
               {currentQuestion.question_type?.toUpperCase() === 'SQL' ? (
@@ -2805,6 +3200,7 @@ export default function TestTakePage() {
               </div>
             )}
           </div>
+          </Split>
         </Split>
       </div>
 
