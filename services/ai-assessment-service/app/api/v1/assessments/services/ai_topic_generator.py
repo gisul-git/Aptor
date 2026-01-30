@@ -1013,7 +1013,12 @@ Each topic should be specific, testable, and appropriate for {mode_context} at {
 REQUIREMENTS:
 1. **STRICTLY FOLLOW QUESTION TYPE RULES AND DISTRIBUTION ABOVE** - This is CRITICAL
 2. Topic distribution:
-   {"- MCQ: ~30%, Subjective: ~45%, PseudoCode: ~25%" if is_non_tech else f"- Coding topics: MINIMUM 2 topics (for: {', '.join(set(coding_skills)) if coding_skills else 'N/A'})" + f"\n   - SQL topics: {1 if has_sql_skills else 0}-2 topics" + f"\n   - AIML topics: {1 if has_aiml_skills else 0}-2 topics (Python + ML only)" + "\n   - MCQ/Subjective/PseudoCode: Remaining topics (balanced distribution)"}
+   {("- MCQ: ~30%, Subjective: ~45%, PseudoCode: ~25%" if is_non_tech else (
+       "- Coding topics: MINIMUM 2 topics (for: " + (', '.join(set(coding_skills)) if coding_skills else 'N/A') + ")\n" +
+       "   - SQL topics: " + str(1 if has_sql_skills else 0) + "-2 topics\n" +
+       "   - AIML topics: " + str(1 if has_aiml_skills else 0) + "-2 topics (Python + ML only)\n" +
+       "   - MCQ/Subjective/PseudoCode: Remaining topics (balanced distribution)"
+   ))}
 3. Ensure all skills are covered across the topics
 4. Vary question types and difficulties
 5. Set canUseJudge0 to true ONLY for Coding questions with executable languages
