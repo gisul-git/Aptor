@@ -3,7 +3,7 @@
  * WebSocket client for connecting to the Python kernel agent for AIML code execution
  */
 
-const AGENT_URL = process.env.NEXT_PUBLIC_AIML_AGENT_URL || 'ws://127.0.0.1:8889'
+const AGENT_URL = process.env.NEXT_PUBLIC_AIML_AGENT_URL || 'wss://aiml-agent-service.delightfulpebble-b20f7903.centralindia.azurecontainerapps.io'
 
 let ws: WebSocket | null = null
 let isConnecting = false
