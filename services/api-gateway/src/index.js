@@ -108,12 +108,17 @@ async function verifyToken(req, res, next) {
     /^\/api\/v1\/aiml\/tests\/[^/]+\/start$/,
     /^\/api\/v1\/aiml\/tests\/[^/]+\/public$/,
     /^\/api\/v1\/aiml\/tests\/[^/]+\/full$/,
+    /^\/api\/v1\/aiml\/tests\/get-reference-photo$/, // AIML reference photo retrieval
+    /^\/api\/v1\/aiml\/tests\/save-reference-face$/, // AIML reference photo save
+    /^\/api\/v1\/dsa\/tests\/get-reference-photo$/, // DSA reference photo retrieval
+    /^\/api\/v1\/dsa\/tests\/save-reference-face$/, // DSA reference photo save
     // AIML dataset download endpoint for candidates
     /^\/api\/v1\/aiml\/questions\/[^/]+\/dataset-download$/,
     // Proctoring endpoints - candidates need to record violations without auth
     /^\/api\/v1\/proctor\/record$/,
     /^\/api\/v1\/proctor\/upload$/,
     /^\/api\/v1\/proctor\/start-session$/,
+    /^\/api\/v1\/proctor\/live\/start-session$/, // Live proctoring session start
   ];
   
   // Check if path matches candidate public patterns
@@ -633,6 +638,77 @@ app.use(
   createProxyMiddleware({
     ...proxyOptions,
     target: SERVICES.auth,  // Users endpoints are in auth service
+  })
+);
+
+// Route: Candidate get-reference-photo endpoint (route to AIML service, which handles both AIML and non-AIML tests)
+// The AIML service will return "No reference photo found" for non-AIML tests, which is acceptable
+app.use(
+  '/api/v1/candidate/get-reference-photo',
+  (req, res, next) => {
+    console.log('🟡 [API Gateway] get-reference-photo route matched, routing to AIML service:', {
+      method: req.method,
+      url: req.url,
+      query: req.query,
+      target: SERVICES.aiml,
+    });
+    next();
+  },
+  createProxyMiddleware({
+    ...proxyOptions,
+    target: SERVICES.aiml,
+    pathRewrite: {
+      '^/api/v1/candidate/get-reference-photo': '/api/v1/aiml/tests/get-reference-photo',
+    },
+    onError: (err, req, res) => {
+      console.error('🔴 [API Gateway] AIML service error for get-reference-photo:', {
+        error: err.message,
+        code: err.code,
+        url: req.url,
+      });
+      // Return error response
+      res.status(503).json({
+        success: false,
+        message: 'Service unavailable',
+        detail: err.message,
+        service: 'AIML Service',
+      });
+    },
+  })
+);
+
+// Route: Candidate save-reference-face endpoint (route to AIML service for AIML tests)
+app.use(
+  '/api/v1/candidate/save-reference-face',
+  (req, res, next) => {
+    console.log('🟡 [API Gateway] save-reference-face route matched, routing to AIML service:', {
+      method: req.method,
+      url: req.url,
+      body: req.body ? { ...req.body, referenceImage: req.body.referenceImage ? '[image data]' : 'none' } : 'none',
+      target: SERVICES.aiml,
+    });
+    next();
+  },
+  createProxyMiddleware({
+    ...proxyOptions,
+    target: SERVICES.aiml,
+    pathRewrite: {
+      '^/api/v1/candidate/save-reference-face': '/api/v1/aiml/tests/save-reference-face',
+    },
+    onError: (err, req, res) => {
+      console.error('🔴 [API Gateway] AIML service error for save-reference-face:', {
+        error: err.message,
+        code: err.code,
+        url: req.url,
+      });
+      // Return error response
+      res.status(503).json({
+        success: false,
+        message: 'Service unavailable',
+        detail: err.message,
+        service: 'AIML Service',
+      });
+    },
   })
 );
 
