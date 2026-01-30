@@ -1,17 +1,37 @@
 import axios from 'axios'
 import { getSession } from 'next-auth/react'
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:80' // API Gateway
+import { getApiGatewayUrl } from '@/lib/api-gateway-config'
 
 // Cache the last known good token so we don't depend on NextAuth timing on every request.
 let cachedBackendToken: string | null = null
 
+// Create axios instance with dynamic baseURL
 export const aimlApi = axios.create({
-  baseURL: `${API_URL}/api/v1/aiml`,
+  baseURL: '', // Will be set dynamically
   headers: {
     'Content-Type': 'application/json',
   },
 })
+
+// Interceptor to set baseURL dynamically from runtime config
+let baseUrlPromise: Promise<string> | null = null
+aimlApi.interceptors.request.use(
+  async (config) => {
+    // If baseURL is not set, fetch it from runtime config
+    if (!config.baseURL || config.baseURL === '') {
+      if (!baseUrlPromise) {
+        baseUrlPromise = getApiGatewayUrl().then(url => {
+          aimlApi.defaults.baseURL = `${url}/api/v1/aiml`
+          return url
+        })
+      }
+      await baseUrlPromise
+      config.baseURL = aimlApi.defaults.baseURL
+    }
+    return config
+  },
+  (error) => Promise.reject(error)
+)
 
 // Add token to requests - CRITICAL: All AIML API calls require authentication
 aimlApi.interceptors.request.use(

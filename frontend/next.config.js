@@ -3,19 +3,18 @@ const nextConfig = {
   reactStrictMode: true,
   // Proxy API requests to backend server (exclude NextAuth routes)
   async rewrites() {
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:80';
+    // Try to get API Gateway URL from environment
+    // Priority: API_GATEWAY_URL (server-side, runtime) > NEXT_PUBLIC_API_URL (build-time)
+    const apiUrl = process.env.API_GATEWAY_URL || process.env.NEXT_PUBLIC_API_URL || 'http://localhost:80';
     
     return [
-      // All /api/v1/* routes go to API Gateway
-      // NOTE: /api/v1/candidate/get-reference-photo and /api/v1/candidate/save-reference-face
-      // are handled by Next.js API routes (in /pages/api/v1/candidate/) which take precedence over rewrites
       {
         source: '/api/v1/:path*',
-        destination: `${apiUrl}/api/v1/:path*`, // API Gateway
-      },
+        destination: `${apiUrl}/api/v1/:path*`, 
+        },
       {
         source: '/api/v2/:path*',
-        destination: `${apiUrl}/api/v2/:path*`, // API Gateway
+        destination: `${apiUrl}/api/v2/:path*`, 
       },
     ];
   },
