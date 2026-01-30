@@ -19,9 +19,8 @@ RUN python -m pip install ipykernel && \
     python -m ipykernel install --user --name python3 --display-name "Python 3"
 
 # Copy agent code - maintain agent package structure
-# Since we're building from agent directory, copy contents to /app/agent/
 RUN mkdir -p /app/agent
-COPY . /app/agent/
+COPY agent /app/agent/
 
 # Create uploads directory for file uploads
 RUN mkdir -p /app/agent/uploads
@@ -32,7 +31,7 @@ ENV PYTHONPATH=/app:${PYTHONPATH}
 # Expose WebSocket port
 EXPOSE 8889
 
-# Run from /app so agent package can be found
+# Run the service
 WORKDIR /app
-CMD ["python", "-m", "agent", "--host", "0.0.0.0", "--port", "8889"]
+CMD ["python", "main.py", "--host", "0.0.0.0", "--port", "8889"]
 

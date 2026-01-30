@@ -12,7 +12,7 @@ def main():
     """Main entrypoint for the agent CLI."""
     import argparse
 
-    parser = argparse.ArgumentParser(description='Local Notebook Agent')
+    parser = argparse.ArgumentParser(description='AIML Agent Service')
     parser.add_argument(
         '--host',
         default='127.0.0.1',
@@ -38,3 +38,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

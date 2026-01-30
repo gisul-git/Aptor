@@ -1,11 +1,11 @@
 version: '3.8'
 
 services:
-  agent:
+  aiml-agent:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: aiml-agent
+    container_name: aiml-agent-service
     ports:
       - "8889:8889"
     volumes:

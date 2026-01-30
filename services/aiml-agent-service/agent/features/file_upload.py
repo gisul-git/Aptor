@@ -88,4 +88,3 @@ def _save_file(session_id: str, filename: str, data_base64: str) -> Dict:
             'message': f'Failed to save file: {str(e)}'
         }
 
-

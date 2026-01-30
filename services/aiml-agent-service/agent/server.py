@@ -213,3 +213,4 @@ class AgentServer:
                 print("\n[AgentServer] Shutting down...")
                 from agent.kernel_manager import shutdown_all_kernels
                 await shutdown_all_kernels()
+
