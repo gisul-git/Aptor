@@ -11,10 +11,12 @@ interface WebcamPreviewProps {
   cameraOn: boolean;
   faceMeshStatus: 'loading' | 'loaded' | 'error';
   facesCount: number;
+  visible?: boolean; // If false, component won't render (hidden from candidates)
 }
 
 const WebcamPreview = forwardRef<HTMLVideoElement, WebcamPreviewProps>(
-  ({ cameraOn, faceMeshStatus, facesCount }, ref) => {
+  ({ cameraOn, faceMeshStatus, facesCount, visible = false }, ref) => {
+    // Camera still works in background, but preview is hidden from candidate view
     const [position, setPosition] = useState(() => {
       // Initialize position from localStorage or use default
       if (typeof window !== 'undefined') {
@@ -127,6 +129,7 @@ const WebcamPreview = forwardRef<HTMLVideoElement, WebcamPreviewProps>(
             left: `${position.x}px`,
             top: `${position.y}px`,
             cursor: isDragging ? 'grabbing' : 'grab',
+            display: visible ? 'block' : 'none', // Hide visually but keep camera running
           }}
           onMouseDown={handleMouseDown}
         >
@@ -138,7 +141,7 @@ const WebcamPreview = forwardRef<HTMLVideoElement, WebcamPreviewProps>(
             className="webcam-video"
             style={{ pointerEvents: 'none' }}
           />
-          <div className="webcam-status">
+          {/* <div className="webcam-status">
             <span className={cameraOn ? 'status-on' : 'status-off'}>
               Camera: {cameraOn ? 'ON' : 'OFF'}
             </span>
@@ -148,7 +151,7 @@ const WebcamPreview = forwardRef<HTMLVideoElement, WebcamPreviewProps>(
             <span>
               | Faces: {facesCount}
             </span>
-          </div>
+          </div> */}
         </div>
 
         <style jsx>{`

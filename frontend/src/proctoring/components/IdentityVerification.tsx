@@ -9,6 +9,7 @@ import { initializeFaceDetection, detectFaces, cleanupFaceDetection, type FaceDe
 import { modelService } from "@/universal-proctoring/services/ModelService";
 import { FaceVerificationService } from "@/universal-proctoring/services/FaceVerificationService";
 import axios from "@/lib/axios-config"; // Use configured axios with auth interceptor
+import { getGateContext } from "@/lib/gateContext";
 
 /**
  * Extract confidence value from probability (handles number, array, Tensor, undefined)
@@ -921,43 +922,45 @@ export default function IdentityVerification({
           isSavingRef.current = true;
           (async () => {
             try {
-              // Detect if this is an AIML test by checking the assessment ID format or using gateContext
-              // For now, try the standard endpoint first, then fallback to AIML endpoint on 404
-              let endpoint = "/api/v1/candidate/save-reference-face";
+              // Determine test type using gateContext to call the correct endpoint directly
+              const ctx = getGateContext(assessmentId);
+              const flowType = ctx?.flowType || "ai"; // Default to "ai" if not set
               
-              // Check if this might be an AIML test (assessment IDs are ObjectIds, but we can try AIML endpoint on error)
+              // Determine which endpoint to use based on flow type
+              let endpoint: string;
+              let serviceName: string;
+              
+              if (flowType === "dsa") {
+                endpoint = "/api/v1/dsa/tests/save-reference-face";
+                serviceName = "DSA";
+              } else if (flowType === "aiml") {
+                endpoint = "/api/v1/aiml/tests/save-reference-face";
+                serviceName = "AIML";
+              } else {
+                // Default to generic endpoint for "ai" and "custom-mcq" flows
+                endpoint = "/api/v1/candidate/save-reference-face";
+                serviceName = "Generic";
+              }
+              
               console.log('[IdentityVerification] Saving reference photo to database:', {
                 assessmentId,
                 candidateEmail,
                 skipBackendSave,
                 photoDataLength: photoData.length,
                 photoDataPrefix: photoData.substring(0, 50),
-                endpoint
+                flowType,
+                endpoint,
+                serviceName
               });
 
-              let response;
-              try {
-                response = await axios.post(endpoint, {
-                  assessmentId,
-                  candidateEmail,
-                  referenceImage: photoData,
-                });
-                console.log('[IdentityVerification] ✅ Reference photo saved to database:', response.data);
-              } catch (firstError: any) {
-                // If 404, try AIML endpoint
-                if (firstError?.response?.status === 404) {
-                  console.log('[IdentityVerification] Standard endpoint returned 404, trying AIML endpoint...');
-                  endpoint = "/api/v1/aiml/tests/save-reference-face";
-                  response = await axios.post(endpoint, {
-                    assessmentId,
-                    candidateEmail,
-                    referenceImage: photoData,
-                  });
-                  console.log('[IdentityVerification] ✅ Reference photo saved to AIML database:', response.data);
-                } else {
-                  throw firstError;
-                }
-              }
+              // Call the correct endpoint directly (no fallback needed)
+              const response = await axios.post(endpoint, {
+                assessmentId,
+                candidateEmail,
+                referenceImage: photoData,
+              });
+              
+              console.log(`[IdentityVerification] ✅ Reference photo saved to ${serviceName} database:`, response.data);
             } catch (saveError: any) {
               // Don't block the flow if saving fails - photo is still in sessionStorage
               console.warn('[IdentityVerification] Failed to save to database (non-critical):', {

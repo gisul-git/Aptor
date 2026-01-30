@@ -3083,6 +3083,7 @@ export default function TestTakePage() {
             cameraOn={proctoringState.isCameraOn}
             faceMeshStatus={proctoringState.isModelLoaded ? "loaded" : proctoringState.errors.length > 0 ? "error" : "loading"}
             facesCount={proctoringState.facesCount}
+            // visible={true} // Uncomment to show camera preview to candidates
           />
         )}
 

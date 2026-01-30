@@ -898,21 +898,31 @@ export default function IdentityVerificationPage() {
               </div>
               
               {steps[1].status === "pending" && currentStep === 1 && (
-                <button
-                  onClick={startScreenShare}
-                  style={{
-                    padding: "0.75rem 1.5rem",
-                    backgroundColor: "#6953a3",
-                    color: "#ffffff",
-                    border: "none",
-                    borderRadius: "0.5rem",
-                    fontSize: "1rem",
-                    fontWeight: 600,
-                    cursor: "pointer"
-                  }}
-                >
-                  Start Screen Share
-                </button>
+                <div>
+                  <p style={{
+                    fontSize: "0.9375rem",
+                    color: "#475569",
+                    marginBottom: "1rem",
+                    lineHeight: "1.5"
+                  }}>
+                    Please share the entire screen when prompted.
+                  </p>
+                  <button
+                    onClick={startScreenShare}
+                    style={{
+                      padding: "0.75rem 1.5rem",
+                      backgroundColor: "#6953a3",
+                      color: "#ffffff",
+                      border: "none",
+                      borderRadius: "0.5rem",
+                      fontSize: "1rem",
+                      fontWeight: 600,
+                      cursor: "pointer"
+                    }}
+                  >
+                    Start Screen Share
+                  </button>
+                </div>
               )}
               
               {steps[1].status === "running" && (
@@ -929,9 +939,17 @@ export default function IdentityVerificationPage() {
               
               {steps[1].status === "failed" && (
                 <div>
-                  <div style={{ fontSize: "0.875rem", color: "#ef4444", marginBottom: "1rem" }}>
+                  <div style={{ fontSize: "0.875rem", color: "#ef4444", marginBottom: "0.75rem" }}>
                     {steps[1].message}
                   </div>
+                  <p style={{
+                    fontSize: "0.9375rem",
+                    color: "#475569",
+                    marginBottom: "1rem",
+                    lineHeight: "1.5"
+                  }}>
+                    Please share the entire screen when prompted.
+                  </p>
                   <button
                     onClick={startScreenShare}
                     style={{

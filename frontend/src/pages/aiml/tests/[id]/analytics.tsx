@@ -177,11 +177,12 @@ export default function AnalyticsPage() {
         endpoint: '/api/v1/candidate/get-reference-photo'
       })
       
-      // For DSA/AIML tests, identity verification uses testId as assessmentId
+      // For AIML tests, pass testType=aiml to call only AIML endpoint
       const response = await axios.get(`/api/v1/candidate/get-reference-photo`, {
         params: {
           assessmentId: testId,
           candidateEmail,
+          testType: 'aiml', // Specify test type to call only AIML endpoint
         },
       })
 

@@ -3860,6 +3860,7 @@ export default function CandidateAssessmentPage() {
             cameraOn={proctoringState.isCameraOn}
             faceMeshStatus={proctoringState.isModelLoaded ? 'loaded' : proctoringState.modelError ? 'error' : 'loading'}
             facesCount={proctoringState.facesCount}
+            // visible={true} // Uncomment to show camera preview to candidates
           />
         )}
 
