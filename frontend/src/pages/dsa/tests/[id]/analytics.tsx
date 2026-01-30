@@ -119,7 +119,6 @@ export default function AnalyticsPage() {
     search: employeeSearch || undefined,
   })
   
-  // Update local state from React Query data
   useEffect(() => {
     if (testInfoData) {
       setTestInfo(testInfoData)
