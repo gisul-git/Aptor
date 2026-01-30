@@ -13,18 +13,17 @@ on:
       - dev
     paths:
       - 'services/auth-service/**'
-  workflow_dispatch: # Allow manual triggering
+  workflow_dispatch:
 
 env:
   AZURE_RESOURCE_GROUP: Aaptor
-  CONTAINER_APP_NAME: aptor-auth-service
+  CONTAINER_APP_NAME: auth-service
   DOCKER_IMAGE_NAME: auth-service
   SERVICE_PATH: services/auth-service
 
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
-    # Only run on push to dev, merged PRs, or manual dispatch
     if: |
       github.event_name == 'push' ||
       (github.event_name == 'pull_request' && github.event.pull_request.merged == true) ||
@@ -52,6 +51,18 @@ jobs:
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
+      # 🔐 Ensure containerapp CLI is available
+      - name: Install Azure Container Apps extension
+        run: |
+          az extension add --name containerapp --upgrade
+
+      # 🧪 Debug – confirm app exists
+      - name: Debug – List Container Apps
+        run: |
+          az containerapp list \
+            --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+            --query "[].name" -o table
+
       - name: Login to Azure Container Registry
         run: |
           echo ${{ secrets.ACR_PASSWORD }} | docker login ${{ secrets.ACR_LOGIN_SERVER }} \
@@ -77,6 +88,5 @@ jobs:
 
       - name: Verify deployment
         run: |
-          echo "Deployment completed successfully!"
-          echo "Image: ${{ secrets.ACR_LOGIN_SERVER }}/${{ env.DOCKER_IMAGE_NAME }}:${{ github.sha }}"
-
+          echo "✅ Deployment completed successfully!"
+          echo "📦 Image: ${{ secrets.ACR_LOGIN_SERVER }}/${{ env.DOCKER_IMAGE_NAME }}:${{ github.sha }}"
