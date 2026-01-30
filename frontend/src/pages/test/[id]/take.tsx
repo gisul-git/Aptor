@@ -1895,12 +1895,9 @@ export default function TestTakePage() {
         // Normalize SQL query to single line with \n characters
         sqlQuery = sqlQuery.replace(/\r\n/g, '\n').replace(/\r/g, '\n')
         
-        // Call SQL execution engine directly from frontend
-        // URL must be set in NEXT_PUBLIC_SQL_ENGINE_URL environment variable
-        const baseUrl = process.env.NEXT_PUBLIC_SQL_ENGINE_URL
-        if (!baseUrl) {
-          throw new Error('NEXT_PUBLIC_SQL_ENGINE_URL environment variable is not set. Please configure it in your .env file.')
-        }
+        // Get SQL engine URL at runtime from API route
+        const { getSqlEngineUrl } = await import('@/lib/sql-engine-config')
+        const baseUrl = await getSqlEngineUrl()
         const sqlEngineUrl = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl
         
         console.log('[SQL Run] SQL Engine URL:', sqlEngineUrl)
@@ -2316,12 +2313,9 @@ export default function TestTakePage() {
         }
         
         
-        // Call sql-execution-engine submit endpoint
-        // URL must be set in NEXT_PUBLIC_SQL_ENGINE_URL environment variable
-        const baseUrl = process.env.NEXT_PUBLIC_SQL_ENGINE_URL
-        if (!baseUrl) {
-          throw new Error('NEXT_PUBLIC_SQL_ENGINE_URL environment variable is not set. Please configure it in your .env file.')
-        }
+        // Get SQL engine URL at runtime from API route
+        const { getSqlEngineUrl } = await import('@/lib/sql-engine-config')
+        const baseUrl = await getSqlEngineUrl()
         const sqlEngineUrl = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl
         
         console.log('[SQL Submit] ===== Starting Submit =====')
