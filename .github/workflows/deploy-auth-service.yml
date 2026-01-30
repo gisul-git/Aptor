@@ -1,24 +1,29 @@
-name: Build and Deploy to Azure Container Apps
+name: Build and Deploy Auth Service to Azure Container Apps
 
 on:
   push:
     branches:
       - dev
+    paths:
+      - 'services/auth-service/**'
+      - '.github/workflows/deploy-auth-service.yml'
   pull_request:
     types: [closed]
     branches:
       - dev
-  workflow_dispatch: # Allow manual triggering
+    paths:
+      - 'services/auth-service/**'
+  workflow_dispatch:
 
 env:
   AZURE_RESOURCE_GROUP: Aaptor
-  CONTAINER_APP_NAME: aptor-env
-  DOCKER_IMAGE_NAME: frontend
+  CONTAINER_APP_NAME: auth-service
+  DOCKER_IMAGE_NAME: auth-service
+  SERVICE_PATH: services/auth-service
 
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
-    # Only run on push to dev, merged PRs, or manual dispatch
     if: |
       github.event_name == 'push' ||
       (github.event_name == 'pull_request' && github.event.pull_request.merged == true) ||
@@ -28,27 +33,18 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
-          node-version: '18'
-          cache: 'npm'
-          cache-dependency-path: frontend/package-lock.json
+          python-version: '3.11'
+          cache: 'pip'
+          cache-dependency-path: ${{ env.SERVICE_PATH }}/requirements.txt
 
       - name: Install dependencies
-        working-directory: ./frontend
-        run: npm ci
-
-      - name: Run linter
-        working-directory: ./frontend
-        run: npm run lint
-        continue-on-error: true
-
-      - name: Build Next.js application
-        working-directory: ./frontend
-        run: npm run build
-        env:
-          NODE_ENV: production
+        working-directory: ./${{ env.SERVICE_PATH }}
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
 
       - name: Login to Azure
         uses: azure/login@v1
@@ -65,7 +61,7 @@ jobs:
             -u ${{ secrets.ACR_USERNAME }} --password-stdin
 
       - name: Build Docker image
-        working-directory: ./frontend
+        working-directory: ./${{ env.SERVICE_PATH }}
         run: |
           docker build -t ${{ secrets.ACR_LOGIN_SERVER }}/${{ env.DOCKER_IMAGE_NAME }}:${{ github.sha }} .
           docker build -t ${{ secrets.ACR_LOGIN_SERVER }}/${{ env.DOCKER_IMAGE_NAME }}:latest .
@@ -84,6 +80,5 @@ jobs:
 
       - name: Verify deployment
         run: |
-          echo "Deployment completed successfully!"
-          echo "Image: ${{ secrets.ACR_LOGIN_SERVER }}/${{ env.DOCKER_IMAGE_NAME }}:${{ github.sha }}"
-
+          echo "✅ Deployment completed successfully!"
+          echo "📦 Image: ${{ secrets.ACR_LOGIN_SERVER }}/${{ env.DOCKER_IMAGE_NAME }}:${{ github.sha }}"

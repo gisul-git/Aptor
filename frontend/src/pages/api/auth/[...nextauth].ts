@@ -90,35 +90,75 @@ export const authOptions: NextAuthOptions = {
           
           const response = await fastApiClient.post("/api/v1/auth/login", loginPayload);
 
-          const data = response.data?.data;
-          
-          // Check if MFA is required for super_admin
-          if (data?.require_mfa) {
+          // Debug: log the raw response to help diagnose 401 issues
+          console.log("🔐 [Credentials] /api/v1/auth/login response:", {
+            status: response?.status,
+            statusText: response?.statusText,
+            data: response?.data,
+            config: { baseURL: fastApiClient.defaults.baseURL },
+          });
+
+          // Support multiple possible response shapes (ApiResponse<T> or direct payload)
+          const respData = response?.data;
+          const data = respData?.data ?? respData;
+
+          // Debug parsed payload
+          console.log("🔐 [Credentials] Parsed login payload:", JSON.stringify(data, null, 2));
+
+          // Check if MFA is required for super_admin (support nested or top-level flags)
+          const requireMfa = data?.require_mfa ?? respData?.require_mfa;
+          if (requireMfa) {
             // Return null instead of throwing - let frontend handle MFA redirect
             // This prevents NextAuth from showing an error
+            console.log("🔐 [Credentials] MFA required for user, returning null to let frontend handle it");
             return null;
           }
           
-          if (!data?.token || !data?.user) {
-            console.error("Invalid response from authentication service:", response.data);
-            return null; // Return null for invalid response
+          // Accept token either as `token` or `accessToken` and user either as `user` or top-level fields
+          const token = data?.token ?? data?.accessToken ?? respData?.token ?? respData?.accessToken;
+          const userObj = data?.user ?? respData?.user ?? (data?.userId ? { id: data.userId, email: data.email, name: data.name } : null);
+
+          if (!token || !userObj) {
+            console.error("🔴 [Credentials] Invalid response from authentication service. Missing token or user:", {
+              responseData: respData,
+              parsedData: data,
+            });
+            return null; // Return null for invalid response so NextAuth returns 401
+          }
+
+          // CRITICAL: Ensure user object has an 'id' field (required by NextAuth)
+          // Handle both '_id' (MongoDB) and 'id' (serialized) formats
+          const userId = userObj.id ?? userObj._id ?? userObj.userId;
+          
+          if (!userId) {
+            console.error("🔴 [Credentials] User object missing 'id' field. Cannot create session:", {
+              userObj,
+              responseData: respData,
+              parsedData: data,
+            });
+            return null; // Return null if no user ID - NextAuth requires this
           }
 
           const backendUser: BackendUser = {
-            id: data.user.id,
-            name: data.user.name,
-            email: data.user.email,
-            role: data.user.role,
-            organization: data.user.organization,
-            phone: data.user.phone || undefined,
-            country: data.user.country || undefined,
-            token: data.token,
-            refreshToken: data.refreshToken, // Store refresh token
+            id: String(userId), // Ensure id is always a string
+            name: userObj.name,
+            email: userObj.email,
+            role: userObj.role,
+            organization: userObj.organization,
+            phone: userObj.phone || undefined,
+            country: userObj.country || undefined,
+            token: token,
+            refreshToken: data?.refreshToken ?? respData?.refreshToken ?? data?.refresh_token ?? respData?.refresh_token, // Store refresh token
           } as BackendUser;
+
+          // Debug the final user object returned by authorize
+          console.log("🔐 [Credentials] Returning backend user:", JSON.stringify(backendUser, null, 2));
+
           return backendUser;
         } catch (error: any) {
           // Check if MFA is required - if so, return null silently
           if (error?.response?.data?.data?.require_mfa || error?.response?.data?.require_mfa) {
+            console.log("🔐 [Credentials] Error response indicates MFA required, returning null");
             return null; // Return null for MFA - frontend will handle redirect
           }
 
@@ -128,6 +168,7 @@ export const authOptions: NextAuthOptions = {
               baseURL: fastApiClient.defaults.baseURL,
               message: error?.message,
               code: error?.code,
+              response: error?.response?.data,
             });
             // Return null to prevent NextAuth error - frontend will handle it
             return null;

@@ -1,24 +1,29 @@
-name: Build and Deploy to Azure Container Apps
+name: Build and Deploy API Gateway to Azure Container Apps
 
 on:
   push:
     branches:
       - dev
+    paths:
+      - 'services/api-gateway/**'
+      - '.github/workflows/deploy-api-gateway.yml'
   pull_request:
     types: [closed]
     branches:
       - dev
-  workflow_dispatch: # Allow manual triggering
+    paths:
+      - 'services/api-gateway/**'
+  workflow_dispatch:
 
 env:
   AZURE_RESOURCE_GROUP: Aaptor
-  CONTAINER_APP_NAME: aptor-env
-  DOCKER_IMAGE_NAME: frontend
+  CONTAINER_APP_NAME: api-gateway   # MUST match Azure name
+  DOCKER_IMAGE_NAME: api-gateway
+  SERVICE_PATH: services/api-gateway
 
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
-    # Only run on push to dev, merged PRs, or manual dispatch
     if: |
       github.event_name == 'push' ||
       (github.event_name == 'pull_request' && github.event.pull_request.merged == true) ||
@@ -27,28 +32,6 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '18'
-          cache: 'npm'
-          cache-dependency-path: frontend/package-lock.json
-
-      - name: Install dependencies
-        working-directory: ./frontend
-        run: npm ci
-
-      - name: Run linter
-        working-directory: ./frontend
-        run: npm run lint
-        continue-on-error: true
-
-      - name: Build Next.js application
-        working-directory: ./frontend
-        run: npm run build
-        env:
-          NODE_ENV: production
 
       - name: Login to Azure
         uses: azure/login@v1
@@ -65,10 +48,11 @@ jobs:
             -u ${{ secrets.ACR_USERNAME }} --password-stdin
 
       - name: Build Docker image
-        working-directory: ./frontend
         run: |
-          docker build -t ${{ secrets.ACR_LOGIN_SERVER }}/${{ env.DOCKER_IMAGE_NAME }}:${{ github.sha }} .
-          docker build -t ${{ secrets.ACR_LOGIN_SERVER }}/${{ env.DOCKER_IMAGE_NAME }}:latest .
+          docker build \
+            -t ${{ secrets.ACR_LOGIN_SERVER }}/${{ env.DOCKER_IMAGE_NAME }}:${{ github.sha }} \
+            -t ${{ secrets.ACR_LOGIN_SERVER }}/${{ env.DOCKER_IMAGE_NAME }}:latest \
+            ./${{ env.SERVICE_PATH }}
 
       - name: Push Docker image to ACR
         run: |
@@ -84,6 +68,5 @@ jobs:
 
       - name: Verify deployment
         run: |
-          echo "Deployment completed successfully!"
+          echo "API Gateway deployment completed"
           echo "Image: ${{ secrets.ACR_LOGIN_SERVER }}/${{ env.DOCKER_IMAGE_NAME }}:${{ github.sha }}"
-
