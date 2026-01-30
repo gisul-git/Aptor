@@ -1,17 +1,37 @@
 import axios from 'axios'
 import { getSession } from 'next-auth/react'
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:80' // API Gateway
+import { getApiGatewayUrl } from '@/lib/api-gateway-config'
 
 // Cache the last known good token so we don't depend on NextAuth timing on every request.
 let cachedBackendToken: string | null = null
 
+// Create axios instance with dynamic baseURL
 export const dsaApi = axios.create({
-  baseURL: `${API_URL}/api/v1/dsa`,
+  baseURL: '', // Will be set dynamically
   headers: {
     'Content-Type': 'application/json',
   },
 })
+
+// Interceptor to set baseURL dynamically from runtime config
+let baseUrlPromise: Promise<string> | null = null
+dsaApi.interceptors.request.use(
+  async (config) => {
+    // If baseURL is not set, fetch it from runtime config
+    if (!config.baseURL || config.baseURL === '') {
+      if (!baseUrlPromise) {
+        baseUrlPromise = getApiGatewayUrl().then(url => {
+          dsaApi.defaults.baseURL = `${url}/api/v1/dsa`
+          return url
+        })
+      }
+      await baseUrlPromise
+      config.baseURL = dsaApi.defaults.baseURL
+    }
+    return config
+  },
+  (error) => Promise.reject(error)
+)
 
 // Add token to requests - CRITICAL: All DSA API calls require authentication
 dsaApi.interceptors.request.use(
