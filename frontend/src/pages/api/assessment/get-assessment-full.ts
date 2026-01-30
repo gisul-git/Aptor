@@ -41,7 +41,71 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   try {
-    // First, try AIML-specific full test endpoint.
+  
+    try {
+      const dsaUrl = `/api/v1/dsa/tests/${assessmentId}/full`;
+      const fullDsaUrl = `${API_GATEWAY_URL}${dsaUrl}`;
+      console.log(`[get-assessment-full] 🔵 Attempting DSA endpoint:`, {
+        testId: assessmentId,
+        url: dsaUrl,
+        fullUrl: fullDsaUrl,
+        apiGatewayUrl: API_GATEWAY_URL,
+        token: token ? `${token.substring(0, 10)}...` : 'missing',
+        timestamp: new Date().toISOString(),
+      });
+      
+      const dsaResponse = await backendClient.get(dsaUrl, {
+        params: {
+          token,
+        },
+      });
+      
+      console.log("[get-assessment-full] ✅ DSA endpoint succeeded:", {
+        status: dsaResponse.status,
+        statusText: dsaResponse.statusText,
+        hasData: !!dsaResponse.data,
+        dataType: typeof dsaResponse.data,
+        dataKeys: dsaResponse.data ? Object.keys(dsaResponse.data) : [],
+        dataPreview: dsaResponse.data ? JSON.stringify(dsaResponse.data).substring(0, 200) : 'no data',
+      });
+      
+      // DSA endpoint returns { success: true, message: "...", data: {...} }
+      // Return it as-is for the frontend (same structure as generic endpoint)
+      console.log("[get-assessment-full] ✅ Returning DSA response to frontend");
+      return res.status(dsaResponse.status || 200).json(dsaResponse.data);
+    } catch (dsaError: any) {
+      const dsaStatus = dsaError?.response?.status;
+      const dsaStatusText = dsaError?.response?.statusText;
+      const dsaDetail = dsaError?.response?.data?.detail || dsaError?.response?.data?.message;
+      const dsaMessage = dsaError?.message;
+      const dsaCode = dsaError?.code;
+      const dsaUrl = dsaError?.config?.url || `${API_GATEWAY_URL}/api/v1/dsa/tests/${assessmentId}/full`;
+      const dsaResponseData = dsaError?.response?.data;
+
+      // Log detailed error information
+      console.error("[get-assessment-full] ❌ DSA endpoint failed:", {
+        status: dsaStatus,
+        statusText: dsaStatusText,
+        code: dsaCode,
+        detail: dsaDetail,
+        message: dsaMessage,
+        url: dsaUrl,
+        fullUrl: dsaError?.config?.baseURL + dsaError?.config?.url,
+        responseData: dsaResponseData,
+        errorType: dsaError?.name,
+        stack: dsaError?.stack?.substring(0, 500),
+      });
+      
+      // If DSA explicitly reports "Test not found" (404) or bad ID (400), try AIML next.
+      // For other DSA errors (500, 503, network errors), still try other endpoints as fallback
+      if (dsaStatus === 404 || dsaStatus === 400) {
+        console.log("[get-assessment-full] ⚠️ DSA test not found (404/400), trying AIML endpoint");
+      } else {
+        console.log(`[get-assessment-full] ⚠️ DSA endpoint error (${dsaStatus || 'no status'}), trying AIML endpoint`);
+      }
+    }
+
+    // Second, try AIML-specific full test endpoint.
     // This allows AIML tests (stored in the AIML service) to be resolved without
     // depending on the generic AI assessment service.
     try {
@@ -102,7 +166,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       }
     }
 
-    // Fallback: use generic candidate get-assessment-full (AI assessments, Custom MCQ, DSA)
+    // Fallback: use generic candidate get-assessment-full (AI assessments, Custom MCQ)
     console.log("[get-assessment-full] 🔵 Attempting generic endpoint as fallback:", {
       assessmentId,
       hasToken: !!token,

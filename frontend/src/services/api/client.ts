@@ -39,9 +39,31 @@ function isCandidatePage(): boolean {
   if (typeof window === 'undefined') return false;
   const pathname = window.location.pathname;
   const searchParams = new URLSearchParams(window.location.search);
-  // Check if we're on a test take page with token/user_id (candidate access)
-  return (pathname.includes('/test/') && pathname.includes('/take')) || 
-         (pathname.includes('/test/') && (searchParams.has('token') || searchParams.has('user_id')));
+  
+  // Check if we're on a test take page
+  const isTestTakePage = pathname.includes('/test/') && (
+    pathname.includes('/take') || 
+    pathname.endsWith('/take')
+  );
+  
+  // Check if we're on an AIML test take page
+  const isAIMLTestTakePage = pathname.includes('/aiml/test/') && (
+    pathname.includes('/take') || 
+    pathname.endsWith('/take')
+  );
+  
+  // Check if we have candidate indicators in URL params
+  const hasCandidateParams = searchParams.has('token') || searchParams.has('user_id');
+  
+  // Check if we're on assessment candidate pages
+  const isAssessmentCandidatePage = pathname.includes('/assessment/') && (
+    pathname.includes('/take') ||
+    pathname.includes('/identity-verify') ||
+    pathname.includes('/candidate-requirements')
+  );
+  
+  return isTestTakePage || isAIMLTestTakePage || isAssessmentCandidatePage || 
+         (pathname.includes('/test/') && hasCandidateParams);
 }
 
 async function refreshTokenProactively(): Promise<string | null> {
@@ -136,10 +158,10 @@ apiClient.interceptors.request.use(
     const url = config.url || '';
     const isAuthRoute = url.includes('/api/v1/auth/') || url.includes('/api/auth/');
     const isCandidateRoute = url.includes('/api/assessment/') || url.includes('/api/v1/candidate/');
-    // DSA test routes that can be accessed by candidates (submission, start, public, question)
+    // DSA test routes that can be accessed by candidates (submission, start, public, question, final-submit)
     // These routes can be accessed by both candidates (no auth) and admins (with auth)
     const isDSACandidateRoute = url.includes('/api/v1/dsa/tests/') && 
-      (url.includes('/submission') || url.includes('/start') || url.includes('/public') || url.includes('/question/'));
+      (url.includes('/submission') || url.includes('/start') || url.includes('/public') || url.includes('/question/') || url.includes('/final-submit'));
     
     // For auth routes, always skip auth
     if (isAuthRoute) {
@@ -184,7 +206,7 @@ apiClient.interceptors.request.use(
       }
 
       // For candidate routes (assessment, candidate endpoints), skip auth if no token
-      // For DSA candidate routes, include auth if token is available (admin context), skip if not (candidate context)
+      // For DSA candidate routes, check if we're on a candidate page - if so, skip auth
       if (isCandidateRoute) {
         // Always skip auth for candidate assessment routes
         if (config.headers) {
@@ -192,14 +214,31 @@ apiClient.interceptors.request.use(
         }
         return config;
       } else if (isDSACandidateRoute) {
-        // For DSA candidate routes, include auth if we have a token (admin viewing analytics)
-        // Skip auth only if we don't have a token (candidate taking test)
-        if (token) {
-          config.headers.Authorization = `Bearer ${token}`;
-        } else {
-          // No token available, this is a candidate request - skip auth
+        // For DSA candidate routes, check if this is a candidate request
+        // Candidate requests have user_id in params, admin requests don't
+        const hasUserIdParam = config.params?.user_id || 
+                               (config.url && config.url.includes('user_id=')) ||
+                               (typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('user_id'));
+        
+        // Also check if we're on a candidate page
+        const onCandidatePage = isCandidatePage();
+        
+        // If this is a candidate request (has user_id param or on candidate page), skip auth
+        if (hasUserIdParam || onCandidatePage) {
+          // Candidate request - always skip auth
           if (config.headers) {
             delete config.headers.Authorization;
+          }
+        } else {
+          // Not a candidate request - this might be admin viewing analytics
+          // Include auth if token is available
+          if (token) {
+            config.headers.Authorization = `Bearer ${token}`;
+          } else {
+            // No token available, skip auth
+            if (config.headers) {
+              delete config.headers.Authorization;
+            }
           }
         }
         return config;
@@ -234,19 +273,22 @@ apiClient.interceptors.response.use(
     const isAuthRoute = url.includes('/api/v1/auth/') || url.includes('/api/auth/');
     const isCandidateRoute = url.includes('/api/assessment/') || url.includes('/api/v1/candidate/');
     const isDSACandidateRoute = url.includes('/api/v1/dsa/tests/') && 
-      (url.includes('/submission') || url.includes('/start') || url.includes('/public') || url.includes('/question/'));
+      (url.includes('/submission') || url.includes('/start') || url.includes('/public') || url.includes('/question/') || url.includes('/final-submit'));
     
     // For auth routes and candidate assessment routes, don't try to refresh token
     if (isCandidateRoute || isAuthRoute) {
       return Promise.reject(error);
     }
     
-    // For DSA candidate routes, check if we have a token
-    // If we have a token and get 401, try to refresh (admin context)
-    // If we don't have a token, just return error (candidate context)
+    
     if (isDSACandidateRoute) {
       if (error.response?.status === 401 && typeof window !== 'undefined') {
-        // Check if we have a token - if yes, this is an admin request that needs auth
+        // If we're on a candidate page, this is a candidate request - don't try to refresh
+        if (isCandidatePage()) {
+          return Promise.reject(error);
+        }
+        
+        // Not on candidate page - check if we have a token (admin context)
         let hasToken = false;
         try {
           const tempToken = sessionStorage.getItem('temp_access_token');
