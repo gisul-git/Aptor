@@ -602,21 +602,28 @@ async def get_tests(
     
     SECURITY: This endpoint MUST only return tests where created_by matches the authenticated user's ID
     """
-    # CRITICAL SECURITY CHECK: Verify authentication
-    if not current_user:
-        logger.error("[get_tests] CRITICAL: current_user is None or empty - authentication failed")
-        raise HTTPException(status_code=401, detail="Authentication required")
-    
-    db = get_database()
+    try:
+        # CRITICAL SECURITY CHECK: Verify authentication
+        if not current_user:
+            logger.error("[get_tests] CRITICAL: current_user is None or empty - authentication failed")
+            raise HTTPException(status_code=401, detail="Authentication required")
+        
+        db = get_database()
     
     # Check if user is super_admin - if so, get all super_admin user IDs
     if current_user.get("role") == "super_admin":
-        # Import main database to query users collection
-        # Note: tests.py is in dsa/routers/, so we need 5 dots to reach app/
-        from ....db.mongo import get_database as get_main_database
-        
-        # Get main database connection
-        main_db = get_main_database()
+        try:
+            # Import main database to query users collection
+            # Note: tests.py is in dsa/routers/, so we need 5 dots to reach app/
+            from ....db.mongo import get_database as get_main_database
+            
+            # Get main database connection
+            main_db = get_main_database()
+        except Exception as e:
+            logger.error(f"[get_tests] Failed to get main database for super_admin query: {e}")
+            # Fall back to regular user query if main database is unavailable
+            logger.warning("[get_tests] Falling back to regular user query for super_admin")
+            current_user["role"] = None  # Temporarily remove super_admin role to use regular path
         
         # Get current user ID for logging purposes
         user_id = current_user.get("id") or current_user.get("_id")
@@ -882,6 +889,14 @@ async def get_tests(
             test_dict["updated_at"] = test.get("updated_at").isoformat() if isinstance(test.get("updated_at"), datetime) else test.get("updated_at")
         result.append(test_dict)
     return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(f"[get_tests] Unexpected error: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to fetch tests: {str(e)}"
+        )
 
 @router.get("/get-reference-photo")
 async def get_reference_photo(
