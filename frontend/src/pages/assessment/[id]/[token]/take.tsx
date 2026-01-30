@@ -3226,6 +3226,12 @@ export default function CandidateAssessmentPage() {
                                 
                                 // Extract test result from backend response
                                 const resultData = result.data || result;
+                                
+                                // Get test case information (NO SCORE DISPLAY - score only in admin analytics)
+                                const testCaseInfo = resultData.public_summary 
+                                  ? `\n\n Test Cases: ${resultData.public_summary.passed}/${resultData.public_summary.total} passed`
+                                  : ''
+                                
                                 const testResult = {
                                   passed: resultData.passed !== undefined ? resultData.passed : false,
                                   status: resultData.status || (resultData.passed ? 'accepted' : 'wrong_answer'),
@@ -3234,6 +3240,10 @@ export default function CandidateAssessmentPage() {
                                   error: resultData.error || (resultData.passed ? '' : resultData.message || ''),
                                   time: resultData.time,
                                   memory: resultData.memory,
+                                  score: resultData.score,  // Store for admin analytics, but don't display
+                                  max_score: resultData.max_score,  // Store for admin analytics, but don't display
+                                  public_results: resultData.public_results || [],
+                                  public_summary: resultData.public_summary || { total: 1, passed: resultData.passed ? 1 : 0 },
                                 };
                                 
                                 setSqlTestResults(prev => ({ ...prev, [questionId]: testResult }));
@@ -3242,7 +3252,7 @@ export default function CandidateAssessmentPage() {
                                   setOutput(prev => ({
                                     ...prev,
                                     [questionId]: {
-                                      stdout: `✅ ${resultData.message || 'Query produces correct results!'}\n\n${resultData.user_output || ''}`,
+                                      stdout: `${resultData.message || 'Query produces correct results!'}${testCaseInfo}\n\n📊 Your Output:\n${resultData.user_output || ''}`,
                                       status: 'success'
                                     }
                                   }));
@@ -3251,7 +3261,7 @@ export default function CandidateAssessmentPage() {
                                   setOutput(prev => ({
                                     ...prev,
                                     [questionId]: {
-                                      stderr: `❌ ${resultData.message || 'Query failed'}\n${resultData.expected_output ? `\nExpected:\n${resultData.expected_output}\n\nGot:\n${resultData.user_output}` : `\n${resultData.user_output || ''}`}`,
+                                      stderr: ` ${resultData.message || 'Query failed'}${testCaseInfo}\n${resultData.expected_output ? `\nExpected:\n${resultData.expected_output}\n\nGot:\n${resultData.user_output}` : `\n${resultData.user_output || ''}`}`,
                                       status: 'error'
                                     }
                                   }));

@@ -34,6 +34,11 @@ class DSASettings(BaseSettings):
     # OpenAI Configuration (can also use OPENAI_API_KEY from main config)
     openai_api_key: str = ""
     
+    # SQL Execution Engine (seeded database for SQL questions)
+    # This should point to the SQL engine base URL (including /api prefix),
+    # e.g. SQL_ENGINE_URL=http://localhost:3000/api
+    sql_engine_url: str = "http://localhost:3000/api"
+    
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
@@ -61,4 +66,5 @@ JUDGE0_API_KEY = _settings.judge0_api_key
 OPENAI_API_KEY = _settings.openai_api_key
 CUSTOM_PYTHON_ENGINE_URL = _settings.custom_python_engine_url
 USE_CUSTOM_ENGINE = _settings.use_custom_engine
+SQL_ENGINE_URL = _settings.sql_engine_url
 

@@ -695,20 +695,20 @@ export default function AnalyticsPage() {
                 >
                   🧪 Test This Test
                 </button>
-                <button
-                  type="button"
-                  className="btn-secondary"
-                  onClick={() => setShowEmailTemplateModal(true)}
-                  style={{ 
-                    padding: "0.5rem 1rem", 
-                    fontSize: "0.875rem",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "0.5rem"
-                  }}
-                >
-                  ✏️ Edit Email Template
-                </button>
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={() => setShowEmailTemplateModal(true)}
+                style={{ 
+                  padding: "0.5rem 1rem", 
+                  fontSize: "0.875rem",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "0.5rem"
+                }}
+              >
+                ✏️ Edit Email Template
+              </button>
               </div>
             </div>
             <div style={{ fontSize: "0.875rem", color: "#64748b", marginBottom: "1rem" }}>

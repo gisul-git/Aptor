@@ -197,18 +197,80 @@ export const useDSACandidates = (testId: string | undefined) => {
 };
 
 /**
+ * Question Analytics type matching the backend response
+ */
+export interface QuestionAnalytics {
+  question_id: string;
+  question_title: string;
+  language: string;
+  status?: string;
+  invited?: boolean;
+  invited_at?: string | null;
+  passed_testcases: number;
+  total_testcases: number;
+  execution_time?: number;
+  memory_used?: number;
+  code: string;
+  test_results: any[];
+  ai_feedback?: any;
+  created_at: string | null;
+}
+
+/**
+ * Candidate Analytics type matching the backend response
+ */
+export interface CandidateAnalytics {
+  candidate: {
+    name: string;
+    email: string;
+  };
+  candidateInfo?: {
+    phone?: string | null;
+    linkedIn?: string | null;
+    github?: string | null;
+    hasResume?: boolean;
+    aaptorId?: string | null;
+    customFields?: Record<string, any>;
+  } | null;
+  submission: {
+    score: number;
+    started_at: string | null;
+    submitted_at: string | null;
+    is_completed: boolean;
+  } | null;
+  question_analytics: QuestionAnalytics[];
+  activity_logs: any[];
+}
+
+/**
  * Get candidate analytics for a DSA test
  */
 export const useDSACandidateAnalytics = (testId: string | undefined, userId: string | undefined) => {
-  return useQuery({
+  return useQuery<CandidateAnalytics>({
     queryKey: [...QUERY_KEYS.test(testId || ''), 'analytics', userId] as const,
-    queryFn: async () => {
-      if (!testId || !userId) throw new Error('Test ID and User ID are required');
-      const response = await dsaService.getCandidateAnalytics(testId, userId);
-      return response.data;
+    queryFn: async (): Promise<CandidateAnalytics> => {
+      if (!testId || !userId) {
+        throw new Error('Test ID and User ID are required');
+      }
+      try {
+        const response = await dsaService.getCandidateAnalytics(testId, userId);
+        // The service returns response.data from axios, which is typed as ApiResponse<any>
+        // But the backend actually returns the analytics object directly (not wrapped)
+        // So response.data is the analytics object, or response itself if it's not wrapped
+        const data = (response as any)?.data !== undefined ? (response as any).data : response;
+        if (data === undefined || data === null) {
+          throw new Error('Analytics data is undefined');
+        }
+        // Cast to CandidateAnalytics since we know the structure from the backend
+        return data as CandidateAnalytics;
+      } catch (error) {
+        console.error('[useDSACandidateAnalytics] Error fetching analytics:', error);
+        throw error;
+      }
     },
     enabled: !!testId && !!userId,
     staleTime: 10 * 1000, // 10 seconds
+    retry: 1, // Retry once on failure
   });
 };
 
