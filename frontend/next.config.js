@@ -10,11 +10,11 @@ const nextConfig = {
     return [
       {
         source: '/api/v1/:path*',
-        destination: `${apiUrl}/api/v1/:path*`, // API Gateway
+        destination: `${apiUrl}/api/v1/:path*`, 
         },
       {
         source: '/api/v2/:path*',
-        destination: `${apiUrl}/api/v2/:path*`, // API Gateway
+        destination: `${apiUrl}/api/v2/:path*`, 
       },
     ];
   },
