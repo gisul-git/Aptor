@@ -253,8 +253,28 @@ export const aimlService = {
    * Get candidates for a test
    */
   getCandidates: async (testId: string): Promise<ApiResponse<any[]>> => {
-    const response = await apiClient.get<ApiResponse<any[]>>(`/api/v1/aiml/tests/${testId}/candidates`);
-    return response.data;
+    console.log('[AIML Service] 🔍 getCandidates called:', { testId })
+    try {
+      const response = await apiClient.get<ApiResponse<any[]>>(`/api/v1/aiml/tests/${testId}/candidates`);
+      console.log('[AIML Service] 📥 API Response:', {
+        status: response.status,
+        hasData: !!response.data,
+        dataType: typeof response.data,
+        isArray: Array.isArray(response.data),
+        dataLength: Array.isArray(response.data) ? response.data.length : 'N/A',
+        responseData: response.data,
+        fullResponse: response
+      })
+      return response.data;
+    } catch (error: any) {
+      console.error('[AIML Service] ❌ Error in getCandidates:', {
+        error: error.message,
+        response: error.response?.data,
+        status: error.response?.status,
+        url: `/api/v1/aiml/tests/${testId}/candidates`
+      })
+      throw error
+    }
   },
 
   /**

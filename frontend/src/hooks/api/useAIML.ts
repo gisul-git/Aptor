@@ -43,7 +43,18 @@ export const useAIMLTest = (testId: string | undefined) => {
     queryFn: async () => {
       if (!testId) throw new Error('Test ID is required');
       const response = await aimlService.getTest(testId);
-      return response.data;
+      // Ensure we always return a value (not undefined)
+      // Handle both wrapped and unwrapped responses
+      if (response && typeof response === 'object') {
+        // If response has a 'data' property, use it
+        if ('data' in response && response.data !== undefined) {
+          return response.data;
+        }
+        // Otherwise, response itself might be the data
+        return response;
+      }
+      // Fallback to null if response is invalid
+      return null;
     },
     enabled: !!testId,
     staleTime: 5 * 60 * 1000,
@@ -262,9 +273,46 @@ export const useAIMLCandidates = (testId: string | undefined) => {
   return useQuery({
     queryKey: [...QUERY_KEYS.test(testId || ''), 'candidates'] as const,
     queryFn: async () => {
-      if (!testId) throw new Error('Test ID is required');
-      const response = await aimlService.getCandidates(testId);
-      return response.data || [];
+      console.log('[useAIMLCandidates] 🔍 Fetching candidates for testId:', testId)
+      if (!testId) {
+        console.error('[useAIMLCandidates] ❌ Test ID is required')
+        throw new Error('Test ID is required');
+      }
+      try {
+        const response = await aimlService.getCandidates(testId);
+        console.log('[useAIMLCandidates] 📥 Service response:', {
+          response,
+          hasData: !!response?.data,
+          dataType: typeof response?.data,
+          isArray: Array.isArray(response?.data),
+          dataLength: Array.isArray(response?.data) ? response.data.length : 'N/A',
+          fullResponse: response
+        })
+        
+        // Handle both wrapped and unwrapped responses
+        let candidates = null
+        if (response && typeof response === 'object') {
+          if ('data' in response && response.data !== undefined) {
+            candidates = response.data
+          } else {
+            candidates = response
+          }
+        }
+        
+        const result = Array.isArray(candidates) ? candidates : (candidates ? [candidates] : [])
+        console.log('[useAIMLCandidates] ✅ Returning candidates:', {
+          count: result.length,
+          result
+        })
+        return result
+      } catch (error: any) {
+        console.error('[useAIMLCandidates] ❌ Error fetching candidates:', {
+          error: error.message,
+          response: error.response?.data,
+          status: error.response?.status
+        })
+        throw error
+      }
     },
     enabled: !!testId,
     staleTime: 30 * 1000, // 30 seconds
@@ -324,7 +372,18 @@ export const useAIMLCandidateAnalytics = (testId: string | undefined, userId: st
     queryFn: async () => {
       if (!testId || !userId) throw new Error('Test ID and User ID are required');
       const response = await aimlService.getCandidateAnalytics(testId, userId);
-      return response.data;
+      // Ensure we always return a value (not undefined)
+      // Handle both wrapped and unwrapped responses
+      if (response && typeof response === 'object') {
+        // If response has a 'data' property, use it
+        if ('data' in response && response.data !== undefined) {
+          return response.data;
+        }
+        // Otherwise, response itself might be the data
+        return response;
+      }
+      // Fallback to null if response is invalid
+      return null;
     },
     enabled: !!testId && !!userId,
     staleTime: 10 * 1000, // 10 seconds
