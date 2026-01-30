@@ -539,8 +539,9 @@ export default function AIMLTestTakePage() {
           { headers: { Authorization: `Bearer ${token}` } }
         )
         
-        const testData = response.data
-        const accessControl = testData.accessControl
+        // Service already extracts response.data, so response IS the data
+        const testData = response?.data || response
+        const accessControl = testData?.accessControl
         
         if (accessControl?.timeRemaining !== null && accessControl?.timeRemaining !== undefined) {
           // Sync with server-calculated time
@@ -572,7 +573,8 @@ export default function AIMLTestTakePage() {
           const { aimlService } = await import('@/services/aiml')
           const response = await aimlService.getTestForCandidate(String(testId), userId, token)
           
-          const testData = response.data
+          // Service already extracts response.data, so response IS the data
+          const testData = response?.data || response
           setTest(testData)
           
           // Update state based on new accessControl
@@ -625,15 +627,17 @@ export default function AIMLTestTakePage() {
         responseType: typeof response,
         responseKeys: response ? Object.keys(response) : [],
         hasData: !!(response?.data),
-        hasQuestions: !!(response?.data?.questions),
-        questionsCount: response?.data?.questions?.length || 0,
+        hasQuestions: !!(response?.questions || response?.data?.questions),
+        questionsCount: (response?.questions || response?.data?.questions)?.length || 0,
       })
       
-      // AIML service's getTestForCandidate returns ApiResponse, extract data from response.data
-      const testData = response?.data
+      // AIML service's getTestForCandidate already extracts response.data from axios
+      // So response IS the data object (not wrapped in ApiResponse)
+      // Handle both cases: direct data or wrapped in data property
+      const testData = response?.data || response
       if (!testData) {
         console.error('[AIML Take] ❌ testData is undefined!', { response })
-        throw new Error('Failed to load test data: response.data is undefined')
+        throw new Error('Failed to load test data: response is undefined')
       }
       
       if (!testData.questions) {
