@@ -423,6 +423,14 @@ export default function TestTakePage() {
   const [hiddenSummary, setHiddenSummary] = useState<Record<string, { total: number; passed: number } | null>>({})
   const [questionStartTimes, setQuestionStartTimes] = useState<Record<string, string>>({})
   const [testStartedAt, setTestStartedAt] = useState<string | null>(null)
+  // Store SQL execution engine results for final-submit
+  const [sqlExecutionResults, setSqlExecutionResults] = useState<Record<string, {
+    passed: boolean
+    actualOutput: string
+    expectedOutput: string
+    time?: number
+    memory?: number
+  }>>({})
 
   // Check debug mode
   useEffect(() => {
@@ -1719,11 +1727,28 @@ export default function TestTakePage() {
 
     // Prepare submission data AFTER navigation (browser will handle navigation first)
     // We need to prepare it now so we can send the API call
-    const questionSubmissions = questions.map((q) => ({
-      question_id: q.id,
-      code: code[q.id] || '',
-      language: language[q.id] || 'python',
-    }))
+    const questionSubmissions = questions.map((q) => {
+      const baseSubmission = {
+        question_id: q.id,
+        code: code[q.id] || '',
+        language: language[q.id] || 'python',
+      }
+      
+      // For SQL questions, include execution engine results
+      if (q.question_type?.toUpperCase() === 'SQL' && sqlExecutionResults[q.id]) {
+        const sqlResult = sqlExecutionResults[q.id]
+        return {
+          ...baseSubmission,
+          execution_engine_passed: sqlResult.passed,
+          execution_engine_output: sqlResult.actualOutput,
+          execution_engine_expected_output: sqlResult.expectedOutput,
+          execution_engine_time: sqlResult.time,
+          execution_engine_memory: sqlResult.memory,
+        }
+      }
+      
+      return baseSubmission
+    })
 
     const activityLogs: any[] = []
     
@@ -2361,7 +2386,40 @@ export default function TestTakePage() {
           actualOutputText = `(unexpected output type: ${typeof submitResult.actualOutput})`
         }
         
+        // CRITICAL: Get SQL engine's result - this is the source of truth for pass/fail
+        // SQL engine correctly detects mismatches, so trust its result
+        const sqlEnginePassed = submitResult.passed === true
+        
+        // Format expected output as string for storage
+        let expectedOutputText = ''
+        if (Array.isArray(expectedOutput) && expectedOutput.length > 0) {
+          const headers = Object.keys(expectedOutput[0] as Record<string, any>)
+          const rows = expectedOutput.map((row: Record<string, any>) => Object.values(row))
+          expectedOutputText = headers.join(' | ') + '\n'
+          expectedOutputText += headers.map(() => '---').join(' | ') + '\n'
+          rows.forEach((row: any[]) => {
+            expectedOutputText += row.map((val: any) => 
+              val === null || val === undefined ? 'NULL' : String(val)
+            ).join(' | ') + '\n'
+          })
+        } else if (typeof expectedOutput === 'string') {
+          expectedOutputText = expectedOutput
+        }
+        
+        // Store execution engine results for final-submit
+        setSqlExecutionResults(prev => ({
+          ...prev,
+          [currentQuestion.id]: {
+            passed: sqlEnginePassed,
+            actualOutput: actualOutputText,
+            expectedOutput: expectedOutputText,
+            time: undefined,
+            memory: undefined,
+          }
+        }))
+        
         // Submit to backend for AI evaluation and tracking
+        // IMPORTANT: Send execution engine's passed status to backend so it saves correct test case count (0/1 or 1/1)
         let backendResponse: any = null
         try {
           const backendResult = await dsaService.submitSQL({
@@ -2370,33 +2428,78 @@ export default function TestTakePage() {
             started_at: startedAt,
             submitted_at: submittedAt,
             time_spent_seconds: timeSpentSeconds,
+            // Send execution engine's result to backend
+            execution_engine_passed: sqlEnginePassed,
+            execution_engine_output: actualOutputText,
+            execution_engine_time: undefined, // SQL engine doesn't provide time
+            execution_engine_memory: undefined, // SQL engine doesn't provide memory
           })
           backendResponse = backendResult.data || backendResult
           console.log('[SQL Submit] Backend response:', backendResponse)
+          console.log('[SQL Submit] Sent execution engine result to backend:', {
+            passed: sqlEnginePassed,
+            test_case_count: sqlEnginePassed ? '1/1' : '0/1'
+          })
         } catch (backendError: any) {
           console.warn('Failed to save submission to backend:', backendError)
           // Continue with SQL engine result if backend fails
         }
         
-        // CRITICAL: ALWAYS use backend response for strict comparison
-        // Backend does exact output matching - its result is AUTHORITATIVE
-        // Ignore SQL engine's passed status - backend comparison is what matters
-        if (!backendResponse) {
-          console.error('[SQL Submit] Backend response missing - cannot determine pass/fail accurately')
-          // If backend fails, we cannot trust the SQL engine's result
-          // Default to failed to be safe
-          setOutput(prev => ({
-            ...prev,
-            [currentQuestion.id]: {
-              stderr: 'Error: Could not verify submission. Please try again.',
-              status: 'error'
+        // If backend response exists, use it for AI score and metadata
+        // But override the passed status with SQL engine's result
+        let finalResult: any
+        if (backendResponse) {
+          // Use backend response but override passed status with SQL engine's result
+          finalResult = {
+            ...backendResponse,
+            passed: sqlEnginePassed,  // Use SQL engine's result
+            status: sqlEnginePassed ? 'accepted' : 'wrong_answer',
+            message: sqlEnginePassed ? 'Query produces correct results!' : 'Query output does not match expected results',
+            public_summary: {
+              total: 1,
+              passed: sqlEnginePassed ? 1 : 0  // Use SQL engine's result
+            },
+            public_results: backendResponse.public_results ? backendResponse.public_results.map((r: any) => ({
+              ...r,
+              passed: sqlEnginePassed  // Override with SQL engine's result
+            })) : []
+          }
+          console.log('[SQL Submit] Using SQL engine result for pass/fail:', {
+            sqlEnginePassed,
+            backendPassed: backendResponse.passed,
+            finalPassed: finalResult.passed
+          })
+        } else {
+          // Fallback: use SQL engine result directly
+          console.warn('[SQL Submit] Backend response missing, using SQL engine result')
+          finalResult = {
+            passed: sqlEnginePassed,
+            status: sqlEnginePassed ? 'accepted' : 'wrong_answer',
+            message: sqlEnginePassed ? 'Query produces correct results!' : submitResult.reason || 'Query output does not match expected results',
+            user_output: actualOutputText,
+            expected_output: '',
+            time: null,
+            memory: null,
+            score: 0,
+            max_score: 100,
+            public_results: [{
+              id: 'sql_test_1',
+              test_number: 1,
+              input: '',
+              expected_output: '',
+              user_output: actualOutputText,
+              status: sqlEnginePassed ? 'accepted' : 'wrong_answer',
+              status_id: sqlEnginePassed ? 3 : 4,
+              time: null,
+              memory: null,
+              passed: sqlEnginePassed,
+            }],
+            public_summary: {
+              total: 1,
+              passed: sqlEnginePassed ? 1 : 0
             }
-          }))
-          setSubmitting(false)
-          return
+          }
         }
-        
-        const finalResult = backendResponse
         
         // IMPORTANT: Backend's passed status is based on strict output comparison
         // If backend says passed=false, then test case FAILED regardless of SQL engine result
@@ -2405,8 +2508,22 @@ export default function TestTakePage() {
           status: finalResult.status,
           message: finalResult.message,
           user_output_length: finalResult.user_output?.length,
-          expected_output_length: finalResult.expected_output?.length
+          expected_output_length: finalResult.expected_output?.length,
+          public_summary: finalResult.public_summary,
+          public_results: finalResult.public_results
         })
+        
+        // CRITICAL CHECK: Verify backend comparison result
+        if (finalResult.passed === true && finalResult.public_summary?.passed === 1) {
+          console.warn('[SQL Submit] ⚠️ Backend says PASSED - verify this is correct!')
+        } else if (finalResult.passed === false && finalResult.public_summary?.passed === 0) {
+          console.log('[SQL Submit] ✅ Backend correctly identified FAILURE')
+        } else {
+          console.error('[SQL Submit] ❌ MISMATCH: passed status inconsistent!', {
+            passed: finalResult.passed,
+            public_summary_passed: finalResult.public_summary?.passed
+          })
+        }
         
         // Update output with test case information (NO SCORE DISPLAY - score only in admin analytics)
         const testCaseInfo = finalResult.public_summary 
