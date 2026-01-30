@@ -826,89 +826,104 @@ async def create_question(
     Create a new question (requires authentication)
     Simplified for manual creation - only title and description are required.
     """
-    db = get_database()
-    question_dict = question.model_dump(exclude_none=True)
-    
-    # Set defaults for manual creation
-    if not question_dict.get("difficulty"):
-        question_dict["difficulty"] = "medium"
-    if not question_dict.get("library"):
-        question_dict["library"] = "numpy"
-    if not question_dict.get("languages"):
-        question_dict["languages"] = ["python3"]
-    if not question_dict.get("public_testcases"):
-        question_dict["public_testcases"] = []
-    if not question_dict.get("hidden_testcases"):
-        question_dict["hidden_testcases"] = []
-    if not question_dict.get("starter_code"):
-        question_dict["starter_code"] = {"python3": "import numpy as np\n# Your code here\n"}
-    if not question_dict.get("constraints"):
-        question_dict["constraints"] = []
-    if not question_dict.get("ai_generated"):
-        question_dict["ai_generated"] = False
-    if not question_dict.get("requires_dataset"):
-        question_dict["requires_dataset"] = False
-    if not question_dict.get("question_type"):
-        question_dict["question_type"] = "aiml_coding"
-    if not question_dict.get("execution_environment"):
-        question_dict["execution_environment"] = "jupyter_notebook"
-    
-    # Set default assessment_metadata if not provided
-    if not question_dict.get("assessment_metadata"):
-        question_dict["assessment_metadata"] = {
-            "skill": "Python",
-            "topic": None,
-            "libraries": [question_dict.get("library", "numpy")],
-            "selected_dataset_format": "csv"
-        }
-    
-    # Store the actual user ID who created the question
-    user_id = current_user.get("id") or current_user.get("_id")
-    if not user_id:
-        logger.error(f"[create_question] Invalid user ID in current_user: {list(current_user.keys())}")
-        raise HTTPException(status_code=400, detail="Invalid user ID")
-    user_id = str(user_id).strip()
-    question_dict["created_by"] = user_id
-    now = datetime.utcnow()
-    question_dict["created_at"] = now
-    question_dict["updated_at"] = now
-    question_dict["module_type"] = "aiml"  # Mark as AIML question to isolate from DSA
-    
-    logger.info(f"[create_question] Creating AIML question with created_by={user_id}, title={question_dict.get('title')}, library={question_dict.get('library')}")
-    
-    result = await db.questions.insert_one(question_dict)
-    
-    # Fetch the created question to return it
-    created_question = await db.questions.find_one({"_id": result.inserted_id})
-    if created_question:
-        question_dict = {
-            "id": str(created_question["_id"]),
-            "title": created_question.get("title", ""),
-            "description": created_question.get("description", ""),
-            "difficulty": created_question.get("difficulty", ""),
-            "languages": created_question.get("languages", []),
-            "starter_code": created_question.get("starter_code", {}),
-            "public_testcases": created_question.get("public_testcases", []),
-            "hidden_testcases": created_question.get("hidden_testcases", []),
-            "is_published": created_question.get("is_published", False),
-            "library": created_question.get("library", "numpy"),
-            "requires_dataset": created_question.get("requires_dataset", False),
-            "ai_generated": created_question.get("ai_generated", False),
-            "dataset_path": created_question.get("dataset_path"),
-        }
-        if "function_signature" in created_question and created_question.get("function_signature"):
-            question_dict["function_signature"] = created_question["function_signature"]
-        if "created_at" in created_question:
-            question_dict["created_at"] = created_question["created_at"].isoformat() if isinstance(created_question.get("created_at"), datetime) else created_question.get("created_at")
-        if "updated_at" in created_question:
-            question_dict["updated_at"] = created_question["updated_at"].isoformat() if isinstance(created_question.get("updated_at"), datetime) else created_question.get("updated_at")
+    try:
+        db = get_database()
+        question_dict = question.model_dump(exclude_none=True)
+        
+        logger.info(f"[create_question] Received question data: {list(question_dict.keys())}")
+        
+        # Set defaults for manual creation
+        if not question_dict.get("difficulty"):
+            question_dict["difficulty"] = "medium"
+        if not question_dict.get("library"):
+            question_dict["library"] = "numpy"
+        if not question_dict.get("languages"):
+            question_dict["languages"] = ["python3"]
+        if not question_dict.get("public_testcases"):
+            question_dict["public_testcases"] = []
+        if not question_dict.get("hidden_testcases"):
+            question_dict["hidden_testcases"] = []
+        if not question_dict.get("starter_code"):
+            question_dict["starter_code"] = {"python3": "import numpy as np\n# Your code here\n"}
+        if not question_dict.get("constraints"):
+            question_dict["constraints"] = []
+        if not question_dict.get("ai_generated"):
+            question_dict["ai_generated"] = False
+        if not question_dict.get("requires_dataset"):
+            question_dict["requires_dataset"] = False
+        if not question_dict.get("question_type"):
+            question_dict["question_type"] = "aiml_coding"
+        if not question_dict.get("execution_environment"):
+            question_dict["execution_environment"] = "jupyter_notebook"
+        
+        # Set default assessment_metadata if not provided
+        if not question_dict.get("assessment_metadata"):
+            question_dict["assessment_metadata"] = {
+                "skill": "Python",
+                "topic": None,
+                "libraries": [question_dict.get("library", "numpy")],
+                "selected_dataset_format": "csv"
+            }
+        
+        # Store the actual user ID who created the question
+        user_id = current_user.get("id") or current_user.get("_id")
+        if not user_id:
+            logger.error(f"[create_question] Invalid user ID in current_user: {list(current_user.keys())}")
+            raise HTTPException(status_code=400, detail="Invalid user ID")
+        user_id = str(user_id).strip()
+        question_dict["created_by"] = user_id
+        now = datetime.utcnow()
+        question_dict["created_at"] = now
+        question_dict["updated_at"] = now
+        question_dict["module_type"] = "aiml"  # Mark as AIML question to isolate from DSA
+        
+        logger.info(f"[create_question] Creating AIML question with created_by={user_id}, title={question_dict.get('title')}, library={question_dict.get('library')}")
+        
+        result = await db.questions.insert_one(question_dict)
+        logger.info(f"[create_question] Question inserted with ID: {result.inserted_id}")
+        
+        # Fetch the created question to return it
+        created_question = await db.questions.find_one({"_id": result.inserted_id})
+        if created_question:
+            question_dict = {
+                "id": str(created_question["_id"]),
+                "title": created_question.get("title", ""),
+                "description": created_question.get("description", ""),
+                "difficulty": created_question.get("difficulty", ""),
+                "languages": created_question.get("languages", []),
+                "starter_code": created_question.get("starter_code", {}),
+                "public_testcases": created_question.get("public_testcases", []),
+                "hidden_testcases": created_question.get("hidden_testcases", []),
+                "is_published": created_question.get("is_published", False),
+                "library": created_question.get("library", "numpy"),
+                "requires_dataset": created_question.get("requires_dataset", False),
+                "ai_generated": created_question.get("ai_generated", False),
+                "dataset_path": created_question.get("dataset_path"),
+            }
+            if "function_signature" in created_question and created_question.get("function_signature"):
+                question_dict["function_signature"] = created_question["function_signature"]
+            if "created_at" in created_question:
+                question_dict["created_at"] = created_question["created_at"].isoformat() if isinstance(created_question.get("created_at"), datetime) else created_question.get("created_at")
+            if "updated_at" in created_question:
+                question_dict["updated_at"] = created_question["updated_at"].isoformat() if isinstance(created_question.get("updated_at"), datetime) else created_question.get("updated_at")
+            logger.info(f"[create_question] Successfully created question: {question_dict.get('id')}")
+            return question_dict
+        
+        # Fallback if fetch fails
+        question_dict["id"] = str(result.inserted_id)
+        if "created_at" in question_dict and isinstance(question_dict.get("created_at"), datetime):
+            question_dict["created_at"] = question_dict["created_at"].isoformat()
+        logger.info(f"[create_question] Returning fallback response for question: {question_dict.get('id')}")
         return question_dict
-    
-    # Fallback if fetch fails
-    question_dict["id"] = str(result.inserted_id)
-    if "created_at" in question_dict and isinstance(question_dict.get("created_at"), datetime):
-        question_dict["created_at"] = question_dict["created_at"].isoformat()
-    return question_dict
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[create_question] Error creating question: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to create question: {str(e)}"
+        )
 
 @router.post("/suggest-topics", response_model=dict)
 async def suggest_topics(
