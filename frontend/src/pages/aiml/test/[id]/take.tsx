@@ -539,8 +539,9 @@ export default function AIMLTestTakePage() {
           { headers: { Authorization: `Bearer ${token}` } }
         )
         
-        const testData = response.data
-        const accessControl = testData.accessControl
+        // Service already extracts response.data, so response IS the data
+        const testData = response?.data || response
+        const accessControl = testData?.accessControl
         
         if (accessControl?.timeRemaining !== null && accessControl?.timeRemaining !== undefined) {
           // Sync with server-calculated time
@@ -572,7 +573,8 @@ export default function AIMLTestTakePage() {
           const { aimlService } = await import('@/services/aiml')
           const response = await aimlService.getTestForCandidate(String(testId), userId, token)
           
-          const testData = response.data
+          // Service already extracts response.data, so response IS the data
+          const testData = response?.data || response
           setTest(testData)
           
           // Update state based on new accessControl
@@ -626,14 +628,16 @@ export default function AIMLTestTakePage() {
         responseKeys: response ? Object.keys(response) : [],
         hasData: !!(response?.data),
         hasQuestions: !!(response?.data?.questions),
-        questionsCount: response?.data?.questions?.length || 0,
+        questionsCount: (response?.data?.questions)?.length || 0,
       })
       
-      // AIML service's getTestForCandidate returns ApiResponse, extract data from response.data
-      const testData = response?.data
+      // AIML service's getTestForCandidate already extracts response.data from axios
+      // So response IS the data object (not wrapped in ApiResponse)
+      // Handle both cases: direct data or wrapped in data property
+      const testData = response?.data || response
       if (!testData) {
         console.error('[AIML Take] ❌ testData is undefined!', { response })
-        throw new Error('Failed to load test data: response.data is undefined')
+        throw new Error('Failed to load test data: response is undefined')
       }
       
       if (!testData.questions) {
@@ -1203,19 +1207,40 @@ export default function AIMLTestTakePage() {
               )
             )}
             
-            {examStarted && (
-              <button
-                onClick={() => {
-                  if (confirm('Are you sure you want to submit the test? This action cannot be undone.')) {
-                    handleSubmitTest()
-                  }
-                }}
-                disabled={submitting}
-                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-medium transition-colors disabled:opacity-50 shadow-md hover:shadow-lg"
-              >
-                {submitting ? 'Submitting...' : 'Submit Test'}
-              </button>
-            )}
+            {examStarted && (() => {
+              // Check if all questions have been submitted
+              const allQuestionsCompleted = questions.length > 0 && 
+                questions.every(q => completedQuestions.has(q.id) || expiredQuestions.has(q.id))
+              const incompleteQuestions = questions.filter(q => 
+                !completedQuestions.has(q.id) && !expiredQuestions.has(q.id)
+              )
+              
+              return (
+                <div className="flex flex-col items-end gap-2">
+                  {!allQuestionsCompleted && incompleteQuestions.length > 0 && (
+                    <div className="text-xs text-amber-600 bg-amber-50 px-3 py-1 rounded-lg border border-amber-200">
+                      ⚠️ Please submit all {incompleteQuestions.length} question{incompleteQuestions.length > 1 ? 's' : ''} before submitting the test
+                    </div>
+                  )}
+                  <button
+                    onClick={() => {
+                      if (allQuestionsCompleted) {
+                        if (confirm('Are you sure you want to submit the test? This action cannot be undone.')) {
+                          handleSubmitTest()
+                        }
+                      } else {
+                        alert(`Please submit all questions before submitting the test.\n\nRemaining: ${incompleteQuestions.length} question${incompleteQuestions.length > 1 ? 's' : ''}`)
+                      }
+                    }}
+                    disabled={submitting || !allQuestionsCompleted}
+                    className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-md hover:shadow-lg"
+                    title={!allQuestionsCompleted ? `Submit all ${incompleteQuestions.length} remaining question${incompleteQuestions.length > 1 ? 's' : ''} first` : ''}
+                  >
+                    {submitting ? 'Submitting...' : 'Submit Test'}
+                  </button>
+                </div>
+              )
+            })()}
           </div>
         </div>
         

@@ -99,25 +99,21 @@ async function verifyToken(req, res, next) {
     /^\/api\/v1\/dsa\/tests\/[^/]+\/verify-candidate$/,
     /^\/api\/v1\/dsa\/tests\/[^/]+\/start$/,
     /^\/api\/v1\/dsa\/tests\/[^/]+\/public$/,
-<<<<<<< HEAD
-=======
     /^\/api\/v1\/dsa\/tests\/[^/]+\/submission$/,
     /^\/api\/v1\/dsa\/tests\/[^/]+\/question\/[^/]+$/,
     /^\/api\/v1\/dsa\/tests\/[^/]+\/final-submit$/,
->>>>>>> dev
     /^\/api\/v1\/dsa\/tests\/[^/]+\/full$/,
     /^\/api\/v1\/aiml\/tests\/[^/]+\/verify-link$/,
     /^\/api\/v1\/aiml\/tests\/[^/]+\/verify-candidate$/,
     /^\/api\/v1\/aiml\/tests\/[^/]+\/start$/,
     /^\/api\/v1\/aiml\/tests\/[^/]+\/public$/,
     /^\/api\/v1\/aiml\/tests\/[^/]+\/full$/,
-<<<<<<< HEAD
+    // AIML dataset download endpoint for candidates
+    /^\/api\/v1\/aiml\/questions\/[^/]+\/dataset-download$/,
     // Proctoring endpoints - candidates need to record violations without auth
     /^\/api\/v1\/proctor\/record$/,
     /^\/api\/v1\/proctor\/upload$/,
     /^\/api\/v1\/proctor\/start-session$/,
-=======
->>>>>>> dev
   ];
   
   // Check if path matches candidate public patterns

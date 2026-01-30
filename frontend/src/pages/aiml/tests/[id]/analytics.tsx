@@ -271,7 +271,13 @@ export default function AnalyticsPage() {
       setTestInfo(testInfoData)
       // Load email template if exists, otherwise use default
       if (testInfoData?.invitationTemplate) {
-        setEmailTemplate(testInfoData.invitationTemplate)
+        setEmailTemplate({
+          logoUrl: testInfoData.invitationTemplate.logoUrl || "",
+          companyName: testInfoData.invitationTemplate.companyName || "",
+          message: testInfoData.invitationTemplate.message || "You have been invited to take an AIML test. Please click the link below to start.",
+          footer: testInfoData.invitationTemplate.footer || "",
+          sentBy: testInfoData.invitationTemplate.sentBy || "AI Assessment Platform"
+        })
       } else {
         // Use default template
         setEmailTemplate({
@@ -1893,7 +1899,7 @@ export default function AnalyticsPage() {
                 </label>
                 <input
                   type="text"
-                  value={emailTemplate.companyName}
+                  value={emailTemplate.companyName || ""}
                   onChange={(e) => setEmailTemplate({ ...emailTemplate, companyName: e.target.value })}
                   placeholder="Your Company Name"
                   style={{
@@ -1912,7 +1918,7 @@ export default function AnalyticsPage() {
                   Message <span style={{ color: "#ef4444" }}>*</span>
                 </label>
                 <textarea
-                  value={emailTemplate.message}
+                  value={emailTemplate.message || ""}
                   onChange={(e) => setEmailTemplate({ ...emailTemplate, message: e.target.value })}
                   placeholder="You have been invited to take an AIML test. Please click the link below to start."
                   rows={6}
@@ -1936,7 +1942,7 @@ export default function AnalyticsPage() {
                   Footer (optional)
                 </label>
                 <textarea
-                  value={emailTemplate.footer}
+                  value={emailTemplate.footer || ""}
                   onChange={(e) => setEmailTemplate({ ...emailTemplate, footer: e.target.value })}
                   placeholder="Additional footer text"
                   rows={3}
@@ -1958,7 +1964,7 @@ export default function AnalyticsPage() {
                 </label>
                 <input
                   type="text"
-                  value={emailTemplate.sentBy}
+                  value={emailTemplate.sentBy || ""}
                   onChange={(e) => setEmailTemplate({ ...emailTemplate, sentBy: e.target.value })}
                   placeholder="AI Assessment Platform"
                   style={{
@@ -1992,7 +1998,7 @@ export default function AnalyticsPage() {
                   type="button"
                   className="btn-primary"
                   onClick={handleSaveEmailTemplate}
-                  disabled={savingTemplate || !emailTemplate.message.trim()}
+                  disabled={savingTemplate || !emailTemplate.message?.trim()}
                   style={{ marginTop: 0 }}
                 >
                   {savingTemplate ? "Saving..." : "Save Template"}

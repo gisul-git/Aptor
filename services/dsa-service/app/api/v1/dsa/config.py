@@ -34,18 +34,13 @@ class DSASettings(BaseSettings):
     # OpenAI Configuration (can also use OPENAI_API_KEY from main config)
     openai_api_key: str = ""
     
-    # SQL Execution Engine (seeded database for SQL questions)
-    # This should point to the SQL engine base URL (including /api prefix),
-    # e.g. SQL_ENGINE_URL=http://localhost:3000/api
-    sql_engine_url: str = "http://localhost:3000/api"
+   
+    sql_engine_url: str = ""
     
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
         extra="ignore",
-        # Pydantic Settings automatically converts field names to uppercase for env vars
-        # mongo_uri -> MONGO_URI, mongo_db -> MONGO_DB
-        # judge0_url -> JUDGE0_URL, judge0_timeout -> JUDGE0_TIMEOUT, etc.
         case_sensitive=False
     )
 
@@ -56,7 +51,14 @@ def get_dsa_settings() -> DSASettings:
     return DSASettings()
 
 
+def clear_settings_cache():
+    """Clear the settings cache - useful when .env file is updated"""
+    get_dsa_settings.cache_clear()
+
+
 # For backward compatibility, expose as module-level variables
+# Note: These are set at module import time. To refresh after .env changes, 
+# restart the service or call clear_settings_cache() and re-import
 _settings = get_dsa_settings()
 JUDGE0_URL = _settings.judge0_url
 JUDGE0_TIMEOUT = _settings.judge0_timeout

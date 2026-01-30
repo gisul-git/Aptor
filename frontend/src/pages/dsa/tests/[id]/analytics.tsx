@@ -13,6 +13,8 @@ import ProctorLogsReview from '../../../../components/admin/ProctorLogsReview'
 import { LiveProctoringDashboard } from '../../../../components/proctor'
 import { useDSATest, useDSACandidates, useDSACandidateAnalytics, useAddDSACandidate, useRemoveDSACandidate, useSendDSAInvitation, useSendDSAInvitationsToAll, useDSACandidateResume, useSendDSAFeedback, useBulkAddDSACandidates, useUpdateDSATest, type CandidateAnalytics, type QuestionAnalytics } from '@/hooks/api/useDSA'
 import { useEmployees, type Employee } from '@/hooks/api/useEmployees'
+import { isSQLQuestion } from '@/hooks/api/useSQL'
+import SQLAnalyticsView from '@/components/dsa/analytics/SQLAnalyticsView'
 
 interface AIFeedback {
   overall_score?: number
@@ -108,7 +110,8 @@ export default function AnalyticsPage() {
   const [addingCandidate, setAddingCandidate] = useState(false)
   const [testInfo, setTestInfo] = useState<any>(null)
   const [employeeSearch, setEmployeeSearch] = useState("")
-  const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null)
+  const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null) 
+  const [selectedEmployees, setSelectedEmployees] = useState<Employee[]>([]) // Multi-select support
 
   // Org-admin employees list, filtered by search (scoped by org on backend)
   const { data: employeesData, isLoading: employeesLoading } = useEmployees({
@@ -445,34 +448,50 @@ export default function AnalyticsPage() {
   const handleAddCandidate = async () => {
     if (!testId || typeof testId !== 'string') return
     
-    // Require an employee selection to ensure candidate belongs to this org
-    if (!selectedEmployee) {
-      setEmailError("Please select an employee from your organization.")
-      return
-    }
+    // Support both single and multi-select
+    const employeesToAdd = selectedEmployees.length > 0 ? selectedEmployees : (selectedEmployee ? [selectedEmployee] : [])
     
-    const candidateName = selectedEmployee.name?.trim()
-    const candidateEmail = selectedEmployee.email?.trim()
-    const candidateAaptorId = selectedEmployee.aaptorId
-
-    if (!candidateEmail) {
-      setEmailError("Selected employee has no email configured.")
+    if (employeesToAdd.length === 0) {
+      setEmailError("Please select at least one employee from your organization.")
       return
     }
     
     setEmailError(null)
-    
     setAddingCandidate(true)
     
     try {
-      await addCandidateMutation.mutateAsync({
-        testId,
-        data: {
-          name: candidateName || selectedEmployee.email,
-          email: candidateEmail,
-          aaptorId: candidateAaptorId,
+      let successCount = 0
+      let errorCount = 0
+      const errors: string[] = []
+      
+      // Add all selected employees
+      for (const emp of employeesToAdd) {
+        const candidateName = emp.name?.trim()
+        const candidateEmail = emp.email?.trim()
+        const candidateAaptorId = emp.aaptorId
+
+        if (!candidateEmail) {
+          errors.push(`${emp.name || emp.email}: No email configured`)
+          errorCount++
+          continue
         }
-      })
+        
+        try {
+          await addCandidateMutation.mutateAsync({
+            testId,
+            data: {
+              name: candidateName || emp.email,
+              email: candidateEmail,
+              aaptorId: candidateAaptorId,
+            }
+          })
+          successCount++
+        } catch (err: any) {
+          const errorMsg = err.response?.data?.detail || err.response?.data?.message || err.message || "Failed to add candidate"
+          errors.push(`${emp.name || emp.email}: ${errorMsg}`)
+          errorCount++
+        }
+      }
       
       // Refresh candidates list
       await refetchCandidates()
@@ -482,14 +501,42 @@ export default function AnalyticsPage() {
       setNewCandidateName("")
       setNewCandidateEmail("")
       setSelectedEmployee(null)
+      setSelectedEmployees([])
       setEmployeeSearch("")
       setEmailError(null)
-      alert("Candidate added successfully!")
+      
+      // Show results
+      if (errorCount === 0) {
+        alert(`Successfully added ${successCount} candidate(s)!`)
+      } else {
+        alert(
+          `Added ${successCount} candidate(s) successfully.\n` +
+          `Failed to add ${errorCount} candidate(s):\n${errors.join('\n')}`
+        )
+      }
     } catch (err: any) {
-      setEmailError(err.response?.data?.detail || err.response?.data?.message || err.message || "Failed to add candidate")
+      setEmailError(err.response?.data?.detail || err.response?.data?.message || err.message || "Failed to add candidates")
     } finally {
       setAddingCandidate(false)
     }
+  }
+  
+  const handleEmployeeToggle = (emp: Employee) => {
+    setSelectedEmployees(prev => {
+      const isSelected = prev.some(e => e.aaptorId === emp.aaptorId)
+      if (isSelected) {
+        // Remove from selection
+        return prev.filter(e => e.aaptorId !== emp.aaptorId)
+      } else {
+        // Add to selection
+        return [...prev, emp]
+      }
+    })
+    // Also update single select for backward compatibility
+    setSelectedEmployee(emp)
+    setNewCandidateName(emp.name || "")
+    setNewCandidateEmail(emp.email || "")
+    setEmailError(null)
   }
 
   const handleResendInvitation = async (email: string) => {
@@ -1685,7 +1732,30 @@ export default function AnalyticsPage() {
                 </div>
 
                 {/* Question Analytics */}
-                {analytics.question_analytics.map((qa, index) => (
+                {analytics.question_analytics.map((qa, index) => {
+                  // Check if this is a SQL question
+                  const isSQL = isSQLQuestion(qa.language);
+                  
+                  // Use SQL-specific component for SQL questions
+                  if (isSQL) {
+                    return (
+                      <SQLAnalyticsView
+                        key={qa.question_id}
+                        questionTitle={`Question ${index + 1}: ${qa.question_title}`}
+                        status={qa.status || ''}
+                        passedTestcases={qa.passed_testcases}
+                        totalTestcases={qa.total_testcases}
+                        code={qa.code || ''}
+                        aiFeedback={qa.ai_feedback}
+                        testResults={qa.test_results}
+                        executionTime={qa.execution_time}
+                        memoryUsed={qa.memory_used}
+                      />
+                    )
+                  }
+                  
+                  // Non-SQL questions use the full analytics view
+                  return (
                   <div key={qa.question_id} style={{
                     border: "1px solid #e2e8f0",
                     borderRadius: "0.75rem",
@@ -1737,108 +1807,146 @@ export default function AnalyticsPage() {
                           </div>
                           
                         <div style={{ padding: "1rem", display: "flex", flexDirection: "column", gap: "1rem" }}>
-                            {/* Test Case Breakdown */}
-                            {qa.ai_feedback.test_breakdown && (
-                            <div style={{ backgroundColor: "#1e293b", borderRadius: "0.5rem", padding: "0.75rem", border: "1px solid #3b82f6" }}>
-                              <h4 style={{ fontSize: "0.75rem", fontWeight: 600, color: "#cbd5e1", marginBottom: "0.5rem", display: "flex", alignItems: "center", gap: "0.5rem" }}>
-                                <CheckCircle2 style={{ width: "12px", height: "12px" }} />
-                                  Test Case Results
-                                </h4>
-                              <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "0.75rem", fontSize: "0.875rem" }}>
-                                <div style={{ backgroundColor: "#0f172a", borderRadius: "0.375rem", padding: "0.5rem" }}>
-                                  <div style={{ fontSize: "0.75rem", color: "#94a3b8", marginBottom: "0.25rem" }}>Public Test Cases</div>
-                                  <div style={{ fontSize: "1.125rem", fontWeight: 600, color: "#60a5fa" }}>
-                                      {qa.ai_feedback.test_breakdown?.public_passed ?? 0}/{qa.ai_feedback.test_breakdown?.public_total ?? 0}
-                                    </div>
-                                  </div>
-                                <div style={{ backgroundColor: "#0f172a", borderRadius: "0.375rem", padding: "0.5rem" }}>
-                                  <div style={{ fontSize: "0.75rem", color: "#94a3b8", marginBottom: "0.25rem" }}>Hidden Test Cases</div>
-                                  <div style={{ fontSize: "1.125rem", fontWeight: 600, color: "#a78bfa" }}>
-                                      {qa.ai_feedback.test_breakdown?.hidden_passed ?? 0}/{qa.ai_feedback.test_breakdown?.hidden_total ?? 0}
-                                    </div>
-                                  </div>
-                                <div style={{ gridColumn: "span 2", backgroundColor: "#0f172a", borderRadius: "0.375rem", padding: "0.5rem" }}>
-                                  <div style={{ fontSize: "0.75rem", color: "#94a3b8", marginBottom: "0.25rem" }}>Total</div>
-                                  <div style={{ fontSize: "1.125rem", fontWeight: 600, color: "#34d399" }}>
-                                      {(qa.ai_feedback.test_breakdown?.public_passed ?? 0) + (qa.ai_feedback.test_breakdown?.hidden_passed ?? 0)}/
-                                      {(qa.ai_feedback.test_breakdown?.public_total ?? 0) + (qa.ai_feedback.test_breakdown?.hidden_total ?? 0)}
+                            {/* Test Case Breakdown - Simplified for SQL */}
+                            {isSQL ? (
+                              // SQL: Show only single test case result
+                              qa.ai_feedback.test_breakdown && (
+                                <div style={{ backgroundColor: "#1e293b", borderRadius: "0.5rem", padding: "0.75rem", border: "1px solid #3b82f6" }}>
+                                  <h4 style={{ fontSize: "0.75rem", fontWeight: 600, color: "#cbd5e1", marginBottom: "0.5rem", display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                                    <CheckCircle2 style={{ width: "12px", height: "12px" }} />
+                                    Test Case Results
+                                  </h4>
+                                  <div style={{ backgroundColor: "#0f172a", borderRadius: "0.375rem", padding: "0.5rem" }}>
+                                    <div style={{ fontSize: "0.75rem", color: "#94a3b8", marginBottom: "0.25rem" }}>Test Cases</div>
+                                    <div style={{ fontSize: "1.125rem", fontWeight: 600, color: "#60a5fa" }}>
+                                      {qa.passed_testcases} / {qa.total_testcases} passed
                                     </div>
                                   </div>
                                 </div>
-                              </div>
+                              )
+                            ) : (
+                              // Non-SQL: Show full breakdown with public/hidden
+                              qa.ai_feedback.test_breakdown && (
+                                <div style={{ backgroundColor: "#1e293b", borderRadius: "0.5rem", padding: "0.75rem", border: "1px solid #3b82f6" }}>
+                                  <h4 style={{ fontSize: "0.75rem", fontWeight: 600, color: "#cbd5e1", marginBottom: "0.5rem", display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                                    <CheckCircle2 style={{ width: "12px", height: "12px" }} />
+                                    Test Case Results
+                                  </h4>
+                                  <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "0.75rem", fontSize: "0.875rem" }}>
+                                    <div style={{ backgroundColor: "#0f172a", borderRadius: "0.375rem", padding: "0.5rem" }}>
+                                      <div style={{ fontSize: "0.75rem", color: "#94a3b8", marginBottom: "0.25rem" }}>Public Test Cases</div>
+                                      <div style={{ fontSize: "1.125rem", fontWeight: 600, color: "#60a5fa" }}>
+                                        {qa.ai_feedback.test_breakdown?.public_passed ?? 0}/{qa.ai_feedback.test_breakdown?.public_total ?? 0}
+                                      </div>
+                                    </div>
+                                    <div style={{ backgroundColor: "#0f172a", borderRadius: "0.375rem", padding: "0.5rem" }}>
+                                      <div style={{ fontSize: "0.75rem", color: "#94a3b8", marginBottom: "0.25rem" }}>Hidden Test Cases</div>
+                                      <div style={{ fontSize: "1.125rem", fontWeight: 600, color: "#a78bfa" }}>
+                                        {qa.ai_feedback.test_breakdown?.hidden_passed ?? 0}/{qa.ai_feedback.test_breakdown?.hidden_total ?? 0}
+                                      </div>
+                                    </div>
+                                    <div style={{ gridColumn: "span 2", backgroundColor: "#0f172a", borderRadius: "0.375rem", padding: "0.5rem" }}>
+                                      <div style={{ fontSize: "0.75rem", color: "#94a3b8", marginBottom: "0.25rem" }}>Total</div>
+                                      <div style={{ fontSize: "1.125rem", fontWeight: 600, color: "#34d399" }}>
+                                        {(qa.ai_feedback.test_breakdown?.public_passed ?? 0) + (qa.ai_feedback.test_breakdown?.hidden_passed ?? 0)}/
+                                        {(qa.ai_feedback.test_breakdown?.public_total ?? 0) + (qa.ai_feedback.test_breakdown?.hidden_total ?? 0)}
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+                              )
                             )}
 
-                            {/* Complexity */}
-                            {qa.ai_feedback.efficiency && (
+                            {/* Complexity - Hide for SQL */}
+                            {!isSQL && qa.ai_feedback.efficiency && (
                             <div style={{ backgroundColor: "#1e293b", borderRadius: "0.5rem", padding: "0.75rem" }}>
                               <h4 style={{ fontSize: "0.75rem", fontWeight: 600, color: "#cbd5e1", marginBottom: "0.5rem", display: "flex", alignItems: "center", gap: "0.5rem" }}>
                                 <TrendingUp style={{ width: "12px", height: "12px" }} />
-                                  Complexity
-                                </h4>
+                                Complexity
+                              </h4>
                               <div style={{ display: "flex", alignItems: "center", gap: "1rem", fontSize: "0.875rem" }}>
-                                  <div>
+                                <div>
                                   <span style={{ color: "#94a3b8" }}>Time: </span>
                                   <span style={{ fontWeight: 600, color: "#60a5fa" }}>
-                                      {qa.ai_feedback.efficiency.time_complexity || 'N/A'}
-                                    </span>
-                                  </div>
-                                  <div>
+                                    {qa.ai_feedback.efficiency.time_complexity || 'N/A'}
+                                  </span>
+                                </div>
+                                <div>
                                   <span style={{ color: "#94a3b8" }}>Space: </span>
                                   <span style={{ fontWeight: 600, color: "#a78bfa" }}>
-                                      {qa.ai_feedback.efficiency.space_complexity || 'N/A'}
-                                    </span>
-                                  </div>
+                                    {qa.ai_feedback.efficiency.space_complexity || 'N/A'}
+                                  </span>
                                 </div>
                               </div>
+                            </div>
                             )}
 
-                            {/* AI Feedback Summary */}
-                            {qa.ai_feedback.feedback_summary && (
-                            <div style={{ backgroundColor: "#1e293b", borderRadius: "0.5rem", padding: "0.75rem" }}>
-                              <h4 style={{ fontSize: "0.75rem", fontWeight: 600, color: "#cbd5e1", marginBottom: "0.5rem", display: "flex", alignItems: "center", gap: "0.5rem" }}>
-                                <Lightbulb style={{ width: "12px", height: "12px" }} />
-                                  AI Feedback
-                                </h4>
-                              <p style={{ fontSize: "0.875rem", color: "#cbd5e1", lineHeight: "1.6" }}>
-                                  {qa.ai_feedback.feedback_summary}
-                                </p>
-                              </div>
-                            )}
+                            {/* AI Feedback - Simplified for SQL, Full for others */}
+                            {isSQL ? (
+                              // SQL: Show only feedback summary
+                              qa.ai_feedback.feedback_summary && (
+                                <div style={{ backgroundColor: "#1e293b", borderRadius: "0.5rem", padding: "0.75rem" }}>
+                                  <h4 style={{ fontSize: "0.75rem", fontWeight: 600, color: "#cbd5e1", marginBottom: "0.5rem", display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                                    <Lightbulb style={{ width: "12px", height: "12px" }} />
+                                    AI Feedback
+                                  </h4>
+                                  <p style={{ fontSize: "0.875rem", color: "#cbd5e1", lineHeight: "1.6" }}>
+                                    {qa.ai_feedback.feedback_summary}
+                                  </p>
+                                </div>
+                              )
+                            ) : (
+                              // Non-SQL: Show all feedback sections
+                              <>
+                                {/* AI Feedback Summary */}
+                                {qa.ai_feedback.feedback_summary && (
+                                  <div style={{ backgroundColor: "#1e293b", borderRadius: "0.5rem", padding: "0.75rem" }}>
+                                    <h4 style={{ fontSize: "0.75rem", fontWeight: 600, color: "#cbd5e1", marginBottom: "0.5rem", display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                                      <Lightbulb style={{ width: "12px", height: "12px" }} />
+                                      AI Feedback
+                                    </h4>
+                                    <p style={{ fontSize: "0.875rem", color: "#cbd5e1", lineHeight: "1.6" }}>
+                                      {qa.ai_feedback.feedback_summary}
+                                    </p>
+                                  </div>
+                                )}
 
-                            {/* Code Quality */}
-                            {qa.ai_feedback.code_quality && qa.ai_feedback.code_quality.comments && (
-                            <div style={{ backgroundColor: "#1e293b", borderRadius: "0.5rem", padding: "0.75rem" }}>
-                              <h4 style={{ fontSize: "0.75rem", fontWeight: 600, color: "#cbd5e1", marginBottom: "0.5rem" }}>
-                                Code Quality {qa.ai_feedback.code_quality.score !== undefined && `(${qa.ai_feedback.code_quality.score}/100)`}
-                              </h4>
-                              <p style={{ fontSize: "0.875rem", color: "#cbd5e1", lineHeight: "1.6" }}>
-                                  {qa.ai_feedback.code_quality.comments}
-                                </p>
-                              </div>
-                            )}
+                                {/* Code Quality */}
+                                {qa.ai_feedback.code_quality && qa.ai_feedback.code_quality.comments && (
+                                  <div style={{ backgroundColor: "#1e293b", borderRadius: "0.5rem", padding: "0.75rem" }}>
+                                    <h4 style={{ fontSize: "0.75rem", fontWeight: 600, color: "#cbd5e1", marginBottom: "0.5rem" }}>
+                                      Code Quality {qa.ai_feedback.code_quality.score !== undefined && `(${qa.ai_feedback.code_quality.score}/100)`}
+                                    </h4>
+                                    <p style={{ fontSize: "0.875rem", color: "#cbd5e1", lineHeight: "1.6" }}>
+                                      {qa.ai_feedback.code_quality.comments}
+                                    </p>
+                                  </div>
+                                )}
 
-                            {/* Efficiency Comments */}
-                            {qa.ai_feedback.efficiency && qa.ai_feedback.efficiency.comments && (
-                            <div style={{ backgroundColor: "#1e293b", borderRadius: "0.5rem", padding: "0.75rem" }}>
-                              <h4 style={{ fontSize: "0.75rem", fontWeight: 600, color: "#cbd5e1", marginBottom: "0.5rem" }}>
-                                Efficiency Analysis
-                              </h4>
-                              <p style={{ fontSize: "0.875rem", color: "#cbd5e1", lineHeight: "1.6" }}>
-                                  {qa.ai_feedback.efficiency.comments}
-                                </p>
-                              </div>
-                            )}
+                                {/* Efficiency Comments */}
+                                {qa.ai_feedback.efficiency && qa.ai_feedback.efficiency.comments && (
+                                  <div style={{ backgroundColor: "#1e293b", borderRadius: "0.5rem", padding: "0.75rem" }}>
+                                    <h4 style={{ fontSize: "0.75rem", fontWeight: 600, color: "#cbd5e1", marginBottom: "0.5rem" }}>
+                                      Efficiency Analysis
+                                    </h4>
+                                    <p style={{ fontSize: "0.875rem", color: "#cbd5e1", lineHeight: "1.6" }}>
+                                      {qa.ai_feedback.efficiency.comments}
+                                    </p>
+                                  </div>
+                                )}
 
-                            {/* Correctness Comments */}
-                            {qa.ai_feedback.correctness && qa.ai_feedback.correctness.comments && (
-                            <div style={{ backgroundColor: "#1e293b", borderRadius: "0.5rem", padding: "0.75rem" }}>
-                              <h4 style={{ fontSize: "0.75rem", fontWeight: 600, color: "#cbd5e1", marginBottom: "0.5rem" }}>
-                                Correctness {qa.ai_feedback.correctness.score !== undefined && `(${qa.ai_feedback.correctness.score}/100)`}
-                              </h4>
-                              <p style={{ fontSize: "0.875rem", color: "#cbd5e1", lineHeight: "1.6" }}>
-                                  {qa.ai_feedback.correctness.comments}
-                                </p>
-                              </div>
+                                {/* Correctness Comments */}
+                                {qa.ai_feedback.correctness && qa.ai_feedback.correctness.comments && (
+                                  <div style={{ backgroundColor: "#1e293b", borderRadius: "0.5rem", padding: "0.75rem" }}>
+                                    <h4 style={{ fontSize: "0.75rem", fontWeight: 600, color: "#cbd5e1", marginBottom: "0.5rem" }}>
+                                      Correctness {qa.ai_feedback.correctness.score !== undefined && `(${qa.ai_feedback.correctness.score}/100)`}
+                                    </h4>
+                                    <p style={{ fontSize: "0.875rem", color: "#cbd5e1", lineHeight: "1.6" }}>
+                                      {qa.ai_feedback.correctness.comments}
+                                    </p>
+                                  </div>
+                                )}
+                              </>
                             )}
 
                             {/* Strengths */}
@@ -1922,14 +2030,15 @@ export default function AnalyticsPage() {
                       {/* Code Display */}
                     <details style={{ marginTop: "1rem" }}>
                       <summary style={{ cursor: "pointer", fontSize: "0.875rem", fontWeight: 500, color: "#64748b" }}>
-                          View Code
+                          View {isSQL ? 'Query' : 'Code'}
                         </summary>
                       <pre style={{ marginTop: "0.5rem", padding: "1rem", backgroundColor: "#1e293b", borderRadius: "0.5rem", overflowX: "auto", fontSize: "0.75rem", color: "#e2e8f0" }}>
                           <code>{qa.code}</code>
                         </pre>
                       </details>
                   </div>
-                ))}
+                  )
+                })}
               </div>
             )}
           </div>
@@ -1955,6 +2064,9 @@ export default function AnalyticsPage() {
             setShowAddCandidateModal(false)
             setNewCandidateName("")
             setNewCandidateEmail("")
+            setSelectedEmployee(null)
+            setSelectedEmployees([])
+            setEmployeeSearch("")
             setEmailError(null)
           }
         }}
@@ -2101,44 +2213,61 @@ export default function AnalyticsPage() {
                 )}
                 {!employeesLoading && employeesData?.employees && employeesData.employees.length > 0 && (
                   <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
-                    {employeesData.employees.map((emp) => (
-                      <li
-                        key={emp.aaptorId}
-                        onClick={() => {
-                          setSelectedEmployee(emp)
-                          setNewCandidateName(emp.name)
-                          setNewCandidateEmail(emp.email)
-                    setEmailError(null)
-                  }}
-                  style={{
-                          padding: "0.5rem 0.75rem",
-                          marginBottom: "0.25rem",
-                          borderRadius: "0.375rem",
-                          cursor: "pointer",
-                          backgroundColor:
-                            selectedEmployee?.aaptorId === emp.aaptorId ? "#dcfce7" : "transparent",
-                          border:
-                            selectedEmployee?.aaptorId === emp.aaptorId
-                              ? "1px solid #22c55e"
-                              : "1px solid transparent",
-                        }}
-                      >
-                        <div style={{ fontSize: "0.9rem", fontWeight: 600, color: "#0f172a" }}>
-                          {emp.name || emp.email}
-                        </div>
-                        <div style={{ fontSize: "0.8rem", color: "#64748b" }}>
-                          {emp.email} &nbsp;•&nbsp; Aaptor ID: {emp.aaptorId}
-                        </div>
-                      </li>
-                    ))}
+                    {employeesData.employees.map((emp) => {
+                      const isSelected = selectedEmployees.some(e => e.aaptorId === emp.aaptorId)
+                      return (
+                        <li
+                          key={emp.aaptorId}
+                          onClick={() => handleEmployeeToggle(emp)}
+                          style={{
+                            padding: "0.5rem 0.75rem",
+                            marginBottom: "0.25rem",
+                            borderRadius: "0.375rem",
+                            cursor: "pointer",
+                            backgroundColor: isSelected ? "#dcfce7" : "transparent",
+                            border: isSelected ? "1px solid #22c55e" : "1px solid transparent",
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "0.75rem",
+                          }}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={() => handleEmployeeToggle(emp)}
+                            onClick={(e) => e.stopPropagation()}
+                            style={{
+                              width: "1.125rem",
+                              height: "1.125rem",
+                              cursor: "pointer",
+                              accentColor: "#22c55e",
+                            }}
+                          />
+                          <div style={{ flex: 1 }}>
+                            <div style={{ fontSize: "0.9rem", fontWeight: 600, color: "#0f172a" }}>
+                              {emp.name || emp.email}
+                            </div>
+                            <div style={{ fontSize: "0.8rem", color: "#64748b" }}>
+                              {emp.email} &nbsp;•&nbsp; Aaptor ID: {emp.aaptorId}
+                            </div>
+                          </div>
+                        </li>
+                      )
+                    })}
                   </ul>
                 )}
               </div>
 
-              {selectedEmployee && (
-                <div style={{ fontSize: "0.875rem", color: "#334155", marginTop: "0.25rem" }}>
-                  Selected: <strong>{selectedEmployee.name || selectedEmployee.email}</strong> (
-                  {selectedEmployee.email}) &nbsp;•&nbsp; Aaptor ID: {selectedEmployee.aaptorId}
+              {selectedEmployees.length > 0 && (
+                <div style={{ fontSize: "0.875rem", color: "#334155", marginTop: "0.5rem", padding: "0.75rem", backgroundColor: "#f0fdf4", borderRadius: "0.5rem", border: "1px solid #22c55e" }}>
+                  <strong>Selected ({selectedEmployees.length}):</strong>
+                  <ul style={{ margin: "0.5rem 0 0 0", paddingLeft: "1.25rem", listStyle: "disc" }}>
+                    {selectedEmployees.map((emp) => (
+                      <li key={emp.aaptorId} style={{ marginBottom: "0.25rem" }}>
+                        <strong>{emp.name || emp.email}</strong> ({emp.email}) &nbsp;•&nbsp; Aaptor ID: {emp.aaptorId}
+                      </li>
+                    ))}
+                  </ul>
                 </div>
               )}
 
@@ -2155,6 +2284,9 @@ export default function AnalyticsPage() {
                     setShowAddCandidateModal(false)
                     setNewCandidateName("")
                     setNewCandidateEmail("")
+                    setSelectedEmployee(null)
+                    setSelectedEmployees([])
+                    setEmployeeSearch("")
                     setEmailError(null)
                   }}
                   disabled={addingCandidate}
@@ -2166,10 +2298,14 @@ export default function AnalyticsPage() {
                   type="button"
                   className="btn-primary"
                   onClick={handleAddCandidate}
-                  disabled={addingCandidate}
+                  disabled={addingCandidate || (selectedEmployees.length === 0 && !selectedEmployee)}
                   style={{ marginTop: 0 }}
                 >
-                  {addingCandidate ? "Adding..." : "Add Candidate"}
+                  {addingCandidate 
+                    ? `Adding... (${selectedEmployees.length > 0 ? selectedEmployees.length : 1})` 
+                    : selectedEmployees.length > 0 
+                      ? `Add ${selectedEmployees.length} Candidate${selectedEmployees.length > 1 ? 's' : ''}`
+                      : "Add Candidate"}
                 </button>
               </div>
             </div>

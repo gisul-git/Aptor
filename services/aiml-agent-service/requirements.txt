@@ -1,0 +1,6 @@
+websockets>=11.0
+jupyter-client>=8.0
+pyzmq>=25.0
+nest-asyncio>=1.5.0
+ipykernel>=7.0
+
