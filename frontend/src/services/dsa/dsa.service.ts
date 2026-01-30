@@ -398,6 +398,10 @@ export const dsaService = {
     started_at: string;
     submitted_at: string;
     time_spent_seconds: number;
+    execution_engine_passed?: boolean;
+    execution_engine_output?: string;
+    execution_engine_time?: number;
+    execution_engine_memory?: number;
   }): Promise<ApiResponse<any>> => {
     const response = await apiClient.post<ApiResponse<any>>('/api/v1/dsa/assessment/submit-sql', data);
     return response.data;
