@@ -1574,12 +1574,15 @@ async def save_reference_face(
         db_to_update = None
         collection_name = None
         
+        logger.info(f"[Candidate API] save_reference_face - Searching for assessment: {request.assessmentId}, email: {request.candidateEmail}")
+        
         # Try to find assessment in different collections (all in same database)
         # 1. Regular assessments (AI flow)
         assessment = await db.assessments.find_one({"_id": assessment_id})
         if assessment:
             db_to_update = db
             collection_name = "assessments"
+            logger.info(f"[Candidate API] Found assessment in 'assessments' collection")
         
         # 2. Custom MCQ assessments
         if not assessment:
@@ -1587,6 +1590,7 @@ async def save_reference_face(
             if assessment:
                 db_to_update = db
                 collection_name = "custom_mcq_assessments"
+                logger.info(f"[Candidate API] Found assessment in 'custom_mcq_assessments' collection")
         
         # 3. DSA tests (in same database, tests collection)
         # Check for DSA tests: test_type is "dsa" OR None OR doesn't exist
@@ -1602,6 +1606,7 @@ async def save_reference_face(
             if assessment:
                 db_to_update = db
                 collection_name = "tests"
+                logger.info(f"[Candidate API] Found DSA test in 'tests' collection")
         
         # 4. AIML tests (in same database, tests collection with test_type: "aiml")
         if not assessment:
@@ -1609,11 +1614,14 @@ async def save_reference_face(
             if assessment:
                 db_to_update = db
                 collection_name = "tests"
+                logger.info(f"[Candidate API] Found AIML test in 'tests' collection")
         
         if not assessment:
+            # Log which collections were checked
+            logger.error(f"[Candidate API] Assessment not found in any collection. Searched: assessments, custom_mcq_assessments, tests (dsa/aiml). Assessment ID: {request.assessmentId}, DB name: {getattr(db, 'name', 'unknown')}")
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="Assessment not found"
+                detail=f"Assessment not found. Assessment ID: {request.assessmentId}. Note: AIML tests may be in a different database."
             )
         
         # Store reference image in candidateResponses

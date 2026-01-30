@@ -63,23 +63,44 @@ export default function IdentityVerificationPage() {
     console.log("[identity-verify] 🔵 useEffect for assessmentData:", {
       hasAssessmentData: !!assessmentData,
       assessmentDataType: typeof assessmentData,
+      assessmentDataKeys: assessmentData ? Object.keys(assessmentData) : [],
+      hasSchedule: !!(assessmentData?.schedule),
+      hasProctoringSettings: !!(assessmentData?.proctoringSettings || assessmentData?.schedule?.proctoringSettings),
+      scheduleKeys: assessmentData?.schedule ? Object.keys(assessmentData.schedule) : [],
+      fullAssessmentData: JSON.stringify(assessmentData, null, 2),
     });
     
     if (assessmentData) {
       const assessment = assessmentData;
+      // Check both locations: schedule.proctoringSettings (preferred) and top-level proctoringSettings
       const proctoringSettings = assessment?.schedule?.proctoringSettings || assessment?.proctoringSettings;
-      const aiEnabled = proctoringSettings?.aiProctoringEnabled === true;
       
-      console.log("[identity-verify] ✅ Extracted proctoring settings:", {
-        hasProctoringSettings: !!proctoringSettings,
-        aiEnabled,
-        proctoringSettings,
+      console.log("[identity-verify] 🔍 Extracting proctoring settings:", {
+        hasSchedule: !!(assessment?.schedule),
+        scheduleType: typeof assessment?.schedule,
+        scheduleKeys: assessment?.schedule ? Object.keys(assessment.schedule) : [],
+        hasScheduleProctoringSettings: !!(assessment?.schedule?.proctoringSettings),
+        scheduleProctoringSettings: assessment?.schedule?.proctoringSettings,
+        hasTopLevelProctoringSettings: !!(assessment?.proctoringSettings),
+        topLevelProctoringSettings: assessment?.proctoringSettings,
+        extractedProctoringSettings: proctoringSettings,
+        hasExtractedProctoringSettings: !!proctoringSettings,
       });
+      
+      const aiEnabled = proctoringSettings?.aiProctoringEnabled === true;
       const faceMismatch = proctoringSettings?.faceMismatchEnabled === true;
+      
+      console.log("[identity-verify] ✅ Final proctoring settings values:", {
+        aiEnabled,
+        faceMismatch,
+        aiProctoringEnabledValue: proctoringSettings?.aiProctoringEnabled,
+        faceMismatchEnabledValue: proctoringSettings?.faceMismatchEnabled,
+        proctoringSettingsFull: JSON.stringify(proctoringSettings, null, 2),
+      });
       
       setAiProctoringEnabled(aiEnabled);
       setFaceMismatchEnabled(faceMismatch);
-      console.log('[Identity Verification Page] ✅ Proctoring settings loaded:', {
+      console.log('[Identity Verification Page] ✅ Proctoring settings loaded and set:', {
         aiProctoringEnabled: aiEnabled,
         faceMismatchEnabled: faceMismatch,
         hasProctoringSettings: !!proctoringSettings,
