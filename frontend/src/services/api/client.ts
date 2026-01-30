@@ -35,6 +35,40 @@ const processQueue = (error: any, token: string | null = null) => {
 /**
  * Proactively refresh token if it's expired or expiring soon
  */
+/**
+ * Check if current page is a candidate route (test take page)
+ */
+function isCandidatePage(): boolean {
+  if (typeof window === 'undefined') return false;
+  const pathname = window.location.pathname;
+  const searchParams = new URLSearchParams(window.location.search);
+  
+  // Check if we're on a test take page
+  const isTestTakePage = pathname.includes('/test/') && (
+    pathname.includes('/take') || 
+    pathname.endsWith('/take')
+  );
+  
+  // Check if we're on an AIML test take page
+  const isAIMLTestTakePage = pathname.includes('/aiml/test/') && (
+    pathname.includes('/take') || 
+    pathname.endsWith('/take')
+  );
+  
+  // Check if we have candidate indicators in URL params
+  const hasCandidateParams = searchParams.has('token') || searchParams.has('user_id');
+  
+  // Check if we're on assessment candidate pages
+  const isAssessmentCandidatePage = pathname.includes('/assessment/') && (
+    pathname.includes('/take') ||
+    pathname.includes('/identity-verify') ||
+    pathname.includes('/candidate-requirements')
+  );
+  
+  return isTestTakePage || isAIMLTestTakePage || isAssessmentCandidatePage || 
+         (pathname.includes('/test/') && hasCandidateParams);
+}
+
 async function refreshTokenProactively(): Promise<string | null> {
   if (isRefreshing) {
     // Already refreshing, wait for it
@@ -105,8 +139,8 @@ async function refreshTokenProactively(): Promise<string | null> {
     }
   } catch (refreshError) {
     processQueue(refreshError, null);
-    // Refresh failed, redirect to login
-    if (typeof window !== 'undefined') {
+    // Refresh failed, redirect to login only if not on candidate page
+    if (typeof window !== 'undefined' && !isCandidatePage()) {
       window.location.href = '/auth/signin';
     }
     return null;
@@ -124,10 +158,23 @@ apiClient.interceptors.request.use(
   async (config) => {
     // Only add token for admin API routes (not auth routes or candidate assessment routes)
     // Candidate assessment routes use token from URL params, not JWT
-    const isAuthRoute = config.url?.includes('/api/v1/auth/') || config.url?.includes('/api/auth/');
-    const isCandidateRoute = config.url?.includes('/api/assessment/') || config.url?.includes('/api/v1/candidate/');
+    const url = config.url || '';
+    const isAuthRoute = url.includes('/api/v1/auth/') || url.includes('/api/auth/');
+    const isCandidateRoute = url.includes('/api/assessment/') || url.includes('/api/v1/candidate/');
+    // DSA test routes that can be accessed by candidates (submission, start, public, question, final-submit)
+    // These routes can be accessed by both candidates (no auth) and admins (with auth)
+    const isDSACandidateRoute = url.includes('/api/v1/dsa/tests/') && 
+      (url.includes('/submission') || url.includes('/start') || url.includes('/public') || url.includes('/question/') || url.includes('/final-submit'));
     
-    if (!isAuthRoute && !isCandidateRoute && typeof window !== 'undefined') {
+    // For auth routes, always skip auth
+    if (isAuthRoute) {
+      if (config.headers) {
+        delete config.headers.Authorization;
+      }
+      return config;
+    }
+    
+    if (typeof window !== 'undefined') {
       // Check for temporary token first (from recent refresh)
       let token: string | null = null;
       try {
@@ -152,8 +199,8 @@ apiClient.interceptors.request.use(
           if (newToken) {
             token = newToken;
           } else if (tokenStatus.isExpired) {
-            // Token is expired and refresh failed, redirect to login
-            if (typeof window !== 'undefined') {
+            // Token is expired and refresh failed, redirect to login only if not on candidate page
+            if (typeof window !== 'undefined' && !isCandidatePage()) {
               window.location.href = '/auth/signin';
             }
             return Promise.reject(new Error('Token expired and refresh failed'));
@@ -161,8 +208,48 @@ apiClient.interceptors.request.use(
         }
       }
 
-      if (token) {
-        config.headers.Authorization = `Bearer ${token}`;
+      // For candidate routes (assessment, candidate endpoints), skip auth if no token
+      // For DSA candidate routes, check if we're on a candidate page - if so, skip auth
+      if (isCandidateRoute) {
+        // Always skip auth for candidate assessment routes
+        if (config.headers) {
+          delete config.headers.Authorization;
+        }
+        return config;
+      } else if (isDSACandidateRoute) {
+        // For DSA candidate routes, check if this is a candidate request
+        // Candidate requests have user_id in params, admin requests don't
+        const hasUserIdParam = config.params?.user_id || 
+                               (config.url && config.url.includes('user_id=')) ||
+                               (typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('user_id'));
+        
+        // Also check if we're on a candidate page
+        const onCandidatePage = isCandidatePage();
+        
+        // If this is a candidate request (has user_id param or on candidate page), skip auth
+        if (hasUserIdParam || onCandidatePage) {
+          // Candidate request - always skip auth
+          if (config.headers) {
+            delete config.headers.Authorization;
+          }
+        } else {
+          // Not a candidate request - this might be admin viewing analytics
+          // Include auth if token is available
+          if (token) {
+            config.headers.Authorization = `Bearer ${token}`;
+          } else {
+            // No token available, skip auth
+            if (config.headers) {
+              delete config.headers.Authorization;
+            }
+          }
+        }
+        return config;
+      } else {
+        // For all other routes, include auth if token is available
+        if (token) {
+          config.headers.Authorization = `Bearer ${token}`;
+        }
       }
     }
     return config;
@@ -184,6 +271,51 @@ apiClient.interceptors.response.use(
   async (error: AxiosError) => {
     const originalRequest = error.config as InternalAxiosRequestConfig & { _retry?: boolean };
 
+    // Skip token refresh for candidate routes (they don't require auth)
+    const url = originalRequest.url || '';
+    const isAuthRoute = url.includes('/api/v1/auth/') || url.includes('/api/auth/');
+    const isCandidateRoute = url.includes('/api/assessment/') || url.includes('/api/v1/candidate/');
+    const isDSACandidateRoute = url.includes('/api/v1/dsa/tests/') && 
+      (url.includes('/submission') || url.includes('/start') || url.includes('/public') || url.includes('/question/') || url.includes('/final-submit'));
+    
+    // For auth routes and candidate assessment routes, don't try to refresh token
+    if (isCandidateRoute || isAuthRoute) {
+      return Promise.reject(error);
+    }
+    
+    
+    if (isDSACandidateRoute) {
+      if (error.response?.status === 401 && typeof window !== 'undefined') {
+        // If we're on a candidate page, this is a candidate request - don't try to refresh
+        if (isCandidatePage()) {
+          return Promise.reject(error);
+        }
+        
+        // Not on candidate page - check if we have a token (admin context)
+        let hasToken = false;
+        try {
+          const tempToken = sessionStorage.getItem('temp_access_token');
+          if (tempToken) {
+            hasToken = true;
+          } else {
+            const session = await getSession();
+            hasToken = !!session?.backendToken;
+          }
+        } catch (e) {
+          // Ignore errors
+        }
+        
+        // If we have a token, this is an admin request - try to refresh
+        // If we don't have a token, this is a candidate request - just return error
+        if (!hasToken) {
+          return Promise.reject(error);
+        }
+        // Continue to token refresh logic below
+      } else {
+        return Promise.reject(error);
+      }
+    }
+    
     // If error is 401 and we haven't retried yet
     if (error.response?.status === 401 && !originalRequest._retry && typeof window !== 'undefined') {
       if (isRefreshing) {

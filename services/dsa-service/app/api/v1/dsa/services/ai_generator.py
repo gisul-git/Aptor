@@ -843,6 +843,14 @@ Return ONLY the JSON object. No markdown. No explanations."""
             # Re-raise validation errors
             raise
         except Exception as e:
+
+            error_str = str(e)
+            if "401" in error_str or "invalid_api_key" in error_str.lower() or "authentication" in error_str.lower():
+                raise ValueError(
+                    "Invalid OpenAI API key. Please check your OPENAI_API_KEY in the .env file. "
+                    "Get a valid key from https://platform.openai.com/account/api-keys"
+                )
+            
             if attempt < max_retries:
                 logger.warning(f"Attempt {attempt + 1} failed: {e}. Retrying...")
                 continue

@@ -454,15 +454,16 @@ export default function CandidateRequirementsPage() {
 
     // AI: Fetch assessment info to get candidate requirements settings
     const fetchAssessment = async () => {
+      const tokenStr = Array.isArray(token) ? token[0] : token;
       console.log("[candidate-requirements] 🚀 fetchAssessment called:", {
         id,
-        hasToken: !!token,
-        tokenPreview: token ? token.substring(0, 20) + '...' : 'no token',
+        hasToken: !!tokenStr,
+        tokenPreview: tokenStr ? tokenStr.substring(0, 20) + '...' : 'no token',
         timestamp: new Date().toISOString(),
       });
       
-      if (!id || !token) {
-        console.error("[candidate-requirements] ❌ Missing id or token:", { id, hasToken: !!token });
+      if (!id || !tokenStr) {
+        console.error("[candidate-requirements] ❌ Missing id or token:", { id, hasToken: !!tokenStr });
         setFetchingAssessment(false);
         return;
       }
@@ -471,7 +472,7 @@ export default function CandidateRequirementsPage() {
         setFetchingAssessment(true);
         setError(null);
         
-        const apiUrl = `/api/assessment/get-assessment-full?assessmentId=${id}&token=${token}`;
+        const apiUrl = `/api/assessment/get-assessment-full?assessmentId=${id}&token=${tokenStr}`;
         console.log("[candidate-requirements] 🔵 Calling Next.js API route:", {
           url: apiUrl,
           fullUrl: `${window.location.origin}${apiUrl}`,

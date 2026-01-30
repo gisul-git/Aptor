@@ -170,10 +170,9 @@ export default function AIMLTestsListPage() {
       setGeneratedLink({
         testId: testId,
         link: '',
-        // aimlService.addCandidate already returns the data object from the backend
-        // so response is the plain object: { candidate_id, test_link, name, email }
-        name: response.name,
-        email: response.email,
+        // aimlService.addCandidate returns ApiResponse, extract data from response.data
+        name: response?.data?.name || candidateName.trim(),
+        email: response?.data?.email || candidateEmail.trim(),
       })
     } catch (error: any) {
       alert(error.response?.data?.detail || 'Failed to add candidate')

@@ -3212,8 +3212,8 @@ export default function CreateNewAssessmentPage() {
       // In a full migration, we'd use questionsData directly from the hook
       const response = { data: { success: true, data: questionsData as any } };
       
-      if (response.data?.success && response.data) {
-        const responseData: any = response.data;
+      if (response.data.data?.success && response.data?.data) {
+        const responseData: any = response.data.data;
         // The backend returns assessment in responseData.assessment, but also check if it's directly in responseData
         const assessment = (responseData?.assessment || responseData) as any;
         

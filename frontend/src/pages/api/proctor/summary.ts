@@ -111,6 +111,14 @@ export default async function handler(
             });
           }
           
+          // Validate required fields before encoding
+          if (!assessmentIdStr || !userIdStr) {
+            return res.status(400).json({
+              success: false,
+              message: "Missing required query parameters: assessmentId, userId",
+            });
+          }
+          
           const retryResponse = await axios.get(
             `${BACKEND_URL}/api/v1/proctor/summary/${encodeURIComponent(
               String(assessmentIdStr),
