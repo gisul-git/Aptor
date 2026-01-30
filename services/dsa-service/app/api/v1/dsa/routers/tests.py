@@ -609,57 +609,60 @@ async def get_tests(
             raise HTTPException(status_code=401, detail="Authentication required")
         
         db = get_database()
-    
-    # Check if user is super_admin - if so, get all super_admin user IDs
-    if current_user.get("role") == "super_admin":
-        try:
-            # Import main database to query users collection
-            # Note: tests.py is in dsa/routers/, so we need 5 dots to reach app/
-            from ....db.mongo import get_database as get_main_database
+        
+        # Check if user is super_admin - if so, get all super_admin user IDs
+        if current_user.get("role") == "super_admin":
+            try:
+                # Import main database to query users collection
+                # Note: tests.py is in dsa/routers/, so we need 5 dots to reach app/
+                from ....db.mongo import get_database as get_main_database
+                
+                # Get main database connection
+                main_db = get_main_database()
+                
+                # Get current user ID for logging purposes
+                user_id = current_user.get("id") or current_user.get("_id")
+                user_id = str(user_id).strip() if user_id else "super_admin"
+                user_id_normalized = user_id  # Define for logging consistency
+                
+                # Query users collection to get all super_admin user IDs
+                super_admin_cursor = main_db.users.find(
+                    {"role": "super_admin"},
+                    {"_id": 1}
+                )
+                super_admin_ids = [str(doc["_id"]) async for doc in super_admin_cursor]
+            except Exception as e:
+                logger.error(f"[get_tests] Failed to get main database for super_admin query: {e}")
+                # Fall back to regular user query if main database is unavailable
+                logger.warning("[get_tests] Falling back to regular user query for super_admin")
+                # Set role to None to use regular path below
+                current_user_role_backup = current_user.get("role")
+                current_user["role"] = None  # Temporarily remove super_admin role to use regular path
+                super_admin_ids = None  # Set to None to trigger else path
             
-            # Get main database connection
-            main_db = get_main_database()
-        except Exception as e:
-            logger.error(f"[get_tests] Failed to get main database for super_admin query: {e}")
-            # Fall back to regular user query if main database is unavailable
-            logger.warning("[get_tests] Falling back to regular user query for super_admin")
-            current_user["role"] = None  # Temporarily remove super_admin role to use regular path
-        
-        # Get current user ID for logging purposes
-        user_id = current_user.get("id") or current_user.get("_id")
-        user_id = str(user_id).strip() if user_id else "super_admin"
-        user_id_normalized = user_id  # Define for logging consistency
-        
-        # Query users collection to get all super_admin user IDs
-        super_admin_cursor = main_db.users.find(
-            {"role": "super_admin"},
-            {"_id": 1}
-        )
-        super_admin_ids = [str(doc["_id"]) async for doc in super_admin_cursor]
-        
-        if super_admin_ids:
-            # Filter tests where created_by is in the list of super_admin IDs (as strings)
-            user_id_normalized_list = [str(sid).strip() for sid in super_admin_ids]
-            base_conditions = [
-                {"created_by": {"$exists": True}},
-                {"created_by": {"$ne": None}},
-                {"created_by": {"$ne": ""}},
-                {"created_by": {"$in": user_id_normalized_list}},  # Match any super_admin ID
-                # CRITICAL: Filter to only get DSA tests (exclude AIML tests)
-                {"$or": [
-                    {"test_type": {"$exists": False}},
-                    {"test_type": None},
-                    {"test_type": "dsa"}
-                ]}
-            ]
-        else:
-            # No super_admins found - return empty result
-            base_conditions = [
-                {"created_by": {"$exists": True}},
-                {"created_by": {"$ne": None}},
-                {"created_by": {"$ne": ""}},
-                {"created_by": {"$in": []}}  # Empty list - no matches
-            ]
+            if super_admin_ids:
+                # Filter tests where created_by is in the list of super_admin IDs (as strings)
+                user_id_normalized_list = [str(sid).strip() for sid in super_admin_ids]
+                base_conditions = [
+                    {"created_by": {"$exists": True}},
+                    {"created_by": {"$ne": None}},
+                    {"created_by": {"$ne": ""}},
+                    {"created_by": {"$in": user_id_normalized_list}},  # Match any super_admin ID
+                    # CRITICAL: Filter to only get DSA tests (exclude AIML tests)
+                    {"$or": [
+                        {"test_type": {"$exists": False}},
+                        {"test_type": None},
+                        {"test_type": "dsa"}
+                    ]}
+                ]
+            else:
+                # No super_admins found - return empty result
+                base_conditions = [
+                    {"created_by": {"$exists": True}},
+                    {"created_by": {"$ne": None}},
+                    {"created_by": {"$ne": ""}},
+                    {"created_by": {"$in": []}}  # Empty list - no matches
+                ]
     else:
         # Filter tests by the current user - STRICT: only return tests with created_by matching current user
         user_id = current_user.get("id") or current_user.get("_id")
@@ -691,204 +694,202 @@ async def get_tests(
             {"created_by": {"$ne": ""}},
             {"created_by": user_id_normalized}  # Exact string match
         ]
-    
-    # CRITICAL: Filter to only get DSA tests (exclude AIML tests)
-    # This handles both legacy tests (no test_type) and new tests (test_type: "dsa")
-    base_conditions.append({
+        
+        base_conditions.append({
         "$or": [
             {"test_type": {"$exists": False}},  # Legacy DSA tests without test_type
             {"test_type": None},                 # Tests with null test_type
             {"test_type": "dsa"}                 # Explicitly marked DSA tests
         ]
-    })
-    
-    if active_only:
-        base_conditions.append({"is_active": True})
-        base_conditions.append({"start_time": {"$lte": datetime.utcnow()}})
-        base_conditions.append({"end_time": {"$gte": datetime.utcnow()}})
-    
-    query = {"$and": base_conditions}
-    
-    print(f"[get_tests] STRICT MongoDB query: {query}")
-    logger.info(f"[get_tests] STRICT MongoDB query: {query}")
-    print(f"[get_tests] Query will ONLY match tests where created_by exists, is not null, is not empty, and equals '{user_id_normalized}'")
-    logger.info(f"[get_tests] Query will ONLY match tests where created_by exists, is not null, is not empty, and equals '{user_id_normalized}'")
-    print(f"[get_tests] User ID type: {type(user_id).__name__}, normalized: '{user_id_normalized}'")
-    logger.info(f"[get_tests] User ID type: {type(user_id).__name__}, normalized: '{user_id_normalized}'")
-    
-    # DEBUG: Check what tests exist in database (for debugging)
-    all_tests_sample = await db.tests.find({}).limit(5).to_list(length=5)
-    logger.info(f"[get_tests] DEBUG: Sample of ALL tests in DB (first 5):")
-    for t in all_tests_sample:
-        logger.info(f"[get_tests] DEBUG: Test ID={str(t.get('_id'))}, created_by={t.get('created_by')}, title={t.get('title', 'Unknown')}")
-    
-    # Execute query with explicit security - CRITICAL: This query MUST filter by created_by
-    logger.info(f"[get_tests] EXECUTING MongoDB query: {query}")
-    logger.info(f"[get_tests] Query conditions: created_by must exist, not be None, not be empty, and equal '{user_id_normalized}'")
-    
-    # CRITICAL: Execute query - this MUST filter by created_by
-    tests = await db.tests.find(query).sort("created_at", -1).to_list(length=100)
-    
-    print(f"[get_tests] MongoDB returned {len(tests)} tests for user_id: '{user_id_normalized}'")
-    logger.info(f"[get_tests] MongoDB returned {len(tests)} tests for user_id: '{user_id_normalized}'")
-    print(f"[get_tests] Query executed successfully. Filtering by created_by='{user_id_normalized}'")
-    logger.info(f"[get_tests] Query executed successfully. Filtering by created_by='{user_id_normalized}'")
-    
-    # VERIFY: Log each test's created_by to ensure they all match
-    for idx, test in enumerate(tests):
-        test_created_by = test.get("created_by")
-        logger.info(f"[get_tests] Test {idx+1}: ID={str(test.get('_id'))}, created_by='{test_created_by}', matches_user={str(test_created_by).strip() == user_id_normalized}")
-    
-    # CRITICAL SECURITY CHECK: Additional client-side filter as defense in depth
-    # This is a FINAL safety net - filter out ANY test that doesn't match exactly
-    tests_before_filter = len(tests)
-    filtered_tests = []
-    for test in tests:
-        test_created_by = test.get("created_by")
-        test_id = str(test.get("_id", ""))
-        test_title = test.get("title", "Unknown")
+        })
         
-        # ABSOLUTE STRICT CHECK: Reject if created_by is missing, null, empty, or doesn't match
-        if test_created_by is None:
-            logger.error(f"[get_tests] SECURITY VIOLATION: Test {test_id} ({test_title}) has NULL created_by - REJECTING")
-            continue
+        if active_only:
+            base_conditions.append({"is_active": True})
+            base_conditions.append({"start_time": {"$lte": datetime.utcnow()}})
+            base_conditions.append({"end_time": {"$gte": datetime.utcnow()}})
         
-        if test_created_by == "":
-            logger.error(f"[get_tests] SECURITY VIOLATION: Test {test_id} ({test_title}) has EMPTY created_by - REJECTING")
-            continue
+        query = {"$and": base_conditions}
         
-        # Normalize both sides to string for comparison (handles ObjectId vs string mismatch)
-        test_created_by_str = str(test_created_by).strip()
-        # Use the already normalized user_id from above
-        if test_created_by_str != user_id_normalized:
-            logger.error(f"[get_tests] SECURITY VIOLATION: Test {test_id} ({test_title}) created_by='{test_created_by_str}' != user_id='{user_id_normalized}' - REJECTING")
-            continue
+        print(f"[get_tests] STRICT MongoDB query: {query}")
+        logger.info(f"[get_tests] STRICT MongoDB query: {query}")
+        print(f"[get_tests] Query will ONLY match tests where created_by exists, is not null, is not empty, and equals '{user_id_normalized}'")
+        logger.info(f"[get_tests] Query will ONLY match tests where created_by exists, is not null, is not empty, and equals '{user_id_normalized}'")
+        print(f"[get_tests] User ID type: {type(user_id).__name__}, normalized: '{user_id_normalized}'")
+        logger.info(f"[get_tests] User ID type: {type(user_id).__name__}, normalized: '{user_id_normalized}'")
         
-        # CRITICAL: Reject AIML tests - they should be isolated
-        test_type = test.get("test_type")
-        if test_type == "aiml":
-            logger.warning(f"[get_tests] Filtering out AIML test {test_id} ({test_title}) from DSA results")
-            continue
+        # DEBUG: Check what tests exist in database (for debugging)
+        all_tests_sample = await db.tests.find({}).limit(5).to_list(length=5)
+        logger.info(f"[get_tests] DEBUG: Sample of ALL tests in DB (first 5):")
+        for t in all_tests_sample:
+            logger.info(f"[get_tests] DEBUG: Test ID={str(t.get('_id'))}, created_by={t.get('created_by')}, title={t.get('title', 'Unknown')}")
         
-        # Only add if it passes all checks
-        filtered_tests.append(test)
-    
-    tests = filtered_tests
-    
-    if tests_before_filter != len(tests):
-        logger.error(f"[get_tests] SECURITY: Filtered out {tests_before_filter - len(tests)} tests that didn't match user_id - this should not happen if query is correct")
-    
-    # Final verification log - CRITICAL: Verify ALL tests belong to this user
-    logger.info(f"[get_tests] Final check: Returning {len(tests)} tests for user_id: '{user_id_normalized}'")
-    
-    # ABSOLUTE FINAL CHECK: Verify every single test belongs to this user (defense in depth)
-    # Create a new list with only tests that match (safe iteration)
-    final_tests = []
-    security_violations = 0
-    for test in tests:
-        test_created_by_raw = test.get("created_by")
-        test_created_by = str(test_created_by_raw).strip() if test_created_by_raw is not None else ""
-        test_id = str(test.get("_id", ""))
-        test_title = test.get("title", "Unknown")
+        # Execute query with explicit security - CRITICAL: This query MUST filter by created_by
+        logger.info(f"[get_tests] EXECUTING MongoDB query: {query}")
+        logger.info(f"[get_tests] Query conditions: created_by must exist, not be None, not be empty, and equal '{user_id_normalized}'")
         
-        if test_created_by != user_id_normalized:
-            security_violations += 1
-            logger.error(f"[get_tests] CRITICAL SECURITY ERROR: Test {test_id} ({test_title}) has created_by='{test_created_by}' but user_id='{user_id_normalized}' - REJECTING")
-            logger.error(f"[get_tests] SECURITY: This should NEVER happen if query is correct. Test will be removed from response.")
-            continue
-        final_tests.append(test)
-    
-    tests = final_tests
-    
-    if security_violations > 0:
-        logger.error(f"[get_tests] CRITICAL: Removed {security_violations} tests that didn't belong to user '{user_id_normalized}' - SECURITY BREACH PREVENTED")
-        logger.error(f"[get_tests] This indicates the MongoDB query may have failed. Original query was: {query}")
-    
-    print(f"[get_tests] After final security check: Returning {len(tests)} tests for user_id: '{user_id_normalized}'")
-    logger.info(f"[get_tests] After final security check: Returning {len(tests)} tests for user_id: '{user_id_normalized}'")
-    
-    # ABSOLUTE FINAL VERIFICATION: Log every test being returned
-    print(f"[get_tests] SECURITY VERIFICATION: Tests being returned:")
-    logger.info(f"[get_tests] SECURITY VERIFICATION: Tests being returned:")
-    for idx, test in enumerate(tests):
-        test_info = f"[get_tests]   Test {idx+1}: ID={str(test.get('_id'))}, created_by='{test.get('created_by')}', title='{test.get('title', 'Unknown')}'"
-        print(test_info)
-        logger.info(test_info)
-    
-    result = []
-    for test in tests:
-        # Convert ObjectId to string and ensure all fields are JSON serializable
-        # Helper function to format datetime to ISO string with Z suffix (UTC indicator)
-        def format_datetime_iso(dt_val):
-            """Format datetime to ISO string with Z suffix if it's a datetime object"""
-            if not dt_val:
-                return None
-            if isinstance(dt_val, datetime):
-                iso_str = dt_val.isoformat()
-                # Add Z if not already present (indicates UTC)
-                # Check if it already has timezone info
-                if not iso_str.endswith('Z') and '+' not in iso_str[-6:] and (len(iso_str) < 10 or iso_str[10] != '+'):
-                    return iso_str + 'Z'
-                return iso_str
-            return str(dt_val) if dt_val else None
+        # CRITICAL: Execute query - this MUST filter by created_by
+        tests = await db.tests.find(query).sort("created_at", -1).to_list(length=100)
         
-        # Format schedule datetimes if schedule exists, but preserve all other fields
-        schedule_data = test.get("schedule")
-        formatted_schedule = None
-        if schedule_data:
-            formatted_schedule = {}
-            # Format datetime fields
-            if "startTime" in schedule_data and schedule_data["startTime"]:
-                formatted_schedule["startTime"] = format_datetime_iso(schedule_data["startTime"])
-            if "endTime" in schedule_data and schedule_data["endTime"]:
-                formatted_schedule["endTime"] = format_datetime_iso(schedule_data["endTime"])
-            if "duration" in schedule_data:
-                formatted_schedule["duration"] = schedule_data["duration"]
-            # Preserve other schedule fields (candidateRequirements, proctoringSettings, etc.)
-            if "candidateRequirements" in schedule_data:
-                formatted_schedule["candidateRequirements"] = schedule_data["candidateRequirements"]
-            if "proctoringSettings" in schedule_data:
-                formatted_schedule["proctoringSettings"] = normalize_proctoring_settings(schedule_data["proctoringSettings"])
+        print(f"[get_tests] MongoDB returned {len(tests)} tests for user_id: '{user_id_normalized}'")
+        logger.info(f"[get_tests] MongoDB returned {len(tests)} tests for user_id: '{user_id_normalized}'")
+        print(f"[get_tests] Query executed successfully. Filtering by created_by='{user_id_normalized}'")
+        logger.info(f"[get_tests] Query executed successfully. Filtering by created_by='{user_id_normalized}'")
         
-        # Ensure proctoringSettings is in schedule if it exists at top level
-        proctoring_settings = normalize_proctoring_settings(test.get("proctoringSettings"))
-        if formatted_schedule and "proctoringSettings" not in formatted_schedule:
-            formatted_schedule["proctoringSettings"] = proctoring_settings
-        elif not formatted_schedule and schedule_data:
-            # If we're using schedule_data directly, ensure proctoringSettings is there
-            if isinstance(schedule_data, dict) and "proctoringSettings" not in schedule_data:
-                schedule_data = schedule_data.copy()
-                schedule_data["proctoringSettings"] = proctoring_settings
+        # VERIFY: Log each test's created_by to ensure they all match
+        for idx, test in enumerate(tests):
+            test_created_by = test.get("created_by")
+            logger.info(f"[get_tests] Test {idx+1}: ID={str(test.get('_id'))}, created_by='{test_created_by}', matches_user={str(test_created_by).strip() == user_id_normalized}")
         
-        test_dict = {
-            "id": str(test["_id"]),
-            "title": test.get("title", ""),
-            "description": test.get("description", ""),
-            "duration_minutes": test.get("duration_minutes", 0),
-            "start_time": format_datetime_iso(test.get("start_time")),
-            "end_time": format_datetime_iso(test.get("end_time")),
-            "is_active": test.get("is_active", False),
-            "is_published": test.get("is_published", False),
-            "invited_users": test.get("invited_users", []),
-            "question_ids": [str(qid) if isinstance(qid, ObjectId) else qid for qid in test.get("question_ids", [])],
-            "test_token": test.get("test_token"),
-            "created_by": str(test.get("created_by", "")),  # CRITICAL: Include for client-side verification
-            "examMode": test.get("examMode", "strict"),  # Include examMode for frontend display logic
-            "schedule": formatted_schedule if formatted_schedule else (schedule_data if schedule_data else {}),  # Include formatted schedule with all fields
-            # Normalize to ensure boolean values are explicit
-            "proctoringSettings": proctoring_settings,
-        }
-        if test.get("pausedAt"):
-            paused_val = test.get("pausedAt")
-            test_dict["pausedAt"] = paused_val.isoformat() if isinstance(paused_val, datetime) else paused_val
-        # Add created_at if it exists
-        if "created_at" in test and test.get("created_at"):
-            test_dict["created_at"] = test.get("created_at").isoformat() if isinstance(test.get("created_at"), datetime) else test.get("created_at")
-        # Add updated_at if it exists (though it might not be in the model)
-        if "updated_at" in test and test.get("updated_at"):
-            test_dict["updated_at"] = test.get("updated_at").isoformat() if isinstance(test.get("updated_at"), datetime) else test.get("updated_at")
-        result.append(test_dict)
-    return result
+        # CRITICAL SECURITY CHECK: Additional client-side filter as defense in depth
+        # This is a FINAL safety net - filter out ANY test that doesn't match exactly
+        tests_before_filter = len(tests)
+        filtered_tests = []
+        for test in tests:
+            test_created_by = test.get("created_by")
+            test_id = str(test.get("_id", ""))
+            test_title = test.get("title", "Unknown")
+            
+            # ABSOLUTE STRICT CHECK: Reject if created_by is missing, null, empty, or doesn't match
+            if test_created_by is None:
+                logger.error(f"[get_tests] SECURITY VIOLATION: Test {test_id} ({test_title}) has NULL created_by - REJECTING")
+                continue
+            
+            if test_created_by == "":
+                logger.error(f"[get_tests] SECURITY VIOLATION: Test {test_id} ({test_title}) has EMPTY created_by - REJECTING")
+                continue
+            
+            # Normalize both sides to string for comparison (handles ObjectId vs string mismatch)
+            test_created_by_str = str(test_created_by).strip()
+            # Use the already normalized user_id from above
+            if test_created_by_str != user_id_normalized:
+                logger.error(f"[get_tests] SECURITY VIOLATION: Test {test_id} ({test_title}) created_by='{test_created_by_str}' != user_id='{user_id_normalized}' - REJECTING")
+                continue
+            
+            # CRITICAL: Reject AIML tests - they should be isolated
+            test_type = test.get("test_type")
+            if test_type == "aiml":
+                logger.warning(f"[get_tests] Filtering out AIML test {test_id} ({test_title}) from DSA results")
+                continue
+            
+            # Only add if it passes all checks
+            filtered_tests.append(test)
+        
+        tests = filtered_tests
+        
+        if tests_before_filter != len(tests):
+            logger.error(f"[get_tests] SECURITY: Filtered out {tests_before_filter - len(tests)} tests that didn't match user_id - this should not happen if query is correct")
+        
+        # Final verification log - CRITICAL: Verify ALL tests belong to this user
+        logger.info(f"[get_tests] Final check: Returning {len(tests)} tests for user_id: '{user_id_normalized}'")
+        
+        # ABSOLUTE FINAL CHECK: Verify every single test belongs to this user (defense in depth)
+        # Create a new list with only tests that match (safe iteration)
+        final_tests = []
+        security_violations = 0
+        for test in tests:
+            test_created_by_raw = test.get("created_by")
+            test_created_by = str(test_created_by_raw).strip() if test_created_by_raw is not None else ""
+            test_id = str(test.get("_id", ""))
+            test_title = test.get("title", "Unknown")
+            
+            if test_created_by != user_id_normalized:
+                security_violations += 1
+                logger.error(f"[get_tests] CRITICAL SECURITY ERROR: Test {test_id} ({test_title}) has created_by='{test_created_by}' but user_id='{user_id_normalized}' - REJECTING")
+                logger.error(f"[get_tests] SECURITY: This should NEVER happen if query is correct. Test will be removed from response.")
+                continue
+            final_tests.append(test)
+        
+        tests = final_tests
+        
+        if security_violations > 0:
+            logger.error(f"[get_tests] CRITICAL: Removed {security_violations} tests that didn't belong to user '{user_id_normalized}' - SECURITY BREACH PREVENTED")
+            logger.error(f"[get_tests] This indicates the MongoDB query may have failed. Original query was: {query}")
+        
+        print(f"[get_tests] After final security check: Returning {len(tests)} tests for user_id: '{user_id_normalized}'")
+        logger.info(f"[get_tests] After final security check: Returning {len(tests)} tests for user_id: '{user_id_normalized}'")
+        
+        # ABSOLUTE FINAL VERIFICATION: Log every test being returned
+        print(f"[get_tests] SECURITY VERIFICATION: Tests being returned:")
+        logger.info(f"[get_tests] SECURITY VERIFICATION: Tests being returned:")
+        for idx, test in enumerate(tests):
+            test_info = f"[get_tests]   Test {idx+1}: ID={str(test.get('_id'))}, created_by='{test.get('created_by')}', title='{test.get('title', 'Unknown')}'"
+            print(test_info)
+            logger.info(test_info)
+        
+        result = []
+        for test in tests:
+            # Convert ObjectId to string and ensure all fields are JSON serializable
+            # Helper function to format datetime to ISO string with Z suffix (UTC indicator)
+            def format_datetime_iso(dt_val):
+                """Format datetime to ISO string with Z suffix if it's a datetime object"""
+                if not dt_val:
+                    return None
+                if isinstance(dt_val, datetime):
+                    iso_str = dt_val.isoformat()
+                    # Add Z if not already present (indicates UTC)
+                    # Check if it already has timezone info
+                    if not iso_str.endswith('Z') and '+' not in iso_str[-6:] and (len(iso_str) < 10 or iso_str[10] != '+'):
+                        return iso_str + 'Z'
+                    return iso_str
+                return str(dt_val) if dt_val else None
+            
+            # Format schedule datetimes if schedule exists, but preserve all other fields
+            schedule_data = test.get("schedule")
+            formatted_schedule = None
+            if schedule_data:
+                formatted_schedule = {}
+                # Format datetime fields
+                if "startTime" in schedule_data and schedule_data["startTime"]:
+                    formatted_schedule["startTime"] = format_datetime_iso(schedule_data["startTime"])
+                if "endTime" in schedule_data and schedule_data["endTime"]:
+                    formatted_schedule["endTime"] = format_datetime_iso(schedule_data["endTime"])
+                if "duration" in schedule_data:
+                    formatted_schedule["duration"] = schedule_data["duration"]
+                # Preserve other schedule fields (candidateRequirements, proctoringSettings, etc.)
+                if "candidateRequirements" in schedule_data:
+                    formatted_schedule["candidateRequirements"] = schedule_data["candidateRequirements"]
+                if "proctoringSettings" in schedule_data:
+                    formatted_schedule["proctoringSettings"] = normalize_proctoring_settings(schedule_data["proctoringSettings"])
+            
+            # Ensure proctoringSettings is in schedule if it exists at top level
+            proctoring_settings = normalize_proctoring_settings(test.get("proctoringSettings"))
+            if formatted_schedule and "proctoringSettings" not in formatted_schedule:
+                formatted_schedule["proctoringSettings"] = proctoring_settings
+            elif not formatted_schedule and schedule_data:
+                # If we're using schedule_data directly, ensure proctoringSettings is there
+                if isinstance(schedule_data, dict) and "proctoringSettings" not in schedule_data:
+                    schedule_data = schedule_data.copy()
+                    schedule_data["proctoringSettings"] = proctoring_settings
+            
+            test_dict = {
+                "id": str(test["_id"]),
+                "title": test.get("title", ""),
+                "description": test.get("description", ""),
+                "duration_minutes": test.get("duration_minutes", 0),
+                "start_time": format_datetime_iso(test.get("start_time")),
+                "end_time": format_datetime_iso(test.get("end_time")),
+                "is_active": test.get("is_active", False),
+                "is_published": test.get("is_published", False),
+                "invited_users": test.get("invited_users", []),
+                "question_ids": [str(qid) if isinstance(qid, ObjectId) else qid for qid in test.get("question_ids", [])],
+                "test_token": test.get("test_token"),
+                "created_by": str(test.get("created_by", "")),  # CRITICAL: Include for client-side verification
+                "examMode": test.get("examMode", "strict"),  # Include examMode for frontend display logic
+                "schedule": formatted_schedule if formatted_schedule else (schedule_data if schedule_data else {}),  # Include formatted schedule with all fields
+                # Normalize to ensure boolean values are explicit
+                "proctoringSettings": proctoring_settings,
+            }
+            if test.get("pausedAt"):
+                paused_val = test.get("pausedAt")
+                test_dict["pausedAt"] = paused_val.isoformat() if isinstance(paused_val, datetime) else paused_val
+            # Add created_at if it exists
+            if "created_at" in test and test.get("created_at"):
+                test_dict["created_at"] = test.get("created_at").isoformat() if isinstance(test.get("created_at"), datetime) else test.get("created_at")
+            # Add updated_at if it exists (though it might not be in the model)
+            if "updated_at" in test and test.get("updated_at"):
+                test_dict["updated_at"] = test.get("updated_at").isoformat() if isinstance(test.get("updated_at"), datetime) else test.get("updated_at")
+            result.append(test_dict)
+        return result
     except HTTPException:
         raise
     except Exception as e:
