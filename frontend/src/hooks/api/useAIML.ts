@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { aimlService, type AIMLTest, type AIMLQuestion, type CreateAIMLTestDto, type CreateAIMLQuestionDto, type ExecuteNotebookDto } from '@/services/aiml';
+import type { ApiResponse } from '@/services/api/types';
 
 const QUERY_KEYS = {
   tests: ['aiml', 'tests'] as const,
@@ -38,20 +39,24 @@ export const useAIMLTests = () => {
 };
 
 export const useAIMLTest = (testId: string | undefined) => {
-  return useQuery({
+  return useQuery<AIMLTest | null>({
     queryKey: QUERY_KEYS.test(testId || ''),
-    queryFn: async () => {
+    queryFn: async (): Promise<AIMLTest | null> => {
       if (!testId) throw new Error('Test ID is required');
       const response = await aimlService.getTest(testId);
       // Ensure we always return a value (not undefined)
       // Handle both wrapped and unwrapped responses
       if (response && typeof response === 'object') {
-        // If response has a 'data' property, use it
-        if ('data' in response && response.data !== undefined) {
-          return response.data;
+        // Check if it's an ApiResponse with data property
+        const apiResponse = response as ApiResponse<AIMLTest>;
+        if ('data' in apiResponse && apiResponse.data !== undefined) {
+          return apiResponse.data;
         }
-        // Otherwise, response itself might be the data
-        return response;
+        // Check if response itself is an AIMLTest (has required properties)
+        const testData = response as unknown as AIMLTest;
+        if ('id' in testData && 'title' in testData && 'questions' in testData) {
+          return testData;
+        }
       }
       // Fallback to null if response is invalid
       return null;

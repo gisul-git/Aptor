@@ -143,7 +143,13 @@ export default function AnalyticsPage() {
   const [addingCandidate, setAddingCandidate] = useState(false)
   const [testInfo, setTestInfo] = useState<any>(null)
   const [showEmailTemplateModal, setShowEmailTemplateModal] = useState(false)
-  const [emailTemplate, setEmailTemplate] = useState({
+  const [emailTemplate, setEmailTemplate] = useState<{
+    logoUrl?: string;
+    companyName?: string;
+    message: string;
+    footer?: string;
+    sentBy?: string;
+  }>({
     logoUrl: "",
     companyName: "",
     message: "You have been invited to take an AIML test. Please click the link below to start.",

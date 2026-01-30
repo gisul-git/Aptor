@@ -9,6 +9,14 @@ import type { ApiResponse } from '../api/types';
  */
 
 // Types
+export interface InvitationTemplate {
+  logoUrl?: string;
+  companyName?: string;
+  message: string;
+  footer?: string;
+  sentBy?: string;
+}
+
 export interface AIMLTest {
   id: string;
   title: string;
@@ -18,6 +26,14 @@ export interface AIMLTest {
   createdBy: string;
   createdAt: string;
   updatedAt: string;
+  test_token?: string;
+  schedule?: {
+    startTime?: string;
+    endTime?: string;
+    duration?: number;
+    candidateRequirements?: Record<string, any>;
+  } | null;
+  invitationTemplate?: InvitationTemplate;
 }
 
 export interface AIMLQuestion {

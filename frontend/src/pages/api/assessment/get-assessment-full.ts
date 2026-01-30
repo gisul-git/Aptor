@@ -41,10 +41,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   try {
-<<<<<<< HEAD
-    // First, try AIML-specific /full endpoint.
-=======
-  
+    // First, try DSA-specific /full endpoint.
     try {
       const dsaUrl = `/api/v1/dsa/tests/${assessmentId}/full`;
       const fullDsaUrl = `${API_GATEWAY_URL}${dsaUrl}`;
@@ -109,7 +106,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     // Second, try AIML-specific full test endpoint.
->>>>>>> dev
     // This allows AIML tests (stored in the AIML service) to be resolved without
     // depending on the generic AI assessment service.
     try {
