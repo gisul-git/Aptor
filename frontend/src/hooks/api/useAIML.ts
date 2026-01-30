@@ -38,20 +38,29 @@ export const useAIMLTests = () => {
 };
 
 export const useAIMLTest = (testId: string | undefined) => {
-  return useQuery({
+  return useQuery<AIMLTest | null>({
     queryKey: QUERY_KEYS.test(testId || ''),
-    queryFn: async () => {
+    queryFn: async (): Promise<AIMLTest | null> => {
       if (!testId) throw new Error('Test ID is required');
       const response = await aimlService.getTest(testId);
       // Ensure we always return a value (not undefined)
       // Handle both wrapped and unwrapped responses
       if (response && typeof response === 'object') {
-        // If response has a 'data' property, use it
+        // If response has a 'data' property (ApiResponse format), use it
         if ('data' in response && response.data !== undefined) {
-          return response.data;
+          return response.data as AIMLTest;
         }
-        // Otherwise, response itself might be the data
-        return response;
+        // Check if response has ApiResponse structure but data might be the test itself
+        if ('success' in response || 'message' in response) {
+          // It's an ApiResponse, but data might be undefined or the test
+          const apiResponse = response as { data?: AIMLTest; success?: boolean };
+          return apiResponse.data || null;
+        }
+        // Otherwise, response itself is the data (direct AIMLTest)
+        // Check if it has required AIMLTest properties
+        if ('id' in response && 'title' in response && 'questions' in response) {
+          return response as AIMLTest;
+        }
       }
       // Fallback to null if response is invalid
       return null;

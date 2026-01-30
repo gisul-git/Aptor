@@ -408,6 +408,33 @@ export const dsaService = {
   },
 
   /**
+   * Proxy SQL execution engine execute endpoint (to avoid CORS)
+   */
+  proxySQLExecute: async (data: {
+    questionId: string;
+    code: string;
+    schemas?: any;
+    sample_data?: any;
+  }): Promise<any> => {
+    const response = await apiClient.post<any>('/api/v1/dsa/assessment/sql-engine/execute', data);
+    return response.data;
+  },
+
+  /**
+   * Proxy SQL execution engine submit endpoint (to avoid CORS)
+   */
+  proxySQLSubmit: async (data: {
+    questionId: string;
+    code: string;
+    expectedOutput?: any[];
+    schemas?: any;
+    sample_data?: any;
+  }): Promise<any> => {
+    const response = await apiClient.post<any>('/api/v1/dsa/assessment/sql-engine/submit', data);
+    return response.data;
+  },
+
+  /**
    * Run code (for DSA tests - public test cases)
    */
   runCodePublic: async (data: {

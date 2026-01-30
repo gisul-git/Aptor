@@ -17,6 +17,7 @@ SQL Support:
 """
 import logging
 import re
+import httpx
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -28,6 +29,7 @@ from ..database import get_dsa_database as get_database
 from ..utils.judge0 import run_all_test_cases, run_test_case, LANGUAGE_IDS
 from ..services.ai_feedback import generate_code_feedback
 from ...assessments.services.unified_ai_evaluation import evaluate_sql_answer
+from ..config import SQL_ENGINE_URL, get_dsa_settings, DSASettings
 
 # Stub functions for deprecated code_wrapper functionality
 # TODO: Update to use universal_code_wrapper_v2.py for new JSON-based system
@@ -1885,3 +1887,251 @@ async def submit_sql(
         )
     
     return response
+
+
+# ============================================================================
+# SQL EXECUTION ENGINE PROXY ENDPOINTS
+# These endpoints proxy requests to the SQL execution engine to avoid CORS issues
+# ============================================================================
+
+class SQLExecuteRequest(BaseModel):
+    """Request for executing SQL via SQL execution engine"""
+    questionId: str
+    code: str
+    schemas: Optional[Dict[str, Any]] = None
+    sample_data: Optional[Dict[str, Any]] = None
+
+
+class SQLSubmitRequest(BaseModel):
+    """Request for submitting SQL via SQL execution engine"""
+    questionId: str
+    code: str
+    expectedOutput: Optional[List[Dict[str, Any]]] = None
+    schemas: Optional[Dict[str, Any]] = None
+    sample_data: Optional[Dict[str, Any]] = None
+
+
+@router.post("/assessment/sql-engine/execute")
+async def proxy_sql_execute(request: SQLExecuteRequest):
+    """
+    Proxy endpoint for SQL execution engine /api/execute
+    This avoids CORS issues by routing requests through the backend
+    """
+    logger.info(f"Proxying SQL execute request for question {request.questionId}")
+    
+    settings = get_dsa_settings()
+    sql_engine_url = getattr(settings, "sql_engine_url", None) or SQL_ENGINE_URL
+    
+    if not sql_engine_url:
+        raise HTTPException(
+            status_code=500,
+            detail="SQL_ENGINE_URL is not configured. Please set it in the .env file."
+        )
+    
+    logger.info(f"Using SQL engine URL from environment: {sql_engine_url}")
+    
+    # Remove /api suffix if present (we'll add it back)
+    base_url = sql_engine_url.rstrip('/')
+    if base_url.endswith('/api'):
+        base_url = base_url[:-4]
+    
+    # Try /api/execute first
+    url = f"{base_url}/api/execute"
+    logger.info(f"Proxying to SQL engine: {url}")
+    
+    timeout = httpx.Timeout(connect=10.0, read=30.0, write=10.0, pool=10.0)
+    
+    try:
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            response = await client.post(
+                url,
+                json={
+                    "questionId": request.questionId,
+                    "code": request.code,
+                    "schemas": request.schemas,
+                    "sample_data": request.sample_data,
+                },
+                headers={"Content-Type": "application/json"},
+            )
+            response.raise_for_status()
+            
+            # Check if response is HTML (error page)
+            response_text = response.text
+            if response_text.strip().startswith('<!DOCTYPE') or 'text/html' in response.headers.get('content-type', ''):
+                logger.warning(f"SQL engine returned HTML for {url}, trying alternative endpoint /execute")
+                # Try without /api prefix
+                alt_url = f"{base_url}/execute"
+                alt_response = await client.post(
+                    alt_url,
+                    json={
+                        "questionId": request.questionId,
+                        "code": request.code,
+                        "schemas": request.schemas,
+                        "sample_data": request.sample_data,
+                    },
+                    headers={"Content-Type": "application/json"},
+                )
+                alt_response.raise_for_status()
+                return alt_response.json()
+            
+            return response.json()
+    except httpx.HTTPStatusError as e:
+        # Check if response is HTML error page
+        response_text = e.response.text if hasattr(e.response, 'text') else str(e.response.content)
+        if response_text.strip().startswith('<!DOCTYPE') or 'text/html' in e.response.headers.get('content-type', ''):
+            logger.warning(f"SQL engine returned HTML error page for {url}, trying alternative endpoint /execute")
+            # Try without /api prefix
+            try:
+                alt_url = f"{base_url}/execute"
+                async with httpx.AsyncClient(timeout=timeout) as client:
+                    alt_response = await client.post(
+                        alt_url,
+                        json={
+                            "questionId": request.questionId,
+                            "code": request.code,
+                            "schemas": request.schemas,
+                            "sample_data": request.sample_data,
+                        },
+                        headers={"Content-Type": "application/json"},
+                    )
+                    alt_response.raise_for_status()
+                    return alt_response.json()
+            except Exception as alt_e:
+                logger.error(f"Alternative endpoint also failed: {alt_e}")
+                raise HTTPException(
+                    status_code=503,
+                    detail=f"SQL execution engine is unavailable. Tried both {url} and {alt_url}. The service may be down or the endpoint path is incorrect."
+                )
+        
+        logger.error(f"SQL engine HTTP error: {e.response.status_code} - {response_text[:500]}")
+        raise HTTPException(
+            status_code=e.response.status_code,
+            detail=f"SQL execution engine error: {response_text[:200]}"
+        )
+    except httpx.RequestError as e:
+        logger.error(f"SQL engine connection error: {e}")
+        raise HTTPException(
+            status_code=503,
+            detail=f"Failed to connect to SQL execution engine at {url}. Error: {str(e)}"
+        )
+    except Exception as e:
+        logger.error(f"Unexpected error proxying to SQL engine: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Unexpected error: {str(e)}"
+        )
+
+
+@router.post("/assessment/sql-engine/submit")
+async def proxy_sql_submit(request: SQLSubmitRequest):
+    """
+    Proxy endpoint for SQL execution engine /api/submit
+    This avoids CORS issues by routing requests through the backend
+    """
+    logger.info(f"Proxying SQL submit request for question {request.questionId}")
+    
+    # Always get fresh settings (not cached) to pick up .env changes
+    settings = DSASettings()
+    sql_engine_url = settings.sql_engine_url
+    
+    if not sql_engine_url:
+        raise HTTPException(
+            status_code=500,
+            detail="SQL_ENGINE_URL is not configured. Please set it in the .env file."
+        )
+    
+    logger.info(f"Using SQL engine URL from environment: {sql_engine_url}")
+    
+    # Remove /api suffix if present (we'll add it back)
+    base_url = sql_engine_url.rstrip('/')
+    if base_url.endswith('/api'):
+        base_url = base_url[:-4]
+    
+    # Try /api/submit first
+    url = f"{base_url}/api/submit"
+    logger.info(f"Proxying to SQL engine: {url}")
+    
+    timeout = httpx.Timeout(connect=10.0, read=30.0, write=10.0, pool=10.0)
+    
+    try:
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            response = await client.post(
+                url,
+                json={
+                    "questionId": request.questionId,
+                    "code": request.code,
+                    "expectedOutput": request.expectedOutput,
+                    "schemas": request.schemas,
+                    "sample_data": request.sample_data,
+                },
+                headers={"Content-Type": "application/json"},
+            )
+            response.raise_for_status()
+            
+            # Check if response is HTML (error page)
+            response_text = response.text
+            if response_text.strip().startswith('<!DOCTYPE') or 'text/html' in response.headers.get('content-type', ''):
+                logger.warning(f"SQL engine returned HTML for {url}, trying alternative endpoint /submit")
+                # Try without /api prefix
+                alt_url = f"{base_url}/submit"
+                alt_response = await client.post(
+                    alt_url,
+                    json={
+                        "questionId": request.questionId,
+                        "code": request.code,
+                        "expectedOutput": request.expectedOutput,
+                        "schemas": request.schemas,
+                        "sample_data": request.sample_data,
+                    },
+                    headers={"Content-Type": "application/json"},
+                )
+                alt_response.raise_for_status()
+                return alt_response.json()
+            
+            return response.json()
+    except httpx.HTTPStatusError as e:
+        # Check if response is HTML error page
+        response_text = e.response.text if hasattr(e.response, 'text') else str(e.response.content)
+        if response_text.strip().startswith('<!DOCTYPE') or 'text/html' in e.response.headers.get('content-type', ''):
+            logger.warning(f"SQL engine returned HTML error page for {url}, trying alternative endpoint /submit")
+            # Try without /api prefix
+            try:
+                alt_url = f"{base_url}/submit"
+                async with httpx.AsyncClient(timeout=timeout) as client:
+                    alt_response = await client.post(
+                        alt_url,
+                        json={
+                            "questionId": request.questionId,
+                            "code": request.code,
+                            "expectedOutput": request.expectedOutput,
+                            "schemas": request.schemas,
+                            "sample_data": request.sample_data,
+                        },
+                        headers={"Content-Type": "application/json"},
+                    )
+                    alt_response.raise_for_status()
+                    return alt_response.json()
+            except Exception as alt_e:
+                logger.error(f"Alternative endpoint also failed: {alt_e}")
+                raise HTTPException(
+                    status_code=503,
+                    detail=f"SQL execution engine is unavailable. Tried both {url} and {alt_url}. The service may be down or the endpoint path is incorrect."
+                )
+        
+        logger.error(f"SQL engine HTTP error: {e.response.status_code} - {response_text[:500]}")
+        raise HTTPException(
+            status_code=e.response.status_code,
+            detail=f"SQL execution engine error: {response_text[:200]}"
+        )
+    except httpx.RequestError as e:
+        logger.error(f"SQL engine connection error: {e}")
+        raise HTTPException(
+            status_code=503,
+            detail=f"Failed to connect to SQL execution engine at {url}. Error: {str(e)}"
+        )
+    except Exception as e:
+        logger.error(f"Unexpected error proxying to SQL engine: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Unexpected error: {str(e)}"
+        )

@@ -1895,44 +1895,14 @@ export default function TestTakePage() {
         // Normalize SQL query to single line with \n characters
         sqlQuery = sqlQuery.replace(/\r\n/g, '\n').replace(/\r/g, '\n')
         
-        // Call sql-execution-engine directly
-        // Default to port 3010 (Docker mapping) or use environment variable
-        const sqlEngineUrl = process.env.NEXT_PUBLIC_SQL_ENGINE_URL || 'http://localhost:3010'
-        const response = await fetch(`${sqlEngineUrl}/api/execute`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            questionId: currentQuestion.id,
-            code: sqlQuery,
-            schemas: currentQuestion.schemas || null,
-            sample_data: currentQuestion.sample_data || null,
-          }),
+        // Call SQL execution engine through backend proxy to avoid CORS issues
+        // Backend reads SQL_ENGINE_URL from environment variable
+        const result = await dsaService.proxySQLExecute({
+          questionId: currentQuestion.id,
+          code: sqlQuery,
+          schemas: currentQuestion.schemas || null,
+          sample_data: currentQuestion.sample_data || null,
         })
-
-        // Check if response is OK
-        if (!response.ok) {
-          const text = await response.text()
-          // If it's HTML, it's likely a 404 or error page
-          if (text.trim().startsWith('<!DOCTYPE') || text.trim().startsWith('<html')) {
-            throw new Error(`SQL engine returned HTML (likely 404). Make sure the SQL execution engine is running on ${sqlEngineUrl}`)
-          }
-          throw new Error(`HTTP ${response.status}: ${text.substring(0, 200)}`)
-        }
-
-        // Check content type before parsing
-        const contentType = response.headers.get('content-type') || ''
-        if (!contentType.includes('application/json')) {
-          const text = await response.text()
-          // If it's HTML, provide helpful error
-          if (text.trim().startsWith('<!DOCTYPE') || text.trim().startsWith('<html')) {
-            throw new Error(`SQL engine returned HTML instead of JSON. Check if the endpoint /api/execute exists. Server: ${sqlEngineUrl}`)
-          }
-          throw new Error(`Expected JSON but got ${contentType}. Response: ${text.substring(0, 200)}`)
-        }
-
-        const result = await response.json()
         
         if (result.success) {
           // Format output - result.output is an array of objects (from normalizeResult)
@@ -1953,7 +1923,7 @@ export default function TestTakePage() {
           } else if (result.output && typeof result.output === 'string') {
             formattedOutput = result.output
           } else {
-            formattedOutput = '✅ Query executed successfully (no output rows)'
+            formattedOutput = 'Query executed successfully (no output rows)'
           }
           
           setOutput(prev => ({
@@ -1968,7 +1938,7 @@ export default function TestTakePage() {
           setOutput(prev => ({
             ...prev,
             [currentQuestion.id]: {
-              stderr: `❌ ${result.error || 'SQL execution failed'}`,
+              stderr: `${result.error || 'SQL execution failed'}`,
               status: 'error'
             }
           }))
@@ -1979,15 +1949,15 @@ export default function TestTakePage() {
         console.error('SQL Run error:', error)
         let errorMessage = error.message || 'Failed to execute SQL query'
         
-        // Handle JSON parse errors
-        if (error.message && error.message.includes('JSON')) {
-          errorMessage = `Invalid response from SQL engine. Make sure the SQL execution engine is running on ${process.env.NEXT_PUBLIC_SQL_ENGINE_URL || 'http://localhost:3000'}`
+        // Handle errors
+        if (error.response?.data?.detail) {
+          errorMessage = error.response.data.detail
         }
         
         setOutput(prev => ({
           ...prev,
           [currentQuestion.id]: {
-            stderr: `❌ Error: ${errorMessage}`,
+            stderr: `Error: ${errorMessage}`,
             status: 'error'
           }
         }))
@@ -2067,8 +2037,8 @@ export default function TestTakePage() {
         ...prev,
         [currentQuestion.id]: {
           stdout: allPassed 
-            ? `✅ All ${result.public_summary?.total || 0} public test cases passed!`
-            : `❌ ${result.public_summary?.passed || 0}/${result.public_summary?.total || 0} public test cases passed`,
+            ? `All ${result.public_summary?.total || 0} public test cases passed!`
+            : `${result.public_summary?.passed || 0}/${result.public_summary?.total || 0} public test cases passed`,
           status: result.status,
         }
       }))
@@ -2228,7 +2198,7 @@ export default function TestTakePage() {
           setOutput(prev => ({
             ...prev,
             [currentQuestion.id]: {
-              stderr: '❌ Error: SQL query cannot be empty. Please write a query before submitting.',
+              stderr: 'Error: SQL query cannot be empty. Please write a query before submitting.',
               status: 'error'
             }
           }))
@@ -2250,7 +2220,7 @@ export default function TestTakePage() {
           setOutput(prev => ({
             ...prev,
             [currentQuestion.id]: {
-              stderr: '❌ Error: SQL query cannot be empty or contain only comments. Please write a valid query.',
+              stderr: 'Error: SQL query cannot be empty or contain only comments. Please write a valid query.',
               status: 'error'
             }
           }))
@@ -2292,7 +2262,12 @@ export default function TestTakePage() {
         
         
         // Call sql-execution-engine submit endpoint
-        const sqlEngineUrl = process.env.NEXT_PUBLIC_SQL_ENGINE_URL || 'http://localhost:3010'
+        // URL must be set in NEXT_PUBLIC_SQL_ENGINE_URL environment variable
+        const baseUrl = process.env.NEXT_PUBLIC_SQL_ENGINE_URL
+        if (!baseUrl) {
+          throw new Error('NEXT_PUBLIC_SQL_ENGINE_URL environment variable is not set. Please configure it in your .env file.')
+        }
+        const sqlEngineUrl = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl
         
         console.log('[SQL Submit] ===== Starting Submit =====')
         console.log('[SQL Submit] SQL Engine URL:', sqlEngineUrl)
@@ -2534,14 +2509,14 @@ export default function TestTakePage() {
           setOutput(prev => ({
             ...prev,
             [currentQuestion.id]: {
-              stdout: ` Query passed!${testCaseInfo}\n\n📊 Your Output:\n${actualOutputText}\n\n${submitResult.reason ? `ℹ️ Note: ${submitResult.reason}` : ''}`,
+              stdout: `Query passed!${testCaseInfo}\n\nYour Output:\n${actualOutputText}\n\n${submitResult.reason ? `Note: ${submitResult.reason}` : ''}`,
               status: 'accepted'
             }
           }))
           setQuestionStatus({ ...questionStatus, [currentQuestion.id]: 'solved' })
         } else {
           // Query failed or didn't match expected output
-          let outputMessage = ` Query did not pass${testCaseInfo}\n\n📊 Your Output:\n${actualOutputText}`
+          let outputMessage = `Query did not pass${testCaseInfo}\n\nYour Output:\n${actualOutputText}`
           
           if (finalResult.error || submitResult.error) {
             const errorMsg = finalResult.error || submitResult.error
@@ -2556,7 +2531,7 @@ export default function TestTakePage() {
               formattedError = `Column not found: ${errorMsg}\n\nPlease check the column name and ensure it exists in the table.`
             }
             
-            outputMessage = ` Execution Error: ${formattedError}\n\n📊 Your Output:\n${actualOutputText}`
+            outputMessage = `Execution Error: ${formattedError}\n\nYour Output:\n${actualOutputText}`
           } else if (submitResult.reason) {
             outputMessage += `\n\n Reason: ${submitResult.reason}`
           }
@@ -2641,9 +2616,9 @@ export default function TestTakePage() {
         console.error('SQL Submit error:', error)
         let errorMessage = error.message || 'Failed to submit SQL query'
         
-        // Handle JSON parse errors
-        if (error.message && error.message.includes('JSON')) {
-          errorMessage = `Invalid response from SQL engine. Make sure the SQL execution engine is running on ${process.env.NEXT_PUBLIC_SQL_ENGINE_URL || 'http://localhost:3010'}`
+        // Handle errors
+        if (error.response?.data?.detail) {
+          errorMessage = error.response.data.detail
         }
         
         setOutput(prev => ({
