@@ -74,21 +74,22 @@ export default async function handler(
       testType: testTypeStr || "auto-detect",
     });
 
-    // If testType is provided, call only the relevant endpoint
+    // Use API Gateway for all requests (works in both local and Azure environments)
+    // If testType is provided, call the specific endpoint through API Gateway
     if (testTypeStr) {
       const normalizedTestType = testTypeStr.toLowerCase().trim();
       
       if (normalizedTestType === "dsa") {
-        // Call DSA service directly (bypass API Gateway to avoid auth issues)
+        // Call DSA service through API Gateway
         try {
           const dsaUrl = `/api/v1/dsa/tests/get-reference-photo`;
-          console.log("[get-reference-photo] 🎯 Calling DSA service directly (testType=dsa):", {
+          console.log("[get-reference-photo] 🎯 Calling DSA service via API Gateway (testType=dsa):", {
             url: dsaUrl,
-            fullUrl: `${DSA_SERVICE_URL}${dsaUrl}`,
-            dsaServiceUrl: DSA_SERVICE_URL,
+            fullUrl: `${API_GATEWAY_URL}${dsaUrl}`,
+            apiGatewayUrl: API_GATEWAY_URL,
           });
           
-          const dsaResponse = await dsaServiceClient.get(dsaUrl, {
+          const dsaResponse = await backendClient.get(dsaUrl, {
             params: {
               assessmentId: assessmentIdStr,
               candidateEmail: candidateEmailStr,
@@ -125,16 +126,16 @@ export default async function handler(
           });
         }
       } else if (normalizedTestType === "aiml") {
-        // Call AIML service directly (bypass API Gateway to avoid auth issues)
+        // Call AIML service through API Gateway
         try {
           const aimlUrl = `/api/v1/aiml/tests/get-reference-photo`;
-          console.log("[get-reference-photo] 🎯 Calling AIML service directly (testType=aiml):", {
+          console.log("[get-reference-photo] 🎯 Calling AIML service via API Gateway (testType=aiml):", {
             url: aimlUrl,
-            fullUrl: `${AIML_SERVICE_URL}${aimlUrl}`,
-            aimlServiceUrl: AIML_SERVICE_URL,
+            fullUrl: `${API_GATEWAY_URL}${aimlUrl}`,
+            apiGatewayUrl: API_GATEWAY_URL,
           });
           
-          const aimlResponse = await aimlServiceClient.get(aimlUrl, {
+          const aimlResponse = await backendClient.get(aimlUrl, {
             params: {
               assessmentId: assessmentIdStr,
               candidateEmail: candidateEmailStr,
@@ -177,16 +178,15 @@ export default async function handler(
     }
 
     // Fallback: If testType not provided or unknown, try endpoints in order (backward compatibility)
-    // First, try AIML service directly (for AIML tests)
+    // First, try AIML service through API Gateway
     try {
       const aimlUrl = `/api/v1/aiml/tests/get-reference-photo`;
-      console.log("[get-reference-photo] 🔍 Trying AIML service directly (fallback):", {
+      console.log("[get-reference-photo] 🔍 Trying AIML service via API Gateway (fallback):", {
         url: aimlUrl,
-        fullUrl: `${AIML_SERVICE_URL}${aimlUrl}`,
-        aimlServiceUrl: AIML_SERVICE_URL,
+        fullUrl: `${API_GATEWAY_URL}${aimlUrl}`,
       });
       
-      const aimlResponse = await aimlServiceClient.get(aimlUrl, {
+      const aimlResponse = await backendClient.get(aimlUrl, {
         params: {
           assessmentId: assessmentIdStr,
           candidateEmail: candidateEmailStr,
@@ -209,16 +209,15 @@ export default async function handler(
       });
     }
 
-    // Second, try DSA service directly (for DSA tests)
+    // Second, try DSA service through API Gateway
     try {
       const dsaUrl = `/api/v1/dsa/tests/get-reference-photo`;
-      console.log("[get-reference-photo] 🔍 Trying DSA service directly (fallback):", {
+      console.log("[get-reference-photo] 🔍 Trying DSA service via API Gateway (fallback):", {
         url: dsaUrl,
-        fullUrl: `${DSA_SERVICE_URL}${dsaUrl}`,
-        dsaServiceUrl: DSA_SERVICE_URL,
+        fullUrl: `${API_GATEWAY_URL}${dsaUrl}`,
       });
       
-      const dsaResponse = await dsaServiceClient.get(dsaUrl, {
+      const dsaResponse = await backendClient.get(dsaUrl, {
         params: {
           assessmentId: assessmentIdStr,
           candidateEmail: candidateEmailStr,
