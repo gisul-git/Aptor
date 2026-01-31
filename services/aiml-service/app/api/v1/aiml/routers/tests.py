@@ -2556,6 +2556,7 @@ async def send_invitation(
             .content {{ background-color: #f0fdf4; padding: 20px; border-radius: 8px; margin-bottom: 20px; border: 2px solid #10b981; }}
             .button {{ display: inline-block; padding: 12px 24px; background-color: #10b981; color: #ffffff; text-decoration: none; border-radius: 6px; margin: 20px 0; }}
             .footer {{ text-align: center; color: #64748b; font-size: 0.875rem; margin-top: 30px; }}
+            .candidate-info {{ background-color: #ffffff; padding: 15px; border-radius: 6px; margin: 15px 0; border-left: 4px solid #10b981; }}
         </style>
     </head>
     <body>
@@ -2567,6 +2568,11 @@ async def send_invitation(
             <div class="content">
                 <p>Dear {candidate_name},</p>
                 <p>{email_body}</p>
+                <div class="candidate-info">
+                    <p><strong>Your Details:</strong></p>
+                    <p><strong>Name:</strong> {candidate_name}</p>
+                    <p><strong>Email:</strong> {candidate_email}</p>
+                </div>
                 <div style="text-align: center;">
                     <a href="{exam_url_with_params}" class="button">Start AIML Assessment</a>
                 </div>

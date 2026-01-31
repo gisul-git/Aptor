@@ -66,7 +66,6 @@ export default function PrecheckPage() {
   const [selectedAudioDeviceId, setSelectedAudioDeviceId] = useState<string>("");
   const [audioDataArray, setAudioDataArray] = useState<Uint8Array | null>(null);
   const [isListening, setIsListening] = useState(false);
-  const [extensionsCertified, setExtensionsCertified] = useState(false);
   const [samplesAboveThreshold, setSamplesAboveThreshold] = useState(0);
   const [totalSamples, setTotalSamples] = useState(0);
   const [micTestStarted, setMicTestStarted] = useState(false);
@@ -1452,13 +1451,6 @@ export default function PrecheckPage() {
     }
   }, [allStepsPassed, assessmentId, token, handleComplete, steps]);
   
-  // Reset certification when leaving browser step
-  useEffect(() => {
-    if (currentStep !== 0) {
-      setExtensionsCertified(false);
-    }
-  }, [currentStep]);
-  
   if (isLoading) {
     return (
       <div style={{ 
@@ -1894,47 +1886,6 @@ export default function PrecheckPage() {
                     </div>
                   )}
 
-                  {/* Fallback: Manual Certification if Permission Not Granted */}
-                  {extensionScanResult && !extensionScanResult.permissionGranted && (
-                <div style={{
-                  padding: "1rem",
-                  backgroundColor: "#fffbeb",
-                  border: "1px solid #fcd34d",
-                  borderRadius: "0.5rem",
-                      marginTop: "1rem",
-                    }}>
-                      <p style={{ 
-                        margin: "0 0 0.75rem 0", 
-                        fontSize: "0.875rem", 
-                        fontWeight: 600,
-                        color: "#92400e"
-                      }}>
-                        Alternative: Manual Certification
-                      </p>
-                      <label style={{
-                        display: "flex",
-                        alignItems: "flex-start",
-                        gap: "0.75rem",
-                        cursor: "pointer",
-                      }}>
-                        <input
-                          type="checkbox"
-                          checked={extensionsCertified}
-                          onChange={(e) => setExtensionsCertified(e.target.checked)}
-                          style={{
-                            marginTop: "0.25rem",
-                            width: "1.25rem",
-                            height: "1.25rem",
-                            cursor: "pointer",
-                          }}
-                        />
-                        <span style={{ fontSize: "0.8125rem", color: "#92400e" }}>
-                          I certify that I have manually disabled ALL browser extensions
-                          by going to <code style={{ backgroundColor: "#fef3c7", padding: "0.125rem 0.25rem", borderRadius: "0.25rem" }}>{EXTENSION_DETECTION_CONFIG.EXTENSION_MANAGEMENT_URLS.CHROME}</code> or <code style={{ backgroundColor: "#fef3c7", padding: "0.125rem 0.25rem", borderRadius: "0.25rem" }}>{EXTENSION_DETECTION_CONFIG.EXTENSION_MANAGEMENT_URLS.EDGE}</code> and toggling them all OFF.
-                        </span>
-                      </label>
-                </div>
-              )}
                 </>
               )}
 
@@ -2532,45 +2483,6 @@ export default function PrecheckPage() {
           {/* Next Button - Show when current step passes */}
           {currentStepData.status === "passed" && currentStep < steps.length - 1 && (
             <div style={{ marginTop: "1.5rem", paddingTop: "1.5rem", borderTop: "1px solid #e2e8f0" }}>
-              {/* Certification checkbox for browser step */}
-              {currentStep === 0 && extensionScanResult && !extensionScanResult.permissionGranted && (
-                <div style={{
-                  padding: "1rem",
-                  backgroundColor: "#fef2f2",
-                  border: "2px solid #fecaca",
-                  borderRadius: "0.5rem",
-                  marginBottom: "1rem",
-                }}>
-                  <label style={{
-                    display: "flex",
-                    alignItems: "flex-start",
-                    gap: "0.75rem",
-                    cursor: "pointer",
-                  }}>
-                    <input
-                      type="checkbox"
-                      required
-                      checked={extensionsCertified}
-                      onChange={(e) => setExtensionsCertified(e.target.checked)}
-                      style={{
-                        marginTop: "0.25rem",
-                        width: "1.25rem",
-                        height: "1.25rem",
-                        cursor: "pointer",
-                      }}
-                    />
-                    <span style={{ fontSize: "0.875rem", color: "#991b1b" }}>
-                      <strong>REQUIRED: I certify that I have manually disabled ALL browser extensions</strong>
-                      <br />
-                      <span style={{ fontSize: "0.8125rem" }}>
-                        I have gone to <code style={{ backgroundColor: "#fee2e2", padding: "0.125rem 0.25rem", borderRadius: "0.25rem" }}>{EXTENSION_DETECTION_CONFIG.EXTENSION_MANAGEMENT_URLS.CHROME}</code> or <code style={{ backgroundColor: "#fee2e2", padding: "0.125rem 0.25rem", borderRadius: "0.25rem" }}>{EXTENSION_DETECTION_CONFIG.EXTENSION_MANAGEMENT_URLS.EDGE}</code> and toggled OFF all extensions.
-                        I understand that using extensions during the assessment will result in disqualification.
-                      </span>
-                    </span>
-                  </label>
-        </div>
-              )}
-
               <button
                 onClick={() => {
                   if (currentStep < steps.length - 1) {

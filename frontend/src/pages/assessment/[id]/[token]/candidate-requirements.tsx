@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/router";
 import axios from "axios";
 import { getGateContext } from "@/lib/gateContext";
+import aimlApi from "@/lib/aiml/api";
  
 /**
  * Default candidate requirements when assessment data is not available
@@ -225,8 +226,9 @@ export default function CandidateRequirementsPage() {
           setError(null);
 
           // Fetch AIML test using verify-link endpoint (public, no auth required)
-          const response = await axios.get(
-            `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:80"}/api/v1/aiml/tests/${id}/verify-link`,
+          // Use aimlApi which handles dynamic API gateway URL configuration
+          const response = await aimlApi.get(
+            `/tests/${id}/verify-link`,
             {
               params: { token }
             }

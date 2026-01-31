@@ -5,14 +5,16 @@ import { requireAuth } from '../../../../lib/auth'
 import Link from 'next/link'
 import aimlApi from '../../../../lib/aiml/api'
 import axios from 'axios'
-import { ArrowLeft, Lightbulb, CheckCircle2, TrendingUp, AlertTriangle, Eye, Clock, Video, Loader2 } from 'lucide-react'
+import { ArrowLeft, Lightbulb, CheckCircle2, TrendingUp, AlertTriangle, Eye, Clock, Video, Loader2, Download } from 'lucide-react'
 import { useSession } from 'next-auth/react'
 import ProctorLogsReview from '../../../../components/admin/ProctorLogsReview'
+import * as XLSX from 'xlsx'
 import { 
   useAIMLTest, 
   useAIMLCandidates, 
   useAIMLCandidateAnalytics, 
   useAddAIMLCandidate, 
+  useBulkAddAIMLCandidates,
   useRemoveAIMLCandidate, 
   useSendAIMLInvitation,
   useSendAIMLInvitationsToAll,
@@ -137,10 +139,12 @@ export default function AnalyticsPage() {
   const [loadingProctorLogs, setLoadingProctorLogs] = useState(false)
   const [showProctorLogs, setShowProctorLogs] = useState(false)
   const [showAddCandidateModal, setShowAddCandidateModal] = useState(false)
+  const [showBulkUploadModal, setShowBulkUploadModal] = useState(false)
   const [newCandidateName, setNewCandidateName] = useState("")
   const [newCandidateEmail, setNewCandidateEmail] = useState("")
   const [emailError, setEmailError] = useState<string | null>(null)
   const [addingCandidate, setAddingCandidate] = useState(false)
+  const bulkAddCandidatesMutation = useBulkAddAIMLCandidates()
   const [testInfo, setTestInfo] = useState<any>(null)
   const [showEmailTemplateModal, setShowEmailTemplateModal] = useState(false)
   const [emailTemplate, setEmailTemplate] = useState<{
@@ -160,6 +164,7 @@ export default function AnalyticsPage() {
   const [sendingInvitations, setSendingInvitations] = useState(false)
   const [sendingFeedback, setSendingFeedback] = useState<string | null>(null) // Track which candidate's feedback is being sent
   const [referencePhoto, setReferencePhoto] = useState<string | null>(null)
+  const [exportingResults, setExportingResults] = useState(false)
 
   const fetchReferencePhoto = async (candidateEmail: string) => {
     console.log('[AIML Analytics] 🔍 fetchReferencePhoto called:', { testId, candidateEmail })
@@ -588,6 +593,165 @@ export default function AnalyticsPage() {
     }
   }
 
+  const handleExportResults = async () => {
+    if (!testId || typeof testId !== 'string' || candidates.length === 0) {
+      alert('No candidates to export')
+      return
+    }
+
+    setExportingResults(true)
+    try {
+      const exportData: Array<{
+        name: string
+        email: string
+        score: number
+        feedback: string
+      }> = []
+      
+      // Fetch analytics for all candidates
+      for (const candidate of candidates) {
+        try {
+          const response = await aimlApi.get(`/tests/${testId}/candidates/${candidate.user_id}/analytics`)
+          const analytics = response.data?.data || response.data
+          
+          // Collect all feedbacks from question_analytics
+          const feedbacks: string[] = []
+          
+          if (analytics?.question_analytics && Array.isArray(analytics.question_analytics)) {
+            analytics.question_analytics.forEach((qa: QuestionAnalytics) => {
+              if (qa.ai_feedback) {
+                const feedback = qa.ai_feedback
+                const feedbackParts: string[] = []
+                
+                // Add question title
+                feedbackParts.push(`Question: ${qa.question_title || 'Unknown'}`)
+                
+                // Add feedback summary
+                if (feedback.feedback_summary) {
+                  feedbackParts.push(`Summary: ${feedback.feedback_summary}`)
+                }
+                
+                // Add one-liner
+                if (feedback.one_liner) {
+                  feedbackParts.push(`One-liner: ${feedback.one_liner}`)
+                }
+                
+                // Add code quality feedback
+                if (feedback.code_quality?.comments) {
+                  feedbackParts.push(`Code Quality: ${feedback.code_quality.comments}`)
+                }
+                
+                // Add correctness feedback
+                if (feedback.correctness?.comments) {
+                  feedbackParts.push(`Correctness: ${feedback.correctness.comments}`)
+                }
+                
+                // Add task completion details
+                if (feedback.task_completion) {
+                  const taskDetails = feedback.task_completion.details?.join('; ') || ''
+                  if (taskDetails) {
+                    feedbackParts.push(`Task Completion: ${taskDetails}`)
+                  }
+                  if (feedback.task_completion.completed !== undefined && feedback.task_completion.total !== undefined) {
+                    feedbackParts.push(`Tasks: ${feedback.task_completion.completed}/${feedback.task_completion.total} completed`)
+                  }
+                }
+                
+                // Add library usage feedback
+                if (feedback.library_usage?.comments) {
+                  feedbackParts.push(`Library Usage: ${feedback.library_usage.comments}`)
+                }
+                
+                // Add output quality feedback
+                if (feedback.output_quality?.comments) {
+                  feedbackParts.push(`Output Quality: ${feedback.output_quality.comments}`)
+                }
+                
+                // Add strengths
+                if (feedback.strengths && feedback.strengths.length > 0) {
+                  feedbackParts.push(`Strengths: ${feedback.strengths.join('; ')}`)
+                }
+                
+                // Add areas for improvement
+                if (feedback.areas_for_improvement && feedback.areas_for_improvement.length > 0) {
+                  feedbackParts.push(`Areas for Improvement: ${feedback.areas_for_improvement.join('; ')}`)
+                }
+                
+                // Add suggestions
+                if (feedback.suggestions && feedback.suggestions.length > 0) {
+                  feedbackParts.push(`Suggestions: ${feedback.suggestions.join('; ')}`)
+                }
+                
+                // Add improvement suggestions
+                if (feedback.improvement_suggestions && feedback.improvement_suggestions.length > 0) {
+                  feedbackParts.push(`Improvement Suggestions: ${feedback.improvement_suggestions.join('; ')}`)
+                }
+                
+                if (feedbackParts.length > 0) {
+                  feedbacks.push(feedbackParts.join('\n'))
+                }
+              }
+            })
+          }
+          
+          exportData.push({
+            name: analytics?.candidate?.name || candidate.name || '',
+            email: analytics?.candidate?.email || candidate.email || '',
+            score: analytics?.submission?.score || candidate.submission_score || 0,
+            feedback: feedbacks.join('\n\n') || 'No feedback available'
+          })
+        } catch (err: any) {
+          // If analytics fetch fails, still include candidate with available data
+          console.error(`Error fetching analytics for ${candidate.email}:`, err)
+          exportData.push({
+            name: candidate.name || '',
+            email: candidate.email || '',
+            score: candidate.submission_score || 0,
+            feedback: 'Analytics not available'
+          })
+        }
+      }
+      
+      // Create Excel workbook with proper headers
+      const dataWithHeaders = exportData.map(row => ({
+        'Name': row.name,
+        'Email': row.email,
+        'Score': row.score,
+        'Feedback': row.feedback
+      }))
+      
+      const worksheet = XLSX.utils.json_to_sheet(dataWithHeaders)
+      
+      // Set column widths
+      worksheet['!cols'] = [
+        { wch: 25 }, // Name
+        { wch: 35 }, // Email
+        { wch: 10 }, // Score
+        { wch: 80 }  // Feedback
+      ]
+      
+      // Create workbook
+      const workbook = XLSX.utils.book_new()
+      XLSX.utils.book_append_sheet(workbook, worksheet, 'Results')
+      
+      // Generate filename with test title and date
+      const testTitle = testInfo?.title || 'AIML_Test'
+      const sanitizedTitle = testTitle.replace(/[^a-z0-9]/gi, '_').substring(0, 30)
+      const dateStr = new Date().toISOString().split('T')[0]
+      const filename = `aiml_test_results_${sanitizedTitle}_${dateStr}.xlsx`
+      
+      // Download file
+      XLSX.writeFile(workbook, filename)
+      
+      alert(`Exported ${exportData.length} candidate results successfully!`)
+    } catch (err: any) {
+      console.error('Error exporting results:', err)
+      alert('Failed to export results: ' + (err.response?.data?.detail || err.message))
+    } finally {
+      setExportingResults(false)
+    }
+  }
+
   // Check if test has ended
   const isTestEnded = useMemo(() => {
     if (!testInfo?.schedule?.endTime) return false
@@ -782,22 +946,63 @@ export default function AnalyticsPage() {
             <h2 style={{ fontSize: "1.25rem", fontWeight: 600 }}>Candidates</h2>
             <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
               {candidates.length > 0 && (
-                <button
-                  type="button"
-                  className="btn-secondary"
-                  onClick={handleSendInvitationsToAll}
-                  disabled={sendingInvitations}
-                  style={{ 
-                    padding: "0.5rem 1rem", 
-                    fontSize: "0.875rem",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "0.5rem"
-                  }}
-                >
-                  {sendingInvitations ? "Sending..." : "📧 Send Email to All"}
-                </button>
+                <>
+                  <button
+                    type="button"
+                    className="btn-secondary"
+                    onClick={handleExportResults}
+                    disabled={exportingResults}
+                    style={{ 
+                      padding: "0.5rem 1rem", 
+                      fontSize: "0.875rem",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "0.5rem"
+                    }}
+                  >
+                    {exportingResults ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Exporting...
+                      </>
+                    ) : (
+                      <>
+                        <Download className="h-4 w-4" />
+                        Export Results
+                      </>
+                    )}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-secondary"
+                    onClick={handleSendInvitationsToAll}
+                    disabled={sendingInvitations}
+                    style={{ 
+                      padding: "0.5rem 1rem", 
+                      fontSize: "0.875rem",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "0.5rem"
+                    }}
+                  >
+                    {sendingInvitations ? "Sending..." : "📧 Send Email to All"}
+                  </button>
+                </>
               )}
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={() => setShowBulkUploadModal(true)}
+                style={{ 
+                  padding: "0.5rem 1rem", 
+                  fontSize: "0.875rem",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "0.5rem"
+                }}
+              >
+                📤 Bulk Upload
+              </button>
               <button
                 type="button"
                 className="btn-primary"
@@ -1832,6 +2037,137 @@ export default function AnalyticsPage() {
                   {addingCandidate ? "Adding..." : "Add Candidate"}
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Bulk Upload Modal */}
+      {showBulkUploadModal && (
+        <div style={{
+          position: "fixed",
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: "rgba(0, 0, 0, 0.5)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          zIndex: 1000,
+        }}
+        onClick={() => {
+          if (!bulkAddCandidatesMutation.isPending) {
+            setShowBulkUploadModal(false)
+          }
+        }}
+        >
+          <div style={{
+            backgroundColor: "#ffffff",
+            borderRadius: "0.75rem",
+            padding: "2rem",
+            width: "90%",
+            maxWidth: "500px",
+            boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.1)",
+          }}
+          onClick={(e) => e.stopPropagation()}
+          >
+            <h2 style={{ fontSize: "1.5rem", fontWeight: 600, marginBottom: "1.5rem", color: "#2D7A52" }}>
+              Bulk Upload Candidates
+            </h2>
+            
+            <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+              <div>
+                <label style={{ display: "block", marginBottom: "0.5rem", fontWeight: 600, color: "#1e293b" }}>
+                  Upload CSV File <span style={{ color: "#ef4444" }}>*</span>
+                </label>
+                <p style={{ fontSize: "0.75rem", color: "#6b7280", marginBottom: "0.75rem" }}>
+                  Upload a CSV file with 'name' and 'email' columns. The first row should be the header.
+                </p>
+                <input
+                  type="file"
+                  accept=".csv"
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0]
+                    if (!file) return
+                    
+                    if (!testId || typeof testId !== 'string') return
+                    
+                    const formData = new FormData()
+                    formData.append('file', file)
+                    
+                    try {
+                      const response = await bulkAddCandidatesMutation.mutateAsync({
+                        testId: testId!,
+                        formData,
+                      })
+                      
+                      const responseData = response.data || response
+                      const successCount = responseData?.success_count || 0
+                      const failedCount = responseData?.failed_count || 0
+                      const duplicateCount = responseData?.duplicate_count || 0
+                      
+                      alert(
+                        `Bulk upload completed!\n\n` +
+                        `✅ Success: ${successCount}\n` +
+                        `❌ Failed: ${failedCount}\n` +
+                        `⚠️ Duplicates: ${duplicateCount}`
+                      )
+                      
+                      // Refresh candidates list
+                      await refetchCandidates()
+                      
+                      // Reset file input
+                      e.target.value = ''
+                      
+                      // Close modal if successful
+                      if (successCount > 0) {
+                        setShowBulkUploadModal(false)
+                      }
+                    } catch (error: any) {
+                      alert(error.response?.data?.detail || error.response?.data?.message || 'Failed to upload CSV')
+                      e.target.value = ''
+                    }
+                  }}
+                  style={{
+                    width: "100%",
+                    padding: "0.75rem",
+                    border: "1px solid #A8E8BC",
+                    borderRadius: "0.5rem",
+                    backgroundColor: "#ffffff",
+                    cursor: "pointer",
+                    fontSize: "0.875rem"
+                  }}
+                  disabled={bulkAddCandidatesMutation.isPending}
+                />
+                <p style={{ fontSize: "0.75rem", color: "#6b7280", marginTop: "0.5rem" }}>
+                  Example CSV format:<br />
+                  <code style={{ backgroundColor: "#f3f4f6", padding: "0.25rem 0.5rem", borderRadius: "0.25rem" }}>
+                    name,email<br />
+                    John Doe,john@example.com<br />
+                    Jane Smith,jane@example.com
+                  </code>
+                </p>
+              </div>
+            </div>
+            
+            <div style={{ 
+              display: "flex", 
+              justifyContent: "flex-end", 
+              gap: "0.75rem", 
+              marginTop: "1.5rem" 
+            }}>
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={() => {
+                  setShowBulkUploadModal(false)
+                }}
+                disabled={bulkAddCandidatesMutation.isPending}
+                style={{ marginTop: 0 }}
+              >
+                Cancel
+              </button>
             </div>
           </div>
         </div>

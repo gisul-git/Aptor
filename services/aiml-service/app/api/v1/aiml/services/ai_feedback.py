@@ -165,6 +165,25 @@ def _build_evaluation_prompt(
     constraints_text = "\n".join([f"  - {c}" for c in constraints]) if constraints else "  No specific constraints"
     outputs_text = "\n---\n".join(outputs) if outputs else "No outputs"
     
+    # Calculate points per task for task-based scoring
+    num_tasks = len(tasks) if tasks else 0
+    if num_tasks > 0:
+        points_per_task = 100 / num_tasks
+        # Round to 2 decimal places for precision, but ensure sum equals 100
+        points_per_task_rounded = round(points_per_task, 2)
+        # Adjust last task to ensure sum equals exactly 100
+        points_list = [points_per_task_rounded] * num_tasks
+        total_rounded = sum(points_list)
+        if total_rounded != 100:
+            # Adjust the last task to make sum exactly 100
+            points_list[-1] = round(100 - sum(points_list[:-1]), 2)
+        points_per_task_rounded = points_list[0]  # Use first value for display
+    else:
+        # Fallback: if no tasks, use old system (but this shouldn't happen)
+        points_per_task = 0
+        points_per_task_rounded = 0
+        points_list = []
+    
     # Include dataset info if available
     dataset_text = ""
     if dataset_info:
@@ -232,26 +251,40 @@ Evaluate the submission and return a JSON response with this exact structure:
     "overall_score": <0-100>,
     "feedback_summary": "<Comprehensive 5-7 sentence detailed summary of performance. Include: (1) Overall assessment with specific details about what was accomplished, (2) Detailed evaluation of code quality and structure, (3) Comprehensive analysis of correctness and results, (4) Detailed discussion of library usage and appropriateness, (5) Detailed analysis of output quality, (6) Specific strengths with examples, (7) Specific areas for improvement with actionable guidance. Make it highly informative, educational, and comprehensive. Provide substantial detail in every sentence.>",
     "one_liner": "<Brief 5-10 word summary like 'Good implementation | Minor issues'>",
+    "task_scores": [
+        {{
+            "task_number": 1,
+            "task_description": "<Task 1 description>",
+            "score": <0 to {points_per_task_rounded if num_tasks > 0 else 0}>,
+            "max_score": {points_per_task_rounded if num_tasks > 0 else 0},
+            "status": "<'completed' | 'partially_completed' | 'attempted_incorrect' | 'not_attempted'>",
+            "feedback": "<Comprehensive 3-5 sentence detailed feedback for this specific task. Include: (1) Whether the task was completed correctly, (2) Evidence from code/outputs showing completion or lack thereof, (3) If partially completed, what was done correctly and what is missing, (4) If attempted but incorrect, what is wrong, (5) Specific examples from code/outputs. Be VERY SPECIFIC and reference actual code/outputs.>"
+        }}{f",\n        {{" if num_tasks > 1 else ""}
+        {f",\n        {{".join([f'''
+            "task_number": {i+2},
+            "task_description": "<Task {i+2} description>",
+            "score": <0 to {points_per_task_rounded if num_tasks > 0 else 0}>,
+            "max_score": {points_per_task_rounded if num_tasks > 0 else 0},
+            "status": "<'completed' | 'partially_completed' | 'attempted_incorrect' | 'not_attempted'>",
+            "feedback": "<Comprehensive 3-5 sentence detailed feedback for this specific task. Include: (1) Whether the task was completed correctly, (2) Evidence from code/outputs showing completion or lack thereof, (3) If partially completed, what was done correctly and what is missing, (4) If attempted but incorrect, what is wrong, (5) Specific examples from code/outputs. Be VERY SPECIFIC and reference actual code/outputs.>"
+        }}''' for i in range(num_tasks - 1)]) if num_tasks > 1 else ""}
+    ],
     "code_quality": {{
-        "score": <0-25>,
-        "comments": "<Comprehensive 4-6 sentence detailed assessment of code structure, readability, best practices. Include: (1) Detailed analysis of code organization and structure, (2) Evaluation of readability and clarity with specific examples, (3) Assessment of whether best practices are followed, (4) Discussion of maintainability and scalability, (5) Code style and conventions evaluation, (6) Educational insights about code quality. Be detailed and educational.>"
+        "score": 0,
+        "comments": "<Comprehensive 4-6 sentence detailed assessment of code structure, readability, best practices. Include: (1) Detailed analysis of code organization and structure, (2) Evaluation of readability and clarity with specific examples, (3) Assessment of whether best practices are followed, (4) Discussion of maintainability and scalability, (5) Code style and conventions evaluation, (6) Educational insights about code quality. Be detailed and educational. NOTE: This is feedback-only and does not contribute to the score.>"
     }},
-    "correctness": {{
-        "score": <0-40>,
-        "comments": "<CRITICAL: This is the MOST IMPORTANT criterion. Provide comprehensive 4-6 sentence detailed assessment. You MUST: (1) Analyze the ACTUAL outputs against what the task EXPECTS - are outputs correct? (2) Verify if outputs match expected format, values, and data types based on task requirements, (3) Check if the logic produces the right results for the given problem, (4) Identify any errors, incorrect calculations, or wrong outputs, (5) Determine if outputs demonstrate successful task completion, (6) Be SPECIFIC about what is correct/incorrect in the outputs. This score should heavily penalize incorrect outputs. Be detailed, specific, and educational.>"
+    "library_usage": {{
+        "score": 0,
+        "comments": "<Comprehensive 4-6 sentence detailed assessment of appropriate library usage. Include: (1) Detailed evaluation of which libraries were used and why, (2) Assessment of whether libraries were used appropriately and efficiently, (3) Discussion of alternative library choices if relevant, (4) Evaluation of library-specific best practices, (5) Educational insights about library selection and usage, (6) Specific examples of good or poor library usage. Be detailed and educational. NOTE: This is feedback-only and does not contribute to the score.>"
+    }},
+    "output_quality": {{
+        "score": 0,
+        "comments": "<Comprehensive 3-5 sentence detailed assessment of output format and presentation. Include: (1) Detailed evaluation of output format and structure, (2) Assessment of output clarity and presentation, (3) Discussion of whether output meets requirements, (4) Evaluation of output completeness, (5) Educational insights about output quality. Be detailed and educational. NOTE: This is feedback-only and does not contribute to the score.>"
     }},
     "task_completion": {{
         "completed": <number of tasks completed CORRECTLY>,
-        "total": {len(tasks)},
+        "total": {num_tasks},
         "details": ["<For EACH task, provide: (1) Whether the task was completed, (2) Evidence from code/outputs showing completion, (3) If not completed, what is missing, (4) If completed incorrectly, what is wrong. Be VERY SPECIFIC and reference actual code/outputs.>"]
-    }},
-    "library_usage": {{
-        "score": <0-20>,
-        "comments": "<Comprehensive 4-6 sentence detailed assessment of appropriate library usage. Include: (1) Detailed evaluation of which libraries were used and why, (2) Assessment of whether libraries were used appropriately and efficiently, (3) Discussion of alternative library choices if relevant, (4) Evaluation of library-specific best practices, (5) Educational insights about library selection and usage, (6) Specific examples of good or poor library usage. Be detailed and educational.>"
-    }},
-    "output_quality": {{
-        "score": <0-15>,
-        "comments": "<Comprehensive 3-5 sentence detailed assessment of output format and presentation. Include: (1) Detailed evaluation of output format and structure, (2) Assessment of output clarity and presentation, (3) Discussion of whether output meets requirements, (4) Evaluation of output completeness, (5) Educational insights about output quality. Be detailed and educational.>"
     }},
     "strengths": ["<Comprehensive, detailed strengths - explain what was done well, why it's good, and provide specific examples from the code. Be educational and detailed.>", "<Additional detailed strengths with specific examples>", "<More strengths with explanations of why they matter>"],
     "areas_for_improvement": ["<Comprehensive, specific areas to improve with detailed explanations, examples, and why these improvements matter. Be educational.>", "<Additional detailed improvement areas with explanations>", "<More improvement areas with specific actionable guidance>"],
@@ -259,40 +292,48 @@ Evaluate the submission and return a JSON response with this exact structure:
     "deduction_reasons": ["<If score < 80, provide comprehensive, detailed list of specific reasons for deductions with explanations. Be very specific and educational.>", "<Additional detailed deduction reasons>"]
 }}
 
+CRITICAL TASK-BASED SCORING RULES:
+{f'''
+**POINTS PER TASK: {points_per_task_rounded} points each (Total: 100 points across {num_tasks} tasks)**
+
+For EACH task, you must:
+1. **Evaluate if the task was attempted in the code**
+2. **Verify correctness via outputs and code logic**
+3. **Assign a score from 0 to {points_per_task_rounded} based on:**
+   - **Completed correctly**: Full points ({points_per_task_rounded} points)
+   - **Partially correct**: 50-75% of points ({round(points_per_task_rounded * 0.5, 2)} to {round(points_per_task_rounded * 0.75, 2)} points)
+   - **Attempted but incorrect**: 25-40% of points ({round(points_per_task_rounded * 0.25, 2)} to {round(points_per_task_rounded * 0.4, 2)} points)
+   - **Not attempted**: 0 points
+
+4. **Set status for each task:**
+   - "completed": Task is fully correct and complete
+   - "partially_completed": Task is partially correct (50-75% credit)
+   - "attempted_incorrect": Task was attempted but is wrong (25-40% credit)
+   - "not_attempted": Task was not attempted (0% credit)
+
+5. **IMPORTANT**: If a task is written but incorrect, DO NOT give full points. Give partial credit (25-50% of task points).
+
+**OVERALL SCORE CALCULATION:**
+- overall_score = sum of all task scores (must equal sum of task_scores array)
+- overall_score MUST be between 0 and 100
+- overall_score should exactly equal: sum(task_scores[].score)
+- Validate: overall_score should be 0-100
+''' if num_tasks > 0 else '''
+**FALLBACK SCORING (No tasks defined):**
+- Use traditional scoring: code_quality (25) + correctness (40) + library_usage (20) + output_quality (15) = 100
+- This should not happen in normal operation
+'''}
+
 SCORING GUIDELINES for difficulty "{difficulty}":
 - Easy: Be lenient, focus on basic correctness (70+ for working code with correct outputs)
 - Medium: Balanced evaluation (60+ for mostly correct implementation with mostly correct outputs)
 - Hard: Stricter evaluation (50+ for partial solutions with partially correct outputs)
 
-CRITICAL SCORING RULES:
-1. **Correctness (40 points) is MOST IMPORTANT**: 
-   - If outputs are CORRECT and match task requirements: 30-40 points
-   - If outputs are PARTIALLY CORRECT: 15-29 points
-   - If outputs are INCORRECT or missing: 0-14 points
-   - If code has errors preventing execution: 0-10 points
-
-2. **Task Completion**: 
-   - All tasks completed correctly: Full points
-   - Some tasks completed: Proportional points
-   - No tasks completed: 0 points
-
-3. **Code Quality (25 points)**: 
-   - Well-structured, readable, follows best practices: 20-25 points
-   - Acceptable structure: 10-19 points
-   - Poor structure: 0-9 points
-
-4. **Library Usage (20 points)**: 
-   - Appropriate and efficient library usage: 15-20 points
-   - Acceptable usage: 8-14 points
-   - Poor or missing library usage: 0-7 points
-
-5. **Output Quality (15 points)**: 
-   - Well-formatted, complete outputs: 12-15 points
-   - Acceptable outputs: 6-11 points
-   - Poor outputs: 0-5 points
-
-The overall_score should approximately equal: code_quality.score + correctness.score + library_usage.score + output_quality.score
-Adjust slightly based on task completion percentage. If correctness score is very low (<15), overall score should reflect that the solution is fundamentally incorrect.
+FEEDBACK-ONLY SECTIONS (Do NOT contribute to score):
+- **code_quality.score**: Always set to 0 (feedback only)
+- **library_usage.score**: Always set to 0 (feedback only)
+- **output_quality.score**: Always set to 0 (feedback only)
+- These sections provide educational feedback but do not affect the overall_score
 
 IMPORTANT FEEDBACK REQUIREMENTS:
 - Make the feedback_summary 5-7 sentences with substantial detail, context, and educational insights
