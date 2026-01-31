@@ -28,10 +28,10 @@ RUN mkdir -p /app/agent/uploads
 # Set PYTHONPATH so agent package can be imported
 ENV PYTHONPATH=/app:${PYTHONPATH}
 
-# Expose WebSocket port
-EXPOSE 8889
+# Expose WebSocket port and HTTP health check port
+EXPOSE 8889 8080
 
 # Run the service
 WORKDIR /app
-CMD ["python", "main.py", "--host", "0.0.0.0", "--port", "8889"]
+CMD ["python", "main.py", "--host", "0.0.0.0", "--port", "8889", "--health-port", "8080"]
 

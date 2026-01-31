@@ -33,12 +33,33 @@ dsaApi.interceptors.request.use(
   (error) => Promise.reject(error)
 )
 
-// Add token to requests - CRITICAL: All DSA API calls require authentication
+// Add token to requests - CRITICAL: Skip auth for public candidate endpoints
 dsaApi.interceptors.request.use(
   async (config) => {
     if (typeof window !== 'undefined') {
       // If Authorization already set by caller, respect it.
       if (config.headers?.Authorization) return config
+
+      // Check if this is a public candidate endpoint (no JWT auth required)
+      // These endpoints use token-based auth via URL parameters
+      const url = config.url || ''
+      const isPublicCandidateEndpoint = 
+        url.includes('/verify-link') ||
+        url.includes('/verify-candidate') ||
+        url.includes('/start') ||
+        url.includes('/public') ||
+        url.includes('/submission') ||
+        url.includes('/question/') ||
+        url.includes('/final-submit') ||
+        url.includes('/full') ||
+        url.includes('/get-reference-photo') ||
+        url.includes('/save-reference-face')
+
+      // Skip authentication for public candidate endpoints
+      if (isPublicCandidateEndpoint) {
+        console.debug('[dsaApi] Skipping auth for public candidate endpoint:', config.url)
+        return config
+      }
 
       // Try to get token from NextAuth session first, fallback to localStorage
       let token: string | null = null
