@@ -121,6 +121,11 @@ export default withAuth(
           return true; // These routes have their own token-based auth
         }
 
+        // AIML test routes (use token from URL, not session)
+        if (pathname.startsWith("/aiml/test/")) {
+          return true; // These routes have their own token-based auth
+        }
+
         // Custom MCQ assessment routes (use token from URL, not session)
         if (pathname.startsWith("/custom-mcq/entry/") || 
             pathname.startsWith("/custom-mcq/take/") ||
