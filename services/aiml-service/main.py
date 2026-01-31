@@ -15,6 +15,7 @@ from app.api.v1.aiml.database import connect_to_aiml_mongo, close_aiml_mongo_con
 from app.api.v1.aiml.routers import questions as aiml_questions, tests as aiml_tests, assessment as aiml_assessment, run as aiml_run, evaluate as aiml_evaluate
 from app.exceptions.handlers import (
     validation_exception_handler,
+    http_exception_handler,
     not_found_handler,
 )
 from fastapi.exceptions import RequestValidationError
@@ -159,7 +160,8 @@ async def get_test_full_no_slash(
 
 
 app.add_exception_handler(RequestValidationError, validation_exception_handler)
-app.add_exception_handler(StarletteHTTPException, not_found_handler)
+# Handle all HTTPExceptions and preserve their original status codes (400, 401, 403, 404, etc.)
+app.add_exception_handler(StarletteHTTPException, http_exception_handler)
 
 
 @app.get("/")

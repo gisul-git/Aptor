@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException, Query, Body, Depends, status, UploadFile, File, BackgroundTasks
 from typing import List, Dict, Any, Optional
 from bson import ObjectId
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import logging
 import secrets
 import urllib.parse
@@ -982,6 +982,30 @@ async def start_test(test_id: str, user_id: str = Query(..., description="User I
     
     now = datetime.utcnow()
     
+    # Helper function to convert UTC datetime to IST (UTC+5:30) for display
+    def utc_to_ist_str(utc_dt):
+        """Convert UTC datetime to IST string for error messages"""
+        if not utc_dt:
+            return ""
+        # IST is UTC+5:30
+        ist_offset = timedelta(hours=5, minutes=30)
+        ist_dt = utc_dt + ist_offset
+        return ist_dt.strftime('%Y-%m-%d %H:%M:%S IST')
+    
+    # Check if test was created recently (within last 2 hours) - allow starting even if window appears closed
+    # This handles cases where test was just created but timezone conversion made it appear in the past
+    test_created_at = test.get("created_at")
+    is_recently_created = False
+    if test_created_at:
+        if isinstance(test_created_at, datetime):
+            created_at_utc = test_created_at.replace(tzinfo=None) if test_created_at.tzinfo else test_created_at
+        else:
+            created_at_utc = _parse_datetime(test_created_at)
+        if created_at_utc:
+            time_since_creation = (now - created_at_utc).total_seconds()
+            # Allow if created within last 2 hours (7200 seconds)
+            is_recently_created = time_since_creation < 7200 and time_since_creation >= 0
+    
     if exam_mode == "strict":
         if not start_time or not duration_minutes:
             raise HTTPException(status_code=400, detail="Assessment schedule is not properly configured")
@@ -995,54 +1019,65 @@ async def start_test(test_id: str, user_id: str = Query(..., description="User I
         access_start_time = start_time - timedelta(minutes=access_time_before_start)
         
         # Log for debugging
-        logger.info(f"[start_test] Strict mode - test_id={test_id}, user_id={user_id}, now={now}, start_time={start_time}, end_time={end_time}, access_start_time={access_start_time}, duration_minutes={duration_minutes}")
+        logger.info(f"[start_test] Strict mode - test_id={test_id}, user_id={user_id}, now={now}, start_time={start_time}, end_time={end_time}, access_start_time={access_start_time}, duration_minutes={duration_minutes}, is_recently_created={is_recently_created}")
         
         if now < access_start_time:
-            access_start_time_formatted = access_start_time.strftime('%Y-%m-%d %H:%M:%S UTC')
+            access_start_time_ist = utc_to_ist_str(access_start_time)
             raise HTTPException(
                 status_code=403,
-                detail=f"You cannot access this assessment yet. Access will be available {access_time_before_start} minutes before the start time. Access opens at {access_start_time_formatted}."
+                detail=f"You cannot access this assessment yet. Access will be available {access_time_before_start} minutes before the start time. Access opens at {access_start_time_ist}."
             )
         elif now < start_time:
             # Can access for pre-checks but cannot start yet
+            start_time_ist = utc_to_ist_str(start_time)
             raise HTTPException(
                 status_code=403,
-                detail="Assessment has not started yet. Please wait for the scheduled start time."
+                detail=f"Assessment has not started yet. The assessment will start at {start_time_ist}. Please wait for the scheduled start time."
             )
         elif now >= end_time:
-            # Exam has ended - but allow if candidate already started (they might be resuming)
+            # Exam has ended - but allow if candidate already started (they might be resuming) OR if test was recently created
             # Check if candidate has an existing submission
             existing_submission = await db.test_submissions.find_one({
                 "test_id": test_id,
                 "user_id": user_id
             })
-            if not existing_submission or not existing_submission.get("started_at"):
+            
+            # Allow starting if test was recently created (handles timezone conversion issues)
+            if is_recently_created and (not existing_submission or not existing_submission.get("started_at")):
+                logger.info(f"[start_test] Allowing start for recently created test - test_id={test_id}, user_id={user_id}, created_at={test_created_at}")
+                # Continue to allow starting
+            elif not existing_submission or not existing_submission.get("started_at"):
                 # No existing submission or not started - assessment window has ended
-                end_time_formatted = end_time.strftime('%Y-%m-%d %H:%M:%S UTC')
-                logger.warning(f"[start_test] Assessment ended - test_id={test_id}, user_id={user_id}, now={now}, end_time={end_time_formatted}")
+                end_time_ist = utc_to_ist_str(end_time)
+                logger.warning(f"[start_test] Assessment ended - test_id={test_id}, user_id={user_id}, now={now}, end_time={end_time}")
                 raise HTTPException(
                     status_code=403,
-                    detail=f"The assessment has ended. The assessment window closed at {end_time_formatted}. You cannot start a new attempt."
+                    detail=f"The assessment has ended. The assessment window closed at {end_time_ist}. You cannot start a new attempt."
                 )
             # If candidate already started, allow them to continue (they're resuming)
-            logger.info(f"[start_test] Candidate resuming - test_id={test_id}, user_id={user_id}, started_at={existing_submission.get('started_at')}")
+            logger.info(f"[start_test] Candidate resuming - test_id={test_id}, user_id={user_id}, started_at={existing_submission.get('started_at') if existing_submission else None}")
     
     elif exam_mode == "flexible":
         if not start_time or not end_time or not duration_minutes:
             raise HTTPException(status_code=400, detail="Assessment schedule is not properly configured")
         
         if now < start_time:
-            start_time_formatted = start_time.strftime('%Y-%m-%d %H:%M:%S UTC')
+            start_time_ist = utc_to_ist_str(start_time)
             raise HTTPException(
                 status_code=403,
-                detail=f"You cannot access this assessment yet. The assessment window will be available from {start_time_formatted}."
+                detail=f"You cannot access this assessment yet. The assessment window will be available from {start_time_ist}."
             )
         elif now > end_time:
-            end_time_formatted = end_time.strftime('%Y-%m-%d %H:%M:%S UTC')
-            raise HTTPException(
-                status_code=403,
-                detail=f"The assessment window has ended. The assessment was available until {end_time_formatted}. You cannot take this assessment."
-            )
+            # Allow starting if test was recently created (handles timezone conversion issues)
+            if is_recently_created:
+                logger.info(f"[start_test] Allowing start for recently created flexible test - test_id={test_id}, user_id={user_id}, created_at={test_created_at}")
+                # Continue to allow starting
+            else:
+                end_time_ist = utc_to_ist_str(end_time)
+                raise HTTPException(
+                    status_code=403,
+                    detail=f"The assessment window has ended. The assessment was available until {end_time_ist}. You cannot take this assessment."
+                )
 
     # Resolve candidate email (email is unique identity)
     user_doc = await db.users.find_one({"_id": ObjectId(user_id)})
@@ -1416,6 +1451,22 @@ async def get_test_for_candidate(
     end_time = _parse_datetime(end_time_raw)
     
     now = datetime.utcnow()
+    
+    # Check if test was created recently (within last 2 hours) - allow access even if window appears closed
+    # This handles cases where test was just created but timezone conversion made it appear in the past
+    test_created_at = test.get("created_at")
+    is_recently_created = False
+    if test_created_at:
+        if isinstance(test_created_at, datetime):
+            created_at_utc = test_created_at.replace(tzinfo=None) if test_created_at.tzinfo else test_created_at
+        else:
+            created_at_utc = _parse_datetime(test_created_at)
+        if created_at_utc:
+            time_since_creation = (now - created_at_utc).total_seconds()
+            # Allow if created within last 2 hours (7200 seconds)
+            is_recently_created = time_since_creation < 7200 and time_since_creation >= 0
+            logger.info(f"[get_test_for_candidate] Test creation check - test_id={test_id}, created_at={created_at_utc}, time_since_creation={time_since_creation}, is_recently_created={is_recently_created}")
+    
     can_access = False
     can_start = False
     waiting_for_start = False
@@ -1455,9 +1506,19 @@ async def get_test_for_candidate(
                 else:
                     time_remaining = max(0, int((end_time - now).total_seconds()))
             else:
-                # Exam has ended
-                error_message = "The assessment has ended. You cannot take this assessment."
-                can_access = False
+                # Exam has ended - but allow if test was recently created (handles timezone conversion issues)
+                if is_recently_created:
+                    logger.info(f"[get_test_for_candidate] Allowing access for recently created test - test_id={test_id}, created_at={test_created_at}")
+                    # Allow access and start for recently created tests
+                    can_access = True
+                    can_start = True
+                    exam_started = True
+                    # Use full duration for timer
+                    time_remaining = int(duration_minutes) * 60 if duration_minutes else None
+                else:
+                    # Exam has ended
+                    error_message = "The assessment has ended. You cannot take this assessment."
+                    can_access = False
     
     elif exam_mode == "flexible":
         if not start_time or not end_time or not duration_minutes:
@@ -1472,9 +1533,19 @@ async def get_test_for_candidate(
                 can_access = False
             elif now > end_time:
                 # After scheduled end time - window has closed
-                end_time_formatted = end_time.strftime('%Y-%m-%d %H:%M:%S UTC')
-                error_message = f"The assessment window has ended. The assessment was available until {end_time_formatted}. You cannot take this assessment."
-                can_access = False
+                # But allow if test was recently created (handles timezone conversion issues)
+                if is_recently_created:
+                    logger.info(f"[get_test_for_candidate] Allowing access for recently created flexible test - test_id={test_id}, created_at={test_created_at}")
+                    # Allow access and start for recently created tests
+                    can_access = True
+                    can_start = True
+                    exam_started = True
+                    # Use full duration for timer
+                    time_remaining = int(duration_minutes) * 60 if duration_minutes else None
+                else:
+                    end_time_formatted = end_time.strftime('%Y-%m-%d %H:%M:%S UTC')
+                    error_message = f"The assessment window has ended. The assessment was available until {end_time_formatted}. You cannot take this assessment."
+                    can_access = False
             else:
                 # Within window - auto-start assessment immediately after pre-checks
                 can_access = True
@@ -1848,12 +1919,19 @@ async def submit_test(
             elapsed_seconds = (datetime.utcnow() - started_datetime).total_seconds()
             time_remaining_seconds = duration_seconds - elapsed_seconds
             
-            # Reject submission if time has expired
-            if time_remaining_seconds <= 0:
+            # Allow a small grace period (10 seconds) for auto-submit when timer expires
+            # This accounts for network latency and processing time between frontend timer expiration and backend validation
+            GRACE_PERIOD_SECONDS = 10
+            
+            # Reject submission only if time has expired beyond the grace period
+            if time_remaining_seconds < -GRACE_PERIOD_SECONDS:
                 raise HTTPException(
                     status_code=400,
                     detail="Time has expired. You cannot submit the test after the time limit."
                 )
+            # If within grace period (0 to -10 seconds), allow submission (auto-submit scenario)
+            elif time_remaining_seconds < 0:
+                logger.info(f"[submit_test] Allowing submission within grace period: time_remaining={time_remaining_seconds}s (test_id={test_id}, user_id={user_id})")
     
     # Get existing submissions from database
     existing_submissions = {sub.get("question_id"): sub for sub in test_submission.get("submissions", [])}
@@ -2172,7 +2250,8 @@ async def delete_test(
 @router.post("/{test_id}/add-candidate")
 async def add_candidate(
     test_id: str,
-    candidate: AddCandidateRequest
+    candidate: AddCandidateRequest,
+    current_user: Dict[str, Any] = Depends(require_editor)
 ):
     """
     Add a candidate to an AIML test (creates user account).

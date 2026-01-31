@@ -99,6 +99,9 @@ export default function AIMLTestTakePage() {
   const [submitting, setSubmitting] = useState(false)
   const [loading, setLoading] = useState(true)
   const [lastSaved, setLastSaved] = useState<Date | null>(null)
+  // In-page notification state (doesn't break fullscreen)
+  const [notification, setNotification] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null)
+  const [showSubmitConfirm, setShowSubmitConfirm] = useState(false)
   // Access control states (matching Custom MCQ structure)
   const [waitingForStart, setWaitingForStart] = useState(false)
   const [accessError, setAccessError] = useState<string | null>(null)
@@ -107,6 +110,25 @@ export default function AIMLTestTakePage() {
   const [startedAt, setStartedAt] = useState<Date | null>(null)
   const timerRef = useRef<NodeJS.Timeout | null>(null)
   const autoSaveRef = useRef<NodeJS.Timeout | null>(null)
+  const notificationTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  
+  // Auto-dismiss notification after 5 seconds
+  useEffect(() => {
+    if (notification) {
+      if (notificationTimeoutRef.current) {
+        clearTimeout(notificationTimeoutRef.current)
+      }
+      notificationTimeoutRef.current = setTimeout(() => {
+        setNotification(null)
+      }, 5000)
+    }
+    return () => {
+      if (notificationTimeoutRef.current) {
+        clearTimeout(notificationTimeoutRef.current)
+      }
+    }
+  }, [notification])
+  
   const [cameraProctorEnabled, setCameraProctorEnabled] = useState(true)
   const [candidateEmail, setCandidateEmail] = useState<string | null>(null)
   const [proctoringSettings, setProctoringSettings] = useState<any>({})
@@ -646,7 +668,13 @@ export default function AIMLTestTakePage() {
       }
       
       setTest(testData)
-      setQuestions(testData.questions || [])
+      const questionsArray = testData.questions || []
+      console.log('[AIML Take] Setting questions:', {
+        questionsCount: questionsArray.length,
+        questions: questionsArray,
+        hasQuestions: questionsArray.length > 0
+      })
+      setQuestions(questionsArray)
 
       // Apply runtime camera toggle based on admin proctoring setting:
       // Only explicit true enables camera/model; missing/false => OFF (per PROCTORING_AI_TOGGLE_NOTES.md)
@@ -673,6 +701,15 @@ export default function AIMLTestTakePage() {
       const accessControl = testData.accessControl
       const schedule = testData.schedule || {}
       const startTimeStr = schedule.startTime || testData.start_time
+      
+      console.log('[AIML Take] AccessControl from backend:', {
+        canAccess: accessControl?.canAccess,
+        examStarted: accessControl?.examStarted,
+        canStart: accessControl?.canStart,
+        waitingForStart: accessControl?.waitingForStart,
+        timeRemaining: accessControl?.timeRemaining,
+        errorMessage: accessControl?.errorMessage
+      })
       
       if (testData.is_completed) {
         // Test already completed, set time to 0 and mark as submitted
@@ -706,6 +743,7 @@ export default function AIMLTestTakePage() {
         
         if (accessControl.examStarted) {
           // Exam has started (both strict and flexible mode now auto-start)
+          console.log('[AIML Take] Setting examStarted to true - accessControl.examStarted:', accessControl.examStarted, 'timeRemaining:', accessControl.timeRemaining)
           setWaitingForStart(false)
           setExamStarted(true)
           setTimeRemaining(accessControl.timeRemaining || null)
@@ -714,6 +752,7 @@ export default function AIMLTestTakePage() {
         } else if (accessControl.canStart) {
           // Can start - this shouldn't happen now as flexible mode auto-starts
           // But keep as fallback
+          console.log('[AIML Take] Setting examStarted to true via canStart fallback - accessControl.canStart:', accessControl.canStart, 'timeRemaining:', accessControl.timeRemaining)
           setWaitingForStart(false)
           setExamStarted(true)
           setTimeRemaining(accessControl.timeRemaining || null)
@@ -858,17 +897,99 @@ export default function AIMLTestTakePage() {
     }
   }
 
+  // Auto-submit function (no confirmation, used when timer expires)
+  const handleAutoSubmitTest = async () => {
+    if (submitted || submitting) {
+      console.log('[AIML Take] Auto-submit skipped - already submitted or submitting')
+      return
+    }
+
+    console.log('[AIML Take] Auto-submitting test due to timer expiration')
+    setSubmitting(true)
+    
+    try {
+      // Save all current answers before submitting
+      console.log('[AIML Take] Saving all answers before auto-submit')
+      const savePromises = Object.entries(codeAnswers).map(async ([questionId, code]) => {
+        try {
+          await autoSaveAnswer(questionId, code)
+        } catch (err) {
+          console.error(`[AIML Take] Failed to save answer for question ${questionId}:`, err)
+        }
+      })
+      await Promise.all(savePromises)
+      console.log('[AIML Take] All answers saved, proceeding with submission')
+      
+      // Get candidate requirements from sessionStorage
+      const candidateRequirements: any = {};
+      const phone = sessionStorage.getItem("candidatePhone");
+      const linkedIn = sessionStorage.getItem("candidateLinkedIn");
+      const github = sessionStorage.getItem("candidateGithub");
+      
+      if (phone) candidateRequirements.phone = phone;
+      if (linkedIn) candidateRequirements.linkedInUrl = linkedIn;
+      if (github) candidateRequirements.githubUrl = github;
+      
+      // Get custom fields from sessionStorage
+      const customFieldsStr = sessionStorage.getItem("candidateCustomFields");
+      if (customFieldsStr) {
+        try {
+          candidateRequirements.customFields = JSON.parse(customFieldsStr);
+        } catch (e) {
+          console.warn("Failed to parse custom fields:", e);
+        }
+      }
+
+      if (!testId || !userId) {
+        throw new Error('Test ID and User ID are required')
+      }
+
+      const { aimlService } = await import('@/services/aiml')
+      // Backend expects 'answers' with 'source_code' field, not 'question_submissions' with 'code'
+      const response = await aimlService.submitTest(String(testId), {
+        user_id: userId,
+        answers: Object.entries(codeAnswers).map(([questionId, code]) => ({
+          question_id: questionId,
+          source_code: code,  // Backend expects 'source_code', not 'code'
+          outputs: outputAnswers[questionId] || []
+        })),
+        activity_logs: undefined,
+        candidateRequirements: candidateRequirements
+      })
+      
+      console.log('[AIML Take] Auto-submission successful:', response.data)
+      
+      setSubmitted(true)
+      if (timerRef.current) clearInterval(timerRef.current)
+      
+      // Show in-page notification (doesn't break fullscreen)
+      setNotification({
+        message: 'Time is up! Your test has been automatically submitted and is being evaluated.',
+        type: 'success'
+      })
+      
+      // Stay on the same page - results page doesn't exist yet
+    } catch (err: any) {
+      console.error('[AIML Take] Auto-submit error:', err)
+      // Show in-page error notification (doesn't break fullscreen)
+      setNotification({
+        message: err.response?.data?.detail || 'Time is up, but there was an error submitting your test. Please contact support.',
+        type: 'error'
+      })
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
   const handleSubmitTest = async () => {
     if (submitted || submitting) return
 
-    // Confirm submission
-    const confirmSubmit = window.confirm(
-      'Are you sure you want to submit the test?\n\n' +
-      'Your answers will be evaluated by AI and you will receive a score and feedback.\n\n' +
-      'This action cannot be undone.'
-    )
-    if (!confirmSubmit) return
-
+    // Show in-page confirmation modal (doesn't break fullscreen)
+    setShowSubmitConfirm(true)
+  }
+  
+  const handleConfirmSubmit = async () => {
+    setShowSubmitConfirm(false)
     setSubmitting(true)
     try {
       // Get candidate requirements from sessionStorage
@@ -896,14 +1017,16 @@ export default function AIMLTestTakePage() {
       }
 
       const { aimlService } = await import('@/services/aiml')
+      // Backend expects 'answers' with 'source_code' field
       const response = await aimlService.submitTest(String(testId), {
         user_id: userId,
-        question_submissions: Object.entries(codeAnswers).map(([questionId, code]) => ({
+        answers: Object.entries(codeAnswers).map(([questionId, code]) => ({
           question_id: questionId,
-          code: code,
+          source_code: code,  // Backend expects 'source_code', not 'code'
           outputs: outputAnswers[questionId] || []
         })),
-        activity_logs: undefined
+        activity_logs: undefined,
+        candidateRequirements: candidateRequirements
       })
       
       // Log the result for debugging
@@ -911,9 +1034,21 @@ export default function AIMLTestTakePage() {
       
       setSubmitted(true)
       if (timerRef.current) clearInterval(timerRef.current)
+      
+      // Show in-page success notification (doesn't break fullscreen)
+      setNotification({
+        message: 'Test submitted successfully! Your answers are being evaluated.',
+        type: 'success'
+      })
+      
+      // Stay on the same page - results page doesn't exist yet
     } catch (err: any) {
       console.error(err)
-      alert(err.response?.data?.detail || 'Failed to submit test')
+      // Show in-page error notification (doesn't break fullscreen)
+      setNotification({
+        message: err.response?.data?.detail || 'Failed to submit test',
+        type: 'error'
+      })
     } finally {
       setSubmitting(false)
     }
@@ -921,6 +1056,15 @@ export default function AIMLTestTakePage() {
 
   // Use AITimer hook for per-question or global timer
   const currentQuestionForTimer = questions[currentQuestionIndex] || null
+  const timerEnabled = examStarted && !submitted && questions.length > 0
+  console.log('[AIML Take] Timer hook enabled check:', {
+    examStarted,
+    submitted,
+    questionsLength: questions.length,
+    timerEnabled,
+    testTimerMode: test?.timer_mode,
+    hasTest: !!test
+  })
   const timer = useAITimer({
     test: test ? {
       timer_mode: test.timer_mode || "GLOBAL",
@@ -931,7 +1075,7 @@ export default function AIMLTestTakePage() {
     testSubmission: test?.started_at ? { started_at: test.started_at } : null,
     questions,
     currentQuestionId: currentQuestionForTimer?.id || null,
-    onExpire: handleSubmitTest,
+    onExpire: handleAutoSubmitTest,
     onQuestionExpire: async (questionId: string) => {
       console.log('[AIML Timer] Question expired:', questionId)
       
@@ -985,13 +1129,45 @@ export default function AIMLTestTakePage() {
         }
       }, 2500) // 2.5 second delay
     },
-    enabled: examStarted && !submitted && questions.length > 0,
+    enabled: timerEnabled,
   })
 
-  // Update timeRemaining from timer hook (for GLOBAL mode)
+  // Debug: Log timer state changes
   useEffect(() => {
-    if (test?.timer_mode === 'GLOBAL') {
-      setTimeRemaining(timer.timeRemaining)
+    console.log('[AIML Take] Timer hook state changed:', {
+      timerTimeRemaining: timer.timeRemaining,
+      localTimeRemaining: timeRemaining,
+      timerMode: test?.timer_mode,
+      examStarted,
+      submitted,
+      questionsCount: questions.length,
+      enabled: examStarted && !submitted && questions.length > 0
+    })
+  }, [timer.timeRemaining, timeRemaining, test?.timer_mode, examStarted, submitted, questions.length])
+
+  // Update timeRemaining from timer hook (for GLOBAL mode)
+  // Use a ref to track previous value and force update if needed
+  const prevTimerTimeRef = useRef<number | null>(null)
+  const forceUpdateRef = useRef(0)
+  
+  useEffect(() => {
+    if (test?.timer_mode === 'GLOBAL' && timer.timeRemaining !== undefined && timer.timeRemaining !== null) {
+      console.log('[AIML Take] Timer sync effect - timer.timeRemaining:', timer.timeRemaining, 'current timeRemaining state:', timeRemaining, 'prev:', prevTimerTimeRef.current)
+      
+      // Always update to ensure React re-renders
+      // Use functional update to force React to process the change
+      setTimeRemaining(prev => {
+        const newValue = timer.timeRemaining
+        if (prev !== newValue || prevTimerTimeRef.current !== newValue) {
+          console.log('[AIML Take] Timer sync effect - updating state from', prev, 'to', newValue)
+          prevTimerTimeRef.current = newValue
+          return newValue
+        }
+        // Force update by incrementing a counter (triggers re-render even if value is same)
+        forceUpdateRef.current += 1
+        console.log('[AIML Take] Timer sync effect - forcing re-render (value same, update count:', forceUpdateRef.current, ')')
+        return newValue
+      })
     }
   }, [timer.timeRemaining, test?.timer_mode])
 
@@ -1155,6 +1331,84 @@ export default function AIMLTestTakePage() {
     <div className="min-h-screen flex flex-col bg-gray-50">
       <ViolationToast />
       {webcamTile}
+      
+      {/* In-page Notification (doesn't break fullscreen) */}
+      {notification && (
+        <div className={`fixed top-4 right-4 z-[9999] max-w-md ${
+          notification.type === 'success' ? 'bg-emerald-600' : 
+          notification.type === 'error' ? 'bg-red-600' : 
+          'bg-blue-600'
+        } text-white px-6 py-4 rounded-lg shadow-xl flex items-start gap-3`}>
+          <div className="flex-shrink-0 mt-0.5">
+            {notification.type === 'success' ? (
+              <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            ) : notification.type === 'error' ? (
+              <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            ) : (
+              <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            )}
+          </div>
+          <div className="flex-1">
+            <p className="font-medium text-sm leading-relaxed">{notification.message}</p>
+          </div>
+          <button
+            onClick={() => setNotification(null)}
+            className="flex-shrink-0 text-white/80 hover:text-white transition-colors"
+            aria-label="Close notification"
+          >
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+      )}
+      
+      {/* Submit Confirmation Modal (doesn't break fullscreen) */}
+      {showSubmitConfirm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[9998]" onClick={() => setShowSubmitConfirm(false)}>
+          <div className="bg-white rounded-lg shadow-xl p-6 max-w-md mx-4 z-[9999]" onClick={(e) => e.stopPropagation()}>
+            <div className="text-center">
+              <div className="mb-4">
+                <svg className="mx-auto h-12 w-12 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+              </div>
+              <h3 className="text-lg font-semibold text-gray-900 mb-2">Confirm Submission</h3>
+              <p className="text-sm text-gray-600 mb-2">
+                Are you sure you want to submit the test?
+              </p>
+              <p className="text-sm text-gray-600 mb-4">
+                Your answers will be evaluated by AI and you will receive a score and feedback.
+              </p>
+              <p className="text-xs text-red-600 font-medium mb-6">
+                This action cannot be undone.
+              </p>
+              <div className="flex gap-3 justify-center">
+                <button
+                  onClick={() => setShowSubmitConfirm(false)}
+                  className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors font-medium"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleConfirmSubmit}
+                  disabled={submitting}
+                  className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {submitting ? 'Submitting...' : 'Yes, Submit Test'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      
       {/* Header with Timer and Navigation */}
       <header className="bg-white border-b border-emerald-200 shadow-sm">
         <div className="px-4 py-3 flex items-center justify-between">
@@ -1194,15 +1448,25 @@ export default function AIMLTestTakePage() {
               })()
             ) : (
               timeRemaining !== null && !isNaN(timeRemaining) && timeRemaining >= 0 && (
-                <div className={`px-4 py-2 rounded-lg font-mono text-lg font-semibold ${
-                  timeRemaining < 300 
-                    ? 'bg-red-100 text-red-700' 
-                    : timeRemaining < 600 
-                      ? 'bg-amber-100 text-amber-700' 
-                      : 'bg-emerald-100 text-emerald-700'
-                }`}>
-                  ⏱️ {Math.floor(timeRemaining / 60)}:{String(timeRemaining % 60).padStart(2, '0')}
-                </div>
+                (() => {
+                  const displayTime = `${Math.floor(timeRemaining / 60)}:${String(timeRemaining % 60).padStart(2, '0')}`
+                  console.log('[AIML Take] Timer UI render - timeRemaining:', timeRemaining, 'displayTime:', displayTime, 'timer.timeRemaining:', timer.timeRemaining, 'forceUpdate:', forceUpdateRef.current)
+                  // Use key prop with timeRemaining to force React to re-render when value changes
+                  return (
+                    <div 
+                      key={`timer-${timeRemaining}`}
+                      className={`px-4 py-2 rounded-lg font-mono text-lg font-semibold ${
+                        timeRemaining < 300 
+                          ? 'bg-red-100 text-red-700' 
+                          : timeRemaining < 600 
+                            ? 'bg-amber-100 text-amber-700' 
+                            : 'bg-emerald-100 text-emerald-700'
+                      }`}
+                    >
+                      ⏱️ {displayTime}
+                    </div>
+                  )
+                })()
               )
             )}
             
@@ -1224,11 +1488,14 @@ export default function AIMLTestTakePage() {
                   <button
                     onClick={() => {
                       if (allQuestionsCompleted) {
-                        if (confirm('Are you sure you want to submit the test? This action cannot be undone.')) {
-                          handleSubmitTest()
-                        }
+                        // Call handleSubmitTest directly - it will show in-page confirmation modal (doesn't break fullscreen)
+                        handleSubmitTest()
                       } else {
-                        alert(`Please submit all questions before submitting the test.\n\nRemaining: ${incompleteQuestions.length} question${incompleteQuestions.length > 1 ? 's' : ''}`)
+                        // Show in-page notification (doesn't break fullscreen)
+                        setNotification({
+                          message: `Please submit all questions before submitting the test. Remaining: ${incompleteQuestions.length} question${incompleteQuestions.length > 1 ? 's' : ''}`,
+                          type: 'error'
+                        })
                       }
                     }}
                     disabled={submitting || !allQuestionsCompleted}
