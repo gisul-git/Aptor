@@ -118,6 +118,9 @@ async function verifyToken(req, res, next) {
     /^\/api\/v1\/aiml\/tests\/[^/]+\/start$/,
     /^\/api\/v1\/aiml\/tests\/[^/]+\/public$/,
     /^\/api\/v1\/aiml\/tests\/[^/]+\/full$/,
+    /^\/api\/v1\/aiml\/tests\/[^/]+\/candidate$/, // AIML candidate test data
+    /^\/api\/v1\/aiml\/tests\/[^/]+\/submit-answer$/, // AIML submit individual answer
+    /^\/api\/v1\/aiml\/tests\/[^/]+\/submit$/, // AIML final test submission
     /^\/api\/v1\/aiml\/tests\/get-reference-photo$/, // AIML reference photo retrieval
     /^\/api\/v1\/aiml\/tests\/save-reference-face$/, // AIML reference photo save
     /^\/api\/v1\/dsa\/tests\/get-reference-photo$/, // DSA reference photo retrieval
@@ -367,6 +370,10 @@ const proxyOptions = {
       serviceName = 'DSA Service';
       targetHost = 'localhost:3004';
       targetServiceUrl = SERVICES.dsa;
+    } else if (path.includes('/api/v1/devops')) {
+      serviceName = 'DevOps Service (AI Assessment)';
+      targetHost = 'localhost:3001';
+      targetServiceUrl = SERVICES.aiAssessment;  // DevOps tests are handled by AI Assessment service
     } else if (path.includes('/api/v1/proctor')) {
       serviceName = 'Proctoring Service';
       targetHost = 'localhost:3005';
@@ -623,6 +630,15 @@ app.use(
   createProxyMiddleware({
     ...proxyOptions,
     target: SERVICES.dsa,
+  })
+);
+
+// Route: DevOps Service (proxied to AI Assessment Service - DevOps tests are assessments)
+app.use(
+  '/api/v1/devops',
+  createProxyMiddleware({
+    ...proxyOptions,
+    target: SERVICES.aiAssessment,  // DevOps tests are handled by AI Assessment service
   })
 );
 
