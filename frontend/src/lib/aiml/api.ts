@@ -41,23 +41,40 @@ aimlApi.interceptors.request.use(
 
       // Check if this is a public candidate endpoint (no JWT auth required)
       // These endpoints use token-based auth via URL parameters
+      // NOTE: /add-candidate is an ADMIN endpoint and requires authentication
       const url = config.url || ''
-      const isPublicCandidateEndpoint = 
-        url.includes('/verify-link') ||
-        url.includes('/verify-candidate') ||
-        url.includes('/start') ||
-        url.includes('/public') ||
-        url.includes('/full') ||
-        url.includes('/candidate') ||
-        url.includes('/submit-answer') ||
-        url.includes('/submit') ||
-        url.includes('/get-reference-photo') ||
-        url.includes('/save-reference-face')
-
-      // Skip authentication for public candidate endpoints
-      if (isPublicCandidateEndpoint) {
-        console.debug('[aimlApi] Skipping auth for public candidate endpoint:', config.url)
-        return config
+      
+      // Explicitly exclude admin endpoints that require authentication
+      // These endpoints contain "candidate" but are admin-only and require auth
+      const isAdminEndpoint = 
+        url.includes('/add-candidate') ||
+        url.includes('/candidates') ||  // GET /candidates (plural) is admin-only
+        url.includes('/bulk-add-candidates') ||
+        url.includes('/send-invitation') ||
+        url.includes('/send-feedback')
+      
+      if (isAdminEndpoint) {
+        // This is an admin endpoint - require authentication (continue to token logic below)
+      } else {
+        // Check if it's a public candidate endpoint
+        // NOTE: /candidate (singular) is public, but /candidates (plural) is admin-only
+        const isPublicCandidateEndpoint = 
+          url.includes('/verify-link') ||
+          url.includes('/verify-candidate') ||
+          url.includes('/start') ||
+          url.includes('/public') ||
+          url.includes('/full') ||
+          (url.includes('/candidate') && !url.includes('/candidates')) ||  // Only singular /candidate, not plural
+          url.includes('/submit-answer') ||
+          url.includes('/submit') ||
+          url.includes('/get-reference-photo') ||
+          url.includes('/save-reference-face')
+        
+        // Skip authentication for public candidate endpoints
+        if (isPublicCandidateEndpoint) {
+          console.debug('[aimlApi] Skipping auth for public candidate endpoint:', config.url)
+          return config
+        }
       }
 
       let token: string | null = null

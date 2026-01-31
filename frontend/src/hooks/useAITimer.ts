@@ -58,8 +58,18 @@ export function useAITimer({
 
   // Initialize timer
   useEffect(() => {
+    console.log('[AITimer] Initialize effect check:', {
+      enabled,
+      hasTest: !!test,
+      alreadyInitialized: initializedRef.current,
+      timerMode: test?.timer_mode
+    })
+    
     // Do not initialize if disabled, no test, or we've already initialized.
     if (!enabled || !test || initializedRef.current) {
+      console.log('[AITimer] Initialize effect - skipping initialization:', {
+        reason: !enabled ? 'disabled' : !test ? 'no test' : 'already initialized'
+      })
       return
     }
 
@@ -114,6 +124,9 @@ export function useAITimer({
         endTime: testEndTime.toISOString(),
         durationSeconds,
         remaining,
+        initializedRef: initializedRef.current,
+        enabled,
+        hasTest: !!test
       })
     } else if (test.timer_mode === 'PER_QUESTION') {
       // PER_QUESTION mode: Initialize question timings
@@ -150,7 +163,16 @@ export function useAITimer({
 
   // Countdown logic
   useEffect(() => {
+    console.log('[AITimer] Countdown effect check:', {
+      enabled,
+      hasTest: !!test,
+      initialized: initializedRef.current,
+      timerMode: test?.timer_mode,
+      currentInterval: !!intervalRef.current
+    })
+    
     if (!enabled || !test || !initializedRef.current) {
+      console.log('[AITimer] Countdown effect - conditions not met, clearing interval')
       if (intervalRef.current) {
         clearInterval(intervalRef.current)
         intervalRef.current = null
@@ -160,21 +182,28 @@ export function useAITimer({
 
     if (test.timer_mode === 'GLOBAL') {
       // GLOBAL countdown
+      console.log('[AITimer] Starting GLOBAL countdown interval')
       if (intervalRef.current) {
         clearInterval(intervalRef.current)
       }
 
-      intervalRef.current = setInterval(() => {
+      // Use a more reliable update mechanism that works even when tab is throttled
+      const updateTimer = () => {
         const endTime = endTimeRef.current
         if (!endTime) {
-          clearInterval(intervalRef.current!)
-          intervalRef.current = null
+          if (intervalRef.current) {
+            clearInterval(intervalRef.current)
+            intervalRef.current = null
+          }
           return
         }
 
         const now = new Date()
         const remaining = Math.max(0, Math.floor((endTime.getTime() - now.getTime()) / 1000))
 
+        console.log('[AITimer] GLOBAL countdown - remaining:', remaining, 'endTime:', endTime.toISOString(), 'now:', now.toISOString())
+        
+        // Force state update - always update to ensure React detects change and re-renders
         setTimeRemaining(remaining)
         setIsExpired(remaining === 0)
 
@@ -190,7 +219,76 @@ export function useAITimer({
           }
           onExpire()
         }
-      }, 1000)
+      }
+      
+      // Initial update
+      updateTimer()
+      
+      // Set up interval - use shorter interval for more responsive updates
+      intervalRef.current = setInterval(updateTimer, 1000)
+      
+      // Also use requestAnimationFrame for more reliable updates when tab is visible
+      // This ensures UI updates even if setInterval is throttled
+      let rafId: number | null = null
+      let lastUpdateTime = Date.now()
+      
+      const scheduleRafUpdate = () => {
+        if (rafId !== null) {
+          cancelAnimationFrame(rafId)
+        }
+        rafId = requestAnimationFrame(() => {
+          const now = Date.now()
+          // Update via RAF every ~1000ms when visible
+          if (now - lastUpdateTime >= 1000) {
+            updateTimer()
+            lastUpdateTime = now
+          }
+          // Continue RAF loop when visible
+          if (document.visibilityState === 'visible' && intervalRef.current) {
+            scheduleRafUpdate()
+          }
+        })
+      }
+      
+      // Start RAF updates when visible
+      if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+        scheduleRafUpdate()
+      }
+      
+      // Handle visibility changes to resume RAF updates
+      const handleVisibilityChange = () => {
+        if (typeof document !== 'undefined') {
+          if (document.visibilityState === 'visible') {
+            updateTimer() // Immediate update when tab becomes visible
+            lastUpdateTime = Date.now()
+            scheduleRafUpdate()
+          } else {
+            if (rafId !== null) {
+              cancelAnimationFrame(rafId)
+              rafId = null
+            }
+          }
+        }
+      }
+      
+      if (typeof document !== 'undefined') {
+        document.addEventListener('visibilitychange', handleVisibilityChange)
+      }
+      
+      // Return cleanup that clears both interval and RAF
+      return () => {
+        if (intervalRef.current) {
+          clearInterval(intervalRef.current)
+          intervalRef.current = null
+        }
+        if (rafId !== null) {
+          cancelAnimationFrame(rafId)
+          rafId = null
+        }
+        if (typeof document !== 'undefined') {
+          document.removeEventListener('visibilitychange', handleVisibilityChange)
+        }
+      }
     } else if (test.timer_mode === 'PER_QUESTION' && currentQuestionId) {
       // PER_QUESTION countdown for current question
       const currentTime = questionTimeRemaining[currentQuestionId]

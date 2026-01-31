@@ -372,17 +372,35 @@ export const aimlService = {
 
   /**
    * Submit AIML test
+   * Backend expects 'answers' array with 'source_code' field
    */
   submitTest: async (testId: string, data: {
     user_id: string;
-    question_submissions: Array<{
+    answers?: Array<{
+      question_id: string;
+      source_code: string;
+      outputs?: string[];
+    }>;
+    question_submissions?: Array<{
       question_id: string;
       code: string;
       outputs?: string[];
     }>;
     activity_logs?: any[];
+    candidateRequirements?: any;
   }): Promise<ApiResponse<any>> => {
-    const response = await apiClient.post<ApiResponse<any>>(`/api/v1/aiml/tests/${testId}/submit`, data);
+    // Convert question_submissions to answers format if needed (for backward compatibility)
+    let requestData: any = { ...data };
+    if (data.question_submissions && !data.answers) {
+      requestData.answers = data.question_submissions.map(sub => ({
+        question_id: sub.question_id,
+        source_code: sub.code,  // Convert 'code' to 'source_code'
+        outputs: sub.outputs || []
+      }));
+      delete requestData.question_submissions;
+    }
+    
+    const response = await apiClient.post<ApiResponse<any>>(`/api/v1/aiml/tests/${testId}/submit`, requestData);
     return response.data;
   },
 

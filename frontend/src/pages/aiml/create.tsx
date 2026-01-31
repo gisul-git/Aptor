@@ -117,6 +117,21 @@ export default function CreateAIMLCompetencyPage() {
     setLoading(true);
 
     try {
+      // Helper function to convert datetime-local to UTC ISO string
+      // datetime-local input is in local timezone, we need to preserve that intent when converting to UTC
+      const convertLocalToUTC = (localDateTime: string): string => {
+        if (!localDateTime) return "";
+        // datetime-local format is "YYYY-MM-DDTHH:mm" (no timezone)
+        // Create a Date object - JavaScript will interpret it as local time
+        const localDate = new Date(localDateTime);
+        if (isNaN(localDate.getTime())) {
+          console.error("Invalid datetime:", localDateTime);
+          return "";
+        }
+        // Convert to UTC ISO string
+        return localDate.toISOString();
+      };
+
       // Create the test
       // For strict mode: duration is required (used to calculate endTime on backend)
       // For flexible mode: duration is required for the timer
@@ -125,9 +140,13 @@ export default function CreateAIMLCompetencyPage() {
       // Build payload - exclude end_time for strict mode
       const { end_time, ...formDataWithoutEndTime } = formData;
       
+      // Convert datetime-local to UTC ISO strings
+      const startTimeUTC = convertLocalToUTC(formData.start_time);
+      const endTimeUTC = examMode === "flexible" ? convertLocalToUTC(formData.end_time) : undefined;
+      
       const payload: any = {
         ...formDataWithoutEndTime,
-        start_time: new Date(formData.start_time).toISOString(),
+        start_time: startTimeUTC,
         proctoringSettings: { 
           aiProctoringEnabled,
           faceMismatchEnabled: aiProctoringEnabled ? faceMismatchEnabled : false, // Only enabled if AI Proctoring is enabled
@@ -136,10 +155,10 @@ export default function CreateAIMLCompetencyPage() {
         // Scheduling payload (mirrors Custom MCQ)
         examMode,
         schedule: {
-          startTime: new Date(formData.start_time).toISOString(),
+          startTime: startTimeUTC,
           // For strict mode: don't send endTime, backend will calculate from startTime + duration
           // For flexible mode: send endTime
-          ...(examMode === "flexible" && { endTime: new Date(formData.end_time).toISOString() }),
+          ...(examMode === "flexible" && endTimeUTC && { endTime: endTimeUTC }),
           duration: durationForSchedule,
           // Candidate Requirements
           candidateRequirements: {
@@ -149,9 +168,9 @@ export default function CreateAIMLCompetencyPage() {
             requireGithub,
           },
         },
-        startTime: new Date(formData.start_time).toISOString(),
+        startTime: startTimeUTC,
         // For strict mode: don't send endTime, backend will calculate it
-        ...(examMode === "flexible" && { endTime: new Date(formData.end_time).toISOString() }),
+        ...(examMode === "flexible" && endTimeUTC && { endTime: endTimeUTC }),
         duration: durationForSchedule,
         // Timer payload (mirrors DSA)
         timer_mode: timerMode,
