@@ -7,6 +7,7 @@ Production-focused implementation with proper logging and timeout handling.
 import asyncio
 import json
 import time
+import sys
 from typing import Dict
 import websockets
 from websockets.server import WebSocketServerProtocol
@@ -21,6 +22,8 @@ class HealthCheckFilter(logging.Filter):
     def filter(self, record):
         # Suppress errors related to health checks (HTTP requests to WebSocket port)
         message = record.getMessage()
+        
+        # Suppress all ERROR level messages from websockets (health checks cause these)
         if record.levelno == logging.ERROR:
             # Suppress common health check related errors
             if any(keyword in message.lower() for keyword in [
@@ -29,9 +32,22 @@ class HealthCheckFilter(logging.Filter):
                 'missing connection header',
                 'invalid upgrade',
                 'stream ends after',
-                'opening handshake failed'
+                'opening handshake failed',
+                'eoferror',
+                'connection closed',
+                'invalidmessage',
+                'invalidupgrade'
             ]):
                 return False  # Don't log this
+        
+        # Also suppress traceback logs from websockets (they're just health check noise)
+        if hasattr(record, 'exc_info') and record.exc_info:
+            exc_type = record.exc_info[0]
+            if exc_type and any(name in str(exc_type.__name__).lower() for name in [
+                'eof', 'invalidmessage', 'invalidupgrade', 'connectionclosed'
+            ]):
+                return False
+        
         return True  # Log everything else
 
 
@@ -222,10 +238,11 @@ class AgentServer:
         # Suppress expected errors from health checks hitting WebSocket port
         # Azure Container Apps sends HTTP GET requests for health checks
         health_check_filter = HealthCheckFilter()
-        # Apply filter to all websockets-related loggers
-        for logger_name in ["websockets", "websockets.server", "websockets.asyncio"]:
+        # Apply filter to all websockets-related loggers and set level to WARNING
+        for logger_name in ["websockets", "websockets.server", "websockets.asyncio", "websockets.http11", "websockets.streams"]:
             logger = logging.getLogger(logger_name)
             logger.addFilter(health_check_filter)
+            logger.setLevel(logging.WARNING)  # Only show warnings and above, suppress INFO and ERROR
         
         async def handler(websocket):
             try:

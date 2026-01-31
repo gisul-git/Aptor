@@ -33,11 +33,32 @@ aimlApi.interceptors.request.use(
   (error) => Promise.reject(error)
 )
 
-// Add token to requests - CRITICAL: All AIML API calls require authentication
+// Add token to requests - CRITICAL: Skip auth for public candidate endpoints
 aimlApi.interceptors.request.use(
   async (config) => {
     if (typeof window !== 'undefined') {
       if (config.headers?.Authorization) return config
+
+      // Check if this is a public candidate endpoint (no JWT auth required)
+      // These endpoints use token-based auth via URL parameters
+      const url = config.url || ''
+      const isPublicCandidateEndpoint = 
+        url.includes('/verify-link') ||
+        url.includes('/verify-candidate') ||
+        url.includes('/start') ||
+        url.includes('/public') ||
+        url.includes('/full') ||
+        url.includes('/candidate') ||
+        url.includes('/submit-answer') ||
+        url.includes('/submit') ||
+        url.includes('/get-reference-photo') ||
+        url.includes('/save-reference-face')
+
+      // Skip authentication for public candidate endpoints
+      if (isPublicCandidateEndpoint) {
+        console.debug('[aimlApi] Skipping auth for public candidate endpoint:', config.url)
+        return config
+      }
 
       let token: string | null = null
       // Use cached token first (fast path)
