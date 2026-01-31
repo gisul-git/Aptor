@@ -4,6 +4,7 @@ import { getSession } from "next-auth/react";
 import IdentityVerification from "@/proctoring/components/IdentityVerification";
 import { getGateContext } from "@/lib/gateContext";
 import { useAssessmentFull } from "@/hooks/api/useAssessments";
+import { getApiGatewayUrl } from "@/lib/api-gateway-config";
 
 interface VerificationStep {
   id: string;
@@ -443,7 +444,8 @@ export default function IdentityVerificationPage() {
       if (isCustomMCQ) {
         // For Custom MCQ assessments, fetch assessment details to check schedule
         try {
-          const apiBase = `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:80"}/api/v1`;
+          const apiGatewayUrl = await getApiGatewayUrl();
+          const apiBase = `${apiGatewayUrl}/api/v1`;
           const assessmentResponse = await fetch(`${apiBase}/custom-mcq/take/${id}?token=${encodeURIComponent(token as string)}`);
           if (assessmentResponse.ok) {
             const assessmentData = await assessmentResponse.json();
@@ -485,7 +487,8 @@ export default function IdentityVerificationPage() {
       
       // For DSA and AIML tests, check start time via test endpoints
       if (isDSATest || isAIMLTest) {
-        const apiBase = `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:80"}/api/v1`;
+        const apiGatewayUrl = await getApiGatewayUrl();
+        const apiBase = `${apiGatewayUrl}/api/v1`;
         const testEndpoint = isDSATest ? `/dsa/tests/${id}/public?user_id=${userId}` : `/aiml/tests/${id}/public?user_id=${userId}`;
         
         // CRITICAL: Always check test start time FIRST before attempting to start
@@ -649,7 +652,8 @@ export default function IdentityVerificationPage() {
         }
       } else if (isDSATest || isAIMLTest) {
         // Use DSA or AIML test start endpoint
-        const apiBase = `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:80"}/api/v1`;
+        const apiGatewayUrl = await getApiGatewayUrl();
+        const apiBase = `${apiGatewayUrl}/api/v1`;
         const startEndpoint = isDSATest ? `/dsa/tests/${id}/start?user_id=${userId}` : `/aiml/tests/${id}/start?user_id=${userId}`;
         response = await fetch(`${apiBase}${startEndpoint}`, {
           method: "POST",
