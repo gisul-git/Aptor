@@ -21,16 +21,15 @@ export default function AIMLTestVerifyPage() {
     if (!testId) return;
     
     const token = new URLSearchParams(window.location.search).get("token");
-    if (!token) {
-      setError("Invalid test link - token missing");
-      setCheckingToken(false);
-      return;
-    }
+    // Token is now optional - removed validation requirement
 
-    // Verify the link token
+    // Verify the test link (token optional)
     const verifyLink = async () => {
       try {
-        const response = await aimlApi.get(`/tests/${testId}/verify-link?token=${encodeURIComponent(token)}`);
+        const url = token 
+          ? `/tests/${testId}/verify-link?token=${encodeURIComponent(token)}`
+          : `/tests/${testId}/verify-link`;
+        const response = await aimlApi.get(url);
         setTestInfo({
           title: response.data.title || response.data.test_title || "AIML Assessment",
           duration: response.data.duration_minutes || response.data.duration || 60,
@@ -55,13 +54,9 @@ export default function AIMLTestVerifyPage() {
 
     try {
       const token = new URLSearchParams(window.location.search).get("token");
-      if (!token) {
-        setError("Token missing");
-        setVerifying(false);
-        return;
-      }
+      // Token is now optional - removed validation requirement
 
-      // Verify candidate
+      // Verify candidate (only needs email/name, token not required)
       const verifyResponse = await aimlApi.post(
         `/tests/${testId}/verify-candidate?email=${encodeURIComponent(email.trim())}&name=${encodeURIComponent(name.trim())}`
       );
@@ -92,19 +87,24 @@ export default function AIMLTestVerifyPage() {
       sessionStorage.setItem("candidateUserId", candidateInfo.user_id);
 
       // Store gate routing context so shared gate can route to AIML take page
+      // Token is optional - use empty string if not provided
+      const tokenParam = token ? `?token=${encodeURIComponent(token)}` : '';
+      const finalTakeUrlToken = token ? `${tokenParam}&` : '?';
       setGateContext({
         flowType: "aiml",
         assessmentId: String(testId),
-        token,
+        token: token || '',
         candidateEmail: email.trim(),
         candidateName: name.trim(),
         candidateUserId: candidateInfo.user_id,
-        entryUrl: `/aiml/test/${testId}?token=${encodeURIComponent(token)}`,
-        finalTakeUrl: `/aiml/test/${testId}/take?token=${encodeURIComponent(token)}&user_id=${encodeURIComponent(candidateInfo.user_id)}`,
+        entryUrl: `/aiml/test/${testId}${tokenParam}`,
+        finalTakeUrl: `/aiml/test/${testId}/take${finalTakeUrlToken}user_id=${encodeURIComponent(candidateInfo.user_id)}`,
       });
 
       // Redirect into unified gate (do NOT start test before gate)
-      router.push(`/precheck/${testId}/${encodeURIComponent(token)}`);
+      // Token is optional - use empty string if not provided
+      const precheckToken = token || '';
+      router.push(`/precheck/${testId}/${encodeURIComponent(precheckToken)}`);
     } catch (err: any) {
       setError(err.response?.data?.detail || "Failed to verify. Please check your name and email.");
       setVerifying(false);

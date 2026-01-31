@@ -22,17 +22,18 @@ export default function TestPage() {
     if (!testId) return;
     
     const tokenFromUrl = new URLSearchParams(window.location.search).get("token");
-    if (!tokenFromUrl) {
-      setError("Invalid test link - token missing");
-      setCheckingToken(false);
-      return;
+    // Token is now optional - removed validation requirement
+    if (tokenFromUrl) {
+      setToken(tokenFromUrl);
     }
-    setToken(tokenFromUrl);
 
-    // Verify the link token
+    // Verify the test link (token optional)
     const verifyLink = async () => {
       try {
-        const response = await dsaApi.get(`/tests/${testId}/verify-link?token=${encodeURIComponent(tokenFromUrl)}`);
+        const url = tokenFromUrl
+          ? `/tests/${testId}/verify-link?token=${encodeURIComponent(tokenFromUrl)}`
+          : `/tests/${testId}/verify-link`;
+        const response = await dsaApi.get(url);
         setTestInfo({
           title: response.data.title || response.data.test_title || "DSA Assessment",
           duration: response.data.duration_minutes || response.data.duration || 60,
@@ -57,13 +58,9 @@ export default function TestPage() {
 
     try {
       const tokenFromUrl = new URLSearchParams(window.location.search).get("token");
-      if (!tokenFromUrl) {
-        setError("Token missing");
-        setVerifying(false);
-        return;
-      }
+      // Token is now optional - removed validation requirement
 
-      // Verify candidate
+      // Verify candidate (only needs email/name, token not required)
       const verifyResponse = await dsaApi.post(
         `/tests/${testId}/verify-candidate?email=${encodeURIComponent(email.trim())}&name=${encodeURIComponent(name.trim())}`
       );
@@ -94,19 +91,24 @@ export default function TestPage() {
       sessionStorage.setItem("candidateUserId", candidateInfo.user_id);
 
       // Store gate routing context so shared gate can route to DSA take page
+      // Token is optional - use empty string if not provided
+      const tokenParam = tokenFromUrl ? `?token=${encodeURIComponent(tokenFromUrl)}` : '';
+      const finalTakeUrlToken = tokenFromUrl ? `${tokenParam}&` : '?';
       setGateContext({
         flowType: "dsa",
         assessmentId: String(testId),
-        token: tokenFromUrl,
+        token: tokenFromUrl || '',
         candidateEmail: email.trim(),
         candidateName: name.trim(),
         candidateUserId: candidateInfo.user_id,
-        entryUrl: `/test/${testId}?token=${encodeURIComponent(tokenFromUrl)}`,
-        finalTakeUrl: `/test/${testId}/take?token=${encodeURIComponent(tokenFromUrl)}&user_id=${encodeURIComponent(candidateInfo.user_id)}`,
+        entryUrl: `/test/${testId}${tokenParam}`,
+        finalTakeUrl: `/test/${testId}/take${finalTakeUrlToken}user_id=${encodeURIComponent(candidateInfo.user_id)}`,
       });
 
       // Redirect into unified gate (do NOT start test before gate)
-      router.push(`/precheck/${testId}/${encodeURIComponent(tokenFromUrl)}`);
+      // Token is optional - use empty string if not provided
+      const precheckToken = tokenFromUrl || '';
+      router.push(`/precheck/${testId}/${encodeURIComponent(precheckToken)}`);
     } catch (err: any) {
       setError(err.response?.data?.detail || "Failed to verify. Please check your name and email.");
       setVerifying(false);

@@ -5,6 +5,7 @@ import { useRouter } from 'next/router'
 import { useSession } from 'next-auth/react'
 import dynamic from 'next/dynamic'
 import axios from 'axios'
+import aimlApi from '../../../../lib/aiml/api'
 import { useAIMLTestForCandidate, useSubmitAIMLAnswer, useSubmitAIMLTest } from '@/hooks/api/useAIML'
 import { useUniversalProctoring, CandidateLiveService, resolveUserIdForProctoring, type ProctoringViolation } from '@/universal-proctoring'
 import WebcamPreview from '../../../../components/WebcamPreview'
@@ -20,7 +21,7 @@ const AIMLCompetencyNotebook = dynamic(
   { ssr: false, loading: () => <div className="h-screen bg-gray-50 flex items-center justify-center"><div className="text-gray-500">Loading IDE...</div></div> }
 )
 
-const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:80"
+// Removed: apiUrl - now using aimlApi which handles runtime URL configuration
 
 interface Task {
   id: string
@@ -534,9 +535,8 @@ export default function AIMLTestTakePage() {
 
     const syncInterval = setInterval(async () => {
       try {
-        const response = await axios.get(
-          `${apiUrl}/api/v1/aiml/tests/${testId}/candidate?user_id=${userId}`,
-          { headers: { Authorization: `Bearer ${token}` } }
+        const response = await aimlApi.get(
+          `/tests/${testId}/candidate?user_id=${userId}`
         )
         
         // Service already extracts response.data, so response IS the data
@@ -770,21 +770,20 @@ export default function AIMLTestTakePage() {
     if (!token || !userId || !testId) return
     
     try {
-      await axios.post(
-        `${apiUrl}/api/v1/aiml/tests/${testId}/submit-answer`,
+      await aimlApi.post(
+        `/tests/${testId}/submit-answer`,
         {
           user_id: userId,
           question_id: questionId,
           source_code: code,
           outputs: [],
-        },
-        { headers: { Authorization: `Bearer ${token}` } }
+        }
       )
       setLastSaved(new Date())
     } catch (err) {
       console.error('Auto-save failed:', err)
     }
-  }, [token, userId, testId, apiUrl])
+  }, [token, userId, testId])
 
   const handleCodeChange = useCallback((code: string) => {
     if (currentQuestion && 
@@ -814,15 +813,14 @@ export default function AIMLTestTakePage() {
         [currentQuestion.id]: outputs
       }))
 
-      await axios.post(
-        `${apiUrl}/api/v1/aiml/tests/${testId}/submit-answer`,
+      await aimlApi.post(
+        `/tests/${testId}/submit-answer`,
         {
           user_id: userId,
           question_id: currentQuestion.id,
           source_code: code,
           outputs: outputs,
-        },
-        { headers: { Authorization: `Bearer ${token}` } }
+        }
       )
       
       // Mark question as completed (manually submitted)
