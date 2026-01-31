@@ -277,6 +277,7 @@ const proxyOptions = {
   pathRewrite: {
     '^/api': '/api', // Keep /api prefix
   },
+  timeout: 120000, // 120 seconds (2 minutes) - increased for AI operations
   onProxyReq: (proxyReq, req, res) => {
     const targetUrl = proxyReq.path;
     const targetHost = proxyReq.getHeader('host');

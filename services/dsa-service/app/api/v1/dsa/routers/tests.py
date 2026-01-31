@@ -3699,13 +3699,27 @@ async def send_invitations_to_all(
         email_service = get_email_service()
         
         for candidate in candidates:
+            # Extract candidate info before try block so it's available for status update
+            candidate_email = candidate.get("email")
+            candidate_name = candidate.get("name", "Candidate")
+            
+            if not candidate_email:
+                results["failed"].append({"email": "unknown", "reason": "Email not found"})
+                # Still try to update status even if email is missing
+                try:
+                    await db.test_candidates.update_one(
+                        {"test_id": test_id, "_id": candidate.get("_id")},
+                        {"$set": {
+                            "status": "invited",
+                            "invited": True,
+                            "invited_at": datetime.utcnow()
+                        }}
+                    )
+                except Exception:
+                    pass
+                continue
+            
             try:
-                candidate_email = candidate.get("email")
-                candidate_name = candidate.get("name", "Candidate")
-                
-                if not candidate_email:
-                    results["failed"].append({"email": "unknown", "reason": "Email not found"})
-                    continue
                 
                 # Build exam URL with candidate params
                 encoded_email = urllib.parse.quote(candidate_email)
