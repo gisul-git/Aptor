@@ -86,7 +86,6 @@ export function PrecheckModal({
 }: PrecheckModalProps) {
   const [currentStep, setCurrentStep] = useState(0);
   const [isChecking, setIsChecking] = useState(false);
-  const [extensionsCertified, setExtensionsCertified] = useState(false);
   
   // Extension detection
   const {
@@ -173,13 +172,6 @@ export function PrecheckModal({
       }
     }
   }, [isOpen, currentCheckType, extensionScanResult, isExtensionScanning, scanExtensions]);
-
-  // Reset certification checkbox when leaving browser step
-  useEffect(() => {
-    if (currentCheckType !== "browser") {
-      setExtensionsCertified(false);
-    }
-  }, [currentCheckType]);
 
   // Handle running current check
   const handleRunCheck = useCallback(async () => {
@@ -761,47 +753,6 @@ export function PrecheckModal({
                 </div>
                   )}
 
-                  {/* Fallback: Manual Certification if Permission Not Granted */}
-                  {extensionScanResult && !extensionScanResult.permissionGranted && (
-                    <div style={{
-                      padding: "1rem",
-                      backgroundColor: "#fffbeb",
-                      border: "1px solid #fcd34d",
-                      borderRadius: "0.5rem",
-                      marginTop: "1rem",
-                    }}>
-                      <p style={{ 
-                        margin: "0 0 0.75rem 0", 
-                        fontSize: "0.875rem", 
-                        fontWeight: 600,
-                        color: "#92400e"
-                      }}>
-                        Alternative: Manual Certification
-                      </p>
-                      <label style={{
-                        display: "flex",
-                        alignItems: "flex-start",
-                        gap: "0.75rem",
-                        cursor: "pointer",
-                      }}>
-                        <input
-                          type="checkbox"
-                          checked={extensionsCertified}
-                          onChange={(e) => setExtensionsCertified(e.target.checked)}
-                          style={{
-                            marginTop: "0.25rem",
-                            width: "1.25rem",
-                            height: "1.25rem",
-                            cursor: "pointer",
-                          }}
-                        />
-                        <span style={{ fontSize: "0.8125rem", color: "#92400e" }}>
-                          I certify that I have manually disabled ALL browser extensions
-                          by going to <code style={{ backgroundColor: "#fef3c7", padding: "0.125rem 0.25rem", borderRadius: "0.25rem" }}>chrome://extensions</code> or <code style={{ backgroundColor: "#fef3c7", padding: "0.125rem 0.25rem", borderRadius: "0.25rem" }}>edge://extensions</code> and toggling them all OFF.
-                        </span>
-                      </label>
-                    </div>
-                  )}
                 </>
               )}
 
@@ -1346,45 +1297,6 @@ export function PrecheckModal({
           borderTop: "1px solid #f1f5f9",
         }}>
           {/* Certification only shown if permission not granted */}
-          {currentCheckType === "browser" && currentCheck?.status === "passed" && 
-           extensionScanResult && !extensionScanResult.permissionGranted && (
-            <div style={{
-              padding: "1rem",
-              backgroundColor: "#fef2f2",
-              border: "2px solid #fecaca",
-              borderRadius: "0.5rem",
-              marginBottom: "1rem",
-            }}>
-              <label style={{
-                display: "flex",
-                alignItems: "flex-start",
-                gap: "0.75rem",
-                cursor: "pointer",
-              }}>
-                <input
-                  type="checkbox"
-                  required
-                  checked={extensionsCertified}
-                  onChange={(e) => setExtensionsCertified(e.target.checked)}
-                  style={{
-                    marginTop: "0.25rem",
-                    width: "1.25rem",
-                    height: "1.25rem",
-                    cursor: "pointer",
-                  }}
-                />
-                <span style={{ fontSize: "0.875rem", color: "#991b1b" }}>
-                  <strong>REQUIRED: I certify that I have manually disabled ALL browser extensions</strong>
-                  <br />
-                  <span style={{ fontSize: "0.8125rem" }}>
-                    I have gone to <code style={{ backgroundColor: "#fee2e2", padding: "0.125rem 0.25rem", borderRadius: "0.25rem" }}>chrome://extensions</code> or <code style={{ backgroundColor: "#fee2e2", padding: "0.125rem 0.25rem", borderRadius: "0.25rem" }}>edge://extensions</code> and toggled OFF all extensions.
-                    I understand that using extensions during the assessment will result in disqualification.
-                  </span>
-                </span>
-              </label>
-            </div>
-          )}
-
           {/* Next Button - Always visible, enabled when check passes */}
           {currentCheck?.status === "passed" ? (
           <button

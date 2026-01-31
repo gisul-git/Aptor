@@ -67,6 +67,28 @@ export default function NotebookCell({
   const [editorHeight, setEditorHeight] = useState(80)
   const editorRef = useRef<any>(null)
   const menuRef = useRef<HTMLDivElement>(null)
+  // Track latest code synchronously to avoid race conditions with controlled component
+  // This ref is ONLY updated in onChange (synchronously) - never from code prop
+  // The code prop might be stale during re-renders, so we don't want to overwrite the ref
+  const latestCodeRef = useRef<string>(code)
+  // Track previous output to detect if we executed stale code
+  const previousOutputRef = useRef<string | null>(null)
+  
+  // IMPORTANT: We do NOT update latestCodeRef from code prop changes
+  // This prevents overwriting the ref with stale data when React re-renders with old code prop
+  // The ref is only updated synchronously in onChange when user types
+
+  // Debug: Log when code prop changes to detect stale re-renders
+  useEffect(() => {
+    console.log('[NotebookCell] 🔄 Code prop changed', { 
+      cellId, 
+      newCodeProp: code?.substring(0, 50), 
+      latestCodeRef: latestCodeRef.current?.substring(0, 50),
+      areDifferent: code !== latestCodeRef.current,
+      codePropLength: code?.length,
+      latestCodeRefLength: latestCodeRef.current?.length
+    })
+  }, [code, cellId])
 
   // Auto-adjust editor height based on content
   useEffect(() => {
@@ -94,42 +116,245 @@ export default function NotebookCell({
   const handleRun = useCallback(async () => {
     if (isRunning || readOnly) return
 
-    const runId = `cell_${cellId}_${Date.now()}_${Math.random().toString(36).substring(7)}`
+    console.log('[NotebookCell] ▶️ handleRun called', { 
+      cellId, 
+      codeProp: code?.substring(0, 50), 
+      latestCodeRef: latestCodeRef.current?.substring(0, 50),
+      codePropLength: code?.length,
+      latestCodeRefLength: latestCodeRef.current?.length
+    })
+
+    // CRITICAL: Capture code SYNCHRONOUSLY at the moment of button click
+    // This must happen BEFORE any async operations to prevent React re-renders
+    // from causing Monaco to sync its model back to stale props
+    let currentCode = ''
+    let codeSource = 'unknown'
     
-    onRunningChange(cellId, true)
-    onOutputChange(cellId, '')
+    // Priority 1: Read directly from Monaco's model (most reliable, bypasses controlled component sync)
+    if (editorRef.current) {
+      try {
+        const model = editorRef.current.getModel()
+        if (model) {
+          const modelCode = model.getValue()
+          console.log('[NotebookCell] 📝 Model code read:', { 
+            modelCode: modelCode?.substring(0, 50), 
+            modelCodeLength: modelCode?.length 
+          })
+          if (modelCode !== null && modelCode !== undefined) {
+            currentCode = modelCode
+            codeSource = 'model'
+            // Update ref to keep in sync
+            latestCodeRef.current = modelCode
+            console.log('[NotebookCell] ✅ Using code from MODEL:', currentCode.substring(0, 50))
+          }
+        } else {
+          console.log('[NotebookCell] Model is null')
+        }
+      } catch (e) {
+        console.warn('[NotebookCell] Failed to read from model:', e)
+      }
+      
+      // Priority 2: Use getValue() if model access failed
+      if (!currentCode) {
+        try {
+          const editorCode = editorRef.current.getValue()
+          console.log('[NotebookCell] 📝 Editor getValue() read:', { 
+            editorCode: editorCode?.substring(0, 50), 
+            editorCodeLength: editorCode?.length 
+          })
+          if (editorCode !== null && editorCode !== undefined) {
+            currentCode = editorCode
+            codeSource = 'getValue'
+            latestCodeRef.current = editorCode
+            console.log('[NotebookCell] ✅ Using code from getValue():', currentCode.substring(0, 50))
+          }
+        } catch (e) {
+          console.warn('[NotebookCell] Failed to read from editor:', e)
+        }
+      }
+    } else {
+      console.log('[NotebookCell] editorRef.current is null')
+    }
     
+    // Priority 3: Use latestCodeRef (updated synchronously in onChange)
+    if (!currentCode && latestCodeRef.current) {
+      currentCode = latestCodeRef.current
+      codeSource = 'latestCodeRef'
+      console.log('[NotebookCell] ✅ Using code from latestCodeRef:', currentCode.substring(0, 50))
+    }
+    
+    // Priority 4: Fallback to code prop (last resort)
+    if (!currentCode) {
+      currentCode = code || ''
+      codeSource = 'codeProp'
+      if (currentCode) {
+        latestCodeRef.current = currentCode
+      }
+      console.log('[NotebookCell] ⚠️ Using code from code prop (fallback):', currentCode.substring(0, 50))
+    }
+    
+    console.log('[NotebookCell] 🎯 FINAL CODE TO EXECUTE:', { 
+      currentCode: currentCode.substring(0, 100), 
+      codeSource,
+      codeLength: currentCode.length,
+      codeProp: code?.substring(0, 100),
+      latestCodeRef: latestCodeRef.current?.substring(0, 100),
+      codesMatch: currentCode === code,
+      codesMatchRef: currentCode === latestCodeRef.current
+    })
+    
+    // Don't run if code is empty
+    if (!currentCode.trim()) {
+      console.warn('[NotebookCell] Code is empty, not running')
+      return
+    }
+
+    // Execute with retry logic for empty stdout and stale code issues
+    const executeWithRetry = async (codeToExecute: string, isRetry: boolean = false): Promise<any> => {
+      const runId = `cell_${cellId}_${Date.now()}_${Math.random().toString(36).substring(7)}${isRetry ? '_retry' : ''}`
+      
+      if (!isRetry) {
+        onRunningChange(cellId, true)
+        onOutputChange(cellId, '')
+      }
+
+      try {
+        console.log(`[NotebookCell] ${isRetry ? '🔄 RETRY' : '🚀'} Executing code:`, { 
+          runId, 
+          codeLength: codeToExecute.length,
+          codePreview: codeToExecute.substring(0, 100),
+          sessionId,
+          isRetry
+        })
+        
+        const result = await executeCode(codeToExecute, sessionId, runId)
+        
+        console.log(`[NotebookCell] ${isRetry ? '🔄 RETRY' : '✅'} Execution result:`, { 
+          success: result.success, 
+          stdoutLength: result.stdout?.length || 0,
+          stderrLength: result.stderr?.length || 0,
+          hasError: !!result.error,
+          imagesCount: result.images?.length || 0,
+          isRetry
+        })
+        
+        // Format the output for comparison
+        let formattedOutput = ''
+        if (result.stdout) {
+          formattedOutput += result.stdout
+        }
+        if (result.stderr) {
+          formattedOutput += `\n${result.stderr}`
+        }
+        if (result.error) {
+          formattedOutput += `\n\nError: ${result.error.type}: ${result.error.value}\n`
+          if (result.error.traceback) {
+            formattedOutput += result.error.traceback.join('\n')
+          }
+        }
+        if (result.images && result.images.length > 0) {
+          result.images.forEach((img: { mime_type: string; data: string }, idx: number) => {
+            formattedOutput += `\n__IMAGE_${idx}__:${img.data}`
+          })
+        }
+        const finalOutput = formattedOutput || '(No output)'
+        
+        // Check if we need to retry: success but empty stdout/stderr and no error
+        // This handles the backend timing issue where first execution returns empty stdout
+        const isEmptyResult = result.success && 
+                             !result.stdout && 
+                             !result.stderr && 
+                             !result.error && 
+                             (result.images?.length || 0) === 0
+        
+        // Check if output matches previous output (stale code executed)
+        // Only check if we have a previous output (not first run) and haven't retried yet
+        // Don't retry if both outputs are "(No output)" as that's a legitimate case
+        const outputMatchesPrevious = previousOutputRef.current !== null && 
+                                     finalOutput === previousOutputRef.current &&
+                                     finalOutput !== '(No output)' // Don't retry if both are "no output"
+        
+        if ((isEmptyResult || outputMatchesPrevious) && !isRetry) {
+          console.log('[NotebookCell] ⚠️ Retry condition detected:', {
+            isEmptyResult,
+            outputMatchesPrevious,
+            currentOutput: finalOutput.substring(0, 50),
+            previousOutput: previousOutputRef.current?.substring(0, 50)
+          })
+          // Small delay before retry to ensure Monaco has synced and kernel is ready
+          await new Promise(resolve => setTimeout(resolve, 150))
+          // Retry with the same code (Monaco should have synced by now)
+          return await executeWithRetry(codeToExecute, true)
+        }
+        
+        // Store the output for next comparison (only on successful non-retry execution)
+        if (!isRetry && result.success) {
+          previousOutputRef.current = finalOutput
+        }
+        
+        return result
+      } catch (error: any) {
+        // Only retry on timeout or connection errors, not on code errors
+        if (!isRetry && (error.message?.includes('timeout') || error.message?.includes('Not connected'))) {
+          console.log('[NotebookCell] ⚠️ Connection/timeout error, retrying execution...')
+          await new Promise(resolve => setTimeout(resolve, 200))
+          return await executeWithRetry(codeToExecute, true)
+        }
+        throw error
+      }
+    }
+
     try {
-      const result = await executeCode(code, sessionId, runId)
+      const result = await executeWithRetry(currentCode)
       
+      // Format output (executeWithRetry already formats it, but we need to format again for display)
       let formattedOutput = ''
-      
+
       if (result.stdout) {
         formattedOutput += result.stdout
       }
-      
+
       if (result.stderr) {
         formattedOutput += `\n${result.stderr}`
       }
-      
+
       if (result.error) {
         formattedOutput += `\n\nError: ${result.error.type}: ${result.error.value}\n`
         if (result.error.traceback) {
           formattedOutput += result.error.traceback.join('\n')
         }
       }
-      
+
       // Handle images
       if (result.images && result.images.length > 0) {
-        result.images.forEach((img, idx) => {
+        result.images.forEach((img: { mime_type: string; data: string }, idx: number) => {
           formattedOutput += `\n__IMAGE_${idx}__:${img.data}`
         })
       }
+
+      const finalOutput = formattedOutput || '(No output)'
+      console.log('[NotebookCell] Setting output:', { 
+        cellId, 
+        outputLength: finalOutput.length,
+        outputPreview: finalOutput.substring(0, 100)
+      })
+      onOutputChange(cellId, finalOutput)
       
-      onOutputChange(cellId, formattedOutput || '(No output)')
+      // Update previous output ref after successful execution (for next comparison)
+      // Note: executeWithRetry already updates this, but we update here too for consistency
+      if (result.success) {
+        previousOutputRef.current = finalOutput
+      }
+      
+      // Update previous output ref after successful execution (for next comparison)
+      if (result.success) {
+        previousOutputRef.current = finalOutput
+      }
     } catch (error: any) {
+      console.error('[NotebookCell] Execution error:', { cellId, error: error.message, errorStack: error.stack })
       onOutputChange(cellId, `Error: ${error.message}`)
     } finally {
+      console.log('[NotebookCell] Execution finished, setting running to false', { cellId })
       onRunningChange(cellId, false)
     }
   }, [cellId, code, sessionId, isRunning, onOutputChange, onRunningChange, readOnly])
@@ -143,6 +368,8 @@ export default function NotebookCell({
 
   const handleEditorMount = (editor: any) => {
     editorRef.current = editor
+    // Initialize ref with current editor content
+    latestCodeRef.current = editor.getValue() || code
 
     // Shift+Enter to run and create new cell
     editor.addCommand(
@@ -232,7 +459,22 @@ export default function NotebookCell({
               height={editorHeight}
               language="python"
               value={code}
-              onChange={(value) => onCodeChange(cellId, value || '')}
+              onChange={(value) => {
+                const newCode = value || ''
+                console.log('[NotebookCell] ⌨️ onChange fired', { 
+                  cellId, 
+                  newCode: newCode.substring(0, 50), 
+                  newCodeLength: newCode.length,
+                  oldLatestCodeRef: latestCodeRef.current?.substring(0, 50),
+                  oldLatestCodeRefLength: latestCodeRef.current?.length
+                })
+                // Update ref synchronously to avoid race conditions
+                // This ref is the source of truth and is never overwritten by stale props
+                latestCodeRef.current = newCode
+                console.log('[NotebookCell] ✅ latestCodeRef updated to:', latestCodeRef.current.substring(0, 50))
+                // Update parent state (async)
+                onCodeChange(cellId, newCode)
+              }}
               onMount={handleEditorMount}
               theme="vs"
               options={{
