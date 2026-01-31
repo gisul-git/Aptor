@@ -374,6 +374,18 @@ const proxyOptions = {
       serviceName = 'DevOps Service (AI Assessment)';
       targetHost = 'localhost:3001';
       targetServiceUrl = SERVICES.aiAssessment;  // DevOps tests are handled by AI Assessment service
+    } else if (path.includes('/api/v1/cloud')) {
+      serviceName = 'Cloud Service (AI Assessment)';
+      targetHost = 'localhost:3001';
+      targetServiceUrl = SERVICES.aiAssessment;  // Cloud tests are handled by AI Assessment service
+    } else if (path.includes('/api/v1/data-engineering')) {
+      serviceName = 'Data Engineering Service (AI Assessment)';
+      targetHost = 'localhost:3001';
+      targetServiceUrl = SERVICES.aiAssessment;  // Data Engineering tests are handled by AI Assessment service
+    } else if (path.includes('/api/v1/design')) {
+      serviceName = 'Design Service (AI Assessment)';
+      targetHost = 'localhost:3001';
+      targetServiceUrl = SERVICES.aiAssessment;  // Design tests are handled by AI Assessment service
     } else if (path.includes('/api/v1/proctor')) {
       serviceName = 'Proctoring Service';
       targetHost = 'localhost:3005';
@@ -639,6 +651,33 @@ app.use(
   createProxyMiddleware({
     ...proxyOptions,
     target: SERVICES.aiAssessment,  // DevOps tests are handled by AI Assessment service
+  })
+);
+
+// Route: Cloud Service (proxied to AI Assessment Service - Cloud tests are assessments)
+app.use(
+  '/api/v1/cloud',
+  createProxyMiddleware({
+    ...proxyOptions,
+    target: SERVICES.aiAssessment,  // Cloud tests are handled by AI Assessment service
+  })
+);
+
+// Route: Data Engineering Service (proxied to AI Assessment Service - Data Engineering tests are assessments)
+app.use(
+  '/api/v1/data-engineering',
+  createProxyMiddleware({
+    ...proxyOptions,
+    target: SERVICES.aiAssessment,  // Data Engineering tests are handled by AI Assessment service
+  })
+);
+
+// Route: Design Service (proxied to AI Assessment Service - Design tests are assessments)
+app.use(
+  '/api/v1/design',
+  createProxyMiddleware({
+    ...proxyOptions,
+    target: SERVICES.aiAssessment,  // Design tests are handled by AI Assessment service
   })
 );
 

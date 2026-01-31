@@ -1,9 +1,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/router";
-import axios from "axios";
+import aimlApi from "../../../lib/aiml/api";
 import { setGateContext } from "../../../lib/gateContext";
-
-const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:80";
 
 export default function AIMLTestVerifyPage() {
   const router = useRouter();
@@ -32,10 +30,10 @@ export default function AIMLTestVerifyPage() {
     // Verify the link token
     const verifyLink = async () => {
       try {
-        const response = await axios.get(`${apiUrl}/api/v1/aiml/tests/${testId}/verify-link?token=${encodeURIComponent(token)}`);
+        const response = await aimlApi.get(`/tests/${testId}/verify-link?token=${encodeURIComponent(token)}`);
         setTestInfo({
-          title: response.data.title || "AIML Assessment",
-          duration: response.data.duration_minutes || 60,
+          title: response.data.title || response.data.test_title || "AIML Assessment",
+          duration: response.data.duration_minutes || response.data.duration || 60,
         });
         setError("");
       } catch (err: any) {
@@ -64,8 +62,8 @@ export default function AIMLTestVerifyPage() {
       }
 
       // Verify candidate
-      const verifyResponse = await axios.post(
-        `${apiUrl}/api/v1/aiml/tests/${testId}/verify-candidate?email=${encodeURIComponent(email.trim())}&name=${encodeURIComponent(name.trim())}`
+      const verifyResponse = await aimlApi.post(
+        `/tests/${testId}/verify-candidate?email=${encodeURIComponent(email.trim())}&name=${encodeURIComponent(name.trim())}`
       );
       
       const candidateInfo = verifyResponse.data;
