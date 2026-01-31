@@ -4954,29 +4954,22 @@ async def get_test_full_for_candidate(
     }
 
 @router.get("/{test_id}/verify-link")
-async def verify_test_link(test_id: str, token: str):
+async def verify_test_link(test_id: str, token: Optional[str] = Query(None)):
     """
-    Verify test link token (shared token for all candidates)
-    Returns test info if token is valid
+    Verify test link - token is now optional
+    Returns test info if test exists and is published
+    Token validation removed - anyone can access with just email/name verification
     """
     db = get_database()
     if not ObjectId.is_valid(test_id):
         raise HTTPException(status_code=400, detail="Invalid test ID")
 
-    # Verify the shared test token or a legacy per-candidate link_token
     test = await db.tests.find_one({"_id": ObjectId(test_id)})
     if not test:
         raise HTTPException(status_code=404, detail="Test not found")
 
-    test_token = test.get("test_token")
-
-    if token != test_token:
-        # Backward compatibility: some older invitations used per-candidate link_token
-        candidate = await db.test_candidates.find_one(
-            {"test_id": test_id, "link_token": token}
-        )
-        if not candidate:
-            raise HTTPException(status_code=404, detail="Invalid test link")
+    # Token validation removed - allow access without token
+    # Token is optional for backward compatibility but not required
 
     if not test.get("is_published", False):
         raise HTTPException(status_code=403, detail="Test is not published")

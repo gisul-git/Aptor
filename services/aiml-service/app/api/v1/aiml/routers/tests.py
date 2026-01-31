@@ -748,10 +748,11 @@ async def get_test(
 
 
 @router.get("/{test_id}/verify-link")
-async def verify_test_link(test_id: str, token: str = Query(...)):
+async def verify_test_link(test_id: str, token: Optional[str] = Query(None)):
     """
-    Verify test link token (shared token for all candidates)
-    Returns test info if token is valid, including schedule with candidateRequirements
+    Verify test link - token is now optional
+    Returns test info if test exists and is published
+    Token validation removed - anyone can access with just email/name verification
     """
     db = get_database()
     if not ObjectId.is_valid(test_id):
@@ -761,8 +762,8 @@ async def verify_test_link(test_id: str, token: str = Query(...)):
     if not test:
         raise HTTPException(status_code=404, detail="Test not found")
     
-    if test.get("test_token") != token:
-        raise HTTPException(status_code=404, detail="Invalid test link")
+    # Token validation removed - allow access without token
+    # Token is optional for backward compatibility but not required
     
     if not test.get("is_published", False):
         raise HTTPException(status_code=403, detail="Test is not published")
