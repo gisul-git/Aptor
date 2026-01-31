@@ -10,7 +10,29 @@ import time
 from typing import Dict
 import websockets
 from websockets.server import WebSocketServerProtocol
+from websockets.exceptions import InvalidMessage, InvalidUpgrade, ConnectionClosed
+import logging
 from agent.kernel_executor import execute_in_kernel
+
+
+class HealthCheckFilter(logging.Filter):
+    """Filter to suppress expected health check errors from WebSocket server."""
+    
+    def filter(self, record):
+        # Suppress errors related to health checks (HTTP requests to WebSocket port)
+        message = record.getMessage()
+        if record.levelno == logging.ERROR:
+            # Suppress common health check related errors
+            if any(keyword in message.lower() for keyword in [
+                'did not receive a valid http request',
+                'connection closed while reading http request',
+                'missing connection header',
+                'invalid upgrade',
+                'stream ends after',
+                'opening handshake failed'
+            ]):
+                return False  # Don't log this
+        return True  # Log everything else
 
 
 class AgentServer:
@@ -197,8 +219,21 @@ class AgentServer:
         print(f"[AgentServer] Agent listening on ws://{self.host}:{self.port}")
         print("[AgentServer] Press Ctrl+C to stop")
         
+        # Suppress expected errors from health checks hitting WebSocket port
+        # Azure Container Apps sends HTTP GET requests for health checks
+        health_check_filter = HealthCheckFilter()
+        # Apply filter to all websockets-related loggers
+        for logger_name in ["websockets", "websockets.server", "websockets.asyncio"]:
+            logger = logging.getLogger(logger_name)
+            logger.addFilter(health_check_filter)
+        
         async def handler(websocket):
-            await self.handle_client(websocket)
+            try:
+                await self.handle_client(websocket)
+            except (InvalidMessage, InvalidUpgrade, ConnectionClosed, EOFError) as e:
+                # These are expected when health checks (HTTP requests) hit the WebSocket port
+                # Suppress the error - it's just a health check probe
+                pass
         
         async with websockets.serve(
             handler,

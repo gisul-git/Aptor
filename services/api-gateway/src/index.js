@@ -42,6 +42,16 @@ app.use((req, res, next) => {
   next();
 });
 
+// Root endpoint
+app.get('/', (req, res) => {
+  res.json({ 
+    message: 'API Gateway', 
+    version: '1.0.0',
+    status: 'running',
+    health: '/health'
+  });
+});
+
 // Health check endpoint
 app.get('/health', (req, res) => {
   res.json({ status: 'healthy', service: 'api-gateway' });

@@ -986,6 +986,26 @@ Generate topics that are GENUINELY DIFFERENT while still being relevant to the s
 {'=' * 80}
 """
     
+    # Define validation message (extracted to avoid backslash in f-string expression)
+    if is_non_tech:
+        validation_message = "⚠️ CRITICAL: For non-tech roles, NEVER generate Coding, SQL, or AIML topics"
+    else:
+        validation_message = """CRITICAL VALIDATION - ONLY 10 JUDGE0-SUPPORTED LANGUAGES:
+- If skill is "Python" → MUST have at least 1 topic with questionType: "Coding"
+- If skill is "JavaScript" → MUST have at least 1 topic with questionType: "Coding"
+- If skill is "C++" → MUST have at least 1 topic with questionType: "Coding"
+- If skill is "Java" → MUST have at least 1 topic with questionType: "Coding"
+- If skill is "C" → MUST have at least 1 topic with questionType: "Coding"
+- If skill is "Go" → MUST have at least 1 topic with questionType: "Coding"
+- If skill is "Rust" → MUST have at least 1 topic with questionType: "Coding"
+- If skill is "C#" → MUST have at least 1 topic with questionType: "Coding"
+- If skill is "Kotlin" → MUST have at least 1 topic with questionType: "Coding"
+- If skill is "TypeScript" → MUST have at least 1 topic with questionType: "Coding"
+
+⚠️ ANY OTHER LANGUAGE/FRAMEWORK → MCQ or Subjective (NOT Coding)
+Examples: Ruby, Swift, PHP, Perl, Scala, R, Bash → MCQ/Subjective
+Examples: Django, Flask, React, Angular, Spring → MCQ/Subjective"""
+    
     prompt = f"""
 You are an expert assessment designer creating topics for {len(combined_skills)} skills.
 
@@ -1024,7 +1044,7 @@ REQUIREMENTS:
 5. Set canUseJudge0 to true ONLY for Coding questions with executable languages
 6. **DO NOT generate all MCQ questions** - Balance the distribution as specified above
 
-{"⚠️ CRITICAL: For non-tech roles, NEVER generate Coding, SQL, or AIML topics" if is_non_tech else "CRITICAL VALIDATION - ONLY 10 JUDGE0-SUPPORTED LANGUAGES:\n- If skill is \"Python\" → MUST have at least 1 topic with questionType: \"Coding\"\n- If skill is \"JavaScript\" → MUST have at least 1 topic with questionType: \"Coding\"\n- If skill is \"C++\" → MUST have at least 1 topic with questionType: \"Coding\"\n- If skill is \"Java\" → MUST have at least 1 topic with questionType: \"Coding\"\n- If skill is \"C\" → MUST have at least 1 topic with questionType: \"Coding\"\n- If skill is \"Go\" → MUST have at least 1 topic with questionType: \"Coding\"\n- If skill is \"Rust\" → MUST have at least 1 topic with questionType: \"Coding\"\n- If skill is \"C#\" → MUST have at least 1 topic with questionType: \"Coding\"\n- If skill is \"Kotlin\" → MUST have at least 1 topic with questionType: \"Coding\"\n- If skill is \"TypeScript\" → MUST have at least 1 topic with questionType: \"Coding\"\n\n⚠️ ANY OTHER LANGUAGE/FRAMEWORK → MCQ or Subjective (NOT Coding)\nExamples: Ruby, Swift, PHP, Perl, Scala, R, Bash → MCQ/Subjective\nExamples: Django, Flask, React, Angular, Spring → MCQ/Subjective"}
+{validation_message}
 
 Return ONLY a JSON object with a "topics" array. Use this exact structure:
 {{
