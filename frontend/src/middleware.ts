@@ -152,6 +152,55 @@ export default withAuth(
           return true;
         }
 
+        // AIML candidate API routes - public (candidates use user_id/token from URL, not NextAuth session)
+        // These endpoints are accessed by candidates via test links with just name/email verification
+        if (pathname.startsWith("/api/v1/aiml/tests/")) {
+          const aimlCandidateEndpoints = [
+            "/verify-link",
+            "/verify-candidate",
+            "/start",
+            "/public",
+            "/full",
+            "/candidate",
+            "/submit-answer",
+            "/submit"
+          ];
+          if (aimlCandidateEndpoints.some(endpoint => pathname.endsWith(endpoint))) {
+            return true;
+          }
+        }
+
+        // DSA candidate API routes - public (candidates use user_id/token from URL, not NextAuth session)
+        // These endpoints are accessed by candidates via test links with just name/email verification
+        if (pathname.startsWith("/api/v1/dsa/tests/")) {
+          const dsaCandidateEndpoints = [
+            "/verify-link",
+            "/verify-candidate",
+            "/start",
+            "/public",
+            "/submission",
+            "/final-submit",
+            "/full"
+          ];
+          // Check for /question/{id} pattern
+          if (pathname.includes("/question/") || dsaCandidateEndpoints.some(endpoint => pathname.endsWith(endpoint))) {
+            return true;
+          }
+        }
+
+        // AIML/DSA reference photo endpoints - public (candidates aren't logged in via NextAuth)
+        if (pathname === "/api/v1/aiml/tests/get-reference-photo" ||
+            pathname === "/api/v1/aiml/tests/save-reference-face" ||
+            pathname === "/api/v1/dsa/tests/get-reference-photo" ||
+            pathname === "/api/v1/dsa/tests/save-reference-face") {
+          return true;
+        }
+
+        // AIML dataset download endpoint - public (candidates need to download datasets)
+        if (pathname.startsWith("/api/v1/aiml/questions/") && pathname.endsWith("/dataset-download")) {
+          return true;
+        }
+
   // Custom MCQ assessment routes (use token from URL, not session)
         if (pathname.startsWith("/custom-mcq/entry/") ||
             pathname.startsWith("/custom-mcq/take/") ||
@@ -171,7 +220,7 @@ export default withAuth(
             pathname.startsWith("/api/custom-mcq/take/")) {
           return true;
         }
- 
+
         
         // All other routes require authentication
         return !!token;
