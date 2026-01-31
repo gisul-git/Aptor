@@ -93,6 +93,7 @@ export default withAuth(
           "/api/auth",
           "/api/assessment",
           "/api/proctor",  // Proctoring API routes (validated server-side)
+          "/api/config",  // Runtime configuration API routes (used by candidate pages)
           "/employee",  // Employee routes - handled by component with modal
         ];
         
@@ -198,7 +199,7 @@ export const config = {
      * - favicon.ico (favicon file)
      * - public files (public folder)
      */
-    "/((?!api/auth|api/assessment|api/proctor|api/v1/candidate|mediapipe|_next/static|_next/image|_next/data|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|js|wasm|data|binarypb)$).*)",
+    "/((?!api/auth|api/assessment|api/proctor|api/config|api/v1/candidate|mediapipe|_next/static|_next/image|_next/data|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|js|wasm|data|binarypb)$).*)",
   ],
 };
 
