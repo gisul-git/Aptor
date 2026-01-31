@@ -110,17 +110,35 @@ aimlApi.interceptors.request.use(
   }
 )
 
-// Handle 401 errors (unauthorized)
+// Handle 401 errors (unauthorized) - but don't redirect for public candidate endpoints
 aimlApi.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response?.status === 401) {
-      if (typeof window !== 'undefined') {
-        localStorage.removeItem('token')
-        localStorage.removeItem('user')
-        window.location.href = '/auth/signin'
-      }
+    // Check if this is a public candidate endpoint - never redirect to login for these
+    const url = error.config?.url || ''
+    const fullUrl = error.config?.baseURL ? `${error.config.baseURL}${url}` : url
+    const requestUrl = error.request?.responseURL || fullUrl || url
+    const allUrls = [url, fullUrl, requestUrl].filter(Boolean).join(' ')
+    
+    const isPublicCandidateEndpoint = 
+      allUrls.includes('/verify-link') ||
+      allUrls.includes('/verify-candidate') ||
+      allUrls.includes('/start') ||
+      allUrls.includes('/public') ||
+      allUrls.includes('/full') ||
+      allUrls.includes('/candidate') ||
+      allUrls.includes('/submit-answer') ||
+      allUrls.includes('/submit') ||
+      allUrls.includes('/get-reference-photo') ||
+      allUrls.includes('/save-reference-face')
+    
+    // Only handle 401 for admin endpoints - public candidate endpoints should never redirect
+    if (error.response?.status === 401 && !isPublicCandidateEndpoint && typeof window !== 'undefined') {
+      localStorage.removeItem('token')
+      localStorage.removeItem('user')
+      window.location.href = '/auth/signin'
     }
+    // For all other cases (including public candidate endpoints with any error), just reject without redirecting
     return Promise.reject(error)
   }
 )
