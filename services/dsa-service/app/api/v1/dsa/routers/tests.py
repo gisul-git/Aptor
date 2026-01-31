@@ -639,6 +639,10 @@ async def get_tests(
                 current_user_role_backup = current_user.get("role")
                 current_user["role"] = None  # Temporarily remove super_admin role to use regular path
                 super_admin_ids = None  # Set to None to trigger else path
+                # Define user_id_normalized for fallback case
+                user_id = current_user.get("id") or current_user.get("_id")
+                user_id = str(user_id).strip() if user_id else "super_admin"
+                user_id_normalized = user_id
             
             if super_admin_ids:
                 # Filter tests where created_by is in the list of super_admin IDs (as strings)
@@ -663,159 +667,208 @@ async def get_tests(
                     {"created_by": {"$ne": ""}},
                     {"created_by": {"$in": []}}  # Empty list - no matches
                 ]
-    else:
-        # Filter tests by the current user - STRICT: only return tests with created_by matching current user
-        user_id = current_user.get("id") or current_user.get("_id")
-        if not user_id:
-            logger.error(f"[get_tests] CRITICAL: Invalid user ID in current_user. Keys: {list(current_user.keys())}")
-            logger.error(f"[get_tests] CRITICAL: current_user content: {current_user}")
-            raise HTTPException(status_code=400, detail="Invalid user ID - authentication failed")
-        user_id = str(user_id).strip()  # Ensure no whitespace
-        
-        # CRITICAL: Log the user_id being used for filtering
-        # Using print() as well to ensure visibility in console
-        print(f"[get_tests] SECURITY: Filtering tests for authenticated user_id: '{user_id}'")
-        logger.info(f"[get_tests] SECURITY: Filtering tests for authenticated user_id: '{user_id}'")
-        
-        print(f"[get_tests] Fetching tests for user_id: '{user_id}' (type: {type(user_id).__name__})")
-        logger.info(f"[get_tests] Fetching tests for user_id: '{user_id}' (type: {type(user_id).__name__})")
-        print(f"[get_tests] Current user data: id={current_user.get('id')}, _id={current_user.get('_id')}, email={current_user.get('email')}")
-        logger.info(f"[get_tests] Current user data: id={current_user.get('id')}, _id={current_user.get('_id')}, email={current_user.get('email')}")
-        
-        # ABSOLUTE SECURITY: Use explicit $and with $exists to ensure field exists
-        # This is the STRICTEST possible query - will NEVER match documents without created_by
-        # CRITICAL: Normalize user_id to string for comparison (handles ObjectId vs string)
-        user_id_normalized = str(user_id).strip()
-        
-        # Build strict query - exact string match (we store created_by as string)
-        base_conditions = [
-            {"created_by": {"$exists": True}},
-            {"created_by": {"$ne": None}},
-            {"created_by": {"$ne": ""}},
-            {"created_by": user_id_normalized}  # Exact string match
-        ]
-        
-        base_conditions.append({
-        "$or": [
-            {"test_type": {"$exists": False}},  # Legacy DSA tests without test_type
-            {"test_type": None},                 # Tests with null test_type
-            {"test_type": "dsa"}                 # Explicitly marked DSA tests
-        ]
-        })
-        
-        if active_only:
-            base_conditions.append({"is_active": True})
-            base_conditions.append({"start_time": {"$lte": datetime.utcnow()}})
-            base_conditions.append({"end_time": {"$gte": datetime.utcnow()}})
-        
-        query = {"$and": base_conditions}
-        
-        print(f"[get_tests] STRICT MongoDB query: {query}")
-        logger.info(f"[get_tests] STRICT MongoDB query: {query}")
-        print(f"[get_tests] Query will ONLY match tests where created_by exists, is not null, is not empty, and equals '{user_id_normalized}'")
-        logger.info(f"[get_tests] Query will ONLY match tests where created_by exists, is not null, is not empty, and equals '{user_id_normalized}'")
-        print(f"[get_tests] User ID type: {type(user_id).__name__}, normalized: '{user_id_normalized}'")
-        logger.info(f"[get_tests] User ID type: {type(user_id).__name__}, normalized: '{user_id_normalized}'")
-        
-        # DEBUG: Check what tests exist in database (for debugging)
-        all_tests_sample = await db.tests.find({}).limit(5).to_list(length=5)
-        logger.info(f"[get_tests] DEBUG: Sample of ALL tests in DB (first 5):")
-        for t in all_tests_sample:
-            logger.info(f"[get_tests] DEBUG: Test ID={str(t.get('_id'))}, created_by={t.get('created_by')}, title={t.get('title', 'Unknown')}")
-        
-        # Execute query with explicit security - CRITICAL: This query MUST filter by created_by
-        logger.info(f"[get_tests] EXECUTING MongoDB query: {query}")
-        logger.info(f"[get_tests] Query conditions: created_by must exist, not be None, not be empty, and equal '{user_id_normalized}'")
-        
-        # CRITICAL: Execute query - this MUST filter by created_by
-        tests = await db.tests.find(query).sort("created_at", -1).to_list(length=100)
-        
-        print(f"[get_tests] MongoDB returned {len(tests)} tests for user_id: '{user_id_normalized}'")
-        logger.info(f"[get_tests] MongoDB returned {len(tests)} tests for user_id: '{user_id_normalized}'")
-        print(f"[get_tests] Query executed successfully. Filtering by created_by='{user_id_normalized}'")
-        logger.info(f"[get_tests] Query executed successfully. Filtering by created_by='{user_id_normalized}'")
-        
-        # VERIFY: Log each test's created_by to ensure they all match
-        for idx, test in enumerate(tests):
-            test_created_by = test.get("created_by")
-            logger.info(f"[get_tests] Test {idx+1}: ID={str(test.get('_id'))}, created_by='{test_created_by}', matches_user={str(test_created_by).strip() == user_id_normalized}")
-        
-        # CRITICAL SECURITY CHECK: Additional client-side filter as defense in depth
-        # This is a FINAL safety net - filter out ANY test that doesn't match exactly
-        tests_before_filter = len(tests)
-        filtered_tests = []
-        for test in tests:
-            test_created_by = test.get("created_by")
-            test_id = str(test.get("_id", ""))
-            test_title = test.get("title", "Unknown")
             
-            # ABSOLUTE STRICT CHECK: Reject if created_by is missing, null, empty, or doesn't match
-            if test_created_by is None:
-                logger.error(f"[get_tests] SECURITY VIOLATION: Test {test_id} ({test_title}) has NULL created_by - REJECTING")
-                continue
+            # Add test_type filter for super_admin path
+            base_conditions.append({
+                "$or": [
+                    {"test_type": {"$exists": False}},  # Legacy DSA tests without test_type
+                    {"test_type": None},                 # Tests with null test_type
+                    {"test_type": "dsa"}                 # Explicitly marked DSA tests
+                ]
+            })
             
-            if test_created_by == "":
-                logger.error(f"[get_tests] SECURITY VIOLATION: Test {test_id} ({test_title}) has EMPTY created_by - REJECTING")
-                continue
+            if active_only:
+                base_conditions.append({"is_active": True})
+                base_conditions.append({"start_time": {"$lte": datetime.utcnow()}})
+                base_conditions.append({"end_time": {"$gte": datetime.utcnow()}})
             
-            # Normalize both sides to string for comparison (handles ObjectId vs string mismatch)
-            test_created_by_str = str(test_created_by).strip()
-            # Use the already normalized user_id from above
-            if test_created_by_str != user_id_normalized:
-                logger.error(f"[get_tests] SECURITY VIOLATION: Test {test_id} ({test_title}) created_by='{test_created_by_str}' != user_id='{user_id_normalized}' - REJECTING")
-                continue
+            query = {"$and": base_conditions}
             
-            # CRITICAL: Reject AIML tests - they should be isolated
-            test_type = test.get("test_type")
-            if test_type == "aiml":
-                logger.warning(f"[get_tests] Filtering out AIML test {test_id} ({test_title}) from DSA results")
-                continue
+            print(f"[get_tests] STRICT MongoDB query (super_admin): {query}")
+            logger.info(f"[get_tests] STRICT MongoDB query (super_admin): {query}")
             
-            # Only add if it passes all checks
-            filtered_tests.append(test)
-        
-        tests = filtered_tests
-        
-        if tests_before_filter != len(tests):
-            logger.error(f"[get_tests] SECURITY: Filtered out {tests_before_filter - len(tests)} tests that didn't match user_id - this should not happen if query is correct")
-        
-        # Final verification log - CRITICAL: Verify ALL tests belong to this user
-        logger.info(f"[get_tests] Final check: Returning {len(tests)} tests for user_id: '{user_id_normalized}'")
-        
-        # ABSOLUTE FINAL CHECK: Verify every single test belongs to this user (defense in depth)
-        # Create a new list with only tests that match (safe iteration)
-        final_tests = []
-        security_violations = 0
-        for test in tests:
-            test_created_by_raw = test.get("created_by")
-            test_created_by = str(test_created_by_raw).strip() if test_created_by_raw is not None else ""
-            test_id = str(test.get("_id", ""))
-            test_title = test.get("title", "Unknown")
+            # Execute query for super_admin
+            tests = await db.tests.find(query).sort("created_at", -1).to_list(length=100)
             
-            if test_created_by != user_id_normalized:
-                security_violations += 1
-                logger.error(f"[get_tests] CRITICAL SECURITY ERROR: Test {test_id} ({test_title}) has created_by='{test_created_by}' but user_id='{user_id_normalized}' - REJECTING")
-                logger.error(f"[get_tests] SECURITY: This should NEVER happen if query is correct. Test will be removed from response.")
-                continue
-            final_tests.append(test)
+            # Use user_id_normalized for logging (already defined above)
+            logger.info(f"[get_tests] MongoDB returned {len(tests)} tests for super_admin user_id: '{user_id_normalized}'")
+            
+            # Skip the security filtering for super_admin (they can see all super_admin tests)
+            # But still filter out AIML tests
+            filtered_tests = []
+            for test in tests:
+                test_type = test.get("test_type")
+                if test_type == "aiml":
+                    logger.warning(f"[get_tests] Filtering out AIML test {str(test.get('_id'))} from super_admin results")
+                    continue
+                filtered_tests.append(test)
+            tests = filtered_tests
+            
+            # Log results for super_admin
+            logger.info(f"[get_tests] Final check: Returning {len(tests)} tests for super_admin user_id: '{user_id_normalized}'")
+            
+            # Log every test being returned for super_admin
+            print(f"[get_tests] SECURITY VERIFICATION: Tests being returned for super_admin:")
+            logger.info(f"[get_tests] SECURITY VERIFICATION: Tests being returned for super_admin:")
+            for idx, test in enumerate(tests):
+                test_info = f"[get_tests]   Test {idx+1}: ID={str(test.get('_id'))}, created_by='{test.get('created_by')}', title='{test.get('title', 'Unknown')}'"
+                print(test_info)
+                logger.info(test_info)
+        else:
+            # Filter tests by the current user - STRICT: only return tests with created_by matching current user
+            user_id = current_user.get("id") or current_user.get("_id")
+            if not user_id:
+                logger.error(f"[get_tests] CRITICAL: Invalid user ID in current_user. Keys: {list(current_user.keys())}")
+                logger.error(f"[get_tests] CRITICAL: current_user content: {current_user}")
+                raise HTTPException(status_code=400, detail="Invalid user ID - authentication failed")
+            user_id = str(user_id).strip()  # Ensure no whitespace
+            
+            # CRITICAL: Log the user_id being used for filtering
+            # Using print() as well to ensure visibility in console
+            print(f"[get_tests] SECURITY: Filtering tests for authenticated user_id: '{user_id}'")
+            logger.info(f"[get_tests] SECURITY: Filtering tests for authenticated user_id: '{user_id}'")
+            
+            print(f"[get_tests] Fetching tests for user_id: '{user_id}' (type: {type(user_id).__name__})")
+            logger.info(f"[get_tests] Fetching tests for user_id: '{user_id}' (type: {type(user_id).__name__})")
+            print(f"[get_tests] Current user data: id={current_user.get('id')}, _id={current_user.get('_id')}, email={current_user.get('email')}")
+            logger.info(f"[get_tests] Current user data: id={current_user.get('id')}, _id={current_user.get('_id')}, email={current_user.get('email')}")
+            
+            # ABSOLUTE SECURITY: Use explicit $and with $exists to ensure field exists
+            # This is the STRICTEST possible query - will NEVER match documents without created_by
+            # CRITICAL: Normalize user_id to string for comparison (handles ObjectId vs string)
+            user_id_normalized = str(user_id).strip()
+            
+            # Build strict query - exact string match (we store created_by as string)
+            base_conditions = [
+                {"created_by": {"$exists": True}},
+                {"created_by": {"$ne": None}},
+                {"created_by": {"$ne": ""}},
+                {"created_by": user_id_normalized}  # Exact string match
+            ]
+            
+            base_conditions.append({
+                "$or": [
+                    {"test_type": {"$exists": False}},  # Legacy DSA tests without test_type
+                    {"test_type": None},                 # Tests with null test_type
+                    {"test_type": "dsa"}                 # Explicitly marked DSA tests
+                ]
+            })
+            
+            if active_only:
+                base_conditions.append({"is_active": True})
+                base_conditions.append({"start_time": {"$lte": datetime.utcnow()}})
+                base_conditions.append({"end_time": {"$gte": datetime.utcnow()}})
+            
+            query = {"$and": base_conditions}
+            
+            print(f"[get_tests] STRICT MongoDB query: {query}")
+            logger.info(f"[get_tests] STRICT MongoDB query: {query}")
+            print(f"[get_tests] Query will ONLY match tests where created_by exists, is not null, is not empty, and equals '{user_id_normalized}'")
+            logger.info(f"[get_tests] Query will ONLY match tests where created_by exists, is not null, is not empty, and equals '{user_id_normalized}'")
+            print(f"[get_tests] User ID type: {type(user_id).__name__}, normalized: '{user_id_normalized}'")
+            logger.info(f"[get_tests] User ID type: {type(user_id).__name__}, normalized: '{user_id_normalized}'")
+            
+            # DEBUG: Check what tests exist in database (for debugging)
+            all_tests_sample = await db.tests.find({}).limit(5).to_list(length=5)
+            logger.info(f"[get_tests] DEBUG: Sample of ALL tests in DB (first 5):")
+            for t in all_tests_sample:
+                logger.info(f"[get_tests] DEBUG: Test ID={str(t.get('_id'))}, created_by={t.get('created_by')}, title={t.get('title', 'Unknown')}")
+            
+            # Execute query with explicit security - CRITICAL: This query MUST filter by created_by
+            logger.info(f"[get_tests] EXECUTING MongoDB query: {query}")
+            logger.info(f"[get_tests] Query conditions: created_by must exist, not be None, not be empty, and equal '{user_id_normalized}'")
+            
+            # CRITICAL: Execute query - this MUST filter by created_by
+            tests = await db.tests.find(query).sort("created_at", -1).to_list(length=100)
+            
+            print(f"[get_tests] MongoDB returned {len(tests)} tests for user_id: '{user_id_normalized}'")
+            logger.info(f"[get_tests] MongoDB returned {len(tests)} tests for user_id: '{user_id_normalized}'")
+            print(f"[get_tests] Query executed successfully. Filtering by created_by='{user_id_normalized}'")
+            logger.info(f"[get_tests] Query executed successfully. Filtering by created_by='{user_id_normalized}'")
+            
+            # VERIFY: Log each test's created_by to ensure they all match
+            for idx, test in enumerate(tests):
+                test_created_by = test.get("created_by")
+                logger.info(f"[get_tests] Test {idx+1}: ID={str(test.get('_id'))}, created_by='{test_created_by}', matches_user={str(test_created_by).strip() == user_id_normalized}")
+            
+            # CRITICAL SECURITY CHECK: Additional client-side filter as defense in depth
+            # This is a FINAL safety net - filter out ANY test that doesn't match exactly
+            tests_before_filter = len(tests)
+            filtered_tests = []
+            for test in tests:
+                test_created_by = test.get("created_by")
+                test_id = str(test.get("_id", ""))
+                test_title = test.get("title", "Unknown")
+                
+                # ABSOLUTE STRICT CHECK: Reject if created_by is missing, null, empty, or doesn't match
+                if test_created_by is None:
+                    logger.error(f"[get_tests] SECURITY VIOLATION: Test {test_id} ({test_title}) has NULL created_by - REJECTING")
+                    continue
+                
+                if test_created_by == "":
+                    logger.error(f"[get_tests] SECURITY VIOLATION: Test {test_id} ({test_title}) has EMPTY created_by - REJECTING")
+                    continue
+                
+                # Normalize both sides to string for comparison (handles ObjectId vs string mismatch)
+                test_created_by_str = str(test_created_by).strip()
+                # Use the already normalized user_id from above
+                if test_created_by_str != user_id_normalized:
+                    logger.error(f"[get_tests] SECURITY VIOLATION: Test {test_id} ({test_title}) created_by='{test_created_by_str}' != user_id='{user_id_normalized}' - REJECTING")
+                    continue
+                
+                # CRITICAL: Reject AIML tests - they should be isolated
+                test_type = test.get("test_type")
+                if test_type == "aiml":
+                    logger.warning(f"[get_tests] Filtering out AIML test {test_id} ({test_title}) from DSA results")
+                    continue
+                
+                # Only add if it passes all checks
+                filtered_tests.append(test)
+            
+            tests = filtered_tests
+            
+            if tests_before_filter != len(tests):
+                logger.error(f"[get_tests] SECURITY: Filtered out {tests_before_filter - len(tests)} tests that didn't match user_id - this should not happen if query is correct")
+            
+            # Final verification log - CRITICAL: Verify ALL tests belong to this user
+            logger.info(f"[get_tests] Final check: Returning {len(tests)} tests for user_id: '{user_id_normalized}'")
+            
+            # ABSOLUTE FINAL CHECK: Verify every single test belongs to this user (defense in depth)
+            # Create a new list with only tests that match (safe iteration)
+            final_tests = []
+            security_violations = 0
+            for test in tests:
+                test_created_by_raw = test.get("created_by")
+                test_created_by = str(test_created_by_raw).strip() if test_created_by_raw is not None else ""
+                test_id = str(test.get("_id", ""))
+                test_title = test.get("title", "Unknown")
+                
+                if test_created_by != user_id_normalized:
+                    security_violations += 1
+                    logger.error(f"[get_tests] CRITICAL SECURITY ERROR: Test {test_id} ({test_title}) has created_by='{test_created_by}' but user_id='{user_id_normalized}' - REJECTING")
+                    logger.error(f"[get_tests] SECURITY: This should NEVER happen if query is correct. Test will be removed from response.")
+                    continue
+                final_tests.append(test)
+            
+            tests = final_tests
+            
+            if security_violations > 0:
+                logger.error(f"[get_tests] CRITICAL: Removed {security_violations} tests that didn't belong to user '{user_id_normalized}' - SECURITY BREACH PREVENTED")
+                logger.error(f"[get_tests] This indicates the MongoDB query may have failed. Original query was: {query}")
+            
+            print(f"[get_tests] After final security check: Returning {len(tests)} tests for user_id: '{user_id_normalized}'")
+            logger.info(f"[get_tests] After final security check: Returning {len(tests)} tests for user_id: '{user_id_normalized}'")
+            
+            # ABSOLUTE FINAL VERIFICATION: Log every test being returned
+            print(f"[get_tests] SECURITY VERIFICATION: Tests being returned:")
+            logger.info(f"[get_tests] SECURITY VERIFICATION: Tests being returned:")
+            for idx, test in enumerate(tests):
+                test_info = f"[get_tests]   Test {idx+1}: ID={str(test.get('_id'))}, created_by='{test.get('created_by')}', title='{test.get('title', 'Unknown')}'"
+                print(test_info)
+                logger.info(test_info)
         
-        tests = final_tests
-        
-        if security_violations > 0:
-            logger.error(f"[get_tests] CRITICAL: Removed {security_violations} tests that didn't belong to user '{user_id_normalized}' - SECURITY BREACH PREVENTED")
-            logger.error(f"[get_tests] This indicates the MongoDB query may have failed. Original query was: {query}")
-        
-        print(f"[get_tests] After final security check: Returning {len(tests)} tests for user_id: '{user_id_normalized}'")
-        logger.info(f"[get_tests] After final security check: Returning {len(tests)} tests for user_id: '{user_id_normalized}'")
-        
-        # ABSOLUTE FINAL VERIFICATION: Log every test being returned
-        print(f"[get_tests] SECURITY VERIFICATION: Tests being returned:")
-        logger.info(f"[get_tests] SECURITY VERIFICATION: Tests being returned:")
-        for idx, test in enumerate(tests):
-            test_info = f"[get_tests]   Test {idx+1}: ID={str(test.get('_id'))}, created_by='{test.get('created_by')}', title='{test.get('title', 'Unknown')}'"
-            print(test_info)
-            logger.info(test_info)
-        
+        # Build result list (shared code for both super_admin and regular users)
+        # Both paths above set the `tests` variable, so we can build the result here
         result = []
         for test in tests:
             # Convert ObjectId to string and ensure all fields are JSON serializable
