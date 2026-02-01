@@ -871,7 +871,8 @@ export default function AIMLTestTakePage() {
       
       // Lock current question and unlock next question (sequential locking)
       // BUT do NOT auto-navigate - user stays on current question
-      if (currentQuestionIndex < questions.length - 1) {
+      const hasNextQuestion = currentQuestionIndex < questions.length - 1
+      if (hasNextQuestion) {
         const nextQuestionId = questions[currentQuestionIndex + 1].id
         setUnlockedQuestions(prev => {
           const newSet = new Set(prev)
@@ -881,10 +882,12 @@ export default function AIMLTestTakePage() {
         })
       }
       
-      // Show success notification
+      // Show success notification (only if there's a next question to unlock)
       const toast = document.createElement('div')
       toast.className = 'fixed bottom-4 right-4 bg-emerald-600 text-white px-4 py-2 rounded-lg shadow-lg z-50'
-      toast.textContent = '✓ Answer submitted. Next question unlocked!'
+      toast.textContent = hasNextQuestion 
+        ? '✓ Answer submitted. Next question unlocked!'
+        : '✓ Answer submitted successfully!'
       document.body.appendChild(toast)
       setTimeout(() => document.body.removeChild(toast), 3000)
       
@@ -1570,7 +1573,8 @@ export default function AIMLTestTakePage() {
             <button
               onClick={() => {
                 const nextIndex = currentQuestionIndex + 1
-                if (nextIndex < questions.length) {
+                // Safety check: ensure next question exists
+                if (nextIndex < questions.length && questions[nextIndex]) {
                   const nextQuestion = questions[nextIndex]
                   // Only allow navigation if question is unlocked
                   if (test.timer_mode !== 'PER_QUESTION' || unlockedQuestions.has(nextQuestion.id)) {
@@ -1579,18 +1583,24 @@ export default function AIMLTestTakePage() {
                 }
               }}
               disabled={
-                currentQuestionIndex === questions.length - 1 ||
+                // Disable if it's the last question (no next question exists)
+                currentQuestionIndex >= questions.length - 1 ||
+                // OR if in PER_QUESTION mode and current question isn't completed/expired
                 (test.timer_mode === 'PER_QUESTION' && 
                  currentQuestion && 
                  !completedQuestions.has(currentQuestion.id) &&
-                 !expiredQuestions.has(currentQuestion.id))
+                 !expiredQuestions.has(currentQuestion.id)) ||
+                // OR if next question doesn't exist (safety check)
+                !questions[currentQuestionIndex + 1]
               }
               className="px-3 py-1.5 rounded-lg text-sm font-medium transition-colors bg-white border border-gray-300 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
               title={
-                test.timer_mode === 'PER_QUESTION' && 
-                currentQuestion && 
-                !completedQuestions.has(currentQuestion.id) &&
-                !expiredQuestions.has(currentQuestion.id)
+                currentQuestionIndex >= questions.length - 1 || !questions[currentQuestionIndex + 1]
+                  ? 'No more questions'
+                  : test.timer_mode === 'PER_QUESTION' && 
+                    currentQuestion && 
+                    !completedQuestions.has(currentQuestion.id) &&
+                    !expiredQuestions.has(currentQuestion.id)
                   ? 'Complete or wait for timer to expire on current question'
                   : ''
               }

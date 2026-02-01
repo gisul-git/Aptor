@@ -92,28 +92,52 @@ async def execute_in_kernel(
                     msg_type = msg['msg_type']
                     content = msg['content']
                     
+                    # Debug logging for message collection order
+                    if msg_type in ['stream', 'execute_result', 'display_data']:
+                        print(f"[KernelExecutor] 📨 Received {msg_type} message")
+                    
                     if msg_type == 'stream':
                         stream_name = content.get('name', 'stdout')
                         text = content.get('text', '')
                         
+                        print(f"[KernelExecutor] 📤 Stream message: name={stream_name}, text_length={len(text)}, text_preview={text[:100] if text else ''}")
+                        
                         if stream_name == 'stdout':
                             stdout_parts.append(text)
+                            print(f"[KernelExecutor] ✅ Added to stdout_parts (total parts: {len(stdout_parts)})")
                         elif stream_name == 'stderr':
                             stderr_parts.append(text)
+                            print(f"[KernelExecutor] ✅ Added to stderr_parts (total parts: {len(stderr_parts)})")
                     
                     elif msg_type == 'execute_result':
                         data = content.get('data', {})
+                        text_plain = data.get('text/plain', '') if 'text/plain' in data else ''
+                        has_image = 'image/png' in data
+                        
+                        print(f"[KernelExecutor] 📊 Execute result: has_text_plain={bool(text_plain)}, text_length={len(str(text_plain))}, has_image={has_image}")
+                        
                         if 'image/png' in data:
                             images.append(data['image/png'])
+                            print(f"[KernelExecutor] ✅ Added image to images (total images: {len(images)})")
                         if 'text/plain' in data:
-                            stdout_parts.append(str(data['text/plain']))
+                            text_content = str(data['text/plain'])
+                            stdout_parts.append(text_content)
+                            print(f"[KernelExecutor] ✅ Added execute_result text to stdout_parts (length: {len(text_content)}, total parts: {len(stdout_parts)})")
                     
                     elif msg_type == 'display_data':
                         data = content.get('data', {})
+                        text_plain = data.get('text/plain', '') if 'text/plain' in data else ''
+                        has_image = 'image/png' in data
+                        
+                        print(f"[KernelExecutor] 🖼️ Display data: has_text_plain={bool(text_plain)}, text_length={len(str(text_plain))}, has_image={has_image}")
+                        
                         if 'image/png' in data:
                             images.append(data['image/png'])
+                            print(f"[KernelExecutor] ✅ Added image to images (total images: {len(images)})")
                         if 'text/plain' in data:
-                            stdout_parts.append(str(data['text/plain']))
+                            text_content = str(data['text/plain'])
+                            stdout_parts.append(text_content)
+                            print(f"[KernelExecutor] ✅ Added display_data text to stdout_parts (length: {len(text_content)}, total parts: {len(stdout_parts)})")
                     
                     elif msg_type == 'error':
                         error_info = {
@@ -168,6 +192,15 @@ async def execute_in_kernel(
             result['stderr'] = ''.join(stderr_parts)
             result['images'] = images
             result['error'] = error_info
+            
+            # Debug logging for final result
+            print(f"[KernelExecutor] 📦 Final result: stdout_length={len(result['stdout'])}, stderr_length={len(result['stderr'])}, images_count={len(result['images'])}, stdout_parts_count={len(stdout_parts)}")
+            if stdout_parts:
+                print(f"[KernelExecutor] 📝 stdout_parts details:")
+                for i, part in enumerate(stdout_parts):
+                    print(f"  Part {i}: length={len(part)}, preview={part[:100] if part else '(empty)'}")
+            if result['stdout']:
+                print(f"[KernelExecutor] 📄 Final stdout preview (first 200 chars): {result['stdout'][:200]}")
             
             if error_info:
                 result['status'] = 'error'
