@@ -64,7 +64,7 @@ export default function NotebookCell({
   readOnly = false,
 }: NotebookCellProps) {
   const [menuOpen, setMenuOpen] = useState(false)
-  const [editorHeight, setEditorHeight] = useState(80)
+  const [editorHeight, setEditorHeight] = useState(300) // Increased initial height for single cell
   const editorRef = useRef<any>(null)
   const menuRef = useRef<HTMLDivElement>(null)
   // Track latest code synchronously to avoid race conditions with controlled component
@@ -90,11 +90,12 @@ export default function NotebookCell({
     })
   }, [code, cellId])
 
-  // Auto-adjust editor height based on content
+  // Auto-adjust editor height based on content - increased for single cell
   useEffect(() => {
     if (editorRef.current) {
       const lineCount = code.split('\n').length
-      const newHeight = Math.max(80, Math.min(lineCount * 19 + 20, 800))
+      // Increased minimum to 300px and maximum to 1200px for better single cell experience
+      const newHeight = Math.max(300, Math.min(lineCount * 19 + 20, 1200))
       setEditorHeight(newHeight)
     }
   }, [code])
@@ -454,7 +455,7 @@ export default function NotebookCell({
       <div className="flex-1 min-w-0">
         <div className="bg-white rounded-lg border border-gray-200 shadow-sm hover:shadow-md transition-shadow">
           {/* Editor */}
-          <div className="relative">
+          <div className="relative overflow-x-auto">
             <MonacoEditor
               height={editorHeight}
               language="python"
@@ -483,12 +484,15 @@ export default function NotebookCell({
                 lineNumbers: 'on',
                 fontSize: 14,
                 fontFamily: "'Fira Code', 'Courier New', monospace",
-                wordWrap: 'on',
+                wordWrap: 'off', // Disable word wrap - lines will scroll horizontally instead of wrapping
                 automaticLayout: true,
                 scrollbar: {
                   vertical: 'auto',
-                  horizontal: 'auto',
+                  horizontal: 'visible', // Always show horizontal scrollbar for long lines
+                  horizontalScrollbarSize: 12,
                 },
+                rulers: [], // Disable vertical ruler/guide lines
+                renderWhitespace: 'none', // Don't show whitespace markers
                 readOnly: readOnly,
               }}
             />
