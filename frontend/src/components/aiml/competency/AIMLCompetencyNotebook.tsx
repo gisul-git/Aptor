@@ -545,7 +545,7 @@ export default function AIMLCompetencyNotebook({
               {/* Tasks Section - Always Visible */}
               {question.tasks && question.tasks.length > 0 && (
                 <div className="mb-4 bg-blue-50 border border-blue-200 rounded-lg p-4">
-                  <h3 className="font-semibold text-blue-900 mb-2">📋 Tasks:</h3>
+                  <h3 className="font-semibold text-blue-900 mb-2">Tasks:</h3>
                   <ol className="list-decimal list-inside space-y-2">
                     {question.tasks.map((task, idx) => {
                       // Handle both string format and object format
@@ -629,17 +629,10 @@ export default function AIMLCompetencyNotebook({
                     disabled={!connected || anyRunning}
                     className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    🔄 Restart Kernel
+                    Restart Kernel
                   </button>
                   
-                  {!readOnly && (
-                    <button
-                      onClick={addCell}
-                      className="px-3 py-1.5 bg-white hover:bg-gray-50 text-gray-700 border border-gray-300 rounded text-sm font-medium transition-colors"
-                    >
-                      + Add Cell
-                    </button>
-                  )}
+                  {/* Add Cell button disabled - keeping single cell only */}
                 </div>
 
                 {showSubmit && onSubmit && (
@@ -761,20 +754,13 @@ export default function AIMLCompetencyNotebook({
                 🔄 Restart Kernel
               </button>
               
-              {!readOnly && (
-                <button
-                  onClick={addCell}
-                  className="px-3 py-1.5 bg-white hover:bg-gray-50 text-gray-700 border border-gray-300 rounded text-sm font-medium transition-colors"
-                >
-                  + Add Cell
-                </button>
-              )}
+              {/* Add Cell button disabled - keeping single cell only */}
               
               <button
                 onClick={() => setShowQuestion(true)}
                 className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded text-sm font-medium transition-colors"
               >
-                📋 Show Question
+                Show Question
               </button>
             </div>
 

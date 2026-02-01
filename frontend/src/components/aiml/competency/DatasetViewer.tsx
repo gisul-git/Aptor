@@ -127,7 +127,9 @@ export default function DatasetViewer({ questionId, dataset, datasetPath, datase
 
   const handleCopyPath = () => {
     if (fullApiUrl) {
-      navigator.clipboard.writeText(fullApiUrl)
+      // Copy the full code snippet instead of just the URL
+      const codeSnippet = `import pandas as pd\ndf = pd.read_${dataset?.format || 'csv'}('${fullApiUrl}')`
+      navigator.clipboard.writeText(codeSnippet)
       setCopiedPath(true)
       setTimeout(() => setCopiedPath(false), 2000)
     }
@@ -176,7 +178,7 @@ export default function DatasetViewer({ questionId, dataset, datasetPath, datase
             fontWeight: 600,
             color: '#065f46'
           }}>
-            📁 Dataset File Available
+Dataset File Available
           </h3>
         </div>
         <span style={{
@@ -191,7 +193,7 @@ export default function DatasetViewer({ questionId, dataset, datasetPath, datase
         </span>
       </div>
 
-      {/* File Info */}
+      {/* Tip Section with Copy Icon */}
       <div style={{
         backgroundColor: '#ffffff',
         borderRadius: '6px',
@@ -199,81 +201,54 @@ export default function DatasetViewer({ questionId, dataset, datasetPath, datase
         marginBottom: '12px'
       }}>
         <div style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          marginBottom: '8px'
-        }}>
-          <div style={{ flex: 1 }}>
-            <div style={{
-              fontSize: '14px',
-              fontWeight: 500,
-              color: '#1f2937',
-              marginBottom: '4px'
-            }}>
-              {fileName}
-            </div>
-            <div style={{
-              fontSize: '12px',
-              color: '#6b7280',
-              fontFamily: 'monospace',
-              backgroundColor: '#f3f4f6',
-              padding: '4px 8px',
-              borderRadius: '4px',
-              display: 'inline-block'
-            }}>
-              {filePath}
-            </div>
-          </div>
-          <button
-            onClick={handleCopyPath}
-            style={{
-              padding: '6px 12px',
-              backgroundColor: copiedPath ? '#10b981' : '#ffffff',
-              color: copiedPath ? '#ffffff' : '#10b981',
-              border: '1px solid #10b981',
-              borderRadius: '6px',
-              cursor: 'pointer',
-              fontSize: '13px',
-              fontWeight: 500,
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              transition: 'all 0.2s',
-              marginLeft: '12px'
-            }}
-          >
-            {copiedPath ? (
-              <>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <polyline points="20 6 9 17 4 12"/>
-                </svg>
-                Copied!
-              </>
-            ) : (
-              <>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
-                  <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
-                </svg>
-                Copy Path
-              </>
-            )}
-          </button>
-        </div>
-        <div style={{
           fontSize: '12px',
           color: '#059669',
           backgroundColor: '#d1fae5',
           padding: '8px 10px',
           borderRadius: '4px',
-          marginTop: '8px'
+          display: 'flex',
+          alignItems: 'flex-start',
+          justifyContent: 'space-between',
+          gap: '8px'
         }}>
-          💡 <strong>Tip:</strong> Use the API URL above directly in your code. Example:
-          <div style={{ marginTop: '4px', fontFamily: 'monospace', fontSize: '11px', backgroundColor: '#ffffff', padding: '4px 6px', borderRadius: '3px' }}>
-            import pandas as pd<br/>
-            df = pd.read_{dataset?.format || 'csv'}('{fullApiUrl}')
+          <div style={{ flex: 1 }}>
+            <strong>Tip:</strong> Use the API URL directly in your code. Example:
+            <div style={{ marginTop: '4px', fontFamily: 'monospace', fontSize: '11px', backgroundColor: '#ffffff', padding: '4px 6px', borderRadius: '3px' }}>
+              import pandas as pd<br/>
+              df = pd.read_{dataset?.format || 'csv'}('{fullApiUrl}')
+            </div>
           </div>
+          <button
+            onClick={handleCopyPath}
+            style={{
+              padding: '6px',
+              backgroundColor: '#ffffff',
+              border: 'none',
+              borderRadius: '50%',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              transition: 'all 0.2s',
+              flexShrink: 0,
+              marginTop: '2px',
+              width: '28px',
+              height: '28px',
+              boxShadow: '0 1px 2px rgba(0, 0, 0, 0.1)'
+            }}
+            title={copiedPath ? 'Copied!' : 'Copy dataset URL'}
+          >
+            {copiedPath ? (
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#10b981" strokeWidth="2">
+                <polyline points="20 6 9 17 4 12"/>
+              </svg>
+            ) : (
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#10b981" strokeWidth="2">
+                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+              </svg>
+            )}
+          </button>
         </div>
       </div>
 
@@ -345,7 +320,6 @@ export default function DatasetViewer({ questionId, dataset, datasetPath, datase
                   fontSize: '0.875rem',
                   textAlign: 'center'
                 }}>
-                  {previewError.includes('not available') ? 'ℹ️ ' : '⚠️ '}
                   {previewError}
                 </div>
               ) : previewContent ? (
@@ -441,7 +415,7 @@ export default function DatasetViewer({ questionId, dataset, datasetPath, datase
         color: '#92400e',
         border: '1px solid #fbbf24'
       }}>
-        <strong>📝 Note:</strong> This dataset is read-only. Copy the file path above and use it in your code to access the data.
+        <strong>Note:</strong> This dataset is read-only. Copy the file path above and use it in your code to access the data.
       </div>
     </div>
   )

@@ -29,6 +29,7 @@ import {
   resolveUserIdForProctoring,
   type ProctoringViolation,
 } from "@/universal-proctoring";
+import { stopStream } from "@/universal-proctoring/live";
 import WebcamPreview from "@/components/WebcamPreview";
 import { ViolationToast, pushViolationToast } from "@/components/ViolationToast";
 
@@ -1829,6 +1830,31 @@ export default function CandidateAssessmentPage() {
         if (timerIntervalRef.current) {
           clearInterval(timerIntervalRef.current);
           timerIntervalRef.current = null;
+        }
+
+        // Stop screen sharing - this will hide the browser's native "Stop sharing" indicator bar
+        // Stop live proctoring service (stops both webcam and screen)
+        if (liveProctoringServiceRef.current) {
+          liveProctoringServiceRef.current.stop();
+          liveProctoringServiceRef.current = null;
+        }
+
+        // Stop screen stream directly (ensures browser indicator disappears)
+        if (liveProctorScreenStream) {
+          stopStream(liveProctorScreenStream);
+          setLiveProctorScreenStream(null);
+        }
+
+        // Stop screen stream from global reference (set during identity verification)
+        if (typeof window !== 'undefined' && (window as any).__screenStream) {
+          stopStream((window as any).__screenStream);
+          (window as any).__screenStream = null;
+        }
+
+        // Clear sessionStorage items related to screen sharing
+        if (typeof window !== 'undefined') {
+          sessionStorage.removeItem('screenShareGranted');
+          sessionStorage.removeItem(`screenShareCompleted_${id}`);
         }
 
         setAppState("finished");
