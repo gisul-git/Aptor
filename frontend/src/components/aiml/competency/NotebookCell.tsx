@@ -236,7 +236,9 @@ export default function NotebookCell({
           stderrLength: result.stderr?.length || 0,
           hasError: !!result.error,
           imagesCount: result.images?.length || 0,
-          isRetry
+          isRetry,
+          stdoutPreview: result.stdout?.substring(0, 200) || '',
+          stdoutEnd: result.stdout?.substring(Math.max(0, (result.stdout?.length || 0) - 200)) || ''
         })
         
         // Format the output for comparison
@@ -334,10 +336,15 @@ export default function NotebookCell({
       }
 
       const finalOutput = formattedOutput || '(No output)'
-      console.log('[NotebookCell] Setting output:', { 
+      console.log('[NotebookCell] 📤 Setting output:', { 
         cellId, 
         outputLength: finalOutput.length,
-        outputPreview: finalOutput.substring(0, 100)
+        outputPreview: finalOutput.substring(0, 200),
+        outputEnd: finalOutput.substring(Math.max(0, finalOutput.length - 200)),
+        hasStdout: !!result.stdout,
+        hasStderr: !!result.stderr,
+        hasError: !!result.error,
+        hasImages: !!(result.images && result.images.length > 0)
       })
       onOutputChange(cellId, finalOutput)
       
