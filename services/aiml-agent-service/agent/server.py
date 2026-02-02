@@ -34,11 +34,14 @@ class HealthCheckFilter(logging.Filter):
     
     def filter(self, record):
         message = record.getMessage()
+        message_lower = message.lower()
         
+        # Check error level messages
         if record.levelno == logging.ERROR:
-            if any(keyword in message.lower() for keyword in [
+            health_check_keywords = [
                 'did not receive a valid http request',
                 'connection closed while reading http request',
+                'connection closed while reading http request line',
                 'missing connection header',
                 'invalid upgrade',
                 'stream ends after',
@@ -46,16 +49,43 @@ class HealthCheckFilter(logging.Filter):
                 'eoferror',
                 'connection closed',
                 'invalidmessage',
-                'invalidupgrade'
-            ]):
+                'invalidupgrade',
+                'eoferror: stream ends after',
+                'eoferror: connection closed',
+                'the above exception was the direct cause',
+                'traceback (most recent call last)',
+                'file "/usr/local/lib/python3',
+                'websockets.server',
+                'websockets.http11',
+                'websockets.asyncio',
+                'websockets.streams',
+                'parse',
+                'handshake'
+            ]
+            
+            if any(keyword in message_lower for keyword in health_check_keywords):
                 return False
         
+        # Check exception types in exc_info
         if hasattr(record, 'exc_info') and record.exc_info:
             exc_type = record.exc_info[0]
-            if exc_type and any(name in str(exc_type.__name__).lower() for name in [
-                'eof', 'invalidmessage', 'invalidupgrade', 'connectionclosed'
-            ]):
-                return False
+            if exc_type:
+                exc_name = str(exc_type.__name__).lower()
+                if any(name in exc_name for name in [
+                    'eof', 'invalidmessage', 'invalidupgrade', 'connectionclosed', 'eoferror'
+                ]):
+                    return False
+                
+                # Also check exception message
+                if hasattr(record.exc_info[1], '__str__'):
+                    exc_msg = str(record.exc_info[1]).lower()
+                    if any(keyword in exc_msg for keyword in [
+                        'did not receive a valid http request',
+                        'connection closed while reading',
+                        'stream ends after',
+                        'invalid upgrade'
+                    ]):
+                        return False
         
         return True
 
@@ -410,12 +440,18 @@ class AgentServer:
         
         # Suppress expected errors from health checks
         health_check_filter = HealthCheckFilter()
+        
+        # Apply filter to all websockets loggers
         for logger_name in ["websockets", "websockets.server", "websockets.asyncio", "websockets.http11", "websockets.streams"]:
             ws_logger = logging.getLogger(logger_name)
             ws_logger.addFilter(health_check_filter)
             ws_logger.setLevel(logging.WARNING)
         
-        async def handler(websocket):
+        # Also apply to root logger to catch any unhandled websocket errors
+        root_logger = logging.getLogger()
+        root_logger.addFilter(health_check_filter)
+        
+        async def handler(websocket, path):
             try:
                 # Check connection limit
                 if self.active_connections >= Config.MAX_CONNECTIONS:
@@ -424,22 +460,42 @@ class AgentServer:
                     return
                 
                 await self.handle_client(websocket)
-            except (InvalidMessage, InvalidUpgrade, ConnectionClosed, EOFError):
-                pass  # Expected for health checks
+            except (InvalidMessage, InvalidUpgrade, ConnectionClosed, EOFError) as e:
+                # Silently ignore health check errors - these are expected when Azure sends HTTP to WebSocket port
+                pass
+            except Exception as e:
+                # Log unexpected errors but suppress health check related ones
+                error_msg = str(e).lower()
+                if not any(keyword in error_msg for keyword in [
+                    'did not receive a valid http request',
+                    'connection closed while reading http request',
+                    'invalid upgrade',
+                    'stream ends after',
+                    'eoferror',
+                    'invalidmessage',
+                    'invalidupgrade'
+                ]):
+                    logger.error(f"Unexpected error in WebSocket handler: {e}", exc_info=True)
         
-        async with websockets.serve(
-            handler,
-            self.host,
-            self.port,
-            ping_interval=20,
-            ping_timeout=10,
-            max_size=Config.MAX_MESSAGE_SIZE
-        ):
-            try:
-                await asyncio.Future()  # Run forever
-            except KeyboardInterrupt:
-                logger.info("\nShutting down...")
-                queue_task.cancel()
-                stop_background_tasks()
-                from agent.kernel_manager import shutdown_all_kernels
-                await shutdown_all_kernels()
+        # Wrap websockets.serve to catch and suppress health check errors
+        try:
+            async with websockets.serve(
+                handler,
+                self.host,
+                self.port,
+                ping_interval=20,
+                ping_timeout=10,
+                max_size=Config.MAX_MESSAGE_SIZE
+            ):
+                try:
+                    await asyncio.Future()  # Run forever
+                except KeyboardInterrupt:
+                    logger.info("\nShutting down...")
+                    queue_task.cancel()
+                    stop_background_tasks()
+                    from agent.kernel_manager import shutdown_all_kernels
+                    await shutdown_all_kernels()
+        except (InvalidMessage, InvalidUpgrade, ConnectionClosed, EOFError) as e:
+            # Suppress health check errors at server level
+            logger.debug(f"Suppressed health check error: {type(e).__name__}")
+            raise  # Re-raise to let asyncio handle it
