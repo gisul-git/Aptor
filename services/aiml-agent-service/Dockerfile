@@ -18,6 +18,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 RUN python -m pip install ipykernel && \
     python -m ipykernel install --user --name python3 --display-name "Python 3"
 
+# Copy main.py first
+COPY main.py .
+
 # Copy agent code - maintain agent package structure
 RUN mkdir -p /app/agent
 COPY agent /app/agent/
