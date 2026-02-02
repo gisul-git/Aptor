@@ -7,7 +7,13 @@ type ExecuteResult = {
   stdout: string
   stderr: string
   images: Array<{ mime_type: string; data: string }>
-  error?: { type: string; value: string; traceback: string[] }
+  error?: { 
+    type?: string
+    value?: string
+    ename?: string  // Jupyter-style error name
+    evalue?: string // Jupyter-style error value
+    traceback?: string[]
+  }
   success: boolean
 }
 
