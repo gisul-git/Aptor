@@ -259,8 +259,8 @@ Evaluate the submission and return a JSON response with this exact structure:
             "max_score": {points_per_task_rounded if num_tasks > 0 else 0},
             "status": "<'completed' | 'partially_completed' | 'attempted_incorrect' | 'not_attempted'>",
             "feedback": "<Comprehensive 3-5 sentence detailed feedback for this specific task. Include: (1) Whether the task was completed correctly, (2) Evidence from code/outputs showing completion or lack thereof, (3) If partially completed, what was done correctly and what is missing, (4) If attempted but incorrect, what is wrong, (5) Specific examples from code/outputs. Be VERY SPECIFIC and reference actual code/outputs.>"
-        }}{f",\n        {{" if num_tasks > 1 else ""}
-        {f",\n        {{".join([f'''
+        }}{("," + "\n        {") if num_tasks > 1 else ""}
+        {("," + "\n        {").join([f'''
             "task_number": {i+2},
             "task_description": "<Task {i+2} description>",
             "score": <0 to {points_per_task_rounded if num_tasks > 0 else 0}>,
