@@ -34,6 +34,7 @@ const NotebookCell = dynamic(() => import('./NotebookCell'), {
   canMoveDown: boolean
   sessionId: string
   onRegisterRun?: (cellId: string, runFn: () => Promise<void>) => void
+  onEditorReady?: (cellId: string, insertText: (text: string) => void) => void
   readOnly?: boolean
 }>
 
@@ -91,6 +92,7 @@ export default function AIMLCompetencyNotebook({
   
   const nextCellIdRef = useRef(1)
   const cellRunFunctionsRef = useRef<Map<string, () => Promise<void>>>(new Map())
+  const firstCellInsertTextRef = useRef<((text: string) => void) | null>(null)
 
   // Initialize cells with starter code
   const questionIdRef = useRef<string | null>(null)
@@ -307,6 +309,14 @@ export default function AIMLCompetencyNotebook({
 
   const registerCellRun = useCallback((cellId: string, runFn: () => Promise<void>) => {
     cellRunFunctionsRef.current.set(cellId, runFn)
+  }, [])
+
+  // Handle editor ready callback - store insert function for first cell
+  const handleEditorReady = useCallback((cellId: string, insertText: (text: string) => void) => {
+    // Store insert function for the first cell (cell-1)
+    if (cellId === 'cell-1') {
+      firstCellInsertTextRef.current = insertText
+    }
   }, [])
 
   const anyRunning = runningCells.size > 0
@@ -633,6 +643,11 @@ export default function AIMLCompetencyNotebook({
                       datasetUrl={question.dataset_url}
                       testId={testId}
                       userId={userId}
+                      onInsertUrl={(url) => {
+                        if (firstCellInsertTextRef.current) {
+                          firstCellInsertTextRef.current(url)
+                        }
+                      }}
                     />
                   </div>
                 )}
@@ -744,6 +759,7 @@ export default function AIMLCompetencyNotebook({
             canMoveDown={idx < cells.length - 1}
             sessionId={sessionId}
             onRegisterRun={registerCellRun}
+            onEditorReady={handleEditorReady}
             readOnly={readOnly}
           />
         ))}

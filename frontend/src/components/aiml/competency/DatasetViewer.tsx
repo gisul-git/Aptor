@@ -26,9 +26,10 @@ interface DatasetViewerProps {
   datasetUrl?: string
   testId?: string
   userId?: string
+  onInsertUrl?: (url: string) => void
 }
 
-export default function DatasetViewer({ questionId, dataset, datasetPath, datasetUrl, testId, userId }: DatasetViewerProps) {
+export default function DatasetViewer({ questionId, dataset, datasetPath, datasetUrl, testId, userId, onInsertUrl }: DatasetViewerProps) {
   const [showPreview, setShowPreview] = useState(false)
   const [copiedPath, setCopiedPath] = useState(false)
   const [previewContent, setPreviewContent] = useState<string | null>(null)
@@ -127,11 +128,19 @@ export default function DatasetViewer({ questionId, dataset, datasetPath, datase
 
   const handleCopyPath = () => {
     if (fullApiUrl) {
-      // Copy the full code snippet instead of just the URL
-      const codeSnippet = `import pandas as pd\ndf = pd.read_${dataset?.format || 'csv'}('${fullApiUrl}')`
-      navigator.clipboard.writeText(codeSnippet)
-      setCopiedPath(true)
-      setTimeout(() => setCopiedPath(false), 2000)
+      if (onInsertUrl) {
+        // Insert full code snippet directly into code editor
+        const codeSnippet = `import pandas as pd\ndf = pd.read_${dataset?.format || 'csv'}('${fullApiUrl}')`
+        onInsertUrl(codeSnippet)
+        setCopiedPath(true)
+        setTimeout(() => setCopiedPath(false), 2000)
+      } else {
+        // Fallback: Copy the full code snippet to clipboard
+        const codeSnippet = `import pandas as pd\ndf = pd.read_${dataset?.format || 'csv'}('${fullApiUrl}')`
+        navigator.clipboard.writeText(codeSnippet)
+        setCopiedPath(true)
+        setTimeout(() => setCopiedPath(false), 2000)
+      }
     }
   }
 
@@ -193,6 +202,19 @@ Dataset File Available
         </span>
       </div>
 
+      {/* Helper Message */}
+      <div style={{
+        fontSize: '12px',
+        color: '#047857',
+        backgroundColor: '#d1fae5',
+        padding: '8px 10px',
+        borderRadius: '4px',
+        marginBottom: '12px',
+        fontStyle: 'italic'
+      }}>
+        💡 <strong>Click the copy icon</strong> (copy/paste disabled) - it will paste the code directly into the editor
+      </div>
+
       {/* Tip Section with Copy Icon */}
       <div style={{
         backgroundColor: '#ffffff',
@@ -236,7 +258,7 @@ Dataset File Available
               height: '28px',
               boxShadow: '0 1px 2px rgba(0, 0, 0, 0.1)'
             }}
-            title={copiedPath ? 'Copied!' : 'Copy dataset URL'}
+            title={copiedPath ? 'Pasted to editor!' : 'Click to paste code into editor'}
           >
             {copiedPath ? (
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#10b981" strokeWidth="2">

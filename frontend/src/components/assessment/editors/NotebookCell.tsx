@@ -32,6 +32,7 @@ interface NotebookCellProps {
   canMoveDown: boolean
   sessionId: string
   onRegisterRun?: (cellId: string, runFn: () => Promise<void>) => void
+  onEditorReady?: (cellId: string, insertText: (text: string) => void) => void
   readOnly?: boolean
 }
 
@@ -61,12 +62,11 @@ export default function NotebookCell({
   canMoveDown,
   sessionId,
   onRegisterRun,
+  onEditorReady,
   readOnly = false,
 }: NotebookCellProps) {
-  const [menuOpen, setMenuOpen] = useState(false)
   const [editorHeight, setEditorHeight] = useState(80)
   const editorRef = useRef<any>(null)
-  const menuRef = useRef<HTMLDivElement>(null)
 
   // Auto-adjust editor height based on content
   useEffect(() => {
@@ -76,20 +76,6 @@ export default function NotebookCell({
       setEditorHeight(newHeight)
     }
   }, [code])
-
-  // Close menu when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
-        setMenuOpen(false)
-      }
-    }
-
-    if (menuOpen) {
-      document.addEventListener('mousedown', handleClickOutside)
-      return () => document.removeEventListener('mousedown', handleClickOutside)
-    }
-  }, [menuOpen])
 
   const handleRun = useCallback(async () => {
     if (isRunning || readOnly) return
@@ -154,6 +140,48 @@ export default function NotebookCell({
         }
       }
     )
+
+    // Expose insert text function to parent
+    if (onEditorReady) {
+      const insertText = (text: string) => {
+        if (!editor) return
+        
+        const selection = editor.getSelection()
+        if (selection) {
+          // Insert at cursor position
+          const range = new window.monaco.Range(
+            selection.startLineNumber,
+            selection.startColumn,
+            selection.endLineNumber,
+            selection.endColumn
+          )
+          editor.executeEdits('insert-text', [{
+            range,
+            text
+          }])
+        } else {
+          // No cursor position, append to end
+          const model = editor.getModel()
+          if (model) {
+            const lineCount = model.getLineCount()
+            const lastLineLength = model.getLineLength(lineCount)
+            const range = new window.monaco.Range(
+              lineCount,
+              lastLineLength + 1,
+              lineCount,
+              lastLineLength + 1
+            )
+            editor.executeEdits('insert-text', [{
+              range,
+              text
+            }])
+          }
+        }
+        // Focus editor after insertion
+        editor.focus()
+      }
+      onEditorReady(cellId, insertText)
+    }
 
     if (autoFocus) {
       editor.focus()
@@ -264,63 +292,18 @@ export default function NotebookCell({
         </div>
       </div>
 
-      {/* Cell Menu */}
+      {/* Delete Cell Button */}
       {!readOnly && (
-        <div className="flex-shrink-0 relative" ref={menuRef}>
+        <div className="flex-shrink-0">
           <button
-            onClick={() => setMenuOpen(!menuOpen)}
-            className="w-8 h-8 rounded-full hover:bg-gray-100 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-gray-600"
+            onClick={() => onDelete(cellId)}
+            className="w-8 h-8 rounded-full hover:bg-red-50 flex items-center justify-center text-red-600 hover:text-red-700 transition-colors"
+            title="Delete cell"
           >
-            <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-              <circle cx="12" cy="5" r="2" />
-              <circle cx="12" cy="12" r="2" />
-              <circle cx="12" cy="19" r="2" />
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
             </svg>
           </button>
-
-          {menuOpen && (
-            <div className="absolute right-0 top-full mt-1 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-10 min-w-[150px]">
-              <button
-                onClick={() => {
-                  onMoveUp(cellId)
-                  setMenuOpen(false)
-                }}
-                disabled={!canMoveUp}
-                className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
-                </svg>
-                Move Up
-              </button>
-              <button
-                onClick={() => {
-                  onMoveDown(cellId)
-                  setMenuOpen(false)
-                }}
-                disabled={!canMoveDown}
-                className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                </svg>
-                Move Down
-              </button>
-              <div className="border-t border-gray-200 my-1" />
-              <button
-                onClick={() => {
-                  onDelete(cellId)
-                  setMenuOpen(false)
-                }}
-                className="w-full px-4 py-2 text-left text-sm hover:bg-red-50 text-red-600 flex items-center gap-2"
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                </svg>
-                Delete Cell
-              </button>
-            </div>
-          )}
         </div>
       )}
     </div>

@@ -104,6 +104,7 @@ export default function AnalyticsPage() {
   // State declarations first
   const [candidates, setCandidates] = useState<Candidate[]>([])
   const [selectedCandidate, setSelectedCandidate] = useState<string | null>(null)
+  const [searchQuery, setSearchQuery] = useState<string>("")
   
   // React Query hooks
   const { data: testInfoData, isLoading: loadingTestInfo } = useAIMLTest(testId)
@@ -752,6 +753,19 @@ export default function AnalyticsPage() {
     }
   }
 
+  // Filter candidates based on search query
+  const filteredCandidates = useMemo(() => {
+    if (!searchQuery.trim()) {
+      return candidates
+    }
+    const query = searchQuery.toLowerCase().trim()
+    return candidates.filter((candidate) => {
+      const nameMatch = candidate.name?.toLowerCase().includes(query) || false
+      const emailMatch = candidate.email?.toLowerCase().includes(query) || false
+      return nameMatch || emailMatch
+    })
+  }, [candidates, searchQuery])
+
   // Check if test has ended
   const isTestEnded = useMemo(() => {
     if (!testInfo?.schedule?.endTime) return false
@@ -1048,9 +1062,15 @@ export default function AnalyticsPage() {
               )}
             </div>
           ) : (
-            <div style={{ overflowX: "auto" }}>
+            <div style={{ 
+              maxHeight: "600px", 
+              overflowY: "auto", 
+              overflowX: "auto",
+              border: "1px solid #e2e8f0",
+              borderRadius: "0.5rem"
+            }}>
               <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                <thead>
+                <thead style={{ position: "sticky", top: 0, zIndex: 10, backgroundColor: "#f8fafc" }}>
                   <tr style={{ backgroundColor: "#f8fafc", borderBottom: "2px solid #e2e8f0" }}>
                     <th style={{ padding: "0.75rem", textAlign: "left", fontSize: "0.875rem", fontWeight: 600, color: "#1e293b" }}>Email</th>
                     <th style={{ padding: "0.75rem", textAlign: "left", fontSize: "0.875rem", fontWeight: 600, color: "#1e293b" }}>Name</th>
@@ -1151,7 +1171,33 @@ export default function AnalyticsPage() {
               padding: "1rem",
               backgroundColor: "#ffffff",
             }}>
-              <h2 style={{ fontSize: "1.125rem", fontWeight: 600, marginBottom: "1rem" }}>Candidates</h2>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "1rem", gap: "0.5rem" }}>
+                <h2 style={{ fontSize: "1.125rem", fontWeight: 600, margin: 0 }}>Candidates</h2>
+                <input
+                  type="text"
+                  placeholder="🔍 Search..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  style={{
+                    padding: "0.375rem 0.75rem",
+                    fontSize: "0.75rem",
+                    border: "1px solid #e2e8f0",
+                    borderRadius: "0.5rem",
+                    outline: "none",
+                    width: "150px",
+                    transition: "border-color 0.2s",
+                    backgroundColor: "#ffffff"
+                  }}
+                  onFocus={(e) => {
+                    e.currentTarget.style.borderColor = "#3b82f6"
+                    e.currentTarget.style.boxShadow = "0 0 0 3px rgba(59, 130, 246, 0.1)"
+                  }}
+                  onBlur={(e) => {
+                    e.currentTarget.style.borderColor = "#e2e8f0"
+                    e.currentTarget.style.boxShadow = "none"
+                  }}
+                />
+              </div>
               <button
                 onClick={() => {
                   setSelectedCandidate(null)
@@ -1197,7 +1243,13 @@ export default function AnalyticsPage() {
                 })
                 return null
               })()}
-              {candidates.length === 0 ? (
+              {filteredCandidates.length === 0 && candidates.length > 0 ? (
+                <div>
+                  <p style={{ fontSize: "0.875rem", color: "#64748b" }}>
+                    No candidates found matching "{searchQuery}"
+                  </p>
+                </div>
+              ) : candidates.length === 0 ? (
                 <div>
                   <p style={{ fontSize: "0.875rem", color: "#64748b" }}>
                     No candidates found
@@ -1219,8 +1271,14 @@ export default function AnalyticsPage() {
                   </div>
                 </div>
               ) : (
-                <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-                  {candidates.map((candidate) => (
+                <div style={{ 
+                  maxHeight: "500px", 
+                  overflowY: "auto",
+                  display: "flex", 
+                  flexDirection: "column", 
+                  gap: "0.5rem"
+                }}>
+                  {filteredCandidates.map((candidate) => (
                     <button
                       key={candidate.user_id}
                       onClick={() => handleCandidateSelect(candidate.user_id)}

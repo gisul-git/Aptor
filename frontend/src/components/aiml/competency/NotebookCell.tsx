@@ -32,6 +32,7 @@ interface NotebookCellProps {
   canMoveDown: boolean
   sessionId: string
   onRegisterRun?: (cellId: string, runFn: () => Promise<void>) => void
+  onEditorReady?: (cellId: string, insertText: (text: string) => void) => void
   readOnly?: boolean
 }
 
@@ -61,34 +62,13 @@ export default function NotebookCell({
   canMoveDown,
   sessionId,
   onRegisterRun,
+  onEditorReady,
   readOnly = false,
 }: NotebookCellProps) {
-  const [menuOpen, setMenuOpen] = useState(false)
-  const [editorHeight, setEditorHeight] = useState(300) // Increased initial height for single cell
+  const [editorHeight, setEditorHeight] = useState(300)
   const editorRef = useRef<any>(null)
-  const menuRef = useRef<HTMLDivElement>(null)
   // Track latest code synchronously to avoid race conditions with controlled component
-  // This ref is ONLY updated in onChange (synchronously) - never from code prop
-  // The code prop might be stale during re-renders, so we don't want to overwrite the ref
   const latestCodeRef = useRef<string>(code)
-  // Track previous output to detect if we executed stale code
-  const previousOutputRef = useRef<string | null>(null)
-  
-  // IMPORTANT: We do NOT update latestCodeRef from code prop changes
-  // This prevents overwriting the ref with stale data when React re-renders with old code prop
-  // The ref is only updated synchronously in onChange when user types
-
-  // Debug: Log when code prop changes to detect stale re-renders
-  useEffect(() => {
-    console.log('[NotebookCell] 🔄 Code prop changed', { 
-      cellId, 
-      newCodeProp: code?.substring(0, 50), 
-      latestCodeRef: latestCodeRef.current?.substring(0, 50),
-      areDifferent: code !== latestCodeRef.current,
-      codePropLength: code?.length,
-      latestCodeRefLength: latestCodeRef.current?.length
-    })
-  }, [code, cellId])
 
   // Auto-adjust editor height based on content - increased for single cell
   useEffect(() => {
@@ -100,217 +80,68 @@ export default function NotebookCell({
     }
   }, [code])
 
-  // Close menu when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
-        setMenuOpen(false)
-      }
-    }
-
-    if (menuOpen) {
-      document.addEventListener('mousedown', handleClickOutside)
-      return () => document.removeEventListener('mousedown', handleClickOutside)
-    }
-  }, [menuOpen])
-
   const handleRun = useCallback(async () => {
     if (isRunning || readOnly) return
 
-    console.log('[NotebookCell] ▶️ handleRun called', { 
-      cellId, 
-      codeProp: code?.substring(0, 50), 
-      latestCodeRef: latestCodeRef.current?.substring(0, 50),
-      codePropLength: code?.length,
-      latestCodeRefLength: latestCodeRef.current?.length
-    })
-
-    // CRITICAL: Capture code SYNCHRONOUSLY at the moment of button click
-    // This must happen BEFORE any async operations to prevent React re-renders
-    // from causing Monaco to sync its model back to stale props
+    // Capture code synchronously at the moment of button click
+    // This prevents React re-renders from causing Monaco to sync stale props
     let currentCode = ''
-    let codeSource = 'unknown'
     
-    // Priority 1: Read directly from Monaco's model (most reliable, bypasses controlled component sync)
+    // Priority 1: Read directly from Monaco's model (most reliable)
     if (editorRef.current) {
       try {
         const model = editorRef.current.getModel()
         if (model) {
           const modelCode = model.getValue()
-          console.log('[NotebookCell] 📝 Model code read:', { 
-            modelCode: modelCode?.substring(0, 50), 
-            modelCodeLength: modelCode?.length 
-          })
           if (modelCode !== null && modelCode !== undefined) {
             currentCode = modelCode
-            codeSource = 'model'
-            // Update ref to keep in sync
             latestCodeRef.current = modelCode
-            console.log('[NotebookCell] ✅ Using code from MODEL:', currentCode.substring(0, 50))
           }
-        } else {
-          console.log('[NotebookCell] Model is null')
         }
       } catch (e) {
-        console.warn('[NotebookCell] Failed to read from model:', e)
+        // Fall through to next option
       }
       
       // Priority 2: Use getValue() if model access failed
       if (!currentCode) {
         try {
           const editorCode = editorRef.current.getValue()
-          console.log('[NotebookCell] 📝 Editor getValue() read:', { 
-            editorCode: editorCode?.substring(0, 50), 
-            editorCodeLength: editorCode?.length 
-          })
           if (editorCode !== null && editorCode !== undefined) {
             currentCode = editorCode
-            codeSource = 'getValue'
             latestCodeRef.current = editorCode
-            console.log('[NotebookCell] ✅ Using code from getValue():', currentCode.substring(0, 50))
           }
         } catch (e) {
-          console.warn('[NotebookCell] Failed to read from editor:', e)
+          // Fall through to next option
         }
       }
-    } else {
-      console.log('[NotebookCell] editorRef.current is null')
     }
     
     // Priority 3: Use latestCodeRef (updated synchronously in onChange)
     if (!currentCode && latestCodeRef.current) {
       currentCode = latestCodeRef.current
-      codeSource = 'latestCodeRef'
-      console.log('[NotebookCell] ✅ Using code from latestCodeRef:', currentCode.substring(0, 50))
     }
     
     // Priority 4: Fallback to code prop (last resort)
     if (!currentCode) {
       currentCode = code || ''
-      codeSource = 'codeProp'
       if (currentCode) {
         latestCodeRef.current = currentCode
       }
-      console.log('[NotebookCell] ⚠️ Using code from code prop (fallback):', currentCode.substring(0, 50))
     }
-    
-    console.log('[NotebookCell] 🎯 FINAL CODE TO EXECUTE:', { 
-      currentCode: currentCode.substring(0, 100), 
-      codeSource,
-      codeLength: currentCode.length,
-      codeProp: code?.substring(0, 100),
-      latestCodeRef: latestCodeRef.current?.substring(0, 100),
-      codesMatch: currentCode === code,
-      codesMatchRef: currentCode === latestCodeRef.current
-    })
     
     // Don't run if code is empty
     if (!currentCode.trim()) {
-      console.warn('[NotebookCell] Code is empty, not running')
       return
     }
 
-    // Execute with retry logic for empty stdout and stale code issues
-    const executeWithRetry = async (codeToExecute: string, isRetry: boolean = false): Promise<any> => {
-      const runId = `cell_${cellId}_${Date.now()}_${Math.random().toString(36).substring(7)}${isRetry ? '_retry' : ''}`
-      
-      if (!isRetry) {
-        onRunningChange(cellId, true)
-        onOutputChange(cellId, '')
-      }
-
-      try {
-        console.log(`[NotebookCell] ${isRetry ? '🔄 RETRY' : '🚀'} Executing code:`, { 
-          runId, 
-          codeLength: codeToExecute.length,
-          codePreview: codeToExecute.substring(0, 100),
-          sessionId,
-          isRetry
-        })
-        
-        const result = await executeCode(codeToExecute, sessionId, runId)
-        
-        console.log(`[NotebookCell] ${isRetry ? '🔄 RETRY' : '✅'} Execution result:`, { 
-          success: result.success, 
-          stdoutLength: result.stdout?.length || 0,
-          stderrLength: result.stderr?.length || 0,
-          hasError: !!result.error,
-          imagesCount: result.images?.length || 0,
-          isRetry,
-          stdoutPreview: result.stdout?.substring(0, 200) || '',
-          stdoutEnd: result.stdout?.substring(Math.max(0, (result.stdout?.length || 0) - 200)) || ''
-        })
-        
-        // Format the output for comparison
-        let formattedOutput = ''
-        if (result.stdout) {
-          formattedOutput += result.stdout
-        }
-        if (result.stderr) {
-          formattedOutput += `\n${result.stderr}`
-        }
-        if (result.error) {
-          formattedOutput += `\n\nError: ${result.error.type}: ${result.error.value}\n`
-          if (result.error.traceback) {
-            formattedOutput += result.error.traceback.join('\n')
-          }
-        }
-        if (result.images && result.images.length > 0) {
-          result.images.forEach((img: { mime_type: string; data: string }, idx: number) => {
-            formattedOutput += `\n__IMAGE_${idx}__:${img.data}`
-          })
-        }
-        const finalOutput = formattedOutput || '(No output)'
-        
-        // Check if we need to retry: success but empty stdout/stderr and no error
-        // This handles the backend timing issue where first execution returns empty stdout
-        const isEmptyResult = result.success && 
-                             !result.stdout && 
-                             !result.stderr && 
-                             !result.error && 
-                             (result.images?.length || 0) === 0
-        
-        // Check if output matches previous output (stale code executed)
-        // Only check if we have a previous output (not first run) and haven't retried yet
-        // Don't retry if both outputs are "(No output)" as that's a legitimate case
-        const outputMatchesPrevious = previousOutputRef.current !== null && 
-                                     finalOutput === previousOutputRef.current &&
-                                     finalOutput !== '(No output)' // Don't retry if both are "no output"
-        
-        if ((isEmptyResult || outputMatchesPrevious) && !isRetry) {
-          console.log('[NotebookCell] ⚠️ Retry condition detected:', {
-            isEmptyResult,
-            outputMatchesPrevious,
-            currentOutput: finalOutput.substring(0, 50),
-            previousOutput: previousOutputRef.current?.substring(0, 50)
-          })
-          // Small delay before retry to ensure Monaco has synced and kernel is ready
-          await new Promise(resolve => setTimeout(resolve, 150))
-          // Retry with the same code (Monaco should have synced by now)
-          return await executeWithRetry(codeToExecute, true)
-        }
-        
-        // Store the output for next comparison (only on successful non-retry execution)
-        if (!isRetry && result.success) {
-          previousOutputRef.current = finalOutput
-        }
-        
-        return result
-      } catch (error: any) {
-        // Only retry on timeout or connection errors, not on code errors
-        if (!isRetry && (error.message?.includes('timeout') || error.message?.includes('Not connected'))) {
-          console.log('[NotebookCell] ⚠️ Connection/timeout error, retrying execution...')
-          await new Promise(resolve => setTimeout(resolve, 200))
-          return await executeWithRetry(codeToExecute, true)
-        }
-        throw error
-      }
-    }
+    const runId = `cell_${cellId}_${Date.now()}_${Math.random().toString(36).substring(7)}`
+    onRunningChange(cellId, true)
+    onOutputChange(cellId, '')
 
     try {
-      const result = await executeWithRetry(currentCode)
+      const result = await executeCode(currentCode, sessionId, runId)
       
-      // Format output (executeWithRetry already formats it, but we need to format again for display)
+      // Format output
       let formattedOutput = ''
 
       if (result.stdout) {
@@ -318,12 +149,13 @@ export default function NotebookCell({
       }
 
       if (result.stderr) {
-        formattedOutput += `\n${result.stderr}`
+        formattedOutput += formattedOutput ? `\n${result.stderr}` : result.stderr
       }
 
       if (result.error) {
-        formattedOutput += `\n\nError: ${result.error.type}: ${result.error.value}\n`
-        if (result.error.traceback) {
+        formattedOutput += formattedOutput ? '\n\n' : ''
+        formattedOutput += `Error: ${result.error.ename || result.error.type || 'Error'}: ${result.error.evalue || result.error.value || 'Unknown error'}\n`
+        if (result.error.traceback && result.error.traceback.length > 0) {
           formattedOutput += result.error.traceback.join('\n')
         }
       }
@@ -336,33 +168,11 @@ export default function NotebookCell({
       }
 
       const finalOutput = formattedOutput || '(No output)'
-      console.log('[NotebookCell] 📤 Setting output:', { 
-        cellId, 
-        outputLength: finalOutput.length,
-        outputPreview: finalOutput.substring(0, 200),
-        outputEnd: finalOutput.substring(Math.max(0, finalOutput.length - 200)),
-        hasStdout: !!result.stdout,
-        hasStderr: !!result.stderr,
-        hasError: !!result.error,
-        hasImages: !!(result.images && result.images.length > 0)
-      })
       onOutputChange(cellId, finalOutput)
-      
-      // Update previous output ref after successful execution (for next comparison)
-      // Note: executeWithRetry already updates this, but we update here too for consistency
-      if (result.success) {
-        previousOutputRef.current = finalOutput
-      }
-      
-      // Update previous output ref after successful execution (for next comparison)
-      if (result.success) {
-        previousOutputRef.current = finalOutput
-      }
     } catch (error: any) {
-      console.error('[NotebookCell] Execution error:', { cellId, error: error.message, errorStack: error.stack })
-      onOutputChange(cellId, `Error: ${error.message}`)
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+      onOutputChange(cellId, `Error: ${errorMessage}`)
     } finally {
-      console.log('[NotebookCell] Execution finished, setting running to false', { cellId })
       onRunningChange(cellId, false)
     }
   }, [cellId, code, sessionId, isRunning, onOutputChange, onRunningChange, readOnly])
@@ -389,6 +199,48 @@ export default function NotebookCell({
         }
       }
     )
+
+    // Expose insert text function to parent
+    if (onEditorReady) {
+      const insertText = (text: string) => {
+        if (!editor) return
+        
+        const selection = editor.getSelection()
+        if (selection) {
+          // Insert at cursor position
+          const range = new window.monaco.Range(
+            selection.startLineNumber,
+            selection.startColumn,
+            selection.endLineNumber,
+            selection.endColumn
+          )
+          editor.executeEdits('insert-text', [{
+            range,
+            text
+          }])
+        } else {
+          // No cursor position, append to end
+          const model = editor.getModel()
+          if (model) {
+            const lineCount = model.getLineCount()
+            const lastLineLength = model.getLineLength(lineCount)
+            const range = new window.monaco.Range(
+              lineCount,
+              lastLineLength + 1,
+              lineCount,
+              lastLineLength + 1
+            )
+            editor.executeEdits('insert-text', [{
+              range,
+              text
+            }])
+          }
+        }
+        // Focus editor after insertion
+        editor.focus()
+      }
+      onEditorReady(cellId, insertText)
+    }
 
     if (autoFocus) {
       editor.focus()
@@ -469,18 +321,9 @@ export default function NotebookCell({
               value={code}
               onChange={(value) => {
                 const newCode = value || ''
-                console.log('[NotebookCell] ⌨️ onChange fired', { 
-                  cellId, 
-                  newCode: newCode.substring(0, 50), 
-                  newCodeLength: newCode.length,
-                  oldLatestCodeRef: latestCodeRef.current?.substring(0, 50),
-                  oldLatestCodeRefLength: latestCodeRef.current?.length
-                })
                 // Update ref synchronously to avoid race conditions
-                // This ref is the source of truth and is never overwritten by stale props
                 latestCodeRef.current = newCode
-                console.log('[NotebookCell] ✅ latestCodeRef updated to:', latestCodeRef.current.substring(0, 50))
-                // Update parent state (async)
+                // Update parent state
                 onCodeChange(cellId, newCode)
               }}
               onMount={handleEditorMount}
@@ -517,63 +360,18 @@ export default function NotebookCell({
         </div>
       </div>
 
-      {/* Cell Menu */}
+      {/* Delete Cell Button */}
       {!readOnly && (
-        <div className="flex-shrink-0 relative" ref={menuRef}>
+        <div className="flex-shrink-0">
           <button
-            onClick={() => setMenuOpen(!menuOpen)}
-            className="w-8 h-8 rounded-full hover:bg-gray-100 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-gray-600"
+            onClick={() => onDelete(cellId)}
+            className="w-8 h-8 rounded-full hover:bg-red-50 flex items-center justify-center text-red-600 hover:text-red-700 transition-colors"
+            title="Delete cell"
           >
-            <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-              <circle cx="12" cy="5" r="2" />
-              <circle cx="12" cy="12" r="2" />
-              <circle cx="12" cy="19" r="2" />
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
             </svg>
           </button>
-
-          {menuOpen && (
-            <div className="absolute right-0 top-full mt-1 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-10 min-w-[150px]">
-              <button
-                onClick={() => {
-                  onMoveUp(cellId)
-                  setMenuOpen(false)
-                }}
-                disabled={!canMoveUp}
-                className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
-                </svg>
-                Move Up
-              </button>
-              <button
-                onClick={() => {
-                  onMoveDown(cellId)
-                  setMenuOpen(false)
-                }}
-                disabled={!canMoveDown}
-                className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                </svg>
-                Move Down
-              </button>
-              <div className="border-t border-gray-200 my-1" />
-              <button
-                onClick={() => {
-                  onDelete(cellId)
-                  setMenuOpen(false)
-                }}
-                className="w-full px-4 py-2 text-left text-sm hover:bg-red-50 text-red-600 flex items-center gap-2"
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                </svg>
-                Delete Cell
-              </button>
-            </div>
-          )}
         </div>
       )}
     </div>

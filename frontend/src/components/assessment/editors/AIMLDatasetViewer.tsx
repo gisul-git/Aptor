@@ -26,9 +26,10 @@ interface DatasetViewerProps {
   datasetUrl?: string
   testId?: string
   userId?: string
+  onInsertUrl?: (url: string) => void
 }
 
-export default function DatasetViewer({ questionId, dataset, datasetPath, datasetUrl, testId, userId }: DatasetViewerProps) {
+export default function DatasetViewer({ questionId, dataset, datasetPath, datasetUrl, testId, userId, onInsertUrl }: DatasetViewerProps) {
   const [showPreview, setShowPreview] = useState(false)
   const [copiedPath, setCopiedPath] = useState(false)
   const [previewContent, setPreviewContent] = useState<string | null>(null)
@@ -266,9 +267,18 @@ export default function DatasetViewer({ questionId, dataset, datasetPath, datase
 
   const handleCopyPath = () => {
     if (fullApiUrl) {
-      navigator.clipboard.writeText(fullApiUrl)
-      setCopiedPath(true)
-      setTimeout(() => setCopiedPath(false), 2000)
+      if (onInsertUrl) {
+        // Insert full code snippet directly into code editor
+        const codeSnippet = `import pandas as pd\ndf = pd.read_${dataset?.format || 'csv'}('${fullApiUrl}')`
+        onInsertUrl(codeSnippet)
+        setCopiedPath(true)
+        setTimeout(() => setCopiedPath(false), 2000)
+      } else {
+        // Fallback: Copy URL to clipboard
+        navigator.clipboard.writeText(fullApiUrl)
+        setCopiedPath(true)
+        setTimeout(() => setCopiedPath(false), 2000)
+      }
     }
   }
 
@@ -330,6 +340,19 @@ export default function DatasetViewer({ questionId, dataset, datasetPath, datase
         </span>
       </div>
 
+      {/* Helper Message */}
+      <div style={{
+        fontSize: '12px',
+        color: '#047857',
+        backgroundColor: '#d1fae5',
+        padding: '8px 10px',
+        borderRadius: '4px',
+        marginBottom: '12px',
+        fontStyle: 'italic'
+      }}>
+        💡 <strong>Click the "Copy Path" button</strong> (copy/paste disabled) - it will paste the code directly into the editor
+      </div>
+
       {/* File Info */}
       <div style={{
         backgroundColor: '#ffffff',
@@ -387,7 +410,7 @@ export default function DatasetViewer({ questionId, dataset, datasetPath, datase
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <polyline points="20 6 9 17 4 12"/>
                 </svg>
-                Copied!
+                Pasted!
               </>
             ) : (
               <>

@@ -176,13 +176,13 @@ export default function NotebookCell({
         
         if (result.error) {
           formattedOutput += formattedOutput ? '\n[error]\n' : ''
-          formattedOutput += `${result.error.type}: ${result.error.value}`
-          if (result.error.traceback?.length > 0) {
+          formattedOutput += `Error: ${result.error.ename || result.error.type || 'Error'}: ${result.error.evalue || result.error.value || 'Unknown error'}`
+          if (result.error.traceback && result.error.traceback.length > 0) {
             formattedOutput += `\n${result.error.traceback.join('\n')}`
           }
         }
         
-        if (result.images?.length > 0) {
+        if (result.images && result.images.length > 0) {
           result.images.forEach((imgObj: { mime_type: string; data: string }) => {
             formattedOutput += `\n[Image: data:${imgObj.mime_type};base64,${imgObj.data}]\n`
           })
