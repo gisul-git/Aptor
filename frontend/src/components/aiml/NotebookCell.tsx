@@ -176,15 +176,20 @@ export default function NotebookCell({
         
         if (result.error) {
           formattedOutput += formattedOutput ? '\n[error]\n' : ''
-          formattedOutput += `${result.error.ename}: ${result.error.evalue}`
-          if (result.error.traceback?.length > 0) {
+          formattedOutput += `Error: ${result.error.ename || 'Error'}: ${result.error.evalue || 'Unknown error'}`
+          if (result.error.traceback && result.error.traceback.length > 0) {
             formattedOutput += `\n${result.error.traceback.join('\n')}`
           }
         }
         
-        if (result.images?.length > 0) {
-          result.images.forEach((imgData: string) => {
-            formattedOutput += `\n[Image: data:image/png;base64,${imgData}]\n`
+        if (result.images && result.images.length > 0) {
+          // Handle both string[] and Array<{mime_type, data}> formats
+          result.images.forEach((img: string | { mime_type: string; data: string }, idx: number) => {
+            if (typeof img === 'string') {
+              formattedOutput += `\n[Image: data:image/png;base64,${img}]\n`
+            } else {
+              formattedOutput += `\n[Image: data:${img.mime_type};base64,${img.data}]\n`
+            }
           })
         }
         

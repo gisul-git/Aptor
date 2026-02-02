@@ -30,7 +30,7 @@ async def restart_kernel(session_id: str) -> dict:
         await asyncio.sleep(0.1)
         
         # Get new kernel (will create if doesn't exist)
-        get_kernel(session_id)
+        await get_kernel(session_id)
         
         return {
             'success': True,

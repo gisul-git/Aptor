@@ -1,31 +1,41 @@
 """
-WebSocket server for local notebook execution with run_id correlation.
-
-Production-focused implementation with proper logging and timeout handling.
+WebSocket server for code execution with validation, logging, and error handling.
 """
 
 import asyncio
 import json
 import time
 import sys
-from typing import Dict
+import logging
+from typing import Dict, Optional
 import websockets
 from websockets.server import WebSocketServerProtocol
 from websockets.exceptions import InvalidMessage, InvalidUpgrade, ConnectionClosed
-import logging
 from agent.kernel_executor import execute_in_kernel
+from agent.config import Config
+from agent.validators import (
+    validate_session_id, validate_run_id, validate_code, 
+    ValidationError
+)
+from agent.security import validate_code_security, SecurityError
+from agent.metrics import get_metrics
+from agent.queue_manager import get_queue, QueueFullError, QueueTimeoutError
+from agent.kernel_manager import (
+    start_background_tasks, stop_background_tasks,
+    get_kernel_count, get_healthy_kernel_count
+)
+
+# Configure logging
+logger = logging.getLogger(__name__)
 
 
 class HealthCheckFilter(logging.Filter):
     """Filter to suppress expected health check errors from WebSocket server."""
     
     def filter(self, record):
-        # Suppress errors related to health checks (HTTP requests to WebSocket port)
         message = record.getMessage()
         
-        # Suppress all ERROR level messages from websockets (health checks cause these)
         if record.levelno == logging.ERROR:
-            # Suppress common health check related errors
             if any(keyword in message.lower() for keyword in [
                 'did not receive a valid http request',
                 'connection closed while reading http request',
@@ -38,9 +48,8 @@ class HealthCheckFilter(logging.Filter):
                 'invalidmessage',
                 'invalidupgrade'
             ]):
-                return False  # Don't log this
+                return False
         
-        # Also suppress traceback logs from websockets (they're just health check noise)
         if hasattr(record, 'exc_info') and record.exc_info:
             exc_type = record.exc_info[0]
             if exc_type and any(name in str(exc_type.__name__).lower() for name in [
@@ -48,221 +57,389 @@ class HealthCheckFilter(logging.Filter):
             ]):
                 return False
         
-        return True  # Log everything else
+        return True
 
 
 class AgentServer:
-    """WebSocket server for code execution with run_id correlation."""
+    """WebSocket server for code execution with validation and error handling."""
     
-    def __init__(self, host: str = "127.0.0.1", port: int = 8889):
-        self.host = host
-        self.port = port
+    def __init__(self, host: str = None, port: int = None):
+        self.host = host or Config.HOST
+        self.port = port or Config.PORT
+        self.active_connections = 0
+        self.metrics = get_metrics()
+        self.queue = get_queue()
     
     async def handle_client(self, websocket: WebSocketServerProtocol):
-        """Handle a WebSocket client connection."""
+        """Handle a WebSocket client connection with timeout and limits."""
         client_addr = websocket.remote_address
-        print(f"[AgentServer] Client connected from {client_addr}")
+        logger.info(f"Client connected from {client_addr}")
+        self.active_connections += 1
+        self.metrics.increment('connections.total')
+        self.metrics.gauge('connections.active', self.active_connections)
+        
+        connection_start = time.time()
         
         try:
-            async for message in websocket:
-                try:
-                    data = json.loads(message)
-                    msg_type = data.get('type')
-                    
-                    if msg_type == 'ping':
-                        # Handle ping/pong for connection health
+            # Set connection timeout
+            async with asyncio.timeout(Config.CONNECTION_TIMEOUT):
+                async for message in websocket:
+                    # Check message size
+                    if len(message) > Config.MAX_MESSAGE_SIZE:
+                        logger.warning(f"Message too large: {len(message)} bytes")
                         await websocket.send(json.dumps({
-                            'type': 'pong'
+                            'type': 'error',
+                            'message': f'Message too large (max {Config.MAX_MESSAGE_SIZE} bytes)'
                         }))
                         continue
                     
-                    elif msg_type == 'interrupt':
-                        session_id = data.get('session_id', 'default')
-                        print(f"[AgentServer] INTERRUPT session={session_id}")
-                        
-                        try:
-                            from agent.kernel_manager import interrupt_kernel
-                            interrupt_kernel(session_id)
-                            
-                            await websocket.send(json.dumps({
-                                'type': 'interrupt_success',
-                                'message': 'Kernel execution interrupted'
-                            }))
-                        except Exception as e:
-                            print(f"[AgentServer] Interrupt error: {e}")
-                            await websocket.send(json.dumps({
-                                'type': 'interrupt_error',
-                                'message': str(e)
-                            }))
-                    
-                    elif msg_type == 'restart':
-                        session_id = data.get('session_id', 'default')
-                        print(f"[AgentServer] RESTART session={session_id}")
-                        
-                        try:
-                            from agent.features.restart_kernel import restart_kernel
-                            result = await restart_kernel(session_id)
-                            
-                            await websocket.send(json.dumps({
-                                'type': 'restart_result',
-                                'session_id': session_id,
-                                'success': result['success'],
-                                'message': result['message']
-                            }))
-                        except Exception as e:
-                            print(f"[AgentServer] Restart error: {e}")
-                            import traceback
-                            traceback.print_exc()
-                            await websocket.send(json.dumps({
-                                'type': 'restart_result',
-                                'session_id': session_id,
-                                'success': False,
-                                'message': str(e)
-                            }))
-                    
-                    elif msg_type == 'file_upload':
-                        session_id = data.get('session_id', 'default')
-                        filename = data.get('filename', '')
-                        data_base64 = data.get('data_base64', '')
-                        print(f"[AgentServer] FILE_UPLOAD session={session_id} filename={filename}")
-                        
-                        try:
-                            from agent.features.file_upload import handle_file_upload
-                            result = await handle_file_upload(session_id, filename, data_base64)
-                            
-                            await websocket.send(json.dumps({
-                                'type': 'file_upload_result',
-                                'session_id': session_id,
-                                'success': result['success'],
-                                'path': result.get('path', ''),
-                                'message': result.get('message', '')
-                            }))
-                        except Exception as e:
-                            print(f"[AgentServer] File upload error: {e}")
-                            await websocket.send(json.dumps({
-                                'type': 'file_upload_result',
-                                'session_id': session_id,
-                                'success': False,
-                                'path': '',
-                                'message': str(e)
-                            }))
-                    
-                    elif msg_type == 'execute':
-                        code = data.get('code', '')
-                        session_id = data.get('session_id', 'default')
-                        run_id = data.get('run_id')
-                        
-                        if not run_id:
-                            await websocket.send(json.dumps({
-                                'type': 'error',
-                                'message': 'Missing run_id in execute request'
-                            }))
-                            continue
-                        
-                        start_time = time.time()
-                        print(f"[AgentServer] EXECUTE run_id={run_id} session={session_id}")
-                        
-                        # Debug log for run_id
-                        print(f"[AgentServer] Received run_id: {run_id}")
-                        
-                        try:
-                            # Execute code (serialized per session, non-blocking)
-                            result = await execute_in_kernel(session_id, code, timeout=120)
-                            
-                            elapsed = time.time() - start_time
-                            print(f"[AgentServer] FINISHED run_id={run_id} elapsed={elapsed:.2f}s")
-                            
-                            # Send response with run_id (echo back the same run_id)
-                            print(f"[AgentServer] Sending result with run_id: {run_id}")
-                            response = {
-                                'type': 'result',
-                                'run_id': run_id,  # Echo back the same run_id
-                                'stdout': result.get('stdout', ''),
-                                'stderr': result.get('stderr', ''),
-                                'images': result.get('images', []),
-                                'error': result.get('error'),
-                                'success': result.get('status') == 'ok'
-                            }
-                            
-                            # If timeout, add to stderr
-                            if result.get('status') == 'timeout':
-                                response['stderr'] = result.get('stderr', '') + f'\nExecution timeout after 120s'
-                                response['success'] = False
-                            
-                            await websocket.send(json.dumps(response))
-                        
-                        except Exception as e:
-                            import time as time_module  # Use explicit import to avoid scoping issues
-                            elapsed = time_module.time() - start_time
-                            print(f"[AgentServer] ERROR run_id={run_id} elapsed={elapsed:.2f}s: {e}")
-                            
-                            print(f"[AgentServer] Sending error result with run_id: {run_id}")
-                            await websocket.send(json.dumps({
-                                'type': 'result',
-                                'run_id': run_id,  # Echo back the same run_id
-                                'stdout': '',
-                                'stderr': f'Execution error: {str(e)}',
-                                'images': [],
-                                'error': {
-                                    'ename': type(e).__name__,
-                                    'evalue': str(e),
-                                    'traceback': []
-                                },
-                                'success': False
-                            }))
-                    
-                    else:
+                    # Process message with timeout
+                    try:
+                        async with asyncio.timeout(30):  # 30s per message
+                            await self._handle_message(websocket, message, client_addr)
+                    except asyncio.TimeoutError:
+                        logger.error(f"Message processing timeout for {client_addr}")
                         await websocket.send(json.dumps({
                             'type': 'error',
-                            'message': f'Unknown message type: {msg_type}'
+                            'message': 'Message processing timeout'
                         }))
-                
-                except json.JSONDecodeError:
-                    await websocket.send(json.dumps({
-                        'type': 'error',
-                        'message': 'Invalid JSON'
-                    }))
-                except Exception as e:
-                    print(f"[AgentServer] Error handling message: {e}")
-                    import traceback
-                    traceback.print_exc()
+                    except Exception as e:
+                        logger.error(f"Error processing message: {e}", exc_info=True)
+                        await websocket.send(json.dumps({
+                            'type': 'error',
+                            'message': f'Internal error: {str(e)}'
+                        }))
         
+        except asyncio.TimeoutError:
+            logger.info(f"Connection timeout for {client_addr}")
         except websockets.exceptions.ConnectionClosed:
-            print(f"[AgentServer] Client {client_addr} disconnected")
+            logger.info(f"Client {client_addr} disconnected")
+        except Exception as e:
+            logger.error(f"Connection error for {client_addr}: {e}", exc_info=True)
+        finally:
+            self.active_connections -= 1
+            self.metrics.gauge('connections.active', self.active_connections)
+            connection_duration = time.time() - connection_start
+            self.metrics.histogram('connections.duration', connection_duration)
+            logger.info(f"Client {client_addr} disconnected (duration: {connection_duration:.2f}s)")
+    
+    async def _handle_message(self, websocket: WebSocketServerProtocol, message: str, client_addr: tuple):
+        """Handle a single WebSocket message."""
+        try:
+            data = json.loads(message)
+        except json.JSONDecodeError as e:
+            logger.warning(f"Invalid JSON from {client_addr}: {e}")
+            await websocket.send(json.dumps({
+                'type': 'error',
+                'message': 'Invalid JSON'
+            }))
+            return
+        
+        msg_type = data.get('type')
+        
+        if msg_type == 'ping':
+            await websocket.send(json.dumps({'type': 'pong'}))
+            return
+        
+        elif msg_type == 'interrupt':
+            await self._handle_interrupt(websocket, data)
+        
+        elif msg_type == 'restart':
+            await self._handle_restart(websocket, data)
+        
+        elif msg_type == 'file_upload':
+            await self._handle_file_upload(websocket, data)
+        
+        elif msg_type == 'execute':
+            await self._handle_execute(websocket, data)
+        
+        else:
+            logger.warning(f"Unknown message type: {msg_type}")
+            await websocket.send(json.dumps({
+                'type': 'error',
+                'message': f'Unknown message type: {msg_type}'
+            }))
+    
+    async def _handle_interrupt(self, websocket: WebSocketServerProtocol, data: Dict):
+        """Handle interrupt request."""
+        try:
+            session_id = data.get('session_id', 'default')
+            validate_session_id(session_id)
+            
+            from agent.kernel_manager import interrupt_kernel
+            interrupt_kernel(session_id)
+            
+            await websocket.send(json.dumps({
+                'type': 'interrupt_success',
+                'message': 'Kernel execution interrupted'
+            }))
+            self.metrics.increment('operations.interrupt', tags={'session_id': session_id})
+        except ValidationError as e:
+            logger.warning(f"Invalid session_id in interrupt: {e}")
+            await websocket.send(json.dumps({
+                'type': 'interrupt_error',
+                'message': str(e)
+            }))
+        except Exception as e:
+            logger.error(f"Interrupt error: {e}", exc_info=True)
+            await websocket.send(json.dumps({
+                'type': 'interrupt_error',
+                'message': str(e)
+            }))
+    
+    async def _handle_restart(self, websocket: WebSocketServerProtocol, data: Dict):
+        """Handle restart request."""
+        try:
+            session_id = data.get('session_id', 'default')
+            validate_session_id(session_id)
+            
+            from agent.features.restart_kernel import restart_kernel
+            result = await restart_kernel(session_id)
+            
+            await websocket.send(json.dumps({
+                'type': 'restart_result',
+                'session_id': session_id,
+                'success': result['success'],
+                'message': result['message']
+            }))
+            self.metrics.increment('operations.restart', tags={'session_id': session_id, 'success': str(result['success'])})
+        except ValidationError as e:
+            logger.warning(f"Invalid session_id in restart: {e}")
+            await websocket.send(json.dumps({
+                'type': 'restart_result',
+                'session_id': data.get('session_id', 'default'),
+                'success': False,
+                'message': str(e)
+            }))
+        except Exception as e:
+            logger.error(f"Restart error: {e}", exc_info=True)
+            await websocket.send(json.dumps({
+                'type': 'restart_result',
+                'session_id': data.get('session_id', 'default'),
+                'success': False,
+                'message': str(e)
+            }))
+    
+    async def _handle_file_upload(self, websocket: WebSocketServerProtocol, data: Dict):
+        """Handle file upload request."""
+        try:
+            session_id = data.get('session_id', 'default')
+            filename = data.get('filename', '')
+            data_base64 = data.get('data_base64', '')
+            
+            validate_session_id(session_id)
+            
+            from agent.features.file_upload import handle_file_upload
+            result = await handle_file_upload(session_id, filename, data_base64)
+            
+            await websocket.send(json.dumps({
+                'type': 'file_upload_result',
+                'session_id': session_id,
+                'success': result['success'],
+                'path': result.get('path', ''),
+                'message': result.get('message', '')
+            }))
+            self.metrics.increment('operations.file_upload', tags={'session_id': session_id, 'success': str(result['success'])})
+        except ValidationError as e:
+            logger.warning(f"Validation error in file upload: {e}")
+            await websocket.send(json.dumps({
+                'type': 'file_upload_result',
+                'session_id': data.get('session_id', 'default'),
+                'success': False,
+                'path': '',
+                'message': str(e)
+            }))
+        except Exception as e:
+            logger.error(f"File upload error: {e}", exc_info=True)
+            await websocket.send(json.dumps({
+                'type': 'file_upload_result',
+                'session_id': data.get('session_id', 'default'),
+                'success': False,
+                'path': '',
+                'message': str(e)
+            }))
+    
+    async def _handle_execute(self, websocket: WebSocketServerProtocol, data: Dict):
+        """Handle execute request with validation and queuing."""
+        start_time = time.time()
+        run_id = None
+        session_id = None
+        
+        try:
+            # Validate inputs
+            code = data.get('code', '')
+            session_id = data.get('session_id', 'default')
+            run_id = data.get('run_id')
+            
+            # Validate session_id
+            validate_session_id(session_id)
+            
+            # Validate run_id
+            if not run_id:
+                raise ValidationError("Missing run_id in execute request")
+            validate_run_id(run_id)
+            
+            # Validate code
+            is_valid, error_msg = validate_code(code)
+            if not is_valid:
+                raise ValidationError(error_msg)
+            
+            # Security check
+            is_safe, security_error = validate_code_security(code)
+            if not is_safe:
+                raise SecurityError(security_error)
+            
+            logger.info(f"EXECUTE run_id={run_id} session={session_id} code_size={len(code)}")
+            self.metrics.increment('executions.requested', tags={'session_id': session_id})
+            
+            # Queue execution
+            async def execute_fn():
+                return await execute_in_kernel(session_id, code, timeout=Config.EXECUTION_TIMEOUT)
+            
+            try:
+                result = await self.queue.enqueue(session_id, run_id, execute_fn)
+            except QueueFullError:
+                logger.warning(f"Queue full for session {session_id}")
+                await websocket.send(json.dumps({
+                    'type': 'result',
+                    'run_id': run_id,
+                    'stdout': '',
+                    'stderr': 'Execution queue is full. Please try again later.',
+                    'images': [],
+                    'error': {
+                        'ename': 'QueueFullError',
+                        'evalue': 'Execution queue is full',
+                        'traceback': []
+                    },
+                    'success': False
+                }))
+                return
+            except QueueTimeoutError:
+                logger.warning(f"Queue timeout for session {session_id}")
+                await websocket.send(json.dumps({
+                    'type': 'result',
+                    'run_id': run_id,
+                    'stdout': '',
+                    'stderr': 'Execution queue timeout. Please try again.',
+                    'images': [],
+                    'error': {
+                        'ename': 'QueueTimeoutError',
+                        'evalue': 'Execution queue timeout',
+                        'traceback': []
+                    },
+                    'success': False
+                }))
+                return
+            
+            elapsed = time.time() - start_time
+            logger.info(f"FINISHED run_id={run_id} elapsed={elapsed:.2f}s")
+            
+            # Send response
+            response = {
+                'type': 'result',
+                'run_id': run_id,
+                'stdout': result.get('stdout', ''),
+                'stderr': result.get('stderr', ''),
+                'images': result.get('images', []),
+                'error': result.get('error'),
+                'success': result.get('status') == 'ok'
+            }
+            
+            if result.get('status') == 'timeout':
+                response['stderr'] = result.get('stderr', '') + f'\nExecution timeout after {Config.EXECUTION_TIMEOUT}s'
+                response['success'] = False
+            
+            await websocket.send(json.dumps(response))
+        
+        except ValidationError as e:
+            logger.warning(f"Validation error: {e}")
+            await websocket.send(json.dumps({
+                'type': 'result',
+                'run_id': run_id or 'unknown',
+                'stdout': '',
+                'stderr': f'Validation error: {str(e)}',
+                'images': [],
+                'error': {
+                    'ename': 'ValidationError',
+                    'evalue': str(e),
+                    'traceback': []
+                },
+                'success': False
+            }))
+        except SecurityError as e:
+            logger.warning(f"Security error: {e}")
+            await websocket.send(json.dumps({
+                'type': 'result',
+                'run_id': run_id or 'unknown',
+                'stdout': '',
+                'stderr': f'Security error: {str(e)}',
+                'images': [],
+                'error': {
+                    'ename': 'SecurityError',
+                    'evalue': str(e),
+                    'traceback': []
+                },
+                'success': False
+            }))
+        except Exception as e:
+            elapsed = time.time() - start_time
+            logger.error(f"ERROR run_id={run_id} elapsed={elapsed:.2f}s: {e}", exc_info=True)
+            await websocket.send(json.dumps({
+                'type': 'result',
+                'run_id': run_id or 'unknown',
+                'stdout': '',
+                'stderr': f'Execution error: {str(e)}',
+                'images': [],
+                'error': {
+                    'ename': type(e).__name__,
+                    'evalue': str(e),
+                    'traceback': []
+                },
+                'success': False
+            }))
     
     async def start(self):
         """Start the WebSocket server."""
-        print(f"[AgentServer] Agent listening on ws://{self.host}:{self.port}")
-        print("[AgentServer] Press Ctrl+C to stop")
+        logger.info(f"Agent listening on ws://{self.host}:{self.port}")
         
-        # Suppress expected errors from health checks hitting WebSocket port
-        # Azure Container Apps sends HTTP GET requests for health checks
+        # Start background tasks
+        start_background_tasks()
+        
+        # Start queue processor
+        queue_task = asyncio.create_task(self.queue.process_queue())
+        
+        # Suppress expected errors from health checks
         health_check_filter = HealthCheckFilter()
-        # Apply filter to all websockets-related loggers and set level to WARNING
         for logger_name in ["websockets", "websockets.server", "websockets.asyncio", "websockets.http11", "websockets.streams"]:
-            logger = logging.getLogger(logger_name)
-            logger.addFilter(health_check_filter)
-            logger.setLevel(logging.WARNING)  # Only show warnings and above, suppress INFO and ERROR
+            ws_logger = logging.getLogger(logger_name)
+            ws_logger.addFilter(health_check_filter)
+            ws_logger.setLevel(logging.WARNING)
         
         async def handler(websocket):
             try:
+                # Check connection limit
+                if self.active_connections >= Config.MAX_CONNECTIONS:
+                    logger.warning(f"Connection limit reached: {self.active_connections}")
+                    await websocket.close(code=1008, reason="Connection limit reached")
+                    return
+                
                 await self.handle_client(websocket)
-            except (InvalidMessage, InvalidUpgrade, ConnectionClosed, EOFError) as e:
-                # These are expected when health checks (HTTP requests) hit the WebSocket port
-                # Suppress the error - it's just a health check probe
-                pass
+            except (InvalidMessage, InvalidUpgrade, ConnectionClosed, EOFError):
+                pass  # Expected for health checks
         
         async with websockets.serve(
             handler,
             self.host,
             self.port,
             ping_interval=20,
-            ping_timeout=10
+            ping_timeout=10,
+            max_size=Config.MAX_MESSAGE_SIZE
         ):
             try:
                 await asyncio.Future()  # Run forever
             except KeyboardInterrupt:
-                print("\n[AgentServer] Shutting down...")
+                logger.info("\nShutting down...")
+                queue_task.cancel()
+                stop_background_tasks()
                 from agent.kernel_manager import shutdown_all_kernels
                 await shutdown_all_kernels()
-
