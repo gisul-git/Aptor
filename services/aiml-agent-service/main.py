@@ -32,7 +32,39 @@ if Config.LOG_FORMAT == 'json':
 else:
     formatter = logging.Formatter(log_format)
 
-handler = logging.StreamHandler(sys.stdout)
+# Custom stream handler that filters health check errors
+class FilteredStreamHandler(logging.StreamHandler):
+    """Stream handler that filters health check errors."""
+    
+    def emit(self, record):
+        # Check if this is a health check error
+        message = record.getMessage().lower()
+        health_check_keywords = [
+            'did not receive a valid http request',
+            'connection closed while reading http request',
+            'stream ends after',
+            'eoferror: stream ends after',
+            'invalidmessage',
+            'invalidupgrade',
+            'websockets.server',
+            'websockets.http11',
+            'websockets.asyncio'
+        ]
+        
+        if any(keyword in message for keyword in health_check_keywords):
+            return  # Don't emit health check errors
+        
+        # Check exception type
+        if record.exc_info:
+            exc_type = record.exc_info[0]
+            if exc_type:
+                exc_name = str(exc_type.__name__).lower()
+                if any(name in exc_name for name in ['eof', 'invalidmessage', 'invalidupgrade']):
+                    return  # Don't emit health check errors
+        
+        super().emit(record)
+
+handler = FilteredStreamHandler(sys.stdout)
 handler.setFormatter(formatter)
 
 logging.basicConfig(
