@@ -451,7 +451,7 @@ class AgentServer:
         root_logger = logging.getLogger()
         root_logger.addFilter(health_check_filter)
         
-        async def handler(websocket, path):
+        async def handler(websocket, path=None):
             try:
                 # Check connection limit
                 if self.active_connections >= Config.MAX_CONNECTIONS:
