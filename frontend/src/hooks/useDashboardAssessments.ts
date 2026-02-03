@@ -259,12 +259,20 @@ export function useDashboardAssessments(): UseDashboardAssessmentsReturn {
           return testCreatedByStr === currentUserIdStr;
         })
         .map((test: any) => {
+          let status = 'draft';
+          if (test.pausedAt) {
+            status = 'paused';
+          } else if (test.is_published) {
+            status = 'active';
+          }
+          
           const schedule = test.schedule;
           const hasSchedule = schedule !== null && schedule !== undefined && !!(test.start_time && test.end_time);
           
           return {
             id: test.id || test._id,
             title: test.title || 'Untitled AIML Test',
+            status: status as 'draft' | 'active' | 'paused',
             hasSchedule: hasSchedule,
             scheduleStatus: hasSchedule ? {
               startTime: test.start_time,

@@ -226,30 +226,46 @@ async def get_tests(
     
     result = []
     for test in tests:
-        test_dict = {
-            "id": str(test["_id"]),
-            "title": test.get("title", ""),
-            "description": test.get("description", ""),
-            "duration_minutes": test.get("duration_minutes", 0),
-            "start_time": test.get("start_time").isoformat() if test.get("start_time") else None,
-            "end_time": test.get("end_time").isoformat() if test.get("end_time") else None,
-            "timer_mode": test.get("timer_mode", "GLOBAL"),
-            "question_timings": test.get("question_timings"),
-            "examMode": test.get("examMode", "strict"),
-            "schedule": test.get("schedule"),
-            "proctoringSettings": test.get("proctoringSettings"),  # Include proctoring settings
-            "is_active": test.get("is_active", False),
-            "is_published": test.get("is_published", False),
-            "question_ids": [str(qid) for qid in test.get("question_ids", [])],
-            "test_token": test.get("test_token"),
-            "created_by": test.get("created_by"),
-            "test_type": test.get("test_type", "aiml"),
-            "created_at": test.get("created_at").isoformat() if test.get("created_at") else None,
-        }
-        # Add pausedAt if it exists
-        if "pausedAt" in test and test.get("pausedAt"):
-            test_dict["pausedAt"] = test.get("pausedAt").isoformat() if isinstance(test.get("pausedAt"), datetime) else test.get("pausedAt")
-        result.append(test_dict)
+        try:
+            # Safely serialize datetime fields
+            def safe_isoformat(dt):
+                if dt is None:
+                    return None
+                if isinstance(dt, datetime):
+                    return dt.isoformat()
+                if isinstance(dt, str):
+                    return dt
+                return None
+            
+            test_dict = {
+                "id": str(test["_id"]),
+                "title": test.get("title", ""),
+                "description": test.get("description", ""),
+                "duration_minutes": test.get("duration_minutes", 0),
+                "start_time": safe_isoformat(test.get("start_time")),
+                "end_time": safe_isoformat(test.get("end_time")),
+                "timer_mode": test.get("timer_mode", "GLOBAL"),
+                "question_timings": test.get("question_timings"),
+                "examMode": test.get("examMode", "strict"),
+                "schedule": test.get("schedule"),
+                "proctoringSettings": test.get("proctoringSettings"),  # Include proctoring settings
+                "is_active": test.get("is_active", False),
+                "is_published": test.get("is_published", False),
+                "question_ids": [str(qid) for qid in test.get("question_ids", [])],
+                "test_token": test.get("test_token"),
+                "created_by": test.get("created_by"),
+                "test_type": test.get("test_type", "aiml"),
+                "created_at": safe_isoformat(test.get("created_at")),
+                "updated_at": safe_isoformat(test.get("updated_at")),
+            }
+            # Add pausedAt if it exists
+            if "pausedAt" in test and test.get("pausedAt"):
+                test_dict["pausedAt"] = safe_isoformat(test.get("pausedAt"))
+            result.append(test_dict)
+        except Exception as e:
+            logger.error(f"Error serializing test {test.get('_id')}: {e}", exc_info=True)
+            # Continue with other tests even if one fails
+            continue
     return result
 
 @router.patch("/{test_id}/publish", response_model=dict)
