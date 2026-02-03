@@ -24,6 +24,7 @@ import {
   getTimestamp,
 } from "../utils";
 import { FaceVerificationService, type FaceEmbedding } from "./FaceVerificationService";
+import { faceMismatchTelemetry } from "./faceMismatchTelemetry";
 
 // ============================================================================
 // Constants - Preserved from useFaceMesh.ts
@@ -63,14 +64,15 @@ const MULTIPLE_FACE_COOLDOWN = 2000;         // 6 seconds cooldown
 // Face verification timing (milliseconds) - INCIDENT-BASED
 const FACE_VERIFICATION_CHECK_INTERVAL = 3000; // Check every 3 seconds (faster detection)
 const FACE_VERIFICATION_TRIGGER_DURATION = 0; // 0 seconds - trigger immediately when mismatch detected
-const FACE_VERIFICATION_COOLDOWN = 20000; // 20 seconds cooldown (increased for stability)
-const FACE_VERIFICATION_SIMILARITY_THRESHOLD = 0.88; // Minimum similarity (0-1) - Balanced threshold
-const FACE_VERIFICATION_CONSECUTIVE_REQUIRED = 2; // Require 2 consecutive mismatches before triggering (faster detection)
-const FACE_VERIFICATION_HIGH_SIMILARITY_THRESHOLD = 0.90; // If similarity > 0.90, likely same person (protect from false positives)
-const FACE_VERIFICATION_MIN_CONFIDENCE = 0.8; // Minimum confidence (0-1) to trigger violation
-const FACE_VERIFICATION_BASELINE_DURATION = 60000; // 60 seconds to establish baseline
-const FACE_VERIFICATION_BASELINE_MIN_SAMPLES = 5; // Minimum samples needed for baseline
-const FACE_VERIFICATION_OUTLIER_STD_DEVIATIONS = 2.0; // Number of standard deviations for outlier detection
+const FACE_VERIFICATION_COOLDOWN = 90000; // 90 seconds cooldown - prevents repeated false alerts
+const FACE_VERIFICATION_SIMILARITY_THRESHOLD = 0.72; // Minimum similarity (0-1) - lenient for custom embeddings
+const FACE_VERIFICATION_CONSECUTIVE_REQUIRED = 5; // Require 5 consecutive mismatches (~15s) before triggering
+const FACE_VERIFICATION_HIGH_SIMILARITY_THRESHOLD = 0.82; // If similarity > 0.82, likely same person (protect from false positives)
+const FACE_VERIFICATION_MIN_CONFIDENCE = 0.70; // Minimum confidence (0-1) to trigger violation
+const FACE_VERIFICATION_BASELINE_DURATION = 45000; // 45 seconds to establish baseline - faster than 60s
+const FACE_VERIFICATION_BASELINE_MIN_SAMPLES = 3; // Minimum samples needed for baseline
+const FACE_VERIFICATION_OUTLIER_STD_DEVIATIONS = 2.5; // More tolerance for outliers
+const FACE_VERIFICATION_GRACE_PERIOD = 120000; // 2 minutes - no violations at assessment start
 
 // ============================================================================
 // Types
@@ -168,9 +170,10 @@ export class AIProctoringService {
   private faceMesh: any = null;
   private faceVerificationService: FaceVerificationService | null = null;
 
-  // Face verification temporal consistency (average over multiple frames)
+  // Face verification temporal consistency (weighted moving average - Phase 3.2)
   private similarityHistory: number[] = []; // Store last N similarity scores
-  private readonly SIMILARITY_HISTORY_SIZE = 7; // Average over last 7 checks (~35 seconds) - improved stability
+  private readonly SIMILARITY_HISTORY_SIZE = 5; // Average over last 5 checks (~15 seconds)
+  private static readonly SIMILARITY_WEIGHTS = [0.1, 0.15, 0.2, 0.25, 0.3]; // More recent = higher weight (sum 1.0)
   
   // Statistical baseline tracking for adaptive threshold
   private baselineSimilarities: number[] = []; // Store similarity scores during baseline period
@@ -238,6 +241,7 @@ export class AIProctoringService {
   // Face verification refs
   private referenceEmbedding: FaceEmbedding | null = null;
   private lastVerificationCheck = 0;
+  private sessionStartTime: number | null = null; // For grace period - no violations at start
 
   // State
   private state: AIProctoringState = {
@@ -381,6 +385,7 @@ export class AIProctoringService {
     this.session = session;
     this.callbacks = callbacks;
     this.videoElement = videoElement;
+    this.sessionStartTime = Date.now(); // Start grace period
     
     // Create canvas element if not provided (required for snapshot capture)
     if (canvasElement) {
@@ -547,6 +552,9 @@ export class AIProctoringService {
 
     // Reset all state
     this.resetDetectionState();
+
+    // Flush remaining telemetry logs (Phase 2) - fire-and-forget to keep stop() sync
+    faceMismatchTelemetry.flush();
 
     this.updateState({
       isCameraOn: false,
@@ -1208,7 +1216,7 @@ export class AIProctoringService {
         this.baselineStartTime = Date.now();
         this.baselineSimilarities = [];
         this.baselineEstablished = false;
-        console.log("[AIProctoringService] 📊 Baseline tracking initialized (will establish over next 60 seconds)");
+        console.log("[AIProctoringService] 📊 Baseline tracking initialized (will establish over next 45 seconds)");
         
         debugLog("[AIProctoringService] ✅ Reference embedding loaded from sessionStorage");
       } else {
@@ -1287,21 +1295,14 @@ export class AIProctoringService {
       // Compare with reference
       const result = this.faceVerificationService.compareFaces(this.referenceEmbedding, currentEmbedding);
       
-      // TEMPORAL CONSISTENCY: Add current similarity to history and average (weighted)
+      // TEMPORAL CONSISTENCY: Add current similarity to history and weighted average (Phase 3.2)
       this.similarityHistory.push(result.similarity);
       if (this.similarityHistory.length > this.SIMILARITY_HISTORY_SIZE) {
-        this.similarityHistory.shift(); // Keep only last N scores
+        this.similarityHistory.shift();
       }
+      const averagedSimilarity = this.calculateWeightedSimilarity(this.similarityHistory);
       
-      // Calculate weighted averaged similarity (recent frames weighted higher)
-      const weights = this.similarityHistory.map((_, idx) => {
-        const position = idx / this.similarityHistory.length; // 0 to 1
-        return 0.5 + 0.5 * position; // Weight from 0.5 to 1.0 (recent = higher weight)
-      });
-      const totalWeight = weights.reduce((sum, w) => sum + w, 0);
-      const averagedSimilarity = this.similarityHistory.reduce((sum, val, idx) => sum + val * weights[idx], 0) / totalWeight;
-      
-      // STATISTICAL BASELINE TRACKING: Collect samples during first 60 seconds
+      // STATISTICAL BASELINE TRACKING: Collect samples during first 45 seconds
       const now = Date.now();
       const timeSinceStart = now - this.baselineStartTime;
       
@@ -1337,46 +1338,41 @@ export class AIProctoringService {
       );
       this.lastVerificationConfidence = confidence;
       
-      // BASELINE-BASED OUTLIER DETECTION: Use baseline if established, otherwise use fixed threshold
+      // QUALITY-BASED ADAPTIVE THRESHOLD: Lower quality → more lenient threshold
+      const referenceQuality = (this as any).referenceQualityMetrics?.overallScore ?? 0.8;
+      const adaptiveThreshold = this.getAdaptiveThreshold(frameQuality.score, referenceQuality);
+
+      // BASELINE-BASED OUTLIER DETECTION: Use baseline if established, otherwise use adaptive threshold
       let isMismatch = false;
-      let thresholdUsed = FACE_VERIFICATION_SIMILARITY_THRESHOLD;
-      
-      // HIGH SIMILARITY PROTECTION: If similarity is very high (>0.90), it's likely the same person
-      // This prevents false positives for Person A (reference person) even with baseline detection
+      let thresholdUsed = adaptiveThreshold;
+
+      // HIGH SIMILARITY PROTECTION: If similarity is very high, likely same person (reduce false positives)
       const isHighSimilarity = averagedSimilarity >= FACE_VERIFICATION_HIGH_SIMILARITY_THRESHOLD;
-      
+
       if (this.baselineEstablished && this.baselineMean !== null && this.baselineStdDev !== null) {
-        // Use outlier detection: similarity < (mean - 2 * stdDev)
         const outlierThreshold = this.baselineMean - (FACE_VERIFICATION_OUTLIER_STD_DEVIATIONS * this.baselineStdDev);
-        thresholdUsed = Math.max(outlierThreshold, FACE_VERIFICATION_SIMILARITY_THRESHOLD * 0.8); // Don't go too low
-        
-        // Apply high similarity protection: if similarity > 0.90, never trigger mismatch (same person)
+        thresholdUsed = Math.max(outlierThreshold, adaptiveThreshold * 0.8); // Don't go too low
+
         if (isHighSimilarity) {
-          isMismatch = false; // High similarity = same person, protect from false positive
+          isMismatch = false;
         } else {
-          isMismatch = averagedSimilarity < outlierThreshold && averagedSimilarity < FACE_VERIFICATION_SIMILARITY_THRESHOLD;
+          isMismatch = averagedSimilarity < outlierThreshold && averagedSimilarity < adaptiveThreshold;
         }
-        
+
         console.log("[AIProctoringService] 📊 Using baseline-based detection:", {
           baselineMean: this.baselineMean.toFixed(3),
           baselineStdDev: this.baselineStdDev.toFixed(3),
           outlierThreshold: outlierThreshold.toFixed(3),
+          adaptiveThreshold: adaptiveThreshold.toFixed(3),
           currentSimilarity: averagedSimilarity.toFixed(3),
           isOutlier: averagedSimilarity < outlierThreshold,
           isHighSimilarity,
           protected: isHighSimilarity,
         });
       } else {
-        // Use fixed threshold with dynamic adjustment
-        const isLowSimilarity = averagedSimilarity < FACE_VERIFICATION_SIMILARITY_THRESHOLD;
-        
-        // Dynamic threshold adjustment based on embedding quality
-        const qualityFactor = Math.min(1.0, (currentStdDev + referenceStdDev) / 0.02); // Normalize to 0-1
-        const adjustedThreshold = FACE_VERIFICATION_SIMILARITY_THRESHOLD * (0.9 + 0.1 * qualityFactor); // Adjust by ±10%
-        thresholdUsed = adjustedThreshold;
-        
-        // Apply high similarity protection: if similarity > 0.90, never trigger mismatch (same person)
-        isMismatch = !isHighSimilarity && isLowSimilarity && averagedSimilarity < adjustedThreshold;
+        // Use adaptive threshold (quality-based)
+        thresholdUsed = adaptiveThreshold;
+        isMismatch = !isHighSimilarity && averagedSimilarity < adaptiveThreshold;
       }
       
       // CONFIDENCE FILTER: Only trigger if confidence is high enough
@@ -1406,8 +1402,20 @@ export class AIProctoringService {
         verdict: isMismatch ? "❌ MISMATCH" : "✅ MATCH",
       });
       
-      // Handle mismatch incident with improved logic (use averaged similarity)
-      this.handleFaceMismatchIncident(isMismatch, averagedSimilarity);
+      // Handle mismatch incident with improved logic (use averaged similarity and adaptive threshold)
+      const violationEmitted = this.handleFaceMismatchIncident(isMismatch, averagedSimilarity, thresholdUsed);
+
+      // Telemetry: log every verification check for analytics (Phase 2)
+      faceMismatchTelemetry.logVerification({
+        timestamp: Date.now(),
+        similarityScore: averagedSimilarity,
+        threshold: thresholdUsed,
+        frameQuality: frameQuality.score,
+        referenceQuality,
+        violationTriggered: violationEmitted,
+        candidateId: this.session?.userId ?? "unknown",
+        assessmentId: this.session?.assessmentId ?? "unknown",
+      });
     } catch (error) {
       console.error("[AIProctoringService] ❌ Face verification error:", error);
     }
@@ -1479,6 +1487,37 @@ export class AIProctoringService {
   }
   
   /**
+   * Calculate weighted moving average of similarity scores (Phase 3.2).
+   * More recent scores have higher weight for responsive but stable detection.
+   */
+  private calculateWeightedSimilarity(history: number[]): number {
+    if (history.length === 0) return 0;
+    const len = Math.min(history.length, AIProctoringService.SIMILARITY_WEIGHTS.length);
+    const weights = AIProctoringService.SIMILARITY_WEIGHTS.slice(-len);
+    const scores = history.slice(-len);
+    const weightSum = weights.reduce((a, b) => a + b, 0);
+    const normalizedWeights = weightSum > 0 ? weights.map((w) => w / weightSum) : weights.map(() => 1 / len);
+    return scores.reduce((sum, score, i) => sum + score * normalizedWeights[i], 0);
+  }
+
+  /**
+   * Calculate adaptive threshold based on frame and reference quality.
+   * Lower quality conditions get more lenient thresholds to reduce false positives.
+   */
+  private getAdaptiveThreshold(frameQuality: number, referenceQuality: number): number {
+    const baseThreshold = FACE_VERIFICATION_SIMILARITY_THRESHOLD;
+    const qualityFactor = Math.min(frameQuality, referenceQuality);
+
+    if (qualityFactor < 0.6) {
+      return baseThreshold - 0.05; // 0.67 - poor quality: very lenient
+    }
+    if (qualityFactor < 0.75) {
+      return baseThreshold - 0.03; // 0.69 - medium quality: slightly lenient
+    }
+    return baseThreshold; // 0.72 - good quality
+  }
+
+  /**
    * Calculate verification confidence based on multiple factors
    */
   private calculateVerificationConfidence(
@@ -1508,9 +1547,11 @@ export class AIProctoringService {
   /**
    * Handle FACE_MISMATCH incident state machine with debouncing.
    * State flow: IDLE → DETECTING → TRIGGERED → COOLDOWN → IDLE
-   * Requires consecutive mismatches to reduce false positives
+   * Requires consecutive mismatches to reduce false positives.
+   * Grace period: no violation emitted in first 2 minutes after session start.
+   * @returns true if a violation was emitted this call
    */
-  private handleFaceMismatchIncident(isMismatch: boolean, similarity: number): void {
+  private handleFaceMismatchIncident(isMismatch: boolean, similarity: number, thresholdUsed: number = FACE_VERIFICATION_SIMILARITY_THRESHOLD): boolean {
     const now = Date.now();
     const incident = this.faceMismatchIncident;
     const previousState = incident.state;
@@ -1524,7 +1565,6 @@ export class AIProctoringService {
         incident.snapshotData = null;
         incident.consecutiveMismatches = 0;
         incident.lastSimilarity = 1.0;
-        // Reset similarity history on cooldown expiry
         this.similarityHistory = [];
         console.log("[AIProctoringService] ✅ Face mismatch cooldown expired, reset to idle");
       } else {
@@ -1534,85 +1574,90 @@ export class AIProctoringService {
           isMismatch,
         });
       }
-      return;
+      return false;
     }
 
     // State: IDLE
     if (incident.state === 'idle' && isMismatch) {
-      // Start detecting - require consecutive mismatches
       incident.state = 'detecting';
       incident.detectionStartTime = now;
       incident.consecutiveMismatches = 1;
       incident.lastSimilarity = similarity;
       console.log("[AIProctoringService] ⚠️ Face mismatch detected - starting tracking (1st detection):", {
         similarity: similarity.toFixed(3),
-        threshold: FACE_VERIFICATION_SIMILARITY_THRESHOLD,
+        threshold: thresholdUsed.toFixed(3),
         required: FACE_VERIFICATION_CONSECUTIVE_REQUIRED,
       });
-      return;
+      return false;
     }
 
     // State: DETECTING
     if (incident.state === 'detecting') {
       if (!isMismatch) {
-        // Condition cleared - reset to idle
         const detectionDuration = incident.detectionStartTime ? now - incident.detectionStartTime : 0;
         incident.state = 'idle';
         incident.detectionStartTime = null;
         incident.consecutiveMismatches = 0;
         incident.lastSimilarity = similarity;
-        // Reset similarity history when condition clears
         this.similarityHistory = [];
         console.log("[AIProctoringService] ✅ Face mismatch cleared - similarity returned to normal:", {
           similarity: similarity.toFixed(3),
           detectionDuration: `${(detectionDuration / 1000).toFixed(1)}s`,
         });
-        return;
+        return false;
       }
 
-      // Mismatch continues - increment counter
       incident.consecutiveMismatches = (incident.consecutiveMismatches || 0) + 1;
       incident.lastSimilarity = similarity;
 
-      // Check if we have enough consecutive mismatches
       if (incident.consecutiveMismatches >= FACE_VERIFICATION_CONSECUTIVE_REQUIRED) {
-        // TRIGGER VIOLATION
+        const timeSinceStart = this.sessionStartTime ? now - this.sessionStartTime : 0;
+        if (timeSinceStart < FACE_VERIFICATION_GRACE_PERIOD) {
+          console.warn("[AIProctoringService] [Face Verification] Mismatch during grace period (not triggering violation):", {
+            similarity: similarity.toFixed(3),
+            threshold: thresholdUsed.toFixed(3),
+            timeElapsed: `${(timeSinceStart / 1000).toFixed(0)}s`,
+            gracePeriod: `${(FACE_VERIFICATION_GRACE_PERIOD / 1000)}s`,
+          });
+          incident.state = 'idle';
+          incident.detectionStartTime = null;
+          incident.consecutiveMismatches = 0;
+          return false;
+        }
+
         incident.state = 'triggered';
         incident.lastTriggerTime = now;
         incident.snapshotData = this.captureSnapshot();
 
         console.log("[AIProctoringService] 🚨 FACE_MISMATCH VIOLATION TRIGGERED!", {
           similarity: similarity.toFixed(3),
-          threshold: FACE_VERIFICATION_SIMILARITY_THRESHOLD,
+          threshold: thresholdUsed.toFixed(3),
           consecutiveMismatches: incident.consecutiveMismatches,
           hasSnapshot: !!incident.snapshotData,
         });
 
-        // Emit violation
         this.emitViolation('FACE_MISMATCH', 'high', {
           similarityScore: similarity,
-          threshold: FACE_VERIFICATION_SIMILARITY_THRESHOLD,
+          threshold: thresholdUsed,
           consecutiveDetections: incident.consecutiveMismatches,
-          duration: 0,
+          duration: incident.detectionStartTime ? now - incident.detectionStartTime : 0,
         }, incident.snapshotData);
 
-        // Move to cooldown immediately
         incident.state = 'cooldown';
         incident.detectionStartTime = null;
         incident.consecutiveMismatches = 0;
         console.log("[AIProctoringService] ⏸️ Face mismatch violation emitted, entering cooldown");
-        return;
-      } else {
-        // Still detecting - waiting for more consecutive mismatches
-        console.log("[AIProctoringService] ⏳ Face mismatch still detected:", {
-          similarity: similarity.toFixed(3),
-          consecutiveMismatches: incident.consecutiveMismatches,
-          required: FACE_VERIFICATION_CONSECUTIVE_REQUIRED,
-        });
+        return true;
       }
+
+      console.log("[AIProctoringService] ⏳ Face mismatch still detected:", {
+        similarity: similarity.toFixed(3),
+        threshold: thresholdUsed.toFixed(3),
+        consecutiveMismatches: incident.consecutiveMismatches,
+        required: FACE_VERIFICATION_CONSECUTIVE_REQUIRED,
+      });
     }
-    
-    // Log state transitions
+
     if (previousState !== incident.state) {
       console.log("[AIProctoringService] 🔄 Face mismatch state transition:", {
         from: previousState,
@@ -1622,6 +1667,7 @@ export class AIProctoringService {
         consecutiveMismatches: incident.consecutiveMismatches || 0,
       });
     }
+    return false;
   }
 
   // ============================================================================
