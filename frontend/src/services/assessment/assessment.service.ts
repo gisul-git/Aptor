@@ -65,6 +65,40 @@ export const assessmentService = {
    */
   list: async (): Promise<ApiResponse<Assessment[]>> => {
     const response = await apiClient.get<ApiResponse<Assessment[]>>('/api/v1/assessments');
+    console.log('[assessmentService.list] Raw axios response:', {
+      status: response.status,
+      hasData: !!response.data,
+      dataKeys: response.data ? Object.keys(response.data) : [],
+      dataType: typeof response.data,
+      isArray: Array.isArray(response.data),
+      fullResponse: JSON.stringify(response.data, null, 2),
+    });
+    
+    // Backend returns: {success: true, message: "...", data: [...]}
+    // Axios wraps it in response.data, so response.data = {success: true, message: "...", data: [...]}
+    // We need to extract the actual data array
+    if (response.data && typeof response.data === 'object') {
+      // If response.data has a 'data' property (backend format)
+      if ('data' in response.data && Array.isArray(response.data.data)) {
+        console.log('[assessmentService.list] Extracting data from backend response format');
+        return {
+          success: true,
+          message: response.data.message || 'Success',
+          data: response.data.data,
+        };
+      }
+      // If response.data is already an array (direct format)
+      if (Array.isArray(response.data)) {
+        console.log('[assessmentService.list] Response is already an array');
+        return {
+          success: true,
+          message: 'Success',
+          data: response.data,
+        };
+      }
+    }
+    
+    // Return as-is (might be ApiResponse already)
     return response.data;
   },
 

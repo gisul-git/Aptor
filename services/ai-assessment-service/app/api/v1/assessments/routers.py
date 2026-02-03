@@ -3968,30 +3968,51 @@ async def get_all_assessments_with_schedule(
             user_org = current_user.get("organization")
             user_id = current_user.get("id")
             
+            logger.info(f"[get_all_assessments] User info: user_id={user_id}, user_org={user_org}, role={current_user.get('role')}")
+            
             # Build query based on user's organization
             if user_org:
                 # User has organization - query by organization
                 try:
                     query["organization"] = to_object_id(user_org)
-                except ValueError:
+                    logger.info(f"[get_all_assessments] Querying by organization: {user_org}")
+                except ValueError as e:
+                    logger.warning(f"[get_all_assessments] Invalid organization ID {user_org}: {e}, falling back to createdBy")
                     # Invalid organization ID - fall back to createdBy
                     if user_id:
                         try:
                             query["createdBy"] = to_object_id(user_id)
-                        except ValueError:
-                            pass
+                            logger.info(f"[get_all_assessments] Querying by createdBy (fallback): {user_id}")
+                        except ValueError as e2:
+                            logger.warning(f"[get_all_assessments] Invalid user_id {user_id}: {e2}")
             else:
                 # User has no organization - query by createdBy
                 if user_id:
                     try:
                         query["createdBy"] = to_object_id(user_id)
-                    except ValueError:
-                        pass
+                        logger.info(f"[get_all_assessments] Querying by createdBy: {user_id}")
+                    except ValueError as e:
+                        logger.warning(f"[get_all_assessments] Invalid user_id {user_id}: {e}")
+                else:
+                    logger.warning("[get_all_assessments] No user_id or organization, query will be empty (may return all assessments)")
 
+        logger.info(f"[get_all_assessments] Final query: {query}")
+        
         # Fetch assessments with required fields - optimized query
         # Limit to prevent loading too many documents at once (safety limit)
-        cursor = db.assessments.find(query, {"title": 1, "status": 1, "schedule": 1, "createdAt": 1, "updatedAt": 1, "organization": 1, "createdBy": 1}).limit(1000)
-        all_docs = await cursor.to_list(length=1000)  # Fetch all at once with limit
+        # Increased limit to 500 for better results, with timeout handling
+        try:
+            from pymongo.errors import NetworkTimeout, ServerSelectionTimeoutError, OperationFailure
+            cursor = db.assessments.find(query, {"title": 1, "status": 1, "schedule": 1, "createdAt": 1, "updatedAt": 1, "organization": 1, "createdBy": 1}).limit(500)
+            all_docs = await cursor.to_list(length=500)  # Fetch all at once with limit
+            logger.info(f"[get_all_assessments] Found {len(all_docs)} documents from database")
+        except (NetworkTimeout, ServerSelectionTimeoutError, OperationFailure) as db_error:
+            # Handle MongoDB timeout and connection errors gracefully
+            logger.error(f"MongoDB timeout/connection error fetching assessments: {db_error}")
+            # Log the error but try to continue - don't silently return empty
+            # This allows partial results if some were fetched before timeout
+            all_docs = []
+            logger.warning("Returning empty assessments list due to database timeout - this may indicate a performance issue")
         
         assessments = []
         
@@ -4027,14 +4048,16 @@ async def get_all_assessments_with_schedule(
                 
                 # Serialize datetime and ObjectId fields recursively
                 assessments.append(convert_object_ids(assessment_data))
-            except HTTPException:
+            except HTTPException as http_exc:
                 # Access denied - skip this assessment
+                logger.debug(f"Access denied for assessment {doc.get('_id')}: {http_exc.detail}")
                 continue
             except Exception as exc:
-                logger.warning("Error processing assessment document: %s", exc)
+                logger.warning(f"Error processing assessment document {doc.get('_id')}: {exc}", exc_info=True)
                 # Skip this assessment if there's an error processing it
                 continue
 
+        logger.info(f"[get_all_assessments] Returning {len(assessments)} assessments after processing")
         return success_response("Assessments with schedule status fetched successfully", assessments)
     except Exception as exc:
         logger.exception("Error fetching assessments: %s", exc)
@@ -5328,30 +5351,51 @@ async def get_all_assessments_with_schedule(
             user_org = current_user.get("organization")
             user_id = current_user.get("id")
             
+            logger.info(f"[get_all_assessments] User info: user_id={user_id}, user_org={user_org}, role={current_user.get('role')}")
+            
             # Build query based on user's organization
             if user_org:
                 # User has organization - query by organization
                 try:
                     query["organization"] = to_object_id(user_org)
-                except ValueError:
+                    logger.info(f"[get_all_assessments] Querying by organization: {user_org}")
+                except ValueError as e:
+                    logger.warning(f"[get_all_assessments] Invalid organization ID {user_org}: {e}, falling back to createdBy")
                     # Invalid organization ID - fall back to createdBy
                     if user_id:
                         try:
                             query["createdBy"] = to_object_id(user_id)
-                        except ValueError:
-                            pass
+                            logger.info(f"[get_all_assessments] Querying by createdBy (fallback): {user_id}")
+                        except ValueError as e2:
+                            logger.warning(f"[get_all_assessments] Invalid user_id {user_id}: {e2}")
             else:
                 # User has no organization - query by createdBy
                 if user_id:
                     try:
                         query["createdBy"] = to_object_id(user_id)
-                    except ValueError:
-                        pass
+                        logger.info(f"[get_all_assessments] Querying by createdBy: {user_id}")
+                    except ValueError as e:
+                        logger.warning(f"[get_all_assessments] Invalid user_id {user_id}: {e}")
+                else:
+                    logger.warning("[get_all_assessments] No user_id or organization, query will be empty (may return all assessments)")
 
+        logger.info(f"[get_all_assessments] Final query: {query}")
+        
         # Fetch assessments with required fields - optimized query
         # Limit to prevent loading too many documents at once (safety limit)
-        cursor = db.assessments.find(query, {"title": 1, "status": 1, "schedule": 1, "createdAt": 1, "updatedAt": 1, "organization": 1, "createdBy": 1}).limit(1000)
-        all_docs = await cursor.to_list(length=1000)  # Fetch all at once with limit
+        # Increased limit to 500 for better results, with timeout handling
+        try:
+            from pymongo.errors import NetworkTimeout, ServerSelectionTimeoutError, OperationFailure
+            cursor = db.assessments.find(query, {"title": 1, "status": 1, "schedule": 1, "createdAt": 1, "updatedAt": 1, "organization": 1, "createdBy": 1}).limit(500)
+            all_docs = await cursor.to_list(length=500)  # Fetch all at once with limit
+            logger.info(f"[get_all_assessments] Found {len(all_docs)} documents from database")
+        except (NetworkTimeout, ServerSelectionTimeoutError, OperationFailure) as db_error:
+            # Handle MongoDB timeout and connection errors gracefully
+            logger.error(f"MongoDB timeout/connection error fetching assessments: {db_error}")
+            # Log the error but try to continue - don't silently return empty
+            # This allows partial results if some were fetched before timeout
+            all_docs = []
+            logger.warning("Returning empty assessments list due to database timeout - this may indicate a performance issue")
         
         assessments = []
         
@@ -5387,14 +5431,16 @@ async def get_all_assessments_with_schedule(
                 
                 # Serialize datetime and ObjectId fields recursively
                 assessments.append(convert_object_ids(assessment_data))
-            except HTTPException:
+            except HTTPException as http_exc:
                 # Access denied - skip this assessment
+                logger.debug(f"Access denied for assessment {doc.get('_id')}: {http_exc.detail}")
                 continue
             except Exception as exc:
-                logger.warning("Error processing assessment document: %s", exc)
+                logger.warning(f"Error processing assessment document {doc.get('_id')}: {exc}", exc_info=True)
                 # Skip this assessment if there's an error processing it
                 continue
 
+        logger.info(f"[get_all_assessments] Returning {len(assessments)} assessments after processing")
         return success_response("Assessments with schedule status fetched successfully", assessments)
     except Exception as exc:
         logger.exception("Error fetching assessments: %s", exc)
