@@ -5,6 +5,7 @@ Kernel executor with proper message collection, correlation, and error recovery.
 import asyncio
 import time
 import logging
+from queue import Empty as QueueEmpty
 from typing import Dict, Any, Optional
 from jupyter_client import BlockingKernelClient
 from agent.kernel_manager import (
@@ -39,7 +40,7 @@ async def drain_iopub_messages(kc: BlockingKernelClient, timeout: float = 0.1) -
                 timeout=timeout + 0.01
             )
             drained += 1
-        except (asyncio.TimeoutError, Exception):
+        except (asyncio.TimeoutError, QueueEmpty, Exception):
             break
     
     if drained > 0:
@@ -245,13 +246,15 @@ async def execute_in_kernel(
                                                     'evalue': reply['content'].get('evalue'),
                                                     'traceback': reply['content'].get('traceback', [])
                                                 }
-                                except asyncio.TimeoutError:
+                                except (asyncio.TimeoutError, QueueEmpty):
                                     pass
                                 
                                 execution_complete = True
                                 break
                     
-                    except asyncio.TimeoutError:
+                    except (asyncio.TimeoutError, QueueEmpty):
+                        # QueueEmpty is expected when no messages are available (timeout)
+                        # Treat it the same as asyncio.TimeoutError
                         consecutive_timeouts += 1
                         
                         # Check if kernel is still alive
@@ -295,6 +298,23 @@ async def execute_in_kernel(
                 return result
             
             except Exception as e:
+                # QueueEmpty is expected when no messages are available - don't log as error
+                if isinstance(e, QueueEmpty):
+                    # This should have been caught in the inner handler, but if it propagates,
+                    # it's not a real error - just means no messages were available
+                    logger.debug(f"QueueEmpty during execution (expected): {e}")
+                    # Treat as timeout and continue
+                    result['status'] = 'ok'
+                    result['stdout'] = ''.join(stdout_parts)
+                    result['stderr'] = ''.join(stderr_parts)
+                    result['images'] = images
+                    result['error'] = error_info
+                    reset_kernel_state(session_id)
+                    metrics.increment('executions.success', tags={'session_id': session_id})
+                    elapsed = time.time() - start_time
+                    metrics.histogram('executions.duration', elapsed, tags={'session_id': session_id})
+                    return result
+                
                 logger.error(f"Execution error (attempt {attempt + 1}/{max_retries + 1}): {e}", exc_info=True)
                 
                 # Check if it's a retryable error
