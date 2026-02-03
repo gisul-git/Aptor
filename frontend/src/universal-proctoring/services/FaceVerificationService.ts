@@ -142,6 +142,14 @@ export class FaceVerificationService {
     const e1 = Array.isArray(embedding1) ? embedding1 : Array.from(embedding1);
     const e2 = Array.isArray(embedding2) ? embedding2 : Array.from(embedding2);
 
+    const descriptorType = e1.length === 128 ? "face-api.js 128-D FaceNet" : e1.length === 16401 ? "custom 16,401-D" : "unknown";
+    console.log("[FaceVerificationService] 📊 Comparing face descriptors:", {
+      embedding1Length: e1.length,
+      embedding2Length: e2.length,
+      descriptorType,
+      descriptorQuality: e1.length === 128 ? "identity-aware" : "pixel-based",
+    });
+
     if (e1.length !== e2.length) {
       console.warn("[FaceVerificationService] ⚠️ Embedding dimensions don't match:", {
         embedding1Length: e1.length,

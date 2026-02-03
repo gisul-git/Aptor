@@ -8,6 +8,7 @@ import React, { useState, useEffect, useCallback, useRef } from "react";
 import { initializeFaceDetection, detectFaces, cleanupFaceDetection, type FaceDetectionState } from "../engine/faceDetection";
 import { modelService } from "@/universal-proctoring/services/ModelService";
 import { FaceVerificationService } from "@/universal-proctoring/services/FaceVerificationService";
+import { faceAPIService } from "@/universal-proctoring/services/FaceAPIService";
 import axios from "@/lib/axios-config"; // Use configured axios with auth interceptor
 import { getGateContext } from "@/lib/gateContext";
 
@@ -1060,10 +1061,29 @@ export default function IdentityVerification({
           img.src = photoData;
         });
 
-        // Extract embedding from reference photo
-        console.log('[IdentityVerification] 🔍 Extracting face embedding from reference photo...');
-        embedding = await faceVerificationService.extractEmbedding(img);
-        
+        // Extract embedding for face mismatch: use face-api.js 128-D descriptor first, fallback to custom
+        console.log('[IdentityVerification] 🔍 Extracting face embedding for face mismatch...');
+        try {
+          if (!faceAPIService.isReady()) {
+            console.log('[IdentityVerification] 📦 Loading face-api.js models...');
+            await faceAPIService.loadModels();
+          }
+          const faceApiDescriptor = await faceAPIService.getFaceDescriptor(img);
+          if (faceApiDescriptor) {
+            embedding = faceApiDescriptor;
+            console.log('[IdentityVerification] ✅ face-api.js 128-D descriptor extracted:', {
+              dimensions: embedding.length,
+              type: 'face-api.js FaceNet',
+              descriptorType: '128-D identity-aware',
+            });
+          }
+        } catch (faceApiError) {
+          console.warn('[IdentityVerification] ⚠️ face-api.js extraction failed, using custom embedding:', faceApiError);
+        }
+        if (!embedding) {
+          console.log('[IdentityVerification] 🔍 Extracting face embedding from reference photo (custom)...');
+          embedding = await faceVerificationService.extractEmbedding(img);
+        }
         if (!embedding) {
           console.warn('[IdentityVerification] ⚠️ Could not extract embedding from reference photo - no face detected');
           setStatusMessage("⚠️ Could not extract face features. Please ensure your face is clearly visible and click 'Retry Photo'.");
@@ -1152,9 +1172,10 @@ export default function IdentityVerification({
           
           sessionStorage.setItem('faceVerificationReferenceQuality', JSON.stringify(qualityMetrics));
           
-          console.log('[IdentityVerification] ✅ Reference face embedding extracted and validated:', {
+          console.log('[IdentityVerification] ✅ Reference descriptor extracted and validated:', {
             dimensions: embeddingArray.length,
             type: Array.isArray(embedding) ? 'Array' : embedding.constructor.name,
+            descriptorType: embeddingArray.length === 128 ? 'face-api.js 128-D FaceNet' : 'custom',
             quality: 'valid',
             qualityMetrics,
           });

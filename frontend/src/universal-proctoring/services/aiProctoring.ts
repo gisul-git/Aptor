@@ -25,6 +25,7 @@ import {
 } from "../utils";
 import { FaceVerificationService, type FaceEmbedding } from "./FaceVerificationService";
 import { faceMismatchTelemetry } from "./faceMismatchTelemetry";
+import { faceAPIService } from "./FaceAPIService";
 
 // ============================================================================
 // Constants - Preserved from useFaceMesh.ts
@@ -65,9 +66,10 @@ const MULTIPLE_FACE_COOLDOWN = 2000;         // 6 seconds cooldown
 const FACE_VERIFICATION_CHECK_INTERVAL = 3000; // Check every 3 seconds (faster detection)
 const FACE_VERIFICATION_TRIGGER_DURATION = 0; // 0 seconds - trigger immediately when mismatch detected
 const FACE_VERIFICATION_COOLDOWN = 90000; // 90 seconds cooldown - prevents repeated false alerts
-const FACE_VERIFICATION_SIMILARITY_THRESHOLD = 0.72; // Minimum similarity (0-1) - lenient for custom embeddings
-const FACE_VERIFICATION_CONSECUTIVE_REQUIRED = 5; // Require 5 consecutive mismatches (~15s) before triggering
-const FACE_VERIFICATION_HIGH_SIMILARITY_THRESHOLD = 0.82; // If similarity > 0.82, likely same person (protect from false positives)
+// Thresholds for face-api.js 128-D FaceNet descriptors (identity-aware); fallback custom uses same
+const FACE_VERIFICATION_SIMILARITY_THRESHOLD = 0.6; // 128-D: same ~0.75–0.85, different ~0.30–0.50
+const FACE_VERIFICATION_CONSECUTIVE_REQUIRED = 4; // Require 4 consecutive mismatches (~12s) before triggering
+const FACE_VERIFICATION_HIGH_SIMILARITY_THRESHOLD = 0.75; // If similarity > 0.75, likely same person (protect from false positives)
 const FACE_VERIFICATION_MIN_CONFIDENCE = 0.70; // Minimum confidence (0-1) to trigger violation
 const FACE_VERIFICATION_BASELINE_DURATION = 45000; // 45 seconds to establish baseline - faster than 60s
 const FACE_VERIFICATION_BASELINE_MIN_SAMPLES = 3; // Minimum samples needed for baseline
@@ -1258,17 +1260,44 @@ export class AIProctoringService {
         console.log("[AIProctoringService] ⏭️ Frame quality too low - skipping verification:", frameQuality.reason);
         return;
       }
-      
-      // Extract embedding from current video frame
-      const currentEmbedding = await this.faceVerificationService.extractEmbedding(this.videoElement);
-      
+
+      // Extract current frame descriptor: use face-api.js 128-D when reference is 128-D, else custom
+      const referenceIs128D = this.referenceEmbedding && (Array.isArray(this.referenceEmbedding) ? this.referenceEmbedding.length : this.referenceEmbedding.length) === 128;
+      let currentEmbedding: FaceEmbedding | null = null;
+
+      if (referenceIs128D) {
+        try {
+          if (!faceAPIService.isReady()) {
+            console.log("[AIProctoringService] 📦 Face mismatch (128-D reference) - loading face-api.js models...");
+            await faceAPIService.loadModels();
+          }
+          const canvas = document.createElement("canvas");
+          canvas.width = this.videoElement!.videoWidth;
+          canvas.height = this.videoElement!.videoHeight;
+          const ctx = canvas.getContext("2d");
+          if (ctx) {
+            ctx.drawImage(this.videoElement!, 0, 0);
+            currentEmbedding = await faceAPIService.getFaceDescriptor(canvas);
+          }
+          if (currentEmbedding) {
+            console.log("[AIProctoringService] ✅ Current frame 128-D descriptor extracted (face-api.js)");
+          }
+        } catch (err) {
+          console.error("[AIProctoringService] ❌ Error extracting current frame descriptor (face-api.js):", err);
+        }
+      }
+
+      if (!currentEmbedding && this.faceVerificationService?.isReady()) {
+        currentEmbedding = await this.faceVerificationService.extractEmbedding(this.videoElement!);
+        if (currentEmbedding) {
+          console.log("[AIProctoringService] ✅ Current frame embedding extracted (custom)");
+        }
+      }
+
       if (!currentEmbedding) {
-        // No face detected in current frame - skip check
         console.log("[AIProctoringService] ⏭️ No face detected in current frame - skipping verification");
         return;
       }
-
-      console.log("[AIProctoringService] ✅ Current frame embedding extracted");
 
       // Quality check: Validate current embedding has sufficient variance
       const currentEmbeddingArray = Array.isArray(currentEmbedding) ? currentEmbedding : Array.from(currentEmbedding);
