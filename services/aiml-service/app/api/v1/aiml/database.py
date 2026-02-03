@@ -20,13 +20,15 @@ async def connect_to_aiml_mongo() -> None:
     if _aiml_client is None:
         _aiml_client = AsyncIOMotorClient(
             settings.mongo_uri,
-            serverSelectionTimeoutMS=5000,
-            connectTimeoutMS=10000,
-            socketTimeoutMS=30000,
+            serverSelectionTimeoutMS=10000,
+            connectTimeoutMS=20000,
+            socketTimeoutMS=60000,  # Increased to 60 seconds for slow queries
             maxPoolSize=1000,
             minPoolSize=10,
             maxIdleTimeMS=30000,
-            waitQueueTimeoutMS=5000,
+            waitQueueTimeoutMS=10000,
+            retryWrites=True,
+            retryReads=True,
         )
         _aiml_db = _aiml_client[settings.mongo_db]
         # Test the connection
