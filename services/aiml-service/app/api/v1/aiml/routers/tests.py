@@ -8,6 +8,7 @@ import urllib.parse
 import re
 import csv
 import io
+from pymongo.errors import NetworkTimeout, ServerSelectionTimeoutError, OperationFailure
 from ..database import get_aiml_database as get_database
 from ..models.test import TestCreate, Test, AddCandidateRequest
 from app.core.dependencies import get_current_user, require_editor
@@ -221,8 +222,26 @@ async def get_tests(
         raise HTTPException(status_code=400, detail="Invalid user ID")
     user_id = str(user_id).strip()
     
-    # Filter by both user and test_type to only get AIML tests
-    tests = await db.tests.find({"created_by": user_id, "test_type": "aiml"}).sort("created_at", -1).to_list(length=1000)
+    try:
+        # Filter by both user and test_type to only get AIML tests
+        # Limit to 100 to avoid timeout issues
+        tests = await db.tests.find(
+            {"created_by": user_id, "test_type": "aiml"}
+        ).sort("created_at", -1).limit(100).to_list(length=100)
+    except (NetworkTimeout, ServerSelectionTimeoutError) as e:
+        logger.error(f"MongoDB timeout error for user {user_id}: {e}", exc_info=True)
+        # Return empty list on timeout to prevent 500 error
+        # Frontend will handle empty list gracefully
+        return []
+    except OperationFailure as e:
+        logger.error(f"MongoDB operation failure for user {user_id}: {e}", exc_info=True)
+        # Return empty list on operation failure
+        return []
+    except Exception as e:
+        logger.error(f"Unexpected error fetching tests from MongoDB for user {user_id}: {e}", exc_info=True)
+        # For other errors, return empty list to prevent 500 error
+        # This ensures the dashboard can still load even if there's a DB issue
+        return []
     
     result = []
     for test in tests:
