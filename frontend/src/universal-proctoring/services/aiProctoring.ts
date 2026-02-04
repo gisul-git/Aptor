@@ -63,8 +63,8 @@ const MULTIPLE_FACE_COOLDOWN = 2000;         // 6 seconds cooldown
 const FACE_VERIFICATION_INTERVAL_MS = 3000;         // Check every 3 seconds
 const TIER1_SIMILARITY_THRESHOLD = 80;              // Tier 1: if < 80%, escalate to Tier 2
 const TIER2_SIMILARITY_THRESHOLD = 40;              // Tier 2: if < 40%, mismatch (backend uses this)
-const FACE_MISMATCH_CONSECUTIVE_REQUIRED = 3;       // 3 consecutive mismatches
-const FACE_MISMATCH_GRACE_PERIOD_MS = 120000;       // 2 minutes grace period
+const FACE_MISMATCH_CONSECUTIVE_REQUIRED = 2;       // 2 Tier 2 mismatches → toast faster
+const FACE_MISMATCH_GRACE_PERIOD_MS = 30000;       // 30 seconds grace period
 const FACE_MISMATCH_COOLDOWN_MS = 90000;            // 90 seconds cooldown
 const MIN_FACE_CONFIDENCE = 95;                     // Minimum BlazeFace confidence (0-100)
 const MIN_FACE_SIZE = 0.1;                          // 10% of frame minimum
@@ -978,7 +978,7 @@ export class AIProctoringService {
           confidence: faceQuality.confidence.toFixed(1),
           faceSize: `${(faceQuality.faceSize * 100).toFixed(1)}%`,
         });
-        this.consecutiveMismatches = 0;
+        // Don't reset consecutiveMismatches here — only reset when Tier 2 says match. Toast appears faster.
         return;
       }
 
