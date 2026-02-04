@@ -94,6 +94,9 @@ export default function AIMLTestTakePage() {
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0)
   const [codeAnswers, setCodeAnswers] = useState<Record<string, string>>({})
   const [outputAnswers, setOutputAnswers] = useState<Record<string, string[]>>({})
+  // Use refs to store latest values for timer expiration (avoid closure issues)
+  const codeAnswersRef = useRef<Record<string, string>>({})
+  const outputAnswersRef = useRef<Record<string, string[]>>({})
   const [timeRemaining, setTimeRemaining] = useState<number | null>(null)
   const [submitted, setSubmitted] = useState(false)
   const [submitting, setSubmitting] = useState(false)
@@ -828,10 +831,15 @@ export default function AIMLTestTakePage() {
     if (currentQuestion && 
         !expiredQuestions.has(currentQuestion.id) &&
         (test?.timer_mode !== 'PER_QUESTION' || unlockedQuestions.has(currentQuestion.id))) {
-      setCodeAnswers(prev => ({
-        ...prev,
-        [currentQuestion.id]: code
-      }))
+      setCodeAnswers(prev => {
+        const updated = {
+          ...prev,
+          [currentQuestion.id]: code
+        }
+        // Update ref immediately for timer access
+        codeAnswersRef.current = updated
+        return updated
+      })
       
       // Debounced auto-save (save 2 seconds after user stops typing)
       if (autoSaveRef.current) clearTimeout(autoSaveRef.current)
@@ -840,6 +848,48 @@ export default function AIMLTestTakePage() {
       }, 2000)
     }
   }, [currentQuestion, autoSaveAnswer, expiredQuestions, test?.timer_mode, unlockedQuestions])
+
+  const handleOutputChange = useCallback((outputs: string[]) => {
+    console.log('%c[PARENT] 🟡 handleOutputChange called', 'color: #ffaa00; font-weight: bold; font-size: 14px', {
+      currentQuestionId: currentQuestion?.id,
+      outputsCount: outputs.length,
+      outputs: outputs.map((o, idx) => ({ index: idx, length: o.length, preview: o.substring(0, 50) })),
+      isExpired: currentQuestion ? expiredQuestions.has(currentQuestion.id) : false,
+      timerMode: test?.timer_mode,
+      isUnlocked: currentQuestion ? unlockedQuestions.has(currentQuestion.id) : false
+    })
+    
+    if (currentQuestion && 
+        !expiredQuestions.has(currentQuestion.id) &&
+        (test?.timer_mode !== 'PER_QUESTION' || unlockedQuestions.has(currentQuestion.id))) {
+      console.log('%c[PARENT] ✅ Saving outputs to state', 'color: #00aa00; font-weight: bold; font-size: 14px', {
+        questionId: currentQuestion.id,
+        outputsCount: outputs.length
+      })
+      setOutputAnswers(prev => {
+        const updated = {
+          ...prev,
+          [currentQuestion.id]: outputs
+        }
+        // Update ref immediately for timer access (avoid closure issues)
+        outputAnswersRef.current = updated
+        console.log('%c[PARENT] 💾 Outputs stored in state AND ref', 'color: #00aa00; font-weight: bold; font-size: 14px', {
+          questionId: currentQuestion.id,
+          storedOutputs: updated[currentQuestion.id]?.length || 0,
+          allStoredQuestions: Object.keys(updated),
+          refOutputs: outputAnswersRef.current[currentQuestion.id]?.length || 0
+        })
+        return updated
+      })
+    } else {
+      console.log('%c[PARENT] ❌ NOT saving outputs - conditions not met', 'color: #ff0000; font-weight: bold; font-size: 14px', {
+        hasCurrentQuestion: !!currentQuestion,
+        isExpired: currentQuestion ? expiredQuestions.has(currentQuestion.id) : 'N/A',
+        timerMode: test?.timer_mode,
+        isUnlocked: currentQuestion ? unlockedQuestions.has(currentQuestion.id) : 'N/A'
+      })
+    }
+  }, [currentQuestion, expiredQuestions, test?.timer_mode, unlockedQuestions])
 
   const handleSubmitQuestion = async (code: string, outputs: string[]) => {
     if (!currentQuestion || submitting) return
@@ -911,17 +961,27 @@ export default function AIMLTestTakePage() {
     setSubmitting(true)
     
     try {
-      // Save all current answers before submitting
-      console.log('[AIML Take] Saving all answers before auto-submit')
-      const savePromises = Object.entries(codeAnswers).map(async ([questionId, code]) => {
+      // Save all current answers before submitting (use refs for latest values)
+      console.log('%c[AUTO-SUBMIT] 💾 Saving all answers before auto-submit', 'color: #0066ff; font-weight: bold; font-size: 14px')
+      const savePromises = Object.entries(codeAnswersRef.current).map(async ([questionId, code]) => {
         try {
-          await autoSaveAnswer(questionId, code)
+          // Also save outputs when auto-saving
+          const outputs = outputAnswersRef.current[questionId] || []
+          await aimlApi.post(
+            `/tests/${testId}/submit-answer`,
+            {
+              user_id: userId,
+              question_id: questionId,
+              source_code: code,
+              outputs: outputs,  // Include outputs in auto-save
+            }
+          )
         } catch (err) {
-          console.error(`[AIML Take] Failed to save answer for question ${questionId}:`, err)
+          console.error(`%c[AUTO-SUBMIT] ❌ Failed to save answer for question ${questionId}`, 'color: #ff0000; font-weight: bold; font-size: 12px', err)
         }
       })
       await Promise.all(savePromises)
-      console.log('[AIML Take] All answers saved, proceeding with submission')
+      console.log('%c[AUTO-SUBMIT] ✅ All answers saved, proceeding with submission', 'color: #00aa00; font-weight: bold; font-size: 14px')
       
       // Get candidate requirements from sessionStorage
       const candidateRequirements: any = {};
@@ -948,14 +1008,32 @@ export default function AIMLTestTakePage() {
       }
 
       const { aimlService } = await import('@/services/aiml')
+      
+      // IMPORTANT: Read from refs to avoid closure issues (same fix as question expiration)
+      // Refs always have the latest values, state might be stale
+      console.log('%c[AUTO-SUBMIT] 📤 Reading all answers from refs for final submission', 'color: #0066ff; font-weight: bold; font-size: 14px', {
+        codeAnswersFromRef: Object.keys(codeAnswersRef.current),
+        outputAnswersFromRef: Object.keys(outputAnswersRef.current),
+        allQuestions: Object.keys(codeAnswers)
+      })
+      
       // Backend expects 'answers' with 'source_code' field, not 'question_submissions' with 'code'
       const response = await aimlService.submitTest(String(testId), {
         user_id: userId,
-        answers: Object.entries(codeAnswers).map(([questionId, code]) => ({
-          question_id: questionId,
-          source_code: code,  // Backend expects 'source_code', not 'code'
-          outputs: outputAnswers[questionId] || []
-        })),
+        answers: Object.entries(codeAnswersRef.current).map(([questionId, code]) => {
+          const outputs = outputAnswersRef.current[questionId] || []
+          console.log('%c[AUTO-SUBMIT] 📝 Including answer', 'color: #00aa00; font-weight: bold; font-size: 12px', {
+            questionId,
+            codeLength: code.length,
+            outputsCount: outputs.length,
+            hasOutputs: outputs.length > 0
+          })
+          return {
+            question_id: questionId,
+            source_code: code,  // Backend expects 'source_code', not 'code'
+            outputs: outputs  // Read from ref, not state
+          }
+        }),
         activity_logs: undefined,
         candidateRequirements: candidateRequirements
       })
@@ -1020,14 +1098,30 @@ export default function AIMLTestTakePage() {
       }
 
       const { aimlService } = await import('@/services/aiml')
+      
+      // IMPORTANT: Read from refs to avoid closure issues (same fix as auto-submit)
+      console.log('%c[MANUAL-SUBMIT] 📤 Reading all answers from refs for final submission', 'color: #0066ff; font-weight: bold; font-size: 14px', {
+        codeAnswersFromRef: Object.keys(codeAnswersRef.current),
+        outputAnswersFromRef: Object.keys(outputAnswersRef.current)
+      })
+      
       // Backend expects 'answers' with 'source_code' field
       const response = await aimlService.submitTest(String(testId), {
         user_id: userId,
-        answers: Object.entries(codeAnswers).map(([questionId, code]) => ({
-          question_id: questionId,
-          source_code: code,  // Backend expects 'source_code', not 'code'
-          outputs: outputAnswers[questionId] || []
-        })),
+        answers: Object.entries(codeAnswersRef.current).map(([questionId, code]) => {
+          const outputs = outputAnswersRef.current[questionId] || []
+          console.log('%c[MANUAL-SUBMIT] 📝 Including answer', 'color: #00aa00; font-weight: bold; font-size: 12px', {
+            questionId,
+            codeLength: code.length,
+            outputsCount: outputs.length,
+            hasOutputs: outputs.length > 0
+          })
+          return {
+            question_id: questionId,
+            source_code: code,  // Backend expects 'source_code', not 'code'
+            outputs: outputs  // Read from ref, not state
+          }
+        }),
         activity_logs: undefined,
         candidateRequirements: candidateRequirements
       })
@@ -1080,7 +1174,31 @@ export default function AIMLTestTakePage() {
     currentQuestionId: currentQuestionForTimer?.id || null,
     onExpire: handleAutoSubmitTest,
     onQuestionExpire: async (questionId: string) => {
-      console.log('[AIML Timer] Question expired:', questionId)
+      console.log('%c[TIMER] 🔴 Question expired!', 'color: #ff0000; font-weight: bold; font-size: 16px; background: #ffeeee; padding: 4px', {
+        questionId,
+        timestamp: new Date().toISOString()
+      })
+      
+      // IMPORTANT: Read from refs to get latest values (avoid closure/stale state issues)
+      // Refs are always up-to-date and don't have closure problems
+      const currentCode = codeAnswersRef.current[questionId] || ''
+      const currentOutputs = outputAnswersRef.current[questionId] || []
+      
+      console.log('%c[TIMER] 📝 Reading code from REF', 'color: #0066ff; font-weight: bold; font-size: 14px', {
+        questionId,
+        codeLength: currentCode.length,
+        hasCode: !!currentCode,
+        allQuestionsInRef: Object.keys(codeAnswersRef.current)
+      })
+      
+      console.log('%c[TIMER] 📤 Reading outputs from REF', 'color: #0066ff; font-weight: bold; font-size: 14px', {
+        questionId,
+        outputsCount: currentOutputs.length,
+        outputs: currentOutputs.map((o, idx) => ({ index: idx, length: o.length, preview: o.substring(0, 50) })),
+        allStoredQuestions: Object.keys(outputAnswersRef.current),
+        storedOutputsForThisQuestion: outputAnswersRef.current[questionId]?.length || 0,
+        refHasOutputs: outputAnswersRef.current[questionId]?.length > 0
+      })
       
       // Mark question as expired and completed
       setExpiredQuestions(prev => {
@@ -1095,14 +1213,70 @@ export default function AIMLTestTakePage() {
       })
       setExpiredQuestionId(questionId)
       
-      // Auto-save the current question's answer
-      const currentCode = codeAnswers[questionId] || ''
-      const currentOutputs = outputAnswers[questionId] || []
+      // Submit the answer with outputs for evaluation (not just auto-save)
+      // This ensures the code is evaluated even if user didn't click submit
+      if (!token || !userId || !testId) {
+        console.warn('%c[TIMER] ⚠️ Cannot auto-submit - missing credentials', 'color: #ff6600; font-weight: bold; font-size: 14px', {
+          hasToken: !!token,
+          hasUserId: !!userId,
+          hasTestId: !!testId
+        })
+        return
+      }
+      
+      console.log('%c[TIMER] 🚀 Attempting to submit answer', 'color: #0066ff; font-weight: bold; font-size: 14px', {
+        questionId,
+        codeLength: currentCode.length,
+        outputsCount: currentOutputs.length,
+        hasCode: !!currentCode,
+        hasOutputs: currentOutputs.length > 0
+      })
+      
       try {
-        await autoSaveAnswer(questionId, currentCode)
-        console.log('[AIML Timer] Auto-saved question:', questionId)
+        const expiredQuestion = questions.find(q => q.id === questionId)
+        if (expiredQuestion && currentCode) {
+          // Submit with outputs for evaluation (same as handleSubmitQuestion)
+          console.log('%c[TIMER] 📤 Submitting with outputs for evaluation', 'color: #00aa00; font-weight: bold; font-size: 14px', {
+            questionId,
+            outputsCount: currentOutputs.length,
+            codeLength: currentCode.length
+          })
+          
+          await aimlApi.post(
+            `/tests/${testId}/submit-answer`,
+            {
+              user_id: userId,
+              question_id: questionId,
+              source_code: currentCode,
+              outputs: currentOutputs,
+            }
+          )
+          console.log('%c[TIMER] ✅ Successfully submitted with outputs!', 'color: #00aa00; font-weight: bold; font-size: 14px; background: #eeffee; padding: 4px', {
+            questionId,
+            outputsCount: currentOutputs.length,
+            hasCode: !!currentCode
+          })
+        } else {
+          // Fallback to auto-save if no code or question not found
+          console.log('%c[TIMER] ⚠️ Fallback: Auto-saving (no code or question not found)', 'color: #ff6600; font-weight: bold; font-size: 14px', {
+            questionId,
+            hasQuestion: !!expiredQuestion,
+            hasCode: !!currentCode
+          })
+          await autoSaveAnswer(questionId, currentCode)
+          console.log('%c[TIMER] 💾 Auto-saved question', 'color: #ff6600; font-weight: bold; font-size: 14px', {
+            questionId
+          })
+        }
       } catch (err) {
-        console.error('[AIML Timer] Failed to auto-save:', err)
+        console.error('%c[TIMER] ❌ Failed to auto-submit!', 'color: #ff0000; font-weight: bold; font-size: 14px; background: #ffeeee; padding: 4px', err)
+        // Try to at least save the code as fallback
+        try {
+          await autoSaveAnswer(questionId, currentCode)
+          console.log('%c[TIMER] 💾 Fallback auto-save succeeded', 'color: #ff6600; font-weight: bold; font-size: 14px')
+        } catch (saveErr) {
+          console.error('%c[TIMER] ❌ Fallback auto-save also failed!', 'color: #ff0000; font-weight: bold; font-size: 14px', saveErr)
+        }
       }
       
       // Lock current question and unlock next question (sequential locking)
@@ -1619,6 +1793,7 @@ export default function AIMLTestTakePage() {
             question={currentQuestion}
             sessionId={`test_${testId}_user_${userId}_q_${currentQuestion.id}`}
             onCodeChange={handleCodeChange}
+            onOutputChange={handleOutputChange}
             onSubmit={handleSubmitQuestion}
             showSubmit={true}
             readOnly={expiredQuestions.has(currentQuestion.id)}
