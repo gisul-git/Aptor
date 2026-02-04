@@ -81,6 +81,14 @@ async def log_requests(request, call_next):
         return response
     except Exception as e:
         logger.error(f"🔴 [Auth Service] Middleware error: {e}", exc_info=True)
+        logger.error(f"🔴 [Auth Service] Middleware error type: {type(e)}")
+        logger.error(f"🔴 [Auth Service] Middleware error repr: {repr(e)}")
+        logger.error(f"🔴 [Auth Service] Middleware error args: {e.args if hasattr(e, 'args') else 'No args'}")
+        
+        # Log the full traceback
+        import traceback
+        logger.error(f"🔴 [Auth Service] Middleware error traceback:\n{traceback.format_exc()}")
+        
         from fastapi import Response
         return Response(
             content=f'{{"detail": "Internal server error: {str(e)}"}}',
