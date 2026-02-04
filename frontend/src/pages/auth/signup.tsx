@@ -321,6 +321,16 @@ export default function SignupPage({ providers }: SignupPageProps) {
       setLoading(true);
       setMessage(null);
       setPhoneError("");
+      
+      console.log("🟡 [Signup Page] Submitting form with data:", {
+        name,
+        email,
+        password: password ? `${password.substring(0, 2)}***` : "empty",
+        organization: organization.trim(),
+        phone: phone.trim() ? `${phoneCountryCode} ${phone.trim()}` : undefined,
+        country: country.trim() || undefined,
+      });
+      
       const { data } = await axios.post("/api/auth/signup", {
         name,
         email,
@@ -329,6 +339,13 @@ export default function SignupPage({ providers }: SignupPageProps) {
         phone: phone.trim() ? `${phoneCountryCode} ${phone.trim()}` : undefined,
         country: country.trim() || undefined,
       });
+      
+      console.log("🟢 [Signup Page] Success response:", {
+        data,
+        dataType: typeof data,
+        dataKeys: data ? Object.keys(data) : [],
+      });
+      
       setShowVerification(true);
       setMessage({
         type: "success",
@@ -337,7 +354,41 @@ export default function SignupPage({ providers }: SignupPageProps) {
       setTimeRemaining(60);
       setCodeExpired(false);
     } catch (error: any) {
-      showMessage("error", error?.response?.data?.message ?? error?.message ?? "Signup failed");
+      console.error("🔴 [Signup Page] Error caught:", {
+        error,
+        errorType: typeof error,
+        errorConstructor: error?.constructor?.name,
+        errorKeys: error ? Object.keys(error) : [],
+      });
+      
+      console.error("🔴 [Signup Page] Error response:", {
+        hasResponse: !!error?.response,
+        responseStatus: error?.response?.status,
+        responseStatusText: error?.response?.statusText,
+        responseData: error?.response?.data,
+        responseDataType: typeof error?.response?.data,
+        responseDataKeys: error?.response?.data ? Object.keys(error?.response?.data) : [],
+      });
+      
+      console.error("🔴 [Signup Page] Error message field:", {
+        message: error?.response?.data?.message,
+        messageType: typeof error?.response?.data?.message,
+        messageIsArray: Array.isArray(error?.response?.data?.message),
+        messageStringified: JSON.stringify(error?.response?.data?.message),
+        messageToString: String(error?.response?.data?.message),
+      });
+      
+      const errorMessage = error?.response?.data?.message ?? error?.message ?? "Signup failed";
+      
+      console.error("🔴 [Signup Page] Final error message to display:", {
+        errorMessage,
+        errorMessageType: typeof errorMessage,
+        errorMessageIsArray: Array.isArray(errorMessage),
+        errorMessageStringified: JSON.stringify(errorMessage),
+        errorMessageToString: String(errorMessage),
+      });
+      
+      showMessage("error", errorMessage);
     } finally {
       setLoading(false);
     }

@@ -1154,14 +1154,6 @@ export default function AIMLTestTakePage() {
   // Use AITimer hook for per-question or global timer
   const currentQuestionForTimer = questions[currentQuestionIndex] || null
   const timerEnabled = examStarted && !submitted && questions.length > 0
-  console.log('[AIML Take] Timer hook enabled check:', {
-    examStarted,
-    submitted,
-    questionsLength: questions.length,
-    timerEnabled,
-    testTimerMode: test?.timer_mode,
-    hasTest: !!test
-  })
   const timer = useAITimer({
     test: test ? {
       timer_mode: test.timer_mode || "GLOBAL",
@@ -1174,31 +1166,10 @@ export default function AIMLTestTakePage() {
     currentQuestionId: currentQuestionForTimer?.id || null,
     onExpire: handleAutoSubmitTest,
     onQuestionExpire: async (questionId: string) => {
-      console.log('%c[TIMER] 🔴 Question expired!', 'color: #ff0000; font-weight: bold; font-size: 16px; background: #ffeeee; padding: 4px', {
-        questionId,
-        timestamp: new Date().toISOString()
-      })
-      
       // IMPORTANT: Read from refs to get latest values (avoid closure/stale state issues)
       // Refs are always up-to-date and don't have closure problems
       const currentCode = codeAnswersRef.current[questionId] || ''
       const currentOutputs = outputAnswersRef.current[questionId] || []
-      
-      console.log('%c[TIMER] 📝 Reading code from REF', 'color: #0066ff; font-weight: bold; font-size: 14px', {
-        questionId,
-        codeLength: currentCode.length,
-        hasCode: !!currentCode,
-        allQuestionsInRef: Object.keys(codeAnswersRef.current)
-      })
-      
-      console.log('%c[TIMER] 📤 Reading outputs from REF', 'color: #0066ff; font-weight: bold; font-size: 14px', {
-        questionId,
-        outputsCount: currentOutputs.length,
-        outputs: currentOutputs.map((o, idx) => ({ index: idx, length: o.length, preview: o.substring(0, 50) })),
-        allStoredQuestions: Object.keys(outputAnswersRef.current),
-        storedOutputsForThisQuestion: outputAnswersRef.current[questionId]?.length || 0,
-        refHasOutputs: outputAnswersRef.current[questionId]?.length > 0
-      })
       
       // Mark question as expired and completed
       setExpiredQuestions(prev => {
@@ -1216,32 +1187,13 @@ export default function AIMLTestTakePage() {
       // Submit the answer with outputs for evaluation (not just auto-save)
       // This ensures the code is evaluated even if user didn't click submit
       if (!token || !userId || !testId) {
-        console.warn('%c[TIMER] ⚠️ Cannot auto-submit - missing credentials', 'color: #ff6600; font-weight: bold; font-size: 14px', {
-          hasToken: !!token,
-          hasUserId: !!userId,
-          hasTestId: !!testId
-        })
         return
       }
-      
-      console.log('%c[TIMER] 🚀 Attempting to submit answer', 'color: #0066ff; font-weight: bold; font-size: 14px', {
-        questionId,
-        codeLength: currentCode.length,
-        outputsCount: currentOutputs.length,
-        hasCode: !!currentCode,
-        hasOutputs: currentOutputs.length > 0
-      })
       
       try {
         const expiredQuestion = questions.find(q => q.id === questionId)
         if (expiredQuestion && currentCode) {
           // Submit with outputs for evaluation (same as handleSubmitQuestion)
-          console.log('%c[TIMER] 📤 Submitting with outputs for evaluation', 'color: #00aa00; font-weight: bold; font-size: 14px', {
-            questionId,
-            outputsCount: currentOutputs.length,
-            codeLength: currentCode.length
-          })
-          
           await aimlApi.post(
             `/tests/${testId}/submit-answer`,
             {
@@ -1251,31 +1203,16 @@ export default function AIMLTestTakePage() {
               outputs: currentOutputs,
             }
           )
-          console.log('%c[TIMER] ✅ Successfully submitted with outputs!', 'color: #00aa00; font-weight: bold; font-size: 14px; background: #eeffee; padding: 4px', {
-            questionId,
-            outputsCount: currentOutputs.length,
-            hasCode: !!currentCode
-          })
         } else {
           // Fallback to auto-save if no code or question not found
-          console.log('%c[TIMER] ⚠️ Fallback: Auto-saving (no code or question not found)', 'color: #ff6600; font-weight: bold; font-size: 14px', {
-            questionId,
-            hasQuestion: !!expiredQuestion,
-            hasCode: !!currentCode
-          })
           await autoSaveAnswer(questionId, currentCode)
-          console.log('%c[TIMER] 💾 Auto-saved question', 'color: #ff6600; font-weight: bold; font-size: 14px', {
-            questionId
-          })
         }
       } catch (err) {
-        console.error('%c[TIMER] ❌ Failed to auto-submit!', 'color: #ff0000; font-weight: bold; font-size: 14px; background: #ffeeee; padding: 4px', err)
         // Try to at least save the code as fallback
         try {
           await autoSaveAnswer(questionId, currentCode)
-          console.log('%c[TIMER] 💾 Fallback auto-save succeeded', 'color: #ff6600; font-weight: bold; font-size: 14px')
         } catch (saveErr) {
-          console.error('%c[TIMER] ❌ Fallback auto-save also failed!', 'color: #ff0000; font-weight: bold; font-size: 14px', saveErr)
+          // Silent fail - error already logged if needed
         }
       }
       
@@ -1309,41 +1246,17 @@ export default function AIMLTestTakePage() {
     enabled: timerEnabled,
   })
 
-  // Debug: Log timer state changes
-  useEffect(() => {
-    console.log('[AIML Take] Timer hook state changed:', {
-      timerTimeRemaining: timer.timeRemaining,
-      localTimeRemaining: timeRemaining,
-      timerMode: test?.timer_mode,
-      examStarted,
-      submitted,
-      questionsCount: questions.length,
-      enabled: examStarted && !submitted && questions.length > 0
-    })
-  }, [timer.timeRemaining, timeRemaining, test?.timer_mode, examStarted, submitted, questions.length])
 
   // Update timeRemaining from timer hook (for GLOBAL mode)
-  // Use a ref to track previous value and force update if needed
-  const prevTimerTimeRef = useRef<number | null>(null)
-  const forceUpdateRef = useRef(0)
-  
+  // Only update when value actually changes to prevent unnecessary re-renders
   useEffect(() => {
     if (test?.timer_mode === 'GLOBAL' && timer.timeRemaining !== undefined && timer.timeRemaining !== null) {
-      console.log('[AIML Take] Timer sync effect - timer.timeRemaining:', timer.timeRemaining, 'current timeRemaining state:', timeRemaining, 'prev:', prevTimerTimeRef.current)
-      
-      // Always update to ensure React re-renders
-      // Use functional update to force React to process the change
       setTimeRemaining(prev => {
-        const newValue = timer.timeRemaining
-        if (prev !== newValue || prevTimerTimeRef.current !== newValue) {
-          console.log('[AIML Take] Timer sync effect - updating state from', prev, 'to', newValue)
-          prevTimerTimeRef.current = newValue
-          return newValue
+        // Only update if value actually changed
+        if (prev !== timer.timeRemaining) {
+          return timer.timeRemaining
         }
-        // Force update by incrementing a counter (triggers re-render even if value is same)
-        forceUpdateRef.current += 1
-        console.log('[AIML Take] Timer sync effect - forcing re-render (value same, update count:', forceUpdateRef.current, ')')
-        return newValue
+        return prev
       })
     }
   }, [timer.timeRemaining, test?.timer_mode])
@@ -1617,7 +1530,6 @@ export default function AIMLTestTakePage() {
               timeRemaining !== null && !isNaN(timeRemaining) && timeRemaining >= 0 && (
                 (() => {
                   const displayTime = `${Math.floor(timeRemaining / 60)}:${String(timeRemaining % 60).padStart(2, '0')}`
-                  console.log('[AIML Take] Timer UI render - timeRemaining:', timeRemaining, 'displayTime:', displayTime, 'timer.timeRemaining:', timer.timeRemaining, 'forceUpdate:', forceUpdateRef.current)
                   // Use key prop with timeRemaining to force React to re-render when value changes
                   return (
                     <div 

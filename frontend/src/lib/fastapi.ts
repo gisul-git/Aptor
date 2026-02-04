@@ -237,16 +237,27 @@ fastApiClient.interceptors.response.use(
     let message = error.message;
     
     if (error.response?.data) {
-      // Try different possible error message fields
-      message = (error.response.data as any).detail || 
-                (error.response.data as any).message || 
-                (error.response.data as any).error ||
-                (error.response.data as any).msg ||
-                error.message;
+      const data = error.response.data as any;
       
-      // Handle array of messages
-      if (Array.isArray(message)) {
-        message = message.join(", ");
+      // Handle validation errors (detail is an array of error objects)
+      if (data.detail && Array.isArray(data.detail) && data.detail.length > 0) {
+        // Extract message from first validation error
+        const firstError = data.detail[0];
+        message = firstError.msg || firstError.message || "Validation error";
+      } else if (data.detail) {
+        // If detail is not an array, use it directly (but ensure it's a string)
+        message = typeof data.detail === 'string' ? data.detail : JSON.stringify(data.detail);
+      } else if (data.message) {
+        message = typeof data.message === 'string' ? data.message : JSON.stringify(data.message);
+      } else if (data.error) {
+        message = typeof data.error === 'string' ? data.error : JSON.stringify(data.error);
+      } else if (data.msg) {
+        message = typeof data.msg === 'string' ? data.msg : JSON.stringify(data.msg);
+      }
+      
+      // Ensure message is a string (not an object)
+      if (typeof message !== 'string') {
+        message = JSON.stringify(message);
       }
     }
     

@@ -16,6 +16,11 @@ export default function AIMLTestVerifyPage() {
   const [showEndTimePopup, setShowEndTimePopup] = useState(false);
   const [startTime, setStartTime] = useState<string | null>(null);
   const [endTime, setEndTime] = useState<string | null>(null);
+  const [timeRemaining, setTimeRemaining] = useState<{
+    hours: number;
+    minutes: number;
+    seconds: number;
+  } | null>(null);
 
   useEffect(() => {
     if (!testId) return;
@@ -44,6 +49,71 @@ export default function AIMLTestVerifyPage() {
 
     verifyLink();
   }, [testId]);
+
+  // Countdown timer effect for start time popup
+  useEffect(() => {
+    if (!showStartTimePopup || !startTime) {
+      setTimeRemaining(null);
+      return;
+    }
+
+    const calculateTimeRemaining = () => {
+      const now = new Date();
+      
+      // Parse startTime - backend returns ISO format string
+      let start: Date;
+      try {
+        if (typeof startTime === 'string') {
+          // Python's isoformat() returns ISO 8601 string
+          // If it doesn't have timezone (Z or +/-), it's naive datetime, assume UTC
+          const timeStr = startTime.trim();
+          if (timeStr.includes('T') && !timeStr.includes('Z') && !timeStr.match(/[+-]\d{2}:\d{2}$/)) {
+            // ISO format without timezone - append Z for UTC
+            start = new Date(timeStr + 'Z');
+          } else {
+            // Has timezone info or not ISO format
+            start = new Date(timeStr);
+          }
+        } else {
+          start = new Date(startTime);
+        }
+      } catch (e) {
+        // If parsing fails, try direct conversion
+        start = new Date(startTime as any);
+      }
+
+      // Check if date is valid
+      if (isNaN(start.getTime())) {
+        setTimeRemaining({ hours: 0, minutes: 0, seconds: 0 });
+        return;
+      }
+
+      const diff = start.getTime() - now.getTime();
+
+      // Calculate hours, minutes, seconds
+      const totalSeconds = Math.max(0, Math.floor(diff / 1000));
+      const hours = Math.floor(totalSeconds / 3600);
+      const minutes = Math.floor((totalSeconds % 3600) / 60);
+      const seconds = totalSeconds % 60;
+
+      setTimeRemaining({ hours, minutes, seconds });
+
+      // If timer reaches 0, automatically close popup and allow user to proceed
+      if (totalSeconds === 0) {
+        setShowStartTimePopup(false);
+        setStartTime(null);
+        setTimeRemaining(null);
+      }
+    };
+
+    // Calculate immediately
+    calculateTimeRemaining();
+
+    // Update every second
+    const interval = setInterval(calculateTimeRemaining, 1000);
+
+    return () => clearInterval(interval);
+  }, [showStartTimePopup, startTime]);
 
   const handleVerify = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -242,8 +312,8 @@ export default function AIMLTestVerifyPage() {
               The test has not started yet. Please wait for the scheduled start time.
             </p>
             <div className="bg-amber-50 rounded-lg p-4 mb-6">
-              <p className="text-sm text-amber-800 font-semibold mb-1">Test will start at</p>
-              <p className="text-lg text-amber-700 font-bold">
+              <p className="text-sm text-amber-800 font-semibold mb-2">Test will start at</p>
+              <p className="text-lg text-amber-700 font-bold mb-4">
                 {(() => {
                   // Convert UTC to IST (UTC+5:30) for display
                   const utcDate = new Date(startTime);
@@ -257,6 +327,41 @@ export default function AIMLTestVerifyPage() {
                   return `${month} ${day}, ${year} ${hours}:${minutes}`;
                 })()}
               </p>
+              
+              {/* Countdown Timer */}
+              {timeRemaining !== null && (
+                <div className="mt-4 pt-4 border-t border-amber-200">
+                  <p className="text-xs text-amber-700 font-medium mb-2">Time remaining:</p>
+                  <div className="flex items-center justify-center gap-3">
+                    {timeRemaining.hours > 0 && (
+                      <div className="flex flex-col items-center">
+                        <div className="bg-white rounded-lg px-3 py-2 min-w-[50px]">
+                          <span className="text-2xl font-bold text-amber-700">
+                            {String(timeRemaining.hours).padStart(2, '0')}
+                          </span>
+                        </div>
+                        <span className="text-xs text-amber-600 mt-1">Hours</span>
+                      </div>
+                    )}
+                    <div className="flex flex-col items-center">
+                      <div className="bg-white rounded-lg px-3 py-2 min-w-[50px]">
+                        <span className="text-2xl font-bold text-amber-700">
+                          {String(timeRemaining.minutes).padStart(2, '0')}
+                        </span>
+                      </div>
+                      <span className="text-xs text-amber-600 mt-1">Minutes</span>
+                    </div>
+                    <div className="flex flex-col items-center">
+                      <div className="bg-white rounded-lg px-3 py-2 min-w-[50px]">
+                        <span className="text-2xl font-bold text-amber-700">
+                          {String(timeRemaining.seconds).padStart(2, '0')}
+                        </span>
+                      </div>
+                      <span className="text-xs text-amber-600 mt-1">Seconds</span>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
             <button
               onClick={() => {
