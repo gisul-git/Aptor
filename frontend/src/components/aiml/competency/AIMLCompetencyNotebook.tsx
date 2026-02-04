@@ -38,6 +38,7 @@ interface AIMLCompetencyNotebookProps {
   question: AIMLQuestion
   sessionId: string
   onCodeChange?: (allCode: string) => void
+  onOutputChange?: (outputs: string[]) => void
   onSubmit?: (allCode: string, outputs: string[]) => void
   readOnly?: boolean
   showSubmit?: boolean
@@ -47,6 +48,7 @@ export default function AIMLCompetencyNotebook({
   question,
   sessionId,
   onCodeChange,
+  onOutputChange,
   onSubmit,
   readOnly = false,
   showSubmit = true,
@@ -226,6 +228,7 @@ export default function AIMLCompetencyNotebook({
     }
   }, [cells]) // Only depend on cells, not onCodeChange
 
+
   const generateStarterCode = (q: AIMLQuestion): string => {
     const lib = q.library || 'numpy'
     const alias = lib === 'numpy' ? 'np' : lib === 'pandas' ? 'pd' : lib === 'matplotlib' ? 'plt' : lib
@@ -295,8 +298,78 @@ export default function AIMLCompetencyNotebook({
   }, [])
 
   const handleOutputChange = useCallback((cellId: string, output: string) => {
-    setCells(prev => prev.map(c => c.id === cellId ? { ...c, output } : c))
-  }, [])
+    const isClearing = !output || output === ''
+    console.log(`%c[NOTEBOOK] ${isClearing ? '🟠' : '🔵'} Cell output changed`, 
+      isClearing ? 'color: #ff6600; font-weight: bold; font-size: 14px' : 'color: #0066ff; font-weight: bold; font-size: 14px', {
+      cellId,
+      outputLength: output?.length || 0,
+      hasOutput: !!output && output !== '',
+      isClearing,
+      outputPreview: output?.substring(0, 100) || '(empty)',
+      allCellsBefore: 'checking...'
+    })
+    
+    setCells(prev => {
+      // Log all cells BEFORE update
+      console.log('%c[NOTEBOOK] 📋 Cells state BEFORE update', 'color: #9966ff; font-weight: bold; font-size: 12px', {
+        totalCells: prev.length,
+        cells: prev.map(c => ({
+          id: c.id,
+          hasOutput: !!c.output && c.output !== '',
+          outputLength: c.output?.length || 0,
+          outputPreview: c.output?.substring(0, 30) || '(none)'
+        }))
+      })
+      
+      const updatedCells = prev.map(c => c.id === cellId ? { ...c, output } : c)
+      
+      // Log all cells AFTER update
+      console.log('%c[NOTEBOOK] 📋 Cells state AFTER update', 'color: #9966ff; font-weight: bold; font-size: 12px', {
+        totalCells: updatedCells.length,
+        updatedCellId: cellId,
+        cells: updatedCells.map(c => ({
+          id: c.id,
+          hasOutput: !!c.output && c.output !== '',
+          outputLength: c.output?.length || 0,
+          outputPreview: c.output?.substring(0, 30) || '(none)'
+        }))
+      })
+      
+      // Immediately sync all outputs to parent state whenever any cell's output changes
+      // This ensures outputs are available in parent state when time expires
+      if (onOutputChange) {
+        const allOutputs = updatedCells.map(c => c.output || '').filter(o => o && o !== '' && o !== '(No output)')
+        console.log(`%c[NOTEBOOK] ${allOutputs.length > 0 ? '🟢' : '🟠'} Syncing outputs to parent`, 
+          allOutputs.length > 0 ? 'color: #00aa00; font-weight: bold; font-size: 14px' : 'color: #ff6600; font-weight: bold; font-size: 14px', {
+          totalCells: updatedCells.length,
+          cellsWithOutput: allOutputs.length,
+          isClearing,
+          allOutputs: allOutputs.map((o, idx) => ({ 
+            index: idx, 
+            length: o.length, 
+            preview: o.substring(0, 50),
+            isNoOutput: o === '(No output)'
+          })),
+          rawCellsOutputs: updatedCells.map(c => ({
+            id: c.id,
+            output: c.output || '(none)',
+            isEmpty: !c.output || c.output === ''
+          }))
+        })
+        
+        // Only sync if we have actual outputs (not when clearing)
+        if (allOutputs.length > 0 || isClearing) {
+          onOutputChange(allOutputs)
+        } else {
+          console.log('%c[NOTEBOOK] ⏭️ Skipping sync - no valid outputs', 'color: #ff6600; font-weight: bold; font-size: 12px')
+        }
+      } else {
+        console.log('%c[NOTEBOOK] ⚠️ onOutputChange callback not provided!', 'color: #ff6600; font-weight: bold; font-size: 14px')
+      }
+      
+      return updatedCells
+    })
+  }, [onOutputChange])
 
   const handleRunningChange = useCallback((cellId: string, isRunning: boolean) => {
     setRunningCells(prev => {

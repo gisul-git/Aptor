@@ -159,13 +159,24 @@ export function useDashboardAssessments(): UseDashboardAssessmentsReturn {
   const assessments = useMemo(() => {
     const allAssessments: Assessment[] = [];
     
+    console.log('[useDashboardAssessments] Processing assessments:', {
+      assessmentsData: assessmentsData ? (Array.isArray(assessmentsData) ? `${assessmentsData.length} items` : typeof assessmentsData) : 'null/undefined',
+      customMCQData: customMCQData ? (Array.isArray(customMCQData) ? `${customMCQData.length} items` : typeof customMCQData) : 'null/undefined',
+      dsaTestsData: dsaTestsData ? (Array.isArray(dsaTestsData) ? `${dsaTestsData.length} items` : typeof dsaTestsData) : 'null/undefined',
+      aimlTestsData: aimlTestsData ? (Array.isArray(aimlTestsData) ? `${aimlTestsData.length} items` : typeof aimlTestsData) : 'null/undefined',
+      currentUserId,
+    });
+    
     // Process regular assessments
-    if (assessmentsData) {
+    if (assessmentsData && Array.isArray(assessmentsData)) {
+      console.log('[useDashboardAssessments] Processing', assessmentsData.length, 'regular assessments');
       const regularAssessments = assessmentsData.map((a: any) => ({
         ...a,
         type: 'assessment' as const
       }));
       allAssessments.push(...regularAssessments);
+    } else if (assessmentsData) {
+      console.warn('[useDashboardAssessments] ⚠️ assessmentsData is not an array:', typeof assessmentsData, assessmentsData);
     }
     
     // Process custom MCQ tests
@@ -470,6 +481,7 @@ export function useDashboardAssessments(): UseDashboardAssessmentsReturn {
       return dateB - dateA;
     });
     
+    console.log('[useDashboardAssessments] ✅ Final combined assessments:', allAssessments.length, 'total');
     return allAssessments;
   }, [assessmentsData, customMCQData, dsaTestsData, aimlTestsData, designTestsData, dataEngineeringTestsData, cloudTestsData, devopsTestsData, currentUserId]);
 

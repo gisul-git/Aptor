@@ -22,16 +22,50 @@ export const useAssessments = () => {
     queryFn: async () => {
       try {
         const response = await assessmentService.list();
-        return response.data || [];
+        console.log('[useAssessments] Service response:', {
+          hasResponse: !!response,
+          responseKeys: response ? Object.keys(response) : [],
+          hasData: !!response?.data,
+          dataType: typeof response?.data,
+          isArray: Array.isArray(response?.data),
+          dataLength: Array.isArray(response?.data) ? response.data.length : 'not-array',
+          fullResponse: JSON.stringify(response, null, 2),
+        });
+        
+        // Service now returns: {success: true, message: "...", data: [...]}
+        // Extract the data array
+        if (response && typeof response === 'object') {
+          // If response has a 'data' property and it's an array, return it
+          if ('data' in response && Array.isArray(response.data)) {
+            console.log('[useAssessments] ✅ Extracted data array:', response.data.length, 'items');
+            return response.data;
+          }
+          // If response itself is an array (direct format)
+          if (Array.isArray(response)) {
+            console.log('[useAssessments] ✅ Response is already an array:', response.length, 'items');
+            return response;
+          }
+          // If response.data exists but is not an array, log warning
+          if ('data' in response && response.data !== undefined) {
+            console.warn('[useAssessments] ⚠️ Response.data exists but is not an array:', typeof response.data, response.data);
+          }
+        }
+        
+        console.warn('[useAssessments] ⚠️ No valid data found, returning empty array');
+        return [];
       } catch (error: any) {
-        // Return empty array on error instead of throwing
-        console.warn('Failed to fetch assessments:', error?.message || error);
+        // Log error but don't throw - return empty array so UI doesn't break
+        console.error('[useAssessments] Failed to fetch assessments:', {
+          error: error?.message || error,
+          status: error?.response?.status,
+          responseData: error?.response?.data,
+        });
         return [];
       }
     },
     staleTime: 5 * 60 * 1000, // 5 minutes
-    retry: 1,
-    retryOnMount: false,
+    retry: 2, // Retry twice on failure
+    retryOnMount: true, // Retry when component mounts
   });
 };
 
