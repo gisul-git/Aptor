@@ -8,4 +8,5 @@ pydantic-settings==2.4.0
 pandas>=2.0.0
 openai==1.45.0
 tzdata==2024.1
+redis==5.0.1
 

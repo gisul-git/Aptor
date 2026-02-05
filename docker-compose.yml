@@ -109,9 +109,11 @@ services:
     environment:
       - MONGO_URI=mongodb://mongo:27017
       - MONGO_DB=custom_mcq_db
+      - REDIS_URL=redis://redis:6379/0
       - CORS_ORIGINS=http://localhost:3000
     depends_on:
       - mongo
+      - redis
     networks:
       - microservices-network
     restart: unless-stopped
@@ -128,9 +130,11 @@ services:
     environment:
       - MONGO_URI=mongodb://mongo:27017
       - MONGO_DB=aiml_db
+      - REDIS_URL=redis://redis:6379/0
       - CORS_ORIGINS=http://localhost:3000
     depends_on:
       - mongo
+      - redis
     networks:
       - microservices-network
     restart: unless-stopped
@@ -146,12 +150,14 @@ services:
     environment:
       - MONGO_URI=mongodb://mongo:27017
       - MONGO_DB=dsa_db
+      - REDIS_URL=redis://redis:6379/0
       - JUDGE0_URL=${JUDGE0_URL}
       - JUDGE0_API_KEY=${JUDGE0_API_KEY}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - CORS_ORIGINS=http://localhost:3000
     depends_on:
       - mongo
+      - redis
     networks:
       - microservices-network
     restart: unless-stopped

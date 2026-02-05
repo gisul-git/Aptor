@@ -22,6 +22,9 @@ class Settings(BaseSettings):
     sendgrid_api_key: str | None = None
     sendgrid_from_email: str | None = None
     sendgrid_from_name: str | None = "AI Assessment Platform"
+    
+    # Redis configuration (read from .env file)
+    redis_url: str = "redis://localhost:6379/0"  # Default fallback, override with REDIS_URL in .env
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
