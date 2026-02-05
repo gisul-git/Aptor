@@ -159,13 +159,24 @@ export function useDashboardAssessments(): UseDashboardAssessmentsReturn {
   const assessments = useMemo(() => {
     const allAssessments: Assessment[] = [];
     
+    console.log('[useDashboardAssessments] Processing assessments:', {
+      assessmentsData: assessmentsData ? (Array.isArray(assessmentsData) ? `${assessmentsData.length} items` : typeof assessmentsData) : 'null/undefined',
+      customMCQData: customMCQData ? (Array.isArray(customMCQData) ? `${customMCQData.length} items` : typeof customMCQData) : 'null/undefined',
+      dsaTestsData: dsaTestsData ? (Array.isArray(dsaTestsData) ? `${dsaTestsData.length} items` : typeof dsaTestsData) : 'null/undefined',
+      aimlTestsData: aimlTestsData ? (Array.isArray(aimlTestsData) ? `${aimlTestsData.length} items` : typeof aimlTestsData) : 'null/undefined',
+      currentUserId,
+    });
+    
     // Process regular assessments
-    if (assessmentsData) {
+    if (assessmentsData && Array.isArray(assessmentsData)) {
+      console.log('[useDashboardAssessments] Processing', assessmentsData.length, 'regular assessments');
       const regularAssessments = assessmentsData.map((a: any) => ({
         ...a,
         type: 'assessment' as const
       }));
       allAssessments.push(...regularAssessments);
+    } else if (assessmentsData) {
+      console.warn('[useDashboardAssessments] ⚠️ assessmentsData is not an array:', typeof assessmentsData, assessmentsData);
     }
     
     // Process custom MCQ tests
@@ -259,12 +270,20 @@ export function useDashboardAssessments(): UseDashboardAssessmentsReturn {
           return testCreatedByStr === currentUserIdStr;
         })
         .map((test: any) => {
+          let status = 'draft';
+          if (test.pausedAt) {
+            status = 'paused';
+          } else if (test.is_published) {
+            status = 'active';
+          }
+          
           const schedule = test.schedule;
           const hasSchedule = schedule !== null && schedule !== undefined && !!(test.start_time && test.end_time);
           
           return {
             id: test.id || test._id,
             title: test.title || 'Untitled AIML Test',
+            status: status as 'draft' | 'active' | 'paused',
             hasSchedule: hasSchedule,
             scheduleStatus: hasSchedule ? {
               startTime: test.start_time,
@@ -462,6 +481,7 @@ export function useDashboardAssessments(): UseDashboardAssessmentsReturn {
       return dateB - dateA;
     });
     
+    console.log('[useDashboardAssessments] ✅ Final combined assessments:', allAssessments.length, 'total');
     return allAssessments;
   }, [assessmentsData, customMCQData, dsaTestsData, aimlTestsData, designTestsData, dataEngineeringTestsData, cloudTestsData, devopsTestsData, currentUserId]);
 

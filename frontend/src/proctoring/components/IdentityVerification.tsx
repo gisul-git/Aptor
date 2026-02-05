@@ -7,7 +7,6 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { initializeFaceDetection, detectFaces, cleanupFaceDetection, type FaceDetectionState } from "../engine/faceDetection";
 import { modelService } from "@/universal-proctoring/services/ModelService";
-import { FaceVerificationService } from "@/universal-proctoring/services/FaceVerificationService";
 import axios from "@/lib/axios-config"; // Use configured axios with auth interceptor
 import { getGateContext } from "@/lib/gateContext";
 
@@ -672,33 +671,32 @@ export default function IdentityVerification({
   };
 
   /**
-   * Validate photo quality for face verification
-   * Checks: face visibility, embedding quality, face coverage, etc.
+   * Validate photo quality for face verification (face detection only; deep verification is backend DeepFace).
+   * Checks: face visibility, face coverage, landmarks. When embedding is provided, also checks embedding quality.
    */
   const validatePhotoQuality = async (
     image: HTMLImageElement,
-    embedding: Float32Array | number[],
-    faceRecognitionModel: any
+    embedding: Float32Array | number[] | null,
+    _faceRecognitionModel: any
   ): Promise<{ isValid: boolean; errors: string[]; warnings: string[] }> => {
     const errors: string[] = [];
     const warnings: string[] = [];
 
     try {
-      // 1. Check embedding quality
-      const embeddingArray = Array.isArray(embedding) ? embedding : Array.from(embedding);
-      
-      if (embeddingArray.length < 100) {
-        errors.push("Embedding too short - insufficient features");
-        return { isValid: false, errors, warnings };
-      }
-
-      // Check embedding variance (should have sufficient variation)
-      const mean = embeddingArray.reduce((sum, val) => sum + val, 0) / embeddingArray.length;
-      const variance = embeddingArray.reduce((sum, val) => sum + Math.pow(val - mean, 2), 0) / embeddingArray.length;
-      const stdDev = Math.sqrt(variance);
-      
-      if (stdDev < 0.01) {
-        errors.push("Embedding lacks variation - face may be too uniform or obscured");
+      let embeddingStdDev: number | null = null;
+      // 1. Optional: Check embedding quality when embedding is provided (backend DeepFace handles verification)
+      if (embedding) {
+        const embeddingArray = Array.isArray(embedding) ? embedding : Array.from(embedding);
+        if (embeddingArray.length < 100) {
+          errors.push("Embedding too short - insufficient features");
+          return { isValid: false, errors, warnings };
+        }
+        const mean = embeddingArray.reduce((sum, val) => sum + val, 0) / embeddingArray.length;
+        const variance = embeddingArray.reduce((sum, val) => sum + Math.pow(val - mean, 2), 0) / embeddingArray.length;
+        embeddingStdDev = Math.sqrt(variance);
+        if (embeddingStdDev < 0.01) {
+          errors.push("Embedding lacks variation - face may be too uniform or obscured");
+        }
       }
 
       // 2. Re-detect face to validate quality
@@ -817,8 +815,8 @@ export default function IdentityVerification({
         errors.push("Too many facial features outside face region - face may be partially obscured");
       }
 
-      // 11. Check embedding variance is sufficient (for discrimination)
-      if (stdDev < 0.05) {
+      // 11. Check embedding variance when embedding provided (for discrimination)
+      if (embeddingStdDev !== null && embeddingStdDev < 0.05) {
         warnings.push("Low embedding variance - may affect recognition accuracy");
       }
 
@@ -847,7 +845,7 @@ export default function IdentityVerification({
         faceSize: `${(faceSizeRatio * 100).toFixed(1)}%`,
         eyeDistanceRatio: eyeDistanceRatio.toFixed(2),
         angle: `${angle.toFixed(1)}°`,
-        embeddingVariance: stdDev.toFixed(4),
+        embeddingVariance: embeddingStdDev !== null ? embeddingStdDev.toFixed(4) : 'n/a',
       });
 
       return { isValid, errors, warnings };
@@ -1008,182 +1006,18 @@ export default function IdentityVerification({
         return; // Skip embedding extraction
       }
       
-      console.log('[IdentityVerification] ✅ Face Mismatch Detection ENABLED - will extract embedding and validate quality');
+      console.log('[IdentityVerification] ✅ Face Mismatch Detection ENABLED - storing reference image for backend verification');
 
-      // AI Proctoring enabled: Extract and validate face embedding for face verification
-      let embeddingExtracted = false;
-      let embedding: Float32Array | number[] | null = null;
-      let qualityValidation: { isValid: boolean; errors: string[]; warnings: string[] } = { isValid: false, errors: [], warnings: [] };
-      
+      // Hybrid backend: store reference image for AWS Rekognition verification during assessment
       try {
-        console.log('[IdentityVerification] 🔍 Starting reference embedding extraction and quality validation (AI Proctoring enabled)...');
-        const faceRecognitionModel = modelService.getFaceRecognition();
-        if (!faceRecognitionModel) {
-          console.warn('[IdentityVerification] ⚠️ Face recognition model not available - face verification will be disabled');
-          setStatusMessage("⚠️ Warning: Face recognition model not available. Face verification will be disabled. Please refresh the page.");
-          setPhotoQualityValid(false);
-          setPhotoQualityErrors(["Face recognition model not available"]);
-          setIsCapturing(false);
-          return;
-        }
-        
-        console.log('[IdentityVerification] ✅ Face recognition model available');
-        const faceVerificationService = new FaceVerificationService();
-        const initialized = await faceVerificationService.initialize(faceRecognitionModel);
-        
-        if (!initialized) {
-          console.error('[IdentityVerification] ❌ Face verification service initialization failed');
-          setStatusMessage("⚠️ Warning: Face verification service failed to initialize. Please retry.");
-          setPhotoQualityValid(false);
-          setPhotoQualityErrors(["Face verification service initialization failed"]);
-          setIsCapturing(false);
-          return;
-        }
-        
-        console.log('[IdentityVerification] ✅ Face verification service initialized');
-        
-        // Create image element from captured photo
-        console.log('[IdentityVerification] 📷 Loading reference photo for embedding extraction...');
-        const img = new Image();
-        await new Promise<void>((resolve, reject) => {
-          img.onload = () => {
-            console.log('[IdentityVerification] ✅ Reference photo loaded, dimensions:', {
-              width: img.width,
-              height: img.height,
-            });
-            resolve();
-          };
-          img.onerror = () => {
-            console.error('[IdentityVerification] ❌ Failed to load captured photo');
-            reject(new Error("Failed to load captured photo"));
-          };
-          img.src = photoData;
-        });
-
-        // Extract embedding from reference photo
-        console.log('[IdentityVerification] 🔍 Extracting face embedding from reference photo...');
-        embedding = await faceVerificationService.extractEmbedding(img);
-        
-        if (!embedding) {
-          console.warn('[IdentityVerification] ⚠️ Could not extract embedding from reference photo - no face detected');
-          setStatusMessage("⚠️ Could not extract face features. Please ensure your face is clearly visible and click 'Retry Photo'.");
-          setPhotoQualityValid(false);
-          setPhotoQualityErrors(["No face detected in photo", "Face may be obscured or not visible"]);
-          setIsCapturing(false);
-          return;
-        }
-
-        // Validate photo quality
-        console.log('[IdentityVerification] 🔍 Validating photo quality...');
-        qualityValidation = await validatePhotoQuality(img, embedding, faceRecognitionModel);
-        
-        console.log('[IdentityVerification] 📊 Photo quality validation result:', {
-          isValid: qualityValidation.isValid,
-          errors: qualityValidation.errors.length,
-          warnings: qualityValidation.warnings.length,
-          errorDetails: qualityValidation.errors,
-          warningDetails: qualityValidation.warnings,
-        });
-        
-        if (qualityValidation.isValid) {
-          // Store embedding in sessionStorage for face verification during assessment
-          const embeddingArray = Array.isArray(embedding) ? embedding : Array.from(embedding);
-          sessionStorage.setItem('faceVerificationReferenceEmbedding', JSON.stringify(embeddingArray));
-          
-          // Calculate and store quality metrics for confidence scoring during assessment
-          const embeddingMean = embeddingArray.reduce((sum, val) => sum + val, 0) / embeddingArray.length;
-          const embeddingVariance = embeddingArray.reduce((sum, val) => sum + Math.pow(val - embeddingMean, 2), 0) / embeddingArray.length;
-          const embeddingStdDev = Math.sqrt(embeddingVariance);
-          
-          // Get face detection metrics
-          const blazefaceModel = modelService.getBlazeFace();
-          let faceConfidence = 0.9;
-          let faceSizeRatio = 0.1;
-          let faceAngle = 0;
-          
-          if (blazefaceModel) {
-            try {
-              const predictions = await blazefaceModel.estimateFaces(img as any, false);
-              if (predictions && predictions.length > 0) {
-                const face = predictions[0];
-                faceConfidence = extractConfidence(face.probability);
-                
-                const start = face.topLeft as [number, number];
-                const end = face.bottomRight as [number, number];
-                const width = end[0] - start[0];
-                const height = end[1] - start[1];
-                const faceArea = width * height;
-                const imageArea = img.width * img.height;
-                faceSizeRatio = faceArea / imageArea;
-                
-                const landmarks = face.landmarks;
-                // Type guard: check if landmarks is an array (not Tensor2D)
-                if (landmarks && Array.isArray(landmarks) && landmarks.length >= 2) {
-                  const rightEye = landmarks[0];
-                  const leftEye = landmarks[1];
-                  if (rightEye && leftEye && Array.isArray(rightEye) && Array.isArray(leftEye) && rightEye.length >= 2 && leftEye.length >= 2) {
-                    const eyeDx = leftEye[0] - rightEye[0];
-                    const eyeDy = leftEye[1] - rightEye[1];
-                    faceAngle = Math.abs(Math.atan2(eyeDy, eyeDx) * (180 / Math.PI));
-                  }
-                }
-              }
-            } catch (e) {
-              console.warn('[IdentityVerification] Could not extract face metrics:', e);
-            }
-          }
-          
-          // Calculate overall quality score
-          const sizeScore = Math.min(1, faceSizeRatio / 0.15); // Optimal size is 15% of image
-          const angleScore = 1 - (faceAngle / 30); // Optimal angle is 0°
-          const confidenceScore = faceConfidence;
-          const varianceScore = Math.min(1, embeddingStdDev / 0.02);
-          const overallScore = (sizeScore * 0.3) + (angleScore * 0.2) + (confidenceScore * 0.3) + (varianceScore * 0.2);
-          
-          const qualityMetrics = {
-            faceConfidence,
-            faceSizeRatio,
-            faceAngle,
-            embeddingVariance: embeddingVariance,
-            embeddingStdDev,
-            overallScore,
-            timestamp: Date.now(),
-          };
-          
-          sessionStorage.setItem('faceVerificationReferenceQuality', JSON.stringify(qualityMetrics));
-          
-          console.log('[IdentityVerification] ✅ Reference face embedding extracted and validated:', {
-            dimensions: embeddingArray.length,
-            type: Array.isArray(embedding) ? 'Array' : embedding.constructor.name,
-            quality: 'valid',
-            qualityMetrics,
-          });
-          embeddingExtracted = true;
-          setPhotoQualityValid(true);
-          setPhotoQualityErrors([]);
-          setStatusMessage("✅ Photo quality verified! Face features extracted successfully. Click 'Confirm & Continue' to proceed.");
-        } else {
-          // Quality validation failed - CRITICAL: Don't store embedding if validation fails
-          console.error('[IdentityVerification] ❌ Photo quality validation FAILED:', {
-            errors: qualityValidation.errors,
-            warnings: qualityValidation.warnings,
-            errorCount: qualityValidation.errors.length,
-          });
-          setPhotoQualityValid(false);
-          setPhotoQualityErrors(qualityValidation.errors);
-          const errorMessage = qualityValidation.errors.length > 0 
-            ? `⚠️ Photo quality issue: ${qualityValidation.errors.join(', ')}. Please click 'Retry Photo' and capture again.`
-            : "⚠️ Photo quality validation failed. Please click 'Retry Photo' and ensure your face is clearly visible.";
-          setStatusMessage(errorMessage);
-          
-          // CRITICAL: Clear any existing embedding if validation failed
-          sessionStorage.removeItem('faceVerificationReferenceEmbedding');
-          sessionStorage.removeItem('faceVerificationReferenceQuality');
-          console.log('[IdentityVerification] 🧹 Cleared reference embedding due to validation failure');
-        }
+        sessionStorage.setItem('faceVerificationReferenceImage', photoData);
+        sessionStorage.setItem('faceVerificationEnabled', 'true');
+        setPhotoQualityValid(true);
+        setPhotoQualityErrors([]);
+        setStatusMessage("✅ Photo captured. Click 'Confirm & Continue' to proceed. Face will be verified during the assessment.");
       } catch (error) {
-        console.error('[IdentityVerification] ❌ Error extracting reference embedding:', error);
-        setStatusMessage("⚠️ Error extracting face features. Please click 'Retry Photo' and try again.");
+        console.error('[IdentityVerification] ❌ Error storing reference image:', error);
+        setStatusMessage("⚠️ Error saving photo. Please click 'Retry Photo' and try again.");
         setPhotoQualityValid(false);
         setPhotoQualityErrors([`Error: ${error instanceof Error ? error.message : String(error)}`]);
       }
@@ -1369,8 +1203,9 @@ export default function IdentityVerification({
                 // Retry: Reset captured photo and restart camera
                 console.log('[IdentityVerification] 🔄 Retry button clicked - resetting photo capture');
                 
-                // Clear old reference embedding from sessionStorage
-                sessionStorage.removeItem('faceVerificationReferenceEmbedding');
+                // Clear old reference image and embedding from sessionStorage
+                sessionStorage.removeItem('faceVerificationReferenceImage');
+                sessionStorage.removeItem('faceVerificationEnabled');
                 sessionStorage.removeItem(`referenceFace_${assessmentId}`);
                 sessionStorage.removeItem(`capturedPhoto_${assessmentId}`);
                 console.log('[IdentityVerification] 🗑️ Cleared old reference embedding and photos');

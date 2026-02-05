@@ -11,7 +11,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config.settings import get_settings
 from app.db.mongo import connect_to_mongo, close_mongo_connection
 from app.api.v1.proctor.routers import router as proctor_router
+from app.api.v1.proctor.verify_face import router as verify_face_router
 from app.api.v1.proctoring.routers import router as proctoring_router
+from app.services.face_verification_service import face_verification_service
 from app.exceptions.handlers import (
     validation_exception_handler,
     not_found_handler,
@@ -58,6 +60,14 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.error(f"❌ Failed to connect to MongoDB: {e}")
         raise
+
+    # Initialize DeepFace (ArcFace) model for face verification
+    try:
+        face_verification_service.initialize()
+        logger.info("✅ Face verification service (DeepFace ArcFace) initialized")
+    except Exception as e:
+        logger.error("❌ Failed to initialize face verification service: %s", str(e))
+        # Don't crash the app; verify-face will return 503 until model is available
     
     logger.info("=" * 60)
     yield
@@ -91,6 +101,7 @@ app.add_middleware(
 )
 
 app.include_router(proctor_router)
+app.include_router(verify_face_router, prefix="/api/v1/proctor", tags=["Face Verification"])
 app.include_router(proctoring_router)
 
 app.add_exception_handler(RequestValidationError, validation_exception_handler)

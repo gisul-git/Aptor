@@ -31,8 +31,9 @@ app.use(cors({
   origin: process.env.CORS_ORIGINS?.split(',') || ['http://localhost:3000'],
   credentials: true,
 }));
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+// Allow larger payloads for face verification (reference + live base64 images)
+app.use(express.json({ limit: '5mb' }));
+app.use(express.urlencoded({ extended: true, limit: '5mb' }));
 app.use(morgan('combined'));
 
 
@@ -132,6 +133,7 @@ async function verifyToken(req, res, next) {
     /^\/api\/v1\/proctor\/upload$/,
     /^\/api\/v1\/proctor\/start-session$/,
     /^\/api\/v1\/proctor\/live\/start-session$/, // Live proctoring session start
+    /^\/api\/v1\/proctor\/verify-face$/, // Face verification (candidate, no auth)
   ];
   
   // Check if path matches candidate public patterns

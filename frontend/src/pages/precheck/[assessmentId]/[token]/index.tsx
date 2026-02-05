@@ -122,16 +122,11 @@ export default function PrecheckPage() {
     }
 
     // Load models in background (non-blocking)
-    console.log("[Precheck] 🚀 Pre-loading AI models in background (BlazeFace + FaceMesh + Face Recognition)...");
+    console.log("[Precheck] 🚀 Pre-loading AI models in background (BlazeFace + FaceMesh)...");
     modelService.loadAllModels()
-      .then(({ blazeface, faceMesh, faceRecognition }) => {
+      .then(({ blazeface, faceMesh }) => {
         if (blazeface && faceMesh) {
           console.log("[Precheck] ✅ AI models pre-loaded successfully - ready for identity verification and assessment");
-          if (faceRecognition) {
-            console.log("[Precheck] ✅ Face Recognition model also loaded - ready for identity verification");
-          } else {
-            console.warn("[Precheck] ⚠️ Face Recognition model not loaded (optional)");
-          }
         } else {
           console.warn("[Precheck] ⚠️ Some models failed to pre-load, will load on-demand");
         }

@@ -21,12 +21,6 @@ export {
 } from "./engine/faceDetection";
 
 export {
-  matchFace,
-  loadReferenceFaceFromImage,
-  type FaceMatchingResult,
-} from "./engine/faceMatching";
-
-export {
   createViolation,
   logViolation,
   captureScreenshot,

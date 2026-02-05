@@ -8,4 +8,7 @@ pydantic-settings==2.4.0
 redis==5.0.1
 hiredis==2.3.2
 boto3==1.34.67
-
+deepface==0.0.93
+tf-keras==2.18.0
+opencv-python-headless==4.8.1.78
+numpy>=1.24.0

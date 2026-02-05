@@ -94,6 +94,9 @@ export default function AIMLTestTakePage() {
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0)
   const [codeAnswers, setCodeAnswers] = useState<Record<string, string>>({})
   const [outputAnswers, setOutputAnswers] = useState<Record<string, string[]>>({})
+  // Use refs to store latest values for timer expiration (avoid closure issues)
+  const codeAnswersRef = useRef<Record<string, string>>({})
+  const outputAnswersRef = useRef<Record<string, string[]>>({})
   const [timeRemaining, setTimeRemaining] = useState<number | null>(null)
   const [submitted, setSubmitted] = useState(false)
   const [submitting, setSubmitting] = useState(false)
@@ -828,10 +831,15 @@ export default function AIMLTestTakePage() {
     if (currentQuestion && 
         !expiredQuestions.has(currentQuestion.id) &&
         (test?.timer_mode !== 'PER_QUESTION' || unlockedQuestions.has(currentQuestion.id))) {
-      setCodeAnswers(prev => ({
-        ...prev,
-        [currentQuestion.id]: code
-      }))
+      setCodeAnswers(prev => {
+        const updated = {
+          ...prev,
+          [currentQuestion.id]: code
+        }
+        // Update ref immediately for timer access
+        codeAnswersRef.current = updated
+        return updated
+      })
       
       // Debounced auto-save (save 2 seconds after user stops typing)
       if (autoSaveRef.current) clearTimeout(autoSaveRef.current)
@@ -840,6 +848,48 @@ export default function AIMLTestTakePage() {
       }, 2000)
     }
   }, [currentQuestion, autoSaveAnswer, expiredQuestions, test?.timer_mode, unlockedQuestions])
+
+  const handleOutputChange = useCallback((outputs: string[]) => {
+    console.log('%c[PARENT] 🟡 handleOutputChange called', 'color: #ffaa00; font-weight: bold; font-size: 14px', {
+      currentQuestionId: currentQuestion?.id,
+      outputsCount: outputs.length,
+      outputs: outputs.map((o, idx) => ({ index: idx, length: o.length, preview: o.substring(0, 50) })),
+      isExpired: currentQuestion ? expiredQuestions.has(currentQuestion.id) : false,
+      timerMode: test?.timer_mode,
+      isUnlocked: currentQuestion ? unlockedQuestions.has(currentQuestion.id) : false
+    })
+    
+    if (currentQuestion && 
+        !expiredQuestions.has(currentQuestion.id) &&
+        (test?.timer_mode !== 'PER_QUESTION' || unlockedQuestions.has(currentQuestion.id))) {
+      console.log('%c[PARENT] ✅ Saving outputs to state', 'color: #00aa00; font-weight: bold; font-size: 14px', {
+        questionId: currentQuestion.id,
+        outputsCount: outputs.length
+      })
+      setOutputAnswers(prev => {
+        const updated = {
+          ...prev,
+          [currentQuestion.id]: outputs
+        }
+        // Update ref immediately for timer access (avoid closure issues)
+        outputAnswersRef.current = updated
+        console.log('%c[PARENT] 💾 Outputs stored in state AND ref', 'color: #00aa00; font-weight: bold; font-size: 14px', {
+          questionId: currentQuestion.id,
+          storedOutputs: updated[currentQuestion.id]?.length || 0,
+          allStoredQuestions: Object.keys(updated),
+          refOutputs: outputAnswersRef.current[currentQuestion.id]?.length || 0
+        })
+        return updated
+      })
+    } else {
+      console.log('%c[PARENT] ❌ NOT saving outputs - conditions not met', 'color: #ff0000; font-weight: bold; font-size: 14px', {
+        hasCurrentQuestion: !!currentQuestion,
+        isExpired: currentQuestion ? expiredQuestions.has(currentQuestion.id) : 'N/A',
+        timerMode: test?.timer_mode,
+        isUnlocked: currentQuestion ? unlockedQuestions.has(currentQuestion.id) : 'N/A'
+      })
+    }
+  }, [currentQuestion, expiredQuestions, test?.timer_mode, unlockedQuestions])
 
   const handleSubmitQuestion = async (code: string, outputs: string[]) => {
     if (!currentQuestion || submitting) return
@@ -911,17 +961,27 @@ export default function AIMLTestTakePage() {
     setSubmitting(true)
     
     try {
-      // Save all current answers before submitting
-      console.log('[AIML Take] Saving all answers before auto-submit')
-      const savePromises = Object.entries(codeAnswers).map(async ([questionId, code]) => {
+      // Save all current answers before submitting (use refs for latest values)
+      console.log('%c[AUTO-SUBMIT] 💾 Saving all answers before auto-submit', 'color: #0066ff; font-weight: bold; font-size: 14px')
+      const savePromises = Object.entries(codeAnswersRef.current).map(async ([questionId, code]) => {
         try {
-          await autoSaveAnswer(questionId, code)
+          // Also save outputs when auto-saving
+          const outputs = outputAnswersRef.current[questionId] || []
+          await aimlApi.post(
+            `/tests/${testId}/submit-answer`,
+            {
+              user_id: userId,
+              question_id: questionId,
+              source_code: code,
+              outputs: outputs,  // Include outputs in auto-save
+            }
+          )
         } catch (err) {
-          console.error(`[AIML Take] Failed to save answer for question ${questionId}:`, err)
+          console.error(`%c[AUTO-SUBMIT] ❌ Failed to save answer for question ${questionId}`, 'color: #ff0000; font-weight: bold; font-size: 12px', err)
         }
       })
       await Promise.all(savePromises)
-      console.log('[AIML Take] All answers saved, proceeding with submission')
+      console.log('%c[AUTO-SUBMIT] ✅ All answers saved, proceeding with submission', 'color: #00aa00; font-weight: bold; font-size: 14px')
       
       // Get candidate requirements from sessionStorage
       const candidateRequirements: any = {};
@@ -948,14 +1008,32 @@ export default function AIMLTestTakePage() {
       }
 
       const { aimlService } = await import('@/services/aiml')
+      
+      // IMPORTANT: Read from refs to avoid closure issues (same fix as question expiration)
+      // Refs always have the latest values, state might be stale
+      console.log('%c[AUTO-SUBMIT] 📤 Reading all answers from refs for final submission', 'color: #0066ff; font-weight: bold; font-size: 14px', {
+        codeAnswersFromRef: Object.keys(codeAnswersRef.current),
+        outputAnswersFromRef: Object.keys(outputAnswersRef.current),
+        allQuestions: Object.keys(codeAnswers)
+      })
+      
       // Backend expects 'answers' with 'source_code' field, not 'question_submissions' with 'code'
       const response = await aimlService.submitTest(String(testId), {
         user_id: userId,
-        answers: Object.entries(codeAnswers).map(([questionId, code]) => ({
-          question_id: questionId,
-          source_code: code,  // Backend expects 'source_code', not 'code'
-          outputs: outputAnswers[questionId] || []
-        })),
+        answers: Object.entries(codeAnswersRef.current).map(([questionId, code]) => {
+          const outputs = outputAnswersRef.current[questionId] || []
+          console.log('%c[AUTO-SUBMIT] 📝 Including answer', 'color: #00aa00; font-weight: bold; font-size: 12px', {
+            questionId,
+            codeLength: code.length,
+            outputsCount: outputs.length,
+            hasOutputs: outputs.length > 0
+          })
+          return {
+            question_id: questionId,
+            source_code: code,  // Backend expects 'source_code', not 'code'
+            outputs: outputs  // Read from ref, not state
+          }
+        }),
         activity_logs: undefined,
         candidateRequirements: candidateRequirements
       })
@@ -1020,14 +1098,30 @@ export default function AIMLTestTakePage() {
       }
 
       const { aimlService } = await import('@/services/aiml')
+      
+      // IMPORTANT: Read from refs to avoid closure issues (same fix as auto-submit)
+      console.log('%c[MANUAL-SUBMIT] 📤 Reading all answers from refs for final submission', 'color: #0066ff; font-weight: bold; font-size: 14px', {
+        codeAnswersFromRef: Object.keys(codeAnswersRef.current),
+        outputAnswersFromRef: Object.keys(outputAnswersRef.current)
+      })
+      
       // Backend expects 'answers' with 'source_code' field
       const response = await aimlService.submitTest(String(testId), {
         user_id: userId,
-        answers: Object.entries(codeAnswers).map(([questionId, code]) => ({
-          question_id: questionId,
-          source_code: code,  // Backend expects 'source_code', not 'code'
-          outputs: outputAnswers[questionId] || []
-        })),
+        answers: Object.entries(codeAnswersRef.current).map(([questionId, code]) => {
+          const outputs = outputAnswersRef.current[questionId] || []
+          console.log('%c[MANUAL-SUBMIT] 📝 Including answer', 'color: #00aa00; font-weight: bold; font-size: 12px', {
+            questionId,
+            codeLength: code.length,
+            outputsCount: outputs.length,
+            hasOutputs: outputs.length > 0
+          })
+          return {
+            question_id: questionId,
+            source_code: code,  // Backend expects 'source_code', not 'code'
+            outputs: outputs  // Read from ref, not state
+          }
+        }),
         activity_logs: undefined,
         candidateRequirements: candidateRequirements
       })
@@ -1060,14 +1154,6 @@ export default function AIMLTestTakePage() {
   // Use AITimer hook for per-question or global timer
   const currentQuestionForTimer = questions[currentQuestionIndex] || null
   const timerEnabled = examStarted && !submitted && questions.length > 0
-  console.log('[AIML Take] Timer hook enabled check:', {
-    examStarted,
-    submitted,
-    questionsLength: questions.length,
-    timerEnabled,
-    testTimerMode: test?.timer_mode,
-    hasTest: !!test
-  })
   const timer = useAITimer({
     test: test ? {
       timer_mode: test.timer_mode || "GLOBAL",
@@ -1080,7 +1166,10 @@ export default function AIMLTestTakePage() {
     currentQuestionId: currentQuestionForTimer?.id || null,
     onExpire: handleAutoSubmitTest,
     onQuestionExpire: async (questionId: string) => {
-      console.log('[AIML Timer] Question expired:', questionId)
+      // IMPORTANT: Read from refs to get latest values (avoid closure/stale state issues)
+      // Refs are always up-to-date and don't have closure problems
+      const currentCode = codeAnswersRef.current[questionId] || ''
+      const currentOutputs = outputAnswersRef.current[questionId] || []
       
       // Mark question as expired and completed
       setExpiredQuestions(prev => {
@@ -1095,14 +1184,36 @@ export default function AIMLTestTakePage() {
       })
       setExpiredQuestionId(questionId)
       
-      // Auto-save the current question's answer
-      const currentCode = codeAnswers[questionId] || ''
-      const currentOutputs = outputAnswers[questionId] || []
+      // Submit the answer with outputs for evaluation (not just auto-save)
+      // This ensures the code is evaluated even if user didn't click submit
+      if (!token || !userId || !testId) {
+        return
+      }
+      
       try {
-        await autoSaveAnswer(questionId, currentCode)
-        console.log('[AIML Timer] Auto-saved question:', questionId)
+        const expiredQuestion = questions.find(q => q.id === questionId)
+        if (expiredQuestion && currentCode) {
+          // Submit with outputs for evaluation (same as handleSubmitQuestion)
+          await aimlApi.post(
+            `/tests/${testId}/submit-answer`,
+            {
+              user_id: userId,
+              question_id: questionId,
+              source_code: currentCode,
+              outputs: currentOutputs,
+            }
+          )
+        } else {
+          // Fallback to auto-save if no code or question not found
+          await autoSaveAnswer(questionId, currentCode)
+        }
       } catch (err) {
-        console.error('[AIML Timer] Failed to auto-save:', err)
+        // Try to at least save the code as fallback
+        try {
+          await autoSaveAnswer(questionId, currentCode)
+        } catch (saveErr) {
+          // Silent fail - error already logged if needed
+        }
       }
       
       // Lock current question and unlock next question (sequential locking)
@@ -1135,41 +1246,17 @@ export default function AIMLTestTakePage() {
     enabled: timerEnabled,
   })
 
-  // Debug: Log timer state changes
-  useEffect(() => {
-    console.log('[AIML Take] Timer hook state changed:', {
-      timerTimeRemaining: timer.timeRemaining,
-      localTimeRemaining: timeRemaining,
-      timerMode: test?.timer_mode,
-      examStarted,
-      submitted,
-      questionsCount: questions.length,
-      enabled: examStarted && !submitted && questions.length > 0
-    })
-  }, [timer.timeRemaining, timeRemaining, test?.timer_mode, examStarted, submitted, questions.length])
 
   // Update timeRemaining from timer hook (for GLOBAL mode)
-  // Use a ref to track previous value and force update if needed
-  const prevTimerTimeRef = useRef<number | null>(null)
-  const forceUpdateRef = useRef(0)
-  
+  // Only update when value actually changes to prevent unnecessary re-renders
   useEffect(() => {
     if (test?.timer_mode === 'GLOBAL' && timer.timeRemaining !== undefined && timer.timeRemaining !== null) {
-      console.log('[AIML Take] Timer sync effect - timer.timeRemaining:', timer.timeRemaining, 'current timeRemaining state:', timeRemaining, 'prev:', prevTimerTimeRef.current)
-      
-      // Always update to ensure React re-renders
-      // Use functional update to force React to process the change
       setTimeRemaining(prev => {
-        const newValue = timer.timeRemaining
-        if (prev !== newValue || prevTimerTimeRef.current !== newValue) {
-          console.log('[AIML Take] Timer sync effect - updating state from', prev, 'to', newValue)
-          prevTimerTimeRef.current = newValue
-          return newValue
+        // Only update if value actually changed
+        if (prev !== timer.timeRemaining) {
+          return timer.timeRemaining
         }
-        // Force update by incrementing a counter (triggers re-render even if value is same)
-        forceUpdateRef.current += 1
-        console.log('[AIML Take] Timer sync effect - forcing re-render (value same, update count:', forceUpdateRef.current, ')')
-        return newValue
+        return prev
       })
     }
   }, [timer.timeRemaining, test?.timer_mode])
@@ -1443,7 +1530,6 @@ export default function AIMLTestTakePage() {
               timeRemaining !== null && !isNaN(timeRemaining) && timeRemaining >= 0 && (
                 (() => {
                   const displayTime = `${Math.floor(timeRemaining / 60)}:${String(timeRemaining % 60).padStart(2, '0')}`
-                  console.log('[AIML Take] Timer UI render - timeRemaining:', timeRemaining, 'displayTime:', displayTime, 'timer.timeRemaining:', timer.timeRemaining, 'forceUpdate:', forceUpdateRef.current)
                   // Use key prop with timeRemaining to force React to re-render when value changes
                   return (
                     <div 
@@ -1619,6 +1705,7 @@ export default function AIMLTestTakePage() {
             question={currentQuestion}
             sessionId={`test_${testId}_user_${userId}_q_${currentQuestion.id}`}
             onCodeChange={handleCodeChange}
+            onOutputChange={handleOutputChange}
             onSubmit={handleSubmitQuestion}
             showSubmit={true}
             readOnly={expiredQuestions.has(currentQuestion.id)}
