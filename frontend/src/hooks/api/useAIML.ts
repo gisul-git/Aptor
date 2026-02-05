@@ -53,8 +53,13 @@ export const useAIMLTest = (testId: string | undefined) => {
           return apiResponse.data;
         }
         // Check if response itself is an AIMLTest (has required properties)
+        // Backend returns question_ids, not questions array
         const testData = response as unknown as AIMLTest;
-        if ('id' in testData && 'title' in testData && 'questions' in testData) {
+        if ('id' in testData && 'title' in testData) {
+          // If questions array doesn't exist, create empty array from question_ids
+          if (!('questions' in testData) && 'question_ids' in testData) {
+            (testData as any).questions = (testData as any).question_ids || [];
+          }
           return testData;
         }
       }
@@ -66,12 +71,12 @@ export const useAIMLTest = (testId: string | undefined) => {
   });
 };
 
-export const useAIMLQuestions = () => {
+export const useAIMLQuestions = (lightweight: boolean = false) => {
   return useQuery({
-    queryKey: QUERY_KEYS.questions,
+    queryKey: [...QUERY_KEYS.questions, lightweight ? 'lightweight' : 'full'],
     queryFn: async () => {
       try {
-        const response = await aimlService.listQuestions();
+        const response = await aimlService.listQuestions(lightweight);
         // Backend returns direct array, not wrapped in ApiResponse
         // Check if response is already an array (direct response)
         if (Array.isArray(response)) {
