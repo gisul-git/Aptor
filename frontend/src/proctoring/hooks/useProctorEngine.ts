@@ -32,7 +32,6 @@ export function useProctorEngine(options: UseProctorEngineOptions): UseProctorEn
     isActive: false,
     isInitialized: false,
     faceDetectionState: "NO_FACE",
-    faceMatchResult: null,
     violations: [],
   });
 

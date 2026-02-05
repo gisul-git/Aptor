@@ -1,6 +1,17 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  // Stub Node built-ins for browser bundles (e.g. face-api.js references 'fs' in unused Node code path)
+  webpack: (config, { isServer }) => {
+    if (!isServer) {
+      config.resolve.fallback = {
+        ...config.resolve.fallback,
+        fs: false,
+        path: false,
+      };
+    }
+    return config;
+  },
   // Proxy API requests to backend server (exclude NextAuth routes)
   async rewrites() {
     // Try to get API Gateway URL from environment
