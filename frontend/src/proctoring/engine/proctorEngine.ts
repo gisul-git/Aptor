@@ -11,7 +11,6 @@ import {
   cleanupFaceDetection,
   type FaceDetectionState 
 } from "./faceDetection";
-import { matchFace, loadReferenceFaceFromImage, type FaceMatchingResult } from "./faceMatching";
 import { 
   createViolation, 
   logViolation, 
@@ -36,7 +35,6 @@ export interface ProctorEngineState {
   isActive: boolean;
   isInitialized: boolean;
   faceDetectionState: FaceDetectionState;
-  faceMatchResult: FaceMatchingResult | null;
   violations: Array<{
     type: ViolationType;
     timestamp: string;
@@ -53,7 +51,6 @@ export interface ProctorEngine {
 
 // Face monitoring interval (check every 5-10 seconds)
 const FACE_CHECK_INTERVAL_MS = 7000; // 7 seconds
-const FACE_MISMATCH_CONSECUTIVE_THRESHOLD = 3;
 const NO_FACE_CONSECUTIVE_THRESHOLD = 2;
 
 /**
@@ -64,7 +61,6 @@ export function createProctorEngine(options: ProctorEngineOptions): ProctorEngin
     assessmentId,
     candidateEmail,
     config,
-    referenceImageUrl,
     onViolation,
     videoElement,
     canvasElement,
@@ -77,15 +73,12 @@ export function createProctorEngine(options: ProctorEngineOptions): ProctorEngin
     isActive: false,
     isInitialized: false,
     faceDetectionState: "NO_FACE",
-    faceMatchResult: null,
     violations: [],
   };
 
   // Refs (using closures instead of React refs for pure engine)
   let isRunning = false;
   let faceCheckInterval: NodeJS.Timeout | null = null;
-  let referenceLandmarks: number[][] | null = null;
-  let consecutiveMismatches = 0;
   let consecutiveNoFace = 0;
   const lastViolationTime: Record<string, number> = {};
 
@@ -103,38 +96,6 @@ export function createProctorEngine(options: ProctorEngineOptions): ProctorEngin
   const getCanvasRef = () => {
     if (getCanvasElement) return getCanvasElement();
     return canvasElement || null;
-  };
-
-  /**
-   * Load reference face from stored image
-   */
-  const loadReferenceFace = async (): Promise<boolean> => {
-    const imageUrl = referenceImageUrl || (typeof window !== "undefined" 
-      ? sessionStorage.getItem(`referenceFace_${assessmentId}`) 
-      : null);
-
-    if (!imageUrl) {
-      console.log("[ProctorEngine] No reference image available");
-      return false;
-    }
-
-    try {
-      const faceDetectionModule = {
-        detectFaces: detectFaces,
-      };
-
-      const landmarks = await loadReferenceFaceFromImage(imageUrl, faceDetectionModule);
-      
-      if (landmarks) {
-        referenceLandmarks = landmarks;
-        console.log("[ProctorEngine] Reference face loaded");
-        return true;
-      }
-    } catch (error) {
-      console.error("[ProctorEngine] Failed to load reference face:", error);
-    }
-
-    return false;
   };
 
   /**
@@ -253,58 +214,6 @@ export function createProctorEngine(options: ProctorEngineOptions): ProctorEngin
         // }
       };
 
-      // Face matching (works for both centered and off-center single faces)
-      if (
-        (detectionResult.state === "SINGLE_FACE_CENTERED" || detectionResult.state === "FACE_OFF_CENTER") &&
-        detectionResult.landmarks &&
-        referenceLandmarks
-      ) {
-        const matchResult = matchFace(
-          detectionResult.landmarks,
-          referenceLandmarks
-        );
-
-        state.faceMatchResult = matchResult;
-
-        if (!matchResult.isMatch) {
-          consecutiveMismatches += 1;
-
-          if (consecutiveMismatches >= FACE_MISMATCH_CONSECUTIVE_THRESHOLD) {
-            if (shouldLogViolation("FACE_MISMATCH")) {
-              const screenshot = captureScreenshot(currentVideoRef, getCanvasRef() || undefined);
-              // Get sessionId from sessionStorage
-              const sessionId = typeof window !== "undefined" 
-                ? sessionStorage.getItem("proctoringSessionId") 
-                : null;
-              
-              const violation = createViolation(
-                "FACE_MISMATCH",
-                assessmentId,
-                candidateEmail,
-                {
-                  similarity: matchResult.similarity,
-                  consecutiveMismatches: consecutiveMismatches,
-                },
-                screenshot || undefined
-              );
-              violation.sessionId = sessionId || undefined;
-
-              await logViolation(violation);
-              state.violations.push({
-                type: "FACE_MISMATCH",
-                timestamp: violation.timestamp,
-                metadata: violation.metadata,
-              });
-
-              if (onViolation) {
-                onViolation("FACE_MISMATCH", violation.metadata);
-              }
-            }
-          }
-        } else {
-          consecutiveMismatches = 0;
-        }
-      }
     } catch (error) {
       console.error("[ProctorEngine] Face check error:", error);
     }
@@ -324,8 +233,6 @@ export function createProctorEngine(options: ProctorEngineOptions): ProctorEngin
         if (!initialized) {
           return false;
         }
-
-        await loadReferenceFace();
 
         state.isInitialized = true;
       }

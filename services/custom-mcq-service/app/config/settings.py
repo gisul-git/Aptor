@@ -15,6 +15,9 @@ class Settings(BaseSettings):
     sendgrid_from_email: Optional[str] = None
     sendgrid_from_name: Optional[str] = None
     email_provider: str = "sendgrid"
+    
+    # Redis configuration (read from .env file)
+    redis_url: str = "redis://localhost:6379/0"  # Default fallback, override with REDIS_URL in .env
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 

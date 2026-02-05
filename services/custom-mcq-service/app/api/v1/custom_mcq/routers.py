@@ -23,6 +23,14 @@ from ....core.dependencies import require_editor, get_current_user
 from ....db.mongo import get_db
 from ....utils.mongo import serialize_document, to_object_id
 from ....utils.responses import success_response, error_response
+from ....utils.cache import (
+    get_cached_tests,
+    set_cached_tests,
+    get_cached_dashboard,
+    set_cached_dashboard,
+    invalidate_user_tests_cache
+)
+import asyncio
 from .schemas import (
     MCQQuestion,
     SubjectiveQuestion,
@@ -561,6 +569,9 @@ async def create_custom_mcq_assessment(
         if assessment_token:
             assessment_url = f"/custom-mcq/entry/{assessment_id}?token={assessment_token}"
         
+        # Invalidate cache for this user
+        await invalidate_user_tests_cache(user_id)
+        
         return success_response(
             "Custom MCQ assessment created successfully",
             {
@@ -579,23 +590,168 @@ async def create_custom_mcq_assessment(
         return error_response(f"Failed to create assessment: {str(e)}", status_code=500)
 
 
-@router.get("/list")
-async def list_custom_mcq_assessments(
+@router.get("/dashboard")
+async def get_assessments_dashboard(
+    page: int = Query(1, ge=1, description="Page number"),
+    limit: int = Query(20, ge=1, le=100, description="Items per page"),
     current_user: Dict[str, Any] = Depends(require_editor),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ) -> Dict[str, Any]:
-    """List all custom MCQ assessments for the current user"""
+    """
+    Lightweight dashboard endpoint for Custom MCQ assessments.
+    Optimized with MongoDB field projection, Redis caching, and pagination.
+    """
+    try:
+        user_id = current_user.get("id") or current_user.get("_id")
+        if not user_id:
+            return error_response("User ID not found", status_code=401)
+        user_id = str(user_id)
+        
+        # Try cache first
+        cached_data = await get_cached_dashboard(user_id, page, limit)
+        if cached_data:
+            return success_response("Custom MCQ assessments fetched successfully", cached_data)
+        
+        # Build query with field projection
+        query = {"created_by": user_id}
+        skip = (page - 1) * limit
+        
+        # Use aggregation pipeline for optimized query
+        pipeline = [
+            {"$match": query},
+            {
+                "$project": {
+                    "_id": 1,
+                    "title": 1,
+                    "status": 1,
+                    "created_at": 1,
+                    "updated_at": 1,
+                    "schedule.startTime": 1,
+                    "schedule.endTime": 1,
+                    "schedule.duration": 1,
+                    "pausedAt": 1,
+                }
+            },
+            {"$sort": {"created_at": -1}},
+            {"$skip": skip},
+            {"$limit": limit}
+        ]
+        
+        # Get total count and assessments in parallel
+        count_task = db.custom_mcq_assessments.count_documents(query)
+        assessments_task = db.custom_mcq_assessments.aggregate(pipeline).to_list(length=limit)
+        
+        total_count, assessments = await asyncio.gather(count_task, assessments_task)
+        
+        # Format results
+        result = []
+        for assessment in assessments:
+            schedule = assessment.get("schedule", {})
+            has_schedule = bool(schedule.get("startTime") and schedule.get("endTime"))
+            
+            status_val = assessment.get("status", "draft")
+            if assessment.get("pausedAt"):
+                status_val = "paused"
+            
+            result.append({
+                "id": str(assessment["_id"]),
+                "title": assessment.get("title", ""),
+                "status": status_val,
+                "hasSchedule": has_schedule,
+                "scheduleStatus": {
+                    "startTime": schedule.get("startTime"),
+                    "endTime": schedule.get("endTime"),
+                    "duration": schedule.get("duration"),
+                    "isActive": status_val == "active",
+                } if has_schedule else None,
+                "createdAt": assessment.get("created_at"),
+                "updatedAt": assessment.get("updated_at"),
+                "pausedAt": assessment.get("pausedAt"),
+            })
+        
+        # Build response with pagination
+        total_pages = (total_count + limit - 1) // limit if total_count > 0 else 0
+        response_data = {
+            "assessments": result,
+            "pagination": {
+                "page": page,
+                "limit": limit,
+                "total": total_count,
+                "total_pages": total_pages,
+                "has_next": page < total_pages,
+                "has_prev": page > 1
+            }
+        }
+        
+        # Cache the result
+        await set_cached_dashboard(user_id, response_data, page, limit)
+        
+        return success_response("Custom MCQ assessments fetched successfully", response_data)
+        
+    except Exception as e:
+        logger.exception(f"Error in dashboard endpoint: {e}")
+        return error_response(f"Failed to fetch assessments: {str(e)}", status_code=500)
+
+@router.get("/list")
+async def list_custom_mcq_assessments(
+    page: int = Query(1, ge=1, description="Page number"),
+    limit: int = Query(100, ge=1, le=100, description="Items per page"),
+    current_user: Dict[str, Any] = Depends(require_editor),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+) -> Dict[str, Any]:
+    """
+    List all custom MCQ assessments for the current user.
+    Optimized with Redis caching, MongoDB field projection, and pagination.
+    """
     try:
         user_id = current_user.get("id") or current_user.get("_id")
         if not user_id:
             logger.warning("[Custom MCQ List] User ID not found in current_user")
             return error_response("User ID not found", status_code=401)
         user_id = str(user_id)
+        
+        # Try cache first
+        cached_assessments = await get_cached_tests(user_id, page, limit)
+        if cached_assessments is not None:
+            return success_response(
+                "Custom MCQ assessments fetched successfully",
+                {"assessments": cached_assessments, "total": len(cached_assessments)}
+            )
+        
         logger.info(f"[Custom MCQ List] Fetching assessments for user_id: {user_id}")
         
+        # Build query with pagination
+        query = {"created_by": user_id}
+        skip = (page - 1) * limit
+        
+        # Use aggregation pipeline with field projection
+        pipeline = [
+            {"$match": query},
+            {
+                "$project": {
+                    "_id": 1,
+                    "title": 1,
+                    "description": 1,
+                    "status": 1,
+                    "questions": 1,
+                    "totalMarks": 1,
+                    "submissions": 1,
+                    "created_at": 1,
+                    "updated_at": 1,
+                    "currentStation": 1,
+                    "schedule": 1,
+                    "pausedAt": 1,
+                }
+            },
+            {"$sort": {"created_at": -1}},
+            {"$skip": skip},
+            {"$limit": limit}
+        ]
+        
+        assessments_docs = await db.custom_mcq_assessments.aggregate(pipeline).to_list(length=limit)
+        
         assessments = []
-        assessment_count = 0
-        async for assessment in db.custom_mcq_assessments.find({"created_by": user_id}).sort("created_at", -1):
+        for assessment in assessments_docs:
             assessment_count += 1
             assessment_serialized = serialize_document(assessment)
             if not assessment_serialized:
@@ -1005,6 +1161,9 @@ async def update_custom_mcq_assessment(
             response_data["assessmentToken"] = assessment_token
             response_data["assessmentUrl"] = f"/custom-mcq/entry/{assessment_id}?token={assessment_token}"
         
+        # Invalidate cache for this user
+        await invalidate_user_tests_cache(user_id)
+        
         return success_response("Assessment updated successfully", response_data)
         
     except Exception as e:
@@ -1036,6 +1195,9 @@ async def delete_custom_mcq_assessment(
             return error_response("Access denied", status_code=403)
         
         await db.custom_mcq_assessments.delete_one({"_id": assessment_oid})
+        
+        # Invalidate cache for this user
+        await invalidate_user_tests_cache(user_id)
         
         return success_response("Assessment deleted successfully")
         

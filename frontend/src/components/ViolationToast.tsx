@@ -96,7 +96,7 @@ export function ViolationToast() {
           queuedToastRef.current = null;
           setTimeout(() => showToast(queued), 100);
         }
-      }, 200); // Animation duration
+      }, 280); // Match toastSlideUp animation duration
     }, TOAST_DURATION);
   }, []);
 
@@ -114,7 +114,6 @@ export function ViolationToast() {
   if (!visible || !toast) return null;
 
   const title = titleMap[toast.eventType] || toast.eventType;
-  const timestamp = new Date(toast.timestamp).toLocaleTimeString();
 
   return (
     <>
@@ -131,80 +130,67 @@ export function ViolationToast() {
         <div className="toast-content">
           <div className="toast-title">{title}</div>
           <div className="toast-message">{toast.message}</div>
-          <div className="toast-time">{timestamp}</div>
         </div>
-        <button
-          className="toast-close"
-          onClick={() => {
-            if (timeoutRef.current) clearTimeout(timeoutRef.current);
-            setIsAnimatingOut(true);
-            setTimeout(() => {
-              setVisible(false);
-              setToast(null);
-              isToastVisibleRef.current = false;
-            }, 200);
-          }}
-          aria-label="Close"
-        >
-          ×
-        </button>
       </div>
 
       <style jsx>{`
         .violation-toast {
           position: fixed;
-          top: 16px;
-          right: 16px;
+          top: 20px;
+          left: 50%;
+          transform: translateX(-50%);
           z-index: 9999;
           display: flex;
-          align-items: flex-start;
-          gap: 12px;
-          max-width: 320px;
-          padding: 12px 16px;
-          background: linear-gradient(135deg, #1a1625 0%, #2d2640 100%);
-          border: 1px solid #6953a3;
-          border-radius: 12px;
-          box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+          align-items: center;
+          gap: 14px;
+          max-width: 360px;
+          width: calc(100% - 32px);
+          padding: 16px 20px;
+          background: linear-gradient(145deg, #1e1b2e 0%, #2a2541 50%, #1f1c2f 100%);
+          border: 1px solid rgba(139, 92, 246, 0.35);
+          border-radius: 14px;
+          box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35), 0 0 0 1px rgba(255, 255, 255, 0.04) inset;
           color: #fff;
+          backdrop-filter: blur(12px);
         }
 
         .toast-enter {
-          animation: slideIn 0.2s ease-out forwards;
+          animation: toastSlideDown 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
         }
 
         .toast-exit {
-          animation: slideOut 0.2s ease-in forwards;
+          animation: toastSlideUp 0.28s cubic-bezier(0.4, 0, 1, 1) forwards;
         }
 
-        @keyframes slideIn {
+        @keyframes toastSlideDown {
           from {
             opacity: 0;
-            transform: translateX(100%);
+            transform: translateX(-50%) translateY(-24px) scale(0.92);
           }
           to {
             opacity: 1;
-            transform: translateX(0);
+            transform: translateX(-50%) translateY(0) scale(1);
           }
         }
 
-        @keyframes slideOut {
+        @keyframes toastSlideUp {
           from {
             opacity: 1;
-            transform: translateX(0);
+            transform: translateX(-50%) translateY(0) scale(1);
           }
           to {
             opacity: 0;
-            transform: translateX(100%);
+            transform: translateX(-50%) translateY(-20px) scale(0.96);
           }
         }
 
         .toast-thumbnail {
-          width: 56px;
-          height: 56px;
-          border-radius: 8px;
+          width: 52px;
+          height: 52px;
+          border-radius: 10px;
           overflow: hidden;
           flex-shrink: 0;
-          background-color: #333;
+          background-color: rgba(255, 255, 255, 0.06);
         }
 
         .toast-thumbnail img {
@@ -216,55 +202,28 @@ export function ViolationToast() {
         .toast-content {
           flex: 1;
           min-width: 0;
+          text-align: center;
         }
 
         .toast-title {
-          font-weight: 600;
+          font-weight: 700;
           font-size: 14px;
-          color: #f59e0b;
+          letter-spacing: 0.02em;
+          color: #fbbf24;
           margin-bottom: 4px;
         }
 
         .toast-message {
-          font-size: 12px;
+          font-size: 13px;
           color: #e2e8f0;
-          margin-bottom: 4px;
+          line-height: 1.45;
           word-wrap: break-word;
-        }
-
-        .toast-time {
-          font-size: 10px;
-          color: #94a3b8;
-        }
-
-        .toast-close {
-          position: absolute;
-          top: 8px;
-          right: 8px;
-          width: 20px;
-          height: 20px;
-          border: none;
-          background: transparent;
-          color: #94a3b8;
-          font-size: 18px;
-          cursor: pointer;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          border-radius: 50%;
-          transition: all 0.2s;
-        }
-
-        .toast-close:hover {
-          background-color: rgba(255, 255, 255, 0.1);
-          color: #fff;
         }
 
         @media (max-width: 420px) {
           .violation-toast {
             max-width: calc(100vw - 32px);
-            right: 16px;
-            left: 16px;
+            width: calc(100vw - 32px);
           }
         }
       `}</style>

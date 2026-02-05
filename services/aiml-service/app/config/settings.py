@@ -21,6 +21,9 @@ class Settings(BaseSettings):
     aws_email_source: Optional[str] = None
     azure_comm_connection_string: Optional[str] = None
     azure_comm_sender_address: Optional[str] = None
+    
+    # Redis configuration (read from .env file)
+    redis_url: str = "redis://localhost:6379/0"  # Default fallback, override with REDIS_URL in .env
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 

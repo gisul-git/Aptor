@@ -10,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config.settings import get_settings
 from app.db.mongo import connect_to_mongo, close_mongo_connection
+from app.utils.cache import init_redis_cache
 from app.api.v1.custom_mcq.routers import router as custom_mcq_router
 from app.api.v1.candidate.routers import router as candidate_router
 from app.exceptions.handlers import (
@@ -34,7 +35,35 @@ logger = logging.getLogger("custom-mcq-service")
 async def lifespan(app: FastAPI):
     await connect_to_mongo()
     logger.info("✅ Custom MCQ service connected to MongoDB")
+    
+    # Initialize Redis connection
+    settings = get_settings()
+    redis_client = None
+    try:
+        import redis.asyncio as redis
+        redis_client = redis.from_url(
+            settings.redis_url,
+            encoding="utf-8",
+            decode_responses=False  # We'll handle encoding manually
+        )
+        await redis_client.ping()
+        init_redis_cache(redis_client)
+        logger.info("✅ Custom MCQ service connected to Redis")
+        app.state.redis = redis_client
+    except Exception as e:
+        logger.warning(f"⚠️ Redis connection failed: {e}. Continuing without cache.")
+        app.state.redis = None
+    
     yield
+    
+    # Close Redis connection
+    if redis_client:
+        try:
+            await redis_client.close()
+            logger.info("✅ Custom MCQ service disconnected from Redis")
+        except Exception as e:
+            logger.warning(f"Error closing Redis connection: {e}")
+    
     await close_mongo_connection()
     logger.info("✅ Custom MCQ service disconnected from MongoDB")
 

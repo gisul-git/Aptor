@@ -506,36 +506,6 @@ export default function AIMLCompetencyNotebook({
         </div>
       )}
 
-      {/* Restart Success/Error Message */}
-      {restartMessage && (
-        <div className={`border-b px-4 py-2 text-sm flex items-center justify-between ${
-          restartMessage.type === 'success' 
-            ? 'bg-emerald-50 border-emerald-200 text-emerald-800' 
-            : 'bg-red-50 border-red-200 text-red-800'
-        }`}>
-          <div className="flex items-center gap-2">
-            {restartMessage.type === 'success' ? (
-              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-              </svg>
-            ) : (
-              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
-              </svg>
-            )}
-            <span>{restartMessage.text}</span>
-          </div>
-          <button
-            onClick={() => setRestartMessage(null)}
-            className="text-current opacity-70 hover:opacity-100"
-          >
-            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-              <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
-            </svg>
-          </button>
-        </div>
-      )}
-
       {/* Restart Kernel Confirmation Modal */}
       {showRestartModal && (
         <div 
@@ -680,6 +650,25 @@ export default function AIMLCompetencyNotebook({
             
             {/* Right Column - Notebook Cells with Toolbar */}
             <div className="flex-1 flex flex-col overflow-hidden bg-gray-50">
+              {/* Restart Success/Error Message - above notebook (right side) only */}
+              {restartMessage && (
+                <div className={`border-b px-4 py-2 text-sm flex items-center justify-center gap-2 shrink-0 ${
+                  restartMessage.type === 'success' 
+                    ? 'bg-emerald-50 border-emerald-200 text-emerald-800' 
+                    : 'bg-red-50 border-red-200 text-red-800'
+                }`}>
+                  {restartMessage.type === 'success' ? (
+                    <svg className="w-4 h-4 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                    </svg>
+                  ) : (
+                    <svg className="w-4 h-4 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                    </svg>
+                  )}
+                  <span>{restartMessage.text}</span>
+                </div>
+              )}
               {/* Toolbar Above Notebook Cells */}
               <div className="bg-white border-b border-gray-200 px-4 py-2 flex items-center justify-between">
                 <div className="flex items-center gap-2">
@@ -812,6 +801,25 @@ export default function AIMLCompetencyNotebook({
       {/* When Question Panel is Hidden - Show Notebook Cells Full Width with Toolbar */}
       {!showQuestion && (
         <div className="flex-1 flex flex-col overflow-hidden">
+          {/* Restart Success/Error Message - above notebook only */}
+          {restartMessage && (
+            <div className={`border-b px-4 py-2 text-sm flex items-center justify-center gap-2 shrink-0 ${
+              restartMessage.type === 'success' 
+                ? 'bg-emerald-50 border-emerald-200 text-emerald-800' 
+                : 'bg-red-50 border-red-200 text-red-800'
+            }`}>
+              {restartMessage.type === 'success' ? (
+                <svg className="w-4 h-4 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                </svg>
+              ) : (
+                <svg className="w-4 h-4 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                </svg>
+              )}
+              <span>{restartMessage.text}</span>
+            </div>
+          )}
           {/* Toolbar Above Notebook Cells */}
           <div className="bg-white border-b border-gray-200 px-4 py-2 flex items-center justify-between">
             <div className="flex items-center gap-2">

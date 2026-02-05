@@ -24,6 +24,13 @@ from app.core.dependencies import get_current_user, require_editor
 from app.utils.email import get_email_service
 from app.config.settings import get_settings
 from app.utils.face_image_storage import validate_face_image, prepare_image_for_storage
+from app.utils.cache import (
+    get_cached_tests,
+    set_cached_tests,
+    get_cached_dashboard,
+    set_cached_dashboard,
+    invalidate_user_tests_cache
+)
 
 logger = logging.getLogger("backend")
 
@@ -561,6 +568,10 @@ async def create_test(
         # Add updated_at if it exists
         if "updated_at" in created_test and created_test.get("updated_at"):
             test_dict["updated_at"] = created_test.get("updated_at").isoformat() if isinstance(created_test.get("updated_at"), datetime) else created_test.get("updated_at")
+        
+        # Invalidate cache for this user
+        await invalidate_user_tests_cache(user_id)
+        
         return test_dict
     
     # Fallback if fetch fails
@@ -574,10 +585,12 @@ async def create_test(
 @router.get("", response_model=List[dict], include_in_schema=False)
 async def get_tests_no_slash(
     active_only: bool = False,
+    page: int = Query(1, ge=1),
+    limit: int = Query(100, ge=1, le=100),
     current_user: Dict[str, Any] = Depends(get_current_user)
 ):
     """Redirect handler for GET /api/dsa/tests (without trailing slash)"""
-    return await get_tests(active_only, current_user)
+    return await get_tests(active_only=active_only, page=page, limit=limit, current_user=current_user)
 
 def _convert_question_timings_to_limits(question_timings: List[Dict]) -> Dict[str, int]:
     """Convert question_timings array to question_time_limits dict for backward compatibility"""
@@ -591,14 +604,167 @@ def _convert_question_timings_to_limits(question_timings: List[Dict]) -> Dict[st
             limits[str(qid)] = int(duration)
     return limits
 
+@router.get("/dashboard", response_model=Dict[str, Any])
+async def get_tests_dashboard(
+    page: int = Query(1, ge=1, description="Page number"),
+    limit: int = Query(20, ge=1, le=100, description="Items per page"),
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
+    """
+    Lightweight dashboard endpoint for test lists.
+    Optimized with:
+    - MongoDB field projection (only essential fields)
+    - Redis caching (3 minutes TTL)
+    - Pagination support
+    - Parallel query optimization
+    
+    Returns minimal data needed for dashboard display.
+    """
+    try:
+        if not current_user:
+            raise HTTPException(status_code=401, detail="Authentication required")
+        
+        db = get_database()
+        user_id = current_user.get("id") or current_user.get("_id")
+        if not user_id:
+            raise HTTPException(status_code=400, detail="Invalid user ID")
+        user_id = str(user_id).strip()
+        
+        # Try cache first
+        cached_data = await get_cached_dashboard(user_id, page, limit)
+        if cached_data:
+            return cached_data
+        
+        # Build query with field projection (only fetch needed fields)
+        query = {
+            "$and": [
+                {"created_by": {"$exists": True}},
+                {"created_by": {"$ne": None}},
+                {"created_by": {"$ne": ""}},
+                {"created_by": user_id},
+                {
+                    "$or": [
+                        {"test_type": {"$exists": False}},
+                        {"test_type": None},
+                        {"test_type": "dsa"}
+                    ]
+                }
+            ]
+        }
+        
+        # Calculate skip for pagination
+        skip = (page - 1) * limit
+        
+        # Use aggregation pipeline for optimized query with field projection
+        pipeline = [
+            {"$match": query},
+            {
+                "$project": {
+                    "_id": 1,
+                    "title": 1,
+                    "is_published": 1,
+                    "is_active": 1,
+                    "created_by": 1,
+                    "created_at": 1,
+                    "updated_at": 1,
+                    "start_time": 1,
+                    "end_time": 1,
+                    "duration_minutes": 1,
+                    "pausedAt": 1,
+                    "schedule.startTime": 1,
+                    "schedule.endTime": 1,
+                    "schedule.duration": 1,
+                }
+            },
+            {"$sort": {"created_at": -1}},
+            {"$skip": skip},
+            {"$limit": limit}
+        ]
+        
+        # Get total count in parallel
+        count_task = db.tests.count_documents(query)
+        tests_task = db.tests.aggregate(pipeline).to_list(length=limit)
+        
+        # Execute queries in parallel
+        total_count, tests = await asyncio.gather(count_task, tests_task)
+        
+        # Format results (minimal transformation)
+        def format_datetime_iso(dt_val):
+            if not dt_val:
+                return None
+            if isinstance(dt_val, datetime):
+                iso_str = dt_val.isoformat()
+                if not iso_str.endswith('Z') and '+' not in iso_str[-6:]:
+                    return iso_str + 'Z'
+                return iso_str
+            return str(dt_val) if dt_val else None
+        
+        result = []
+        for test in tests:
+            schedule = test.get("schedule", {})
+            has_schedule = bool(test.get("start_time") and test.get("end_time"))
+            
+            result.append({
+                "id": str(test["_id"]),
+                "title": test.get("title", ""),
+                "status": "active" if test.get("is_published") else "draft",
+                "is_published": test.get("is_published", False),
+                "is_active": test.get("is_active", False),
+                "hasSchedule": has_schedule,
+                "scheduleStatus": {
+                    "startTime": format_datetime_iso(schedule.get("startTime") or test.get("start_time")),
+                    "endTime": format_datetime_iso(schedule.get("endTime") or test.get("end_time")),
+                    "duration": schedule.get("duration") or test.get("duration_minutes", 0),
+                    "isActive": test.get("is_active", False)
+                } if has_schedule else None,
+                "created_at": format_datetime_iso(test.get("created_at")),
+                "updated_at": format_datetime_iso(test.get("updated_at")),
+                "pausedAt": format_datetime_iso(test.get("pausedAt")) if test.get("pausedAt") else None,
+            })
+        
+        # Build response with pagination metadata
+        total_pages = (total_count + limit - 1) // limit if total_count > 0 else 0
+        response_data = {
+            "tests": result,
+            "pagination": {
+                "page": page,
+                "limit": limit,
+                "total": total_count,
+                "total_pages": total_pages,
+                "has_next": page < total_pages,
+                "has_prev": page > 1
+            }
+        }
+        
+        # Cache the result
+        await set_cached_dashboard(user_id, response_data, page, limit)
+        
+        return response_data
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(f"[get_tests_dashboard] Unexpected error: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to fetch dashboard tests: {str(e)}"
+        )
+
 @router.get("/", response_model=List[dict])
 async def get_tests(
     active_only: bool = False,
+    page: int = Query(1, ge=1, description="Page number"),
+    limit: int = Query(100, ge=1, le=100, description="Items per page"),
     current_user: Dict[str, Any] = Depends(get_current_user)
 ):
     """
     Get tests for the current user (requires authentication)
     Only returns tests created by the current user
+    
+    Optimized with:
+    - Redis caching (5 minutes TTL)
+    - MongoDB field projection
+    - Pagination support
     
     SECURITY: This endpoint MUST only return tests where created_by matches the authenticated user's ID
     """
@@ -609,6 +775,17 @@ async def get_tests(
             raise HTTPException(status_code=401, detail="Authentication required")
         
         db = get_database()
+        
+        # Get user ID for caching
+        user_id = current_user.get("id") or current_user.get("_id")
+        if not user_id:
+            raise HTTPException(status_code=400, detail="Invalid user ID")
+        user_id = str(user_id).strip()
+        
+        # Try cache first
+        cached_tests = await get_cached_tests(user_id, page, limit, active_only)
+        if cached_tests is not None:
+            return cached_tests
         
         # Check if user is super_admin - if so, get all super_admin user IDs
         if current_user.get("role") == "super_admin":
@@ -687,8 +864,39 @@ async def get_tests(
             print(f"[get_tests] STRICT MongoDB query (super_admin): {query}")
             logger.info(f"[get_tests] STRICT MongoDB query (super_admin): {query}")
             
-            # Execute query for super_admin
-            tests = await db.tests.find(query).sort("created_at", -1).to_list(length=100)
+            # Execute query for super_admin with field projection and pagination
+            skip = (page - 1) * limit
+            
+            pipeline = [
+                {"$match": query},
+                {
+                    "$project": {
+                        "_id": 1,
+                        "title": 1,
+                        "description": 1,
+                        "duration_minutes": 1,
+                        "start_time": 1,
+                        "end_time": 1,
+                        "is_active": 1,
+                        "is_published": 1,
+                        "invited_users": 1,
+                        "question_ids": 1,
+                        "test_token": 1,
+                        "created_by": 1,
+                        "examMode": 1,
+                        "schedule": 1,
+                        "proctoringSettings": 1,
+                        "pausedAt": 1,
+                        "created_at": 1,
+                        "updated_at": 1,
+                    }
+                },
+                {"$sort": {"created_at": -1}},
+                {"$skip": skip},
+                {"$limit": limit}
+            ]
+            
+            tests = await db.tests.aggregate(pipeline).to_list(length=limit)
             
             # Use user_id_normalized for logging (already defined above)
             logger.info(f"[get_tests] MongoDB returned {len(tests)} tests for super_admin user_id: '{user_id_normalized}'")
@@ -942,6 +1150,10 @@ async def get_tests(
             if "updated_at" in test and test.get("updated_at"):
                 test_dict["updated_at"] = test.get("updated_at").isoformat() if isinstance(test.get("updated_at"), datetime) else test.get("updated_at")
             result.append(test_dict)
+        
+        # Cache the result
+        await set_cached_tests(user_id, result, page, limit, active_only)
+        
         return result
     except HTTPException:
         raise
@@ -1191,8 +1403,10 @@ async def get_test(
     """
     Get test details (requires authentication and ownership)
     Only returns tests created by the current user
+    Optimized with Redis caching.
     """
-    db = get_database()
+    from app.utils.cache import get_cached_test, set_cached_test
+    
     if not ObjectId.is_valid(test_id):
         raise HTTPException(status_code=400, detail="Invalid test ID")
     
@@ -1205,8 +1419,40 @@ async def get_test(
     
     logger.info(f"[get_test] Fetching test {test_id} for user_id: '{user_id}'")
     
+    # Try cache first
+    cached_test = await get_cached_test(test_id, user_id)
+    if cached_test:
+        logger.info(f"[get_test] Cache HIT for test {test_id}")
+        return cached_test
+    
+    db = get_database()
+    
+    # Use field projection to only fetch needed fields (exclude large fields)
+    projection = {
+        "_id": 1,
+        "title": 1,
+        "description": 1,
+        "duration_minutes": 1,
+        "start_time": 1,
+        "end_time": 1,
+        "examMode": 1,
+        "schedule": 1,
+        "is_active": 1,
+        "is_published": 1,
+        "invited_users": 1,
+        "question_ids": 1,
+        "timer_mode": 1,
+        "question_timings": 1,
+        "question_time_limits": 1,
+        "test_token": 1,
+        "proctoringSettings": 1,
+        "invitationTemplate": 1,
+        "created_by": 1
+        # Excluded: large nested objects that aren't needed for edit page
+    }
+    
     # Find test and verify ownership
-    test = await db.tests.find_one({"_id": ObjectId(test_id)})
+    test = await db.tests.find_one({"_id": ObjectId(test_id)}, projection)
     if not test:
         raise HTTPException(status_code=404, detail="Test not found")
     
@@ -1276,6 +1522,33 @@ async def get_test(
     # Include invitationTemplate if it exists
     if "invitationTemplate" in test:
         test_dict["invitationTemplate"] = test.get("invitationTemplate")
+    
+    # Helper function to serialize schedule
+    def serialize_schedule(schedule):
+        if not schedule:
+            return None
+        if not isinstance(schedule, dict):
+            return schedule
+        serialized = {}
+        for key, value in schedule.items():
+            if isinstance(value, datetime):
+                serialized[key] = value.isoformat()
+            elif isinstance(value, ObjectId):
+                serialized[key] = str(value)
+            elif isinstance(value, dict):
+                serialized[key] = serialize_schedule(value)
+            else:
+                serialized[key] = value
+        return serialized
+    
+    # Serialize schedule if present (before caching)
+    if test_dict.get("schedule"):
+        test_dict["schedule"] = serialize_schedule(test_dict["schedule"])
+    
+    # Cache the result
+    from app.utils.cache import set_cached_test
+    await set_cached_test(test_id, user_id, test_dict)
+    
     return test_dict
 
 @router.patch("/{test_id}", response_model=dict)
@@ -1373,6 +1646,10 @@ async def patch_test(
         # Include invitationTemplate if it exists
         if "invitationTemplate" in updated_test:
             test_dict["invitationTemplate"] = updated_test.get("invitationTemplate")
+        
+        # Invalidate cache for this user
+        await invalidate_user_tests_cache(user_id)
+        
         return test_dict
     
     raise HTTPException(status_code=500, detail="Failed to update test")
@@ -1620,6 +1897,10 @@ async def update_test(
         # Include invitationTemplate if it exists
         if "invitationTemplate" in updated_test:
             test_dict["invitationTemplate"] = updated_test.get("invitationTemplate")
+        
+        # Invalidate cache for this user
+        await invalidate_user_tests_cache(user_id)
+        
         return test_dict
     
     raise HTTPException(status_code=500, detail="Failed to update test")
@@ -3613,7 +3894,17 @@ async def send_invitation(
     </html>
     """
 
-    subject = f"DSA Test Invitation - {company_name if company_name else 'AI Assessment Platform'}"
+    # Use custom subject from template if provided, otherwise generate default
+    custom_subject = template_to_use.get("subject", "")
+    if custom_subject:
+        # Replace placeholders in subject
+        subject = custom_subject.replace("{{candidate_name}}", candidate_name)
+        subject = subject.replace("{{candidate_email}}", candidate_email)
+        subject = subject.replace("{{company_name}}", company_name if company_name else "AI Assessment Platform")
+    else:
+        # Fallback to default subject format
+        subject = f"DSA Test Invitation - {company_name if company_name else 'AI Assessment Platform'}"
+    
     await email_service.send_email(candidate_email, subject, html_content)
 
     await db.test_candidates.update_one(
@@ -3677,6 +3968,7 @@ async def send_invitations_to_all(
     default_template = {
         "logoUrl": "",
         "companyName": "",
+        "subject": "DSA Test Invitation",
         "message": "You have been invited to take a DSA test. Please click the link below to start.",
         "footer": "",
         "sentBy": "AI Assessment Platform"
@@ -3783,7 +4075,16 @@ async def send_invitations_to_all(
                 </html>
                 """
                 
-                subject = f"DSA Test Invitation - {company_name if company_name else 'AI Assessment Platform'}"
+                # Use custom subject from template if provided, otherwise generate default
+                custom_subject = template_to_use.get("subject", "")
+                if custom_subject:
+                    # Replace placeholders in subject
+                    subject = custom_subject.replace("{{candidate_name}}", candidate_name)
+                    subject = subject.replace("{{candidate_email}}", candidate_email)
+                    subject = subject.replace("{{company_name}}", company_name if company_name else "AI Assessment Platform")
+                else:
+                    # Fallback to default subject format
+                    subject = f"DSA Test Invitation - {company_name if company_name else 'AI Assessment Platform'}"
                 
                 await email_service.send_email(candidate_email, subject, html_content)
                 results["success"].append({"email": candidate_email, "name": candidate_name})
@@ -5432,32 +5733,46 @@ async def clone_test(
       - keepSchedule: bool (optional, default False)
       - keepCandidates: bool (optional, default False)
     """
+    logger.info(f"💻 [DSA Clone] Clone request received - test_id: {test_id}, user_id: {current_user.get('id')}, payload: {payload}")
+    
     db = get_database()
     if not ObjectId.is_valid(test_id):
+        logger.error(f"❌ [DSA Clone] Invalid test ID: {test_id}")
         raise HTTPException(status_code=400, detail="Invalid test ID")
 
     user_id = current_user.get("id") or current_user.get("_id")
     if not user_id:
+        logger.error(f"❌ [DSA Clone] Invalid user ID from current_user: {current_user}")
         raise HTTPException(status_code=400, detail="Invalid user ID")
     user_id = str(user_id).strip()
 
+    logger.info(f"🔍 [DSA Clone] Looking up test {test_id} for user {user_id}")
     original = await db.tests.find_one({"_id": ObjectId(test_id)})
     if not original:
+        logger.error(f"❌ [DSA Clone] Test not found: {test_id}")
         raise HTTPException(status_code=404, detail="Test not found")
 
     # Ensure DSA test (legacy may not have test_type)
-    if original.get("test_type") not in (None, "dsa"):
+    test_type = original.get("test_type")
+    logger.info(f"🔍 [DSA Clone] Test found - test_type: {test_type}, title: {original.get('title')}")
+    
+    if test_type not in (None, "dsa"):
+        logger.error(f"❌ [DSA Clone] Test is not DSA type - test_type: {test_type}, test_id: {test_id}")
         raise HTTPException(status_code=400, detail="Not a DSA test")
 
     if str(original.get("created_by", "")).strip() != user_id:
+        logger.error(f"❌ [DSA Clone] Permission denied - created_by: {original.get('created_by')}, user_id: {user_id}")
         raise HTTPException(status_code=403, detail="You don't have permission to clone this test")
 
     new_title = (payload.get("newTitle") or "").strip()
     if len(new_title) < 3:
+        logger.error(f"❌ [DSA Clone] Invalid newTitle length: {len(new_title)}")
         raise HTTPException(status_code=400, detail="newTitle must be at least 3 characters")
 
     keep_schedule = bool(payload.get("keepSchedule", False))
     keep_candidates = bool(payload.get("keepCandidates", False))
+
+    logger.info(f"✅ [DSA Clone] Cloning test - original_title: {original.get('title')}, new_title: {new_title}, keep_schedule: {keep_schedule}, keep_candidates: {keep_candidates}")
 
     now = datetime.utcnow()
     duration_minutes = int(original.get("duration_minutes") or 60)
@@ -5489,10 +5804,19 @@ async def clone_test(
         cloned["start_time"] = now
         cloned["end_time"] = now + timedelta(minutes=duration_minutes)
 
+    logger.info(f"💾 [DSA Clone] Inserting cloned test into database...")
     res = await db.tests.insert_one(cloned)
     created = await db.tests.find_one({"_id": res.inserted_id})
     if not created:
+        logger.error(f"❌ [DSA Clone] Failed to retrieve cloned test after insertion - inserted_id: {res.inserted_id}")
         raise HTTPException(status_code=500, detail="Failed to clone test")
+
+    logger.info(f"✅ [DSA Clone] Test cloned successfully - new_test_id: {res.inserted_id}, new_title: {new_title}")
+    
+    # Invalidate cache for this user so the new test appears in the list
+    from app.utils.cache import invalidate_user_tests_cache
+    logger.info(f"🔄 [DSA Clone] Invalidating cache for user: {user_id}")
+    await invalidate_user_tests_cache(user_id)
 
     return {
         "message": "Test cloned successfully",
@@ -5521,9 +5845,15 @@ async def delete_test(
     current_user: Dict[str, Any] = Depends(require_editor)
 ):
     """
-    Delete a test (requires authentication and ownership)
-    Note: This will delete the test but not associated submissions or candidate records.
-    Consider adding cascade delete if needed.
+    Delete a test with cascade delete (requires authentication and ownership).
+    
+    This will delete:
+    - The test document
+    - All test_candidates records (including proctor reference images)
+    - All test_submissions records
+    - All assessment_submissions records
+    - All sql_submissions records
+    - All submissions records linked to this test
     """
     db = get_database()
     if not ObjectId.is_valid(test_id):
@@ -5544,10 +5874,97 @@ async def delete_test(
         logger.error(f"[delete_test] SECURITY ISSUE: User {user_id} attempted to delete test {test_id} created by {existing_created_by}")
         raise HTTPException(status_code=403, detail="You don't have permission to delete this test")
     
-    result = await db.tests.delete_one({"_id": ObjectId(test_id)})
-    if result.deleted_count == 0:
-        raise HTTPException(status_code=404, detail="Test not found")
+    # Get test title for logging
+    test_title = existing_test.get("title", "Unknown")
+    logger.info(f"[delete_test] Starting cascade delete for test {test_id} ({test_title}) by user {user_id}")
     
-    return {"message": "Test deleted successfully"}
+    # CASCADE DELETE: Delete all related data
+    deletion_stats = {
+        "test_candidates": 0,
+        "test_submissions": 0,
+        "assessment_submissions": 0,
+        "sql_submissions": 0,
+        "submissions": 0
+    }
+    
+    try:
+        # 1. Delete test_candidates (includes proctor reference images)
+        candidates_result = await db.test_candidates.delete_many({"test_id": test_id})
+        deletion_stats["test_candidates"] = candidates_result.deleted_count
+        logger.info(f"[delete_test] Deleted {deletion_stats['test_candidates']} candidate record(s)")
+        
+        # 2. Delete test_submissions
+        test_submissions_result = await db.test_submissions.delete_many({"test_id": test_id})
+        deletion_stats["test_submissions"] = test_submissions_result.deleted_count
+        logger.info(f"[delete_test] Deleted {deletion_stats['test_submissions']} test submission record(s)")
+        
+        # 3. Delete assessment_submissions
+        assessment_submissions_result = await db.assessment_submissions.delete_many({"test_id": test_id})
+        deletion_stats["assessment_submissions"] = assessment_submissions_result.deleted_count
+        logger.info(f"[delete_test] Deleted {deletion_stats['assessment_submissions']} assessment submission record(s)")
+        
+        # 4. Delete sql_submissions
+        sql_submissions_result = await db.sql_submissions.delete_many({"test_id": test_id})
+        deletion_stats["sql_submissions"] = sql_submissions_result.deleted_count
+        logger.info(f"[delete_test] Deleted {deletion_stats['sql_submissions']} SQL submission record(s)")
+        
+        # 5. Delete submissions (legacy - may reference test through question_id or test_id)
+        # First, get all question IDs from the test
+        question_ids = existing_test.get("question_ids", [])
+        if question_ids:
+            # Delete submissions that reference any question in this test
+            question_object_ids = [ObjectId(qid) for qid in question_ids if ObjectId.is_valid(qid)]
+            if question_object_ids:
+                submissions_result = await db.submissions.delete_many({
+                    "$or": [
+                        {"test_id": test_id},  # Direct reference
+                        {"question_id": {"$in": question_object_ids}}  # Through question
+                    ]
+                })
+                deletion_stats["submissions"] = submissions_result.deleted_count
+                logger.info(f"[delete_test] Deleted {deletion_stats['submissions']} submission record(s)")
+        else:
+            # If no question_ids, only delete by test_id
+            submissions_result = await db.submissions.delete_many({"test_id": test_id})
+            deletion_stats["submissions"] = submissions_result.deleted_count
+            logger.info(f"[delete_test] Deleted {deletion_stats['submissions']} submission record(s)")
+        
+        # 6. Finally, delete the test document itself
+        result = await db.tests.delete_one({"_id": ObjectId(test_id)})
+        if result.deleted_count == 0:
+            raise HTTPException(status_code=404, detail="Test not found")
+        
+        # Invalidate cache for this user
+        await invalidate_user_tests_cache(user_id)
+        
+        total_deleted = sum(deletion_stats.values()) + 1  # +1 for the test itself
+        logger.info(f"[delete_test] Successfully deleted test {test_id} and {total_deleted - 1} related record(s)")
+        logger.info(f"[delete_test] Deletion summary: {deletion_stats}")
+        
+        return {
+            "message": "Test and all related data deleted successfully",
+            "deleted": {
+                "test": 1,
+                **deletion_stats
+            },
+            "total_deleted": total_deleted
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[delete_test] Error during cascade delete for test {test_id}: {e}", exc_info=True)
+        # Even if cascade delete fails, we should still try to delete the test
+        # to avoid leaving it in an inconsistent state
+        try:
+            await db.tests.delete_one({"_id": ObjectId(test_id)})
+            logger.warning(f"[delete_test] Test {test_id} deleted but some related data may remain due to error: {e}")
+        except Exception as delete_error:
+            logger.error(f"[delete_test] Failed to delete test after cascade error: {delete_error}")
+        
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error deleting test and related data: {str(e)}. Test may have been deleted but some related data may remain."
+        )
 
 
