@@ -6,8 +6,6 @@ export default function TestCompletedPage() {
   const { id } = router.query;
 
   useEffect(() => {
-    // Clear any test-related session storage
-    // Add any cleanup logic here if needed
   }, []);
 
   return (
