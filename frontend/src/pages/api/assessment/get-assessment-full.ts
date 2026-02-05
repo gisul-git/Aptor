@@ -196,17 +196,81 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         stack: aimlError?.stack?.substring(0, 500),
       });
       
-      // If AIML explicitly reports "Test not found" (404) or bad ID (400), fall through to generic handler.
-      // For other AIML errors (500, 503, network errors), still try generic endpoint as fallback
+      // If AIML explicitly reports "Test not found" (404) or bad ID (400), fall through to Custom MCQ handler.
+      // For other AIML errors (500, 503, network errors), still try Custom MCQ endpoint as fallback
       if (aimlStatus === 404 || aimlStatus === 400) {
-        console.log("[get-assessment-full] ⚠️ AIML test not found (404/400), trying generic endpoint");
+        console.log("[get-assessment-full] ⚠️ AIML test not found (404/400), trying Custom MCQ endpoint");
       } else {
-        console.log(`[get-assessment-full] ⚠️ AIML endpoint error (${aimlStatus || 'no status'}), falling back to generic endpoint`);
+        console.log(`[get-assessment-full] ⚠️ AIML endpoint error (${aimlStatus || 'no status'}), trying Custom MCQ endpoint`);
       }
     }
 
-    // Fallback: use generic candidate get-assessment-full (AI assessments, Custom MCQ)
-    console.log("[get-assessment-full] 🔵 Attempting generic endpoint as fallback:", {
+    // Third, try Custom MCQ-specific take endpoint
+    try {
+      const customMcqUrl = `/api/v1/custom-mcq/take/${assessmentId}`;
+      const fullCustomMcqUrl = `${API_GATEWAY_URL}${customMcqUrl}`;
+      console.log(`[get-assessment-full] 🔵 Attempting Custom MCQ endpoint:`, {
+        assessmentId,
+        url: customMcqUrl,
+        fullUrl: fullCustomMcqUrl,
+        apiGatewayUrl: API_GATEWAY_URL,
+        token: token ? `${token.substring(0, 10)}...` : 'missing',
+        timestamp: new Date().toISOString(),
+      });
+      
+      const customMcqResponse = await backendClient.get(customMcqUrl, {
+        params: {
+          token,
+        },
+      });
+      
+      console.log("[get-assessment-full] ✅ Custom MCQ endpoint succeeded:", {
+        status: customMcqResponse.status,
+        statusText: customMcqResponse.statusText,
+        hasData: !!customMcqResponse.data,
+        dataType: typeof customMcqResponse.data,
+        dataKeys: customMcqResponse.data ? Object.keys(customMcqResponse.data) : [],
+        dataPreview: customMcqResponse.data ? JSON.stringify(customMcqResponse.data).substring(0, 200) : 'no data',
+      });
+      
+      // Custom MCQ endpoint returns { success: true, message: "...", data: {...} }
+      // Return it as-is for the frontend (same structure as other endpoints)
+      console.log("[get-assessment-full] ✅ Returning Custom MCQ response to frontend");
+      return res.status(customMcqResponse.status || 200).json(customMcqResponse.data);
+    } catch (customMcqError: any) {
+      const customMcqStatus = customMcqError?.response?.status;
+      const customMcqStatusText = customMcqError?.response?.statusText;
+      const customMcqDetail = customMcqError?.response?.data?.detail || customMcqError?.response?.data?.message;
+      const customMcqMessage = customMcqError?.message;
+      const customMcqCode = customMcqError?.code;
+      const customMcqUrl = customMcqError?.config?.url || `${API_GATEWAY_URL}/api/v1/custom-mcq/take/${assessmentId}`;
+      const customMcqResponseData = customMcqError?.response?.data;
+
+      // Log detailed error information
+      console.error("[get-assessment-full] ❌ Custom MCQ endpoint failed:", {
+        status: customMcqStatus,
+        statusText: customMcqStatusText,
+        code: customMcqCode,
+        detail: customMcqDetail,
+        message: customMcqMessage,
+        url: customMcqUrl,
+        fullUrl: customMcqError?.config?.baseURL + customMcqError?.config?.url,
+        responseData: customMcqResponseData,
+        errorType: customMcqError?.name,
+        stack: customMcqError?.stack?.substring(0, 500),
+      });
+      
+      // If Custom MCQ explicitly reports "Assessment not found" (404) or bad ID (400), fall through to generic handler.
+      // For other Custom MCQ errors (500, 503, network errors), still try generic endpoint as fallback
+      if (customMcqStatus === 404 || customMcqStatus === 400) {
+        console.log("[get-assessment-full] ⚠️ Custom MCQ assessment not found (404/400), trying generic endpoint");
+      } else {
+        console.log(`[get-assessment-full] ⚠️ Custom MCQ endpoint error (${customMcqStatus || 'no status'}), falling back to generic endpoint`);
+      }
+    }
+
+    // Fallback: use generic candidate get-assessment-full (AI assessments only)
+    console.log("[get-assessment-full] 🔵 Attempting generic endpoint as final fallback:", {
       assessmentId,
       hasToken: !!token,
       url: "/api/v1/candidate/get-assessment-full",

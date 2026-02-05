@@ -103,7 +103,7 @@ async function verifyToken(req, res, next) {
     publicRoutes: publicRoutes,
   });
   
-  // Candidate-specific public endpoints for DSA/AIML tests (no auth required)
+  // Candidate-specific public endpoints for DSA/AIML/Custom MCQ tests (no auth required)
   // These are accessed by candidates via test links with just name/email verification
   const candidatePublicPatterns = [
     /^\/api\/v1\/dsa\/tests\/[^/]+\/verify-link$/,
@@ -128,6 +128,10 @@ async function verifyToken(req, res, next) {
     /^\/api\/v1\/dsa\/tests\/save-reference-face$/, // DSA reference photo save
     // AIML dataset download endpoint for candidates
     /^\/api\/v1\/aiml\/questions\/[^/]+\/dataset-download$/,
+    // Custom MCQ candidate endpoints - accessed via token in URL params
+    /^\/api\/v1\/custom-mcq\/take\/[^/]+$/, // Custom MCQ take assessment (candidate view)
+    /^\/api\/v1\/custom-mcq\/verify-candidate$/, // Custom MCQ verify candidate
+    /^\/api\/v1\/custom-mcq\/submit$/, // Custom MCQ submit assessment
     // Proctoring endpoints - candidates need to record violations without auth
     /^\/api\/v1\/proctor\/record$/,
     /^\/api\/v1\/proctor\/upload$/,
@@ -282,7 +286,13 @@ const proxyOptions = {
   pathRewrite: {
     '^/api': '/api', // Keep /api prefix
   },
-  timeout: 120000, // 120 seconds (2 minutes) - increased for AI operations
+  timeout: 180000, // 180 seconds (3 minutes) - increased for long AI operations
+  proxyTimeout: 180000, // Proxy timeout - how long to wait for response
+  xfwd: true, // Add X-Forwarded-* headers
+  ws: false, // Disable WebSocket support
+  secure: false, // Don't verify SSL certificates for localhost
+  followRedirects: true,
+  agent: false, // Disable agent to prevent connection pooling issues
   onProxyReq: (proxyReq, req, res) => {
     const targetUrl = proxyReq.path;
     const targetHost = proxyReq.getHeader('host');
@@ -416,6 +426,10 @@ const proxyOptions = {
       errorMessage = `Connection refused - ${serviceName} is not running on ${targetHost}`;
     } else if (err.code === 'ETIMEDOUT') {
       errorMessage = `Connection timeout - ${serviceName} did not respond in time`;
+    } else if (err.code === 'ECONNRESET') {
+      errorMessage = `Connection reset - ${serviceName} closed the connection prematurely. This may happen if the request takes too long. Try increasing the timeout or optimizing the request.`;
+    } else if (err.code === 'ESOCKETTIMEDOUT') {
+      errorMessage = `Socket timeout - ${serviceName} did not respond in time. The connection timed out while waiting for a response.`;
     }
     
     // Enhanced error logging
@@ -597,6 +611,21 @@ app.use(
 );
 
 // Route: Custom MCQ Service
+// Special configuration for submit endpoint (longer timeout)
+const customMcqSubmitProxyOptions = {
+  ...proxyOptions,
+  target: SERVICES.customMcq,
+  timeout: 300000, // 5 minutes for submit endpoint
+  proxyTimeout: 300000,
+};
+
+// Apply longer timeout specifically for submit endpoint
+app.use(
+  '/api/v1/custom-mcq/submit',
+  createProxyMiddleware(customMcqSubmitProxyOptions)
+);
+
+// Regular proxy for other custom-mcq endpoints
 app.use(
   '/api/v1/custom-mcq',
   createProxyMiddleware({
