@@ -26,7 +26,17 @@ export interface SubjectiveQuestion {
   updatedAt?: string;
 }
 
-export type Question = MCQQuestion | SubjectiveQuestion;
+export interface CodingQuestion {
+  id?: string;
+  questionType: "coding";
+  section: string;
+  question: string;
+  marks: number;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export type Question = MCQQuestion | SubjectiveQuestion | CodingQuestion;
 
 export interface Candidate {
   name: string;
@@ -66,6 +76,7 @@ export interface CustomMCQAssessment {
   sectionTimers?: {
     MCQ?: number; // Duration in minutes
     Subjective?: number; // Duration in minutes
+    Coding?: number; // Duration in minutes
   };
   proctoringSettings?: {
     aiProctoringEnabled?: boolean;
@@ -98,4 +109,6 @@ export interface AssessmentSubmission {
   mcqTotal?: number;
   subjectiveScore?: number;
   subjectiveTotal?: number;
+  codingScore?: number;
+  codingTotal?: number;
 }
