@@ -1,208 +1,191 @@
-version: '3.8'
-
-services:
-  # MongoDB
-  mongo:
-    image: mongo:7.0
-    container_name: gisul-mongo
-    ports:
-      - "27017:27017"
-    volumes:
-      - mongo_data:/data/db
-    environment:
-      - MONGO_INITDB_DATABASE=ai_assessment
-    networks:
-      - microservices-network
-
-  # Redis
-  redis:
-    image: redis:7-alpine
-    container_name: gisul-redis
-    ports:
-      - "6379:6379"
-    volumes:
-      - redis_data:/data
-    networks:
-      - microservices-network
-
-  # API Gateway
-  api-gateway:
-    build:
-      context: ./services/api-gateway
-      dockerfile: Dockerfile
-    container_name: gisul-api-gateway
-    ports:
-      - "80:80"
-    environment:
-      - PORT=80
-      - AUTH_SERVICE_URL=http://auth-service:4000
-      - AI_ASSESSMENT_SERVICE_URL=http://ai-assessment-service:3001
-      - CUSTOM_MCQ_SERVICE_URL=http://custom-mcq-service:3002
-      - AIML_SERVICE_URL=http://aiml-service:3003
-      - DSA_SERVICE_URL=http://dsa-service:3004
-      - PROCTORING_SERVICE_URL=http://proctoring-service:3005
-      - SUPER_ADMIN_SERVICE_URL=http://super-admin-service:3006
-      - CORS_ORIGINS=http://localhost:3000,http://localhost:3001
-    depends_on:
-      - auth-service
-    networks:
-      - microservices-network
-    restart: unless-stopped
-
-  # Auth Service
-  auth-service:
-    build:
-      context: ./services/auth-service
-      dockerfile: Dockerfile
-    container_name: gisul-auth-service
-    ports:
-      - "4000:4000"
-    environment:
-      - MONGO_URI=mongodb://mongo:27017
-      - MONGO_DB=auth_db
-      - JWT_SECRET=${JWT_SECRET}
-      - JWT_ALGORITHM=HS256
-      - JWT_EXP_MINUTES=60
-      - JWT_REFRESH_EXP_DAYS=30
-      - CORS_ORIGINS=http://localhost:3000
-      - EMAIL_PROVIDER=sendgrid
-      - SENDGRID_API_KEY=${SENDGRID_API_KEY}
-      - SENDGRID_FROM_EMAIL=${SENDGRID_FROM_EMAIL}
-      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
-    depends_on:
-      - mongo
-    networks:
-      - microservices-network
-    restart: unless-stopped
-
-  # AI Assessment Service
-  ai-assessment-service:
-    build:
-      context: ./services/ai-assessment-service
-      dockerfile: Dockerfile
-    container_name: gisul-ai-assessment-service
-    ports:
-      - "3001:3001"
-    environment:
-      - MONGO_URI=mongodb://mongo:27017
-      - MONGO_DB=ai_assessment_db
-      - REDIS_URL=redis://redis:6379/0
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - GEMINI_API_KEY=${GEMINI_API_KEY}
-      - CORS_ORIGINS=http://localhost:3000
-    depends_on:
-      - mongo
-      - redis
-    networks:
-      - microservices-network
-    restart: unless-stopped
-    # Note: Service routes need to be copied from backend/app/api/v1/assessments/*
-
-  # Custom MCQ Service
-  custom-mcq-service:
-    build:
-      context: ./services/custom-mcq-service
-      dockerfile: Dockerfile
-    container_name: gisul-custom-mcq-service
-    ports:
-      - "3002:3002"
-    environment:
-      - MONGO_URI=mongodb://mongo:27017
-      - MONGO_DB=custom_mcq_db
-      - CORS_ORIGINS=http://localhost:3000
-    depends_on:
-      - mongo
-    networks:
-      - microservices-network
-    restart: unless-stopped
-
-  # AIML Service
-  aiml-service:
-    build:
-      context: ./services/aiml-service
-      dockerfile: Dockerfile
-    container_name: gisul-aiml-service
-    ports:
-      - "3003:3003"
-      - "8889:8889"  # WebSocket agent port
-    environment:
-      - MONGO_URI=mongodb://mongo:27017
-      - MONGO_DB=aiml_db
-      - CORS_ORIGINS=http://localhost:3000
-    depends_on:
-      - mongo
-    networks:
-      - microservices-network
-    restart: unless-stopped
-
-  # DSA Service
-  dsa-service:
-    build:
-      context: ./services/dsa-service
-      dockerfile: Dockerfile
-    container_name: gisul-dsa-service
-    ports:
-      - "3004:3004"
-    environment:
-      - MONGO_URI=mongodb://mongo:27017
-      - MONGO_DB=dsa_db
-      - JUDGE0_URL=${JUDGE0_URL}
-      - JUDGE0_API_KEY=${JUDGE0_API_KEY}
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - CORS_ORIGINS=http://localhost:3000
-    depends_on:
-      - mongo
-    networks:
-      - microservices-network
-    restart: unless-stopped
-
-  # Proctoring Service
-  proctoring-service:
-    build:
-      context: ./services/proctoring-service
-      dockerfile: Dockerfile
-    container_name: gisul-proctoring-service
-    ports:
-      - "3005:3005"
-    environment:
-      - MONGO_URI=mongodb://mongo:27017
-      - MONGO_DB=proctoring_db
-      - REDIS_URL=redis://redis:6379/1
-      - CORS_ORIGINS=http://localhost:3000
-    depends_on:
-      - mongo
-      - redis
-    networks:
-      - microservices-network
-    restart: unless-stopped
-
-  # Super Admin Service
-  super-admin-service:
-    build:
-      context: ./services/super-admin-service
-      dockerfile: Dockerfile
-    container_name: gisul-super-admin-service
-    ports:
-      - "3006:3006"
-    environment:
-      - MONGO_URI=mongodb://mongo:27017
-      - MONGO_DB=auth_db
-      - JWT_SECRET=${JWT_SECRET}
-      - JWT_ALGORITHM=HS256
-      - JWT_EXP_MINUTES=60
-      - JWT_REFRESH_EXP_DAYS=30
-      - CORS_ORIGINS=http://localhost:3000
-    depends_on:
-      - mongo
-    networks:
-      - microservices-network
-    restart: unless-stopped
-
-volumes:
-  mongo_data:
-  redis_data:
+version: "3.8"
 
 networks:
   microservices-network:
     driver: bridge
 
+volumes:
+  mongo_data:
+  postgres_data:
+  redis_data:
+  minio_data:
+  penpot_assets_data:
+
+services:
+
+  # ===========================
+  # INFRASTRUCTURE SERVICES
+  # ===========================
+
+  mongo:
+    image: mongo:7.0
+    restart: always
+    networks:
+      - microservices-network
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    environment:
+      MONGO_INITDB_DATABASE: ai_assessment
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  postgres:
+    image: postgres:15
+    restart: always
+    networks:
+      - microservices-network
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    environment:
+      POSTGRES_INITDB_ARGS: "--data-checksums"
+      POSTGRES_DB: penpot
+      POSTGRES_USER: penpot
+      POSTGRES_PASSWORD: penpot
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U penpot"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    restart: always
+    networks:
+      - microservices-network
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  minio:
+    image: minio/minio:latest
+    restart: always
+    networks:
+      - microservices-network
+    ports:
+      - "9000:9000"
+      - "9090:9090"
+    volumes:
+      - minio_data:/data
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    command: server /data --console-address ":9090"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+
+  # ===========================
+  # PENPOT SERVICES
+  # ===========================
+
+  penpot-backend:
+    image: penpotapp/backend:latest
+    restart: always
+    networks:
+      - microservices-network
+    volumes:
+      - penpot_assets_data:/opt/data/assets
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      PENPOT_FLAGS: "enable-registration enable-login-with-password disable-email-verification"
+      PENPOT_DATABASE_URI: "postgresql://postgres/penpot"
+      PENPOT_DATABASE_USERNAME: "penpot"
+      PENPOT_DATABASE_PASSWORD: "penpot"
+      PENPOT_REDIS_URI: "redis://redis/0"
+      PENPOT_ASSETS_STORAGE_BACKEND: "assets-fs"
+      PENPOT_STORAGE_ASSETS_FS_DIRECTORY: "/opt/data/assets"
+      PENPOT_TELEMETRY_ENABLED: "false"
+      PENPOT_PUBLIC_URI: "http://localhost:9001"
+      PENPOT_SECRET_KEY: "super-secret-penpot-key"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:6060/readyz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  penpot-exporter:
+    image: penpotapp/exporter:latest
+    restart: always
+    networks:
+      - microservices-network
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      PENPOT_PUBLIC_URI: "http://localhost:9001"
+      PENPOT_REDIS_URI: "redis://redis/0"
+      PENPOT_SECRET_KEY: "super-secret-penpot-key"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:6061/readyz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  penpot-frontend:
+    image: penpotapp/frontend:latest
+    restart: always
+    networks:
+      - microservices-network
+    depends_on:
+      penpot-backend:
+        condition: service_healthy
+      penpot-exporter:
+        condition: service_started
+    environment:
+      PENPOT_FLAGS: "enable-registration enable-login-with-password"
+    ports:
+      - "9001:8080"
+    healthcheck:
+      test: ["CMD", "true"]
+
+  # ===========================
+  # YOUR DESIGN SERVICE (FIXED)
+  # ===========================
+
+  design-service:
+    build: ./services/design-service
+    restart: always
+    networks:
+      - microservices-network
+    ports:
+      - "3006:3006"
+    volumes:
+      - ./services/design-service:/app
+    environment:
+      # Penpot API - backend direct (Docker network)
+      PENPOT_API_URL: "http://penpot-backend:6060"
+      PENPOT_PUBLIC_URI: "http://localhost:9001"
+      # Use your Penpot admin email and password (from registration)
+      PENPOT_ADMIN_EMAIL: "${PENPOT_ADMIN_EMAIL:-admin@penpot.local}"
+      PENPOT_ADMIN_PASSWORD: "${PENPOT_ADMIN_PASSWORD:-admin123}"
+    depends_on:
+      mongo:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      penpot-backend:
+        condition: service_healthy
+      penpot-frontend:
+        condition: service_started
