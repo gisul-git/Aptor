@@ -24,6 +24,13 @@ from app.core.dependencies import get_current_user, require_editor
 from app.utils.email import get_email_service
 from app.config.settings import get_settings
 from app.utils.face_image_storage import validate_face_image, prepare_image_for_storage
+from app.utils.cache import (
+    get_cached_tests,
+    set_cached_tests,
+    get_cached_dashboard,
+    set_cached_dashboard,
+    invalidate_user_tests_cache
+)
 
 logger = logging.getLogger("backend")
 
@@ -561,6 +568,10 @@ async def create_test(
         # Add updated_at if it exists
         if "updated_at" in created_test and created_test.get("updated_at"):
             test_dict["updated_at"] = created_test.get("updated_at").isoformat() if isinstance(created_test.get("updated_at"), datetime) else created_test.get("updated_at")
+        
+        # Invalidate cache for this user
+        await invalidate_user_tests_cache(user_id)
+        
         return test_dict
     
     # Fallback if fetch fails
@@ -574,10 +585,12 @@ async def create_test(
 @router.get("", response_model=List[dict], include_in_schema=False)
 async def get_tests_no_slash(
     active_only: bool = False,
+    page: int = Query(1, ge=1),
+    limit: int = Query(100, ge=1, le=100),
     current_user: Dict[str, Any] = Depends(get_current_user)
 ):
     """Redirect handler for GET /api/dsa/tests (without trailing slash)"""
-    return await get_tests(active_only, current_user)
+    return await get_tests(active_only=active_only, page=page, limit=limit, current_user=current_user)
 
 def _convert_question_timings_to_limits(question_timings: List[Dict]) -> Dict[str, int]:
     """Convert question_timings array to question_time_limits dict for backward compatibility"""
@@ -591,14 +604,167 @@ def _convert_question_timings_to_limits(question_timings: List[Dict]) -> Dict[st
             limits[str(qid)] = int(duration)
     return limits
 
+@router.get("/dashboard", response_model=Dict[str, Any])
+async def get_tests_dashboard(
+    page: int = Query(1, ge=1, description="Page number"),
+    limit: int = Query(20, ge=1, le=100, description="Items per page"),
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
+    """
+    Lightweight dashboard endpoint for test lists.
+    Optimized with:
+    - MongoDB field projection (only essential fields)
+    - Redis caching (3 minutes TTL)
+    - Pagination support
+    - Parallel query optimization
+    
+    Returns minimal data needed for dashboard display.
+    """
+    try:
+        if not current_user:
+            raise HTTPException(status_code=401, detail="Authentication required")
+        
+        db = get_database()
+        user_id = current_user.get("id") or current_user.get("_id")
+        if not user_id:
+            raise HTTPException(status_code=400, detail="Invalid user ID")
+        user_id = str(user_id).strip()
+        
+        # Try cache first
+        cached_data = await get_cached_dashboard(user_id, page, limit)
+        if cached_data:
+            return cached_data
+        
+        # Build query with field projection (only fetch needed fields)
+        query = {
+            "$and": [
+                {"created_by": {"$exists": True}},
+                {"created_by": {"$ne": None}},
+                {"created_by": {"$ne": ""}},
+                {"created_by": user_id},
+                {
+                    "$or": [
+                        {"test_type": {"$exists": False}},
+                        {"test_type": None},
+                        {"test_type": "dsa"}
+                    ]
+                }
+            ]
+        }
+        
+        # Calculate skip for pagination
+        skip = (page - 1) * limit
+        
+        # Use aggregation pipeline for optimized query with field projection
+        pipeline = [
+            {"$match": query},
+            {
+                "$project": {
+                    "_id": 1,
+                    "title": 1,
+                    "is_published": 1,
+                    "is_active": 1,
+                    "created_by": 1,
+                    "created_at": 1,
+                    "updated_at": 1,
+                    "start_time": 1,
+                    "end_time": 1,
+                    "duration_minutes": 1,
+                    "pausedAt": 1,
+                    "schedule.startTime": 1,
+                    "schedule.endTime": 1,
+                    "schedule.duration": 1,
+                }
+            },
+            {"$sort": {"created_at": -1}},
+            {"$skip": skip},
+            {"$limit": limit}
+        ]
+        
+        # Get total count in parallel
+        count_task = db.tests.count_documents(query)
+        tests_task = db.tests.aggregate(pipeline).to_list(length=limit)
+        
+        # Execute queries in parallel
+        total_count, tests = await asyncio.gather(count_task, tests_task)
+        
+        # Format results (minimal transformation)
+        def format_datetime_iso(dt_val):
+            if not dt_val:
+                return None
+            if isinstance(dt_val, datetime):
+                iso_str = dt_val.isoformat()
+                if not iso_str.endswith('Z') and '+' not in iso_str[-6:]:
+                    return iso_str + 'Z'
+                return iso_str
+            return str(dt_val) if dt_val else None
+        
+        result = []
+        for test in tests:
+            schedule = test.get("schedule", {})
+            has_schedule = bool(test.get("start_time") and test.get("end_time"))
+            
+            result.append({
+                "id": str(test["_id"]),
+                "title": test.get("title", ""),
+                "status": "active" if test.get("is_published") else "draft",
+                "is_published": test.get("is_published", False),
+                "is_active": test.get("is_active", False),
+                "hasSchedule": has_schedule,
+                "scheduleStatus": {
+                    "startTime": format_datetime_iso(schedule.get("startTime") or test.get("start_time")),
+                    "endTime": format_datetime_iso(schedule.get("endTime") or test.get("end_time")),
+                    "duration": schedule.get("duration") or test.get("duration_minutes", 0),
+                    "isActive": test.get("is_active", False)
+                } if has_schedule else None,
+                "created_at": format_datetime_iso(test.get("created_at")),
+                "updated_at": format_datetime_iso(test.get("updated_at")),
+                "pausedAt": format_datetime_iso(test.get("pausedAt")) if test.get("pausedAt") else None,
+            })
+        
+        # Build response with pagination metadata
+        total_pages = (total_count + limit - 1) // limit if total_count > 0 else 0
+        response_data = {
+            "tests": result,
+            "pagination": {
+                "page": page,
+                "limit": limit,
+                "total": total_count,
+                "total_pages": total_pages,
+                "has_next": page < total_pages,
+                "has_prev": page > 1
+            }
+        }
+        
+        # Cache the result
+        await set_cached_dashboard(user_id, response_data, page, limit)
+        
+        return response_data
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(f"[get_tests_dashboard] Unexpected error: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to fetch dashboard tests: {str(e)}"
+        )
+
 @router.get("/", response_model=List[dict])
 async def get_tests(
     active_only: bool = False,
+    page: int = Query(1, ge=1, description="Page number"),
+    limit: int = Query(100, ge=1, le=100, description="Items per page"),
     current_user: Dict[str, Any] = Depends(get_current_user)
 ):
     """
     Get tests for the current user (requires authentication)
     Only returns tests created by the current user
+    
+    Optimized with:
+    - Redis caching (5 minutes TTL)
+    - MongoDB field projection
+    - Pagination support
     
     SECURITY: This endpoint MUST only return tests where created_by matches the authenticated user's ID
     """
@@ -609,6 +775,17 @@ async def get_tests(
             raise HTTPException(status_code=401, detail="Authentication required")
         
         db = get_database()
+        
+        # Get user ID for caching
+        user_id = current_user.get("id") or current_user.get("_id")
+        if not user_id:
+            raise HTTPException(status_code=400, detail="Invalid user ID")
+        user_id = str(user_id).strip()
+        
+        # Try cache first
+        cached_tests = await get_cached_tests(user_id, page, limit, active_only)
+        if cached_tests is not None:
+            return cached_tests
         
         # Check if user is super_admin - if so, get all super_admin user IDs
         if current_user.get("role") == "super_admin":
@@ -687,8 +864,39 @@ async def get_tests(
             print(f"[get_tests] STRICT MongoDB query (super_admin): {query}")
             logger.info(f"[get_tests] STRICT MongoDB query (super_admin): {query}")
             
-            # Execute query for super_admin
-            tests = await db.tests.find(query).sort("created_at", -1).to_list(length=100)
+            # Execute query for super_admin with field projection and pagination
+            skip = (page - 1) * limit
+            
+            pipeline = [
+                {"$match": query},
+                {
+                    "$project": {
+                        "_id": 1,
+                        "title": 1,
+                        "description": 1,
+                        "duration_minutes": 1,
+                        "start_time": 1,
+                        "end_time": 1,
+                        "is_active": 1,
+                        "is_published": 1,
+                        "invited_users": 1,
+                        "question_ids": 1,
+                        "test_token": 1,
+                        "created_by": 1,
+                        "examMode": 1,
+                        "schedule": 1,
+                        "proctoringSettings": 1,
+                        "pausedAt": 1,
+                        "created_at": 1,
+                        "updated_at": 1,
+                    }
+                },
+                {"$sort": {"created_at": -1}},
+                {"$skip": skip},
+                {"$limit": limit}
+            ]
+            
+            tests = await db.tests.aggregate(pipeline).to_list(length=limit)
             
             # Use user_id_normalized for logging (already defined above)
             logger.info(f"[get_tests] MongoDB returned {len(tests)} tests for super_admin user_id: '{user_id_normalized}'")
@@ -942,6 +1150,10 @@ async def get_tests(
             if "updated_at" in test and test.get("updated_at"):
                 test_dict["updated_at"] = test.get("updated_at").isoformat() if isinstance(test.get("updated_at"), datetime) else test.get("updated_at")
             result.append(test_dict)
+        
+        # Cache the result
+        await set_cached_tests(user_id, result, page, limit, active_only)
+        
         return result
     except HTTPException:
         raise
@@ -1373,6 +1585,10 @@ async def patch_test(
         # Include invitationTemplate if it exists
         if "invitationTemplate" in updated_test:
             test_dict["invitationTemplate"] = updated_test.get("invitationTemplate")
+        
+        # Invalidate cache for this user
+        await invalidate_user_tests_cache(user_id)
+        
         return test_dict
     
     raise HTTPException(status_code=500, detail="Failed to update test")
@@ -1620,6 +1836,10 @@ async def update_test(
         # Include invitationTemplate if it exists
         if "invitationTemplate" in updated_test:
             test_dict["invitationTemplate"] = updated_test.get("invitationTemplate")
+        
+        # Invalidate cache for this user
+        await invalidate_user_tests_cache(user_id)
+        
         return test_dict
     
     raise HTTPException(status_code=500, detail="Failed to update test")
@@ -5547,6 +5767,9 @@ async def delete_test(
     result = await db.tests.delete_one({"_id": ObjectId(test_id)})
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Test not found")
+    
+    # Invalidate cache for this user
+    await invalidate_user_tests_cache(user_id)
     
     return {"message": "Test deleted successfully"}
 

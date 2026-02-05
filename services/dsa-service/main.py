@@ -12,6 +12,7 @@ from app.config.settings import get_settings
 from app.db.mongo import connect_to_mongo, close_mongo_connection
 from app.api.v1.dsa.database import connect_to_dsa_mongo, close_dsa_mongo_connection
 from app.api.v1.dsa.routers import tests as dsa_tests, questions as dsa_questions, submissions as dsa_submissions, assessment as dsa_assessment, admin as dsa_admin, run as dsa_run
+from app.utils.cache import init_redis_cache
 from app.exceptions.handlers import (
     validation_exception_handler,
     not_found_handler,
@@ -39,7 +40,33 @@ async def lifespan(app: FastAPI):
     await connect_to_dsa_mongo()
     logger.info("✅ DSA service connected to DSA MongoDB")
     
+    # Initialize Redis connection
+    settings = get_settings()
+    redis_client = None
+    try:
+        import redis.asyncio as redis
+        redis_client = redis.from_url(
+            settings.redis_url,
+            encoding="utf-8",
+            decode_responses=False  # We'll handle encoding manually
+        )
+        await redis_client.ping()
+        init_redis_cache(redis_client)
+        logger.info("✅ DSA service connected to Redis")
+        app.state.redis = redis_client
+    except Exception as e:
+        logger.warning(f"⚠️ Redis connection failed: {e}. Continuing without cache.")
+        app.state.redis = None
+    
     yield
+    
+    # Close Redis connection
+    if redis_client:
+        try:
+            await redis_client.close()
+            logger.info("✅ DSA service disconnected from Redis")
+        except Exception as e:
+            logger.warning(f"Error closing Redis connection: {e}")
     
     # Close DSA-specific MongoDB connection
     await close_dsa_mongo_connection()

@@ -8,6 +8,9 @@ import urllib.parse
 import re
 import csv
 import io
+import asyncio
+import time
+import uuid
 from pymongo.errors import NetworkTimeout, ServerSelectionTimeoutError, OperationFailure
 from ..database import get_aiml_database as get_database
 from ..models.test import TestCreate, Test, AddCandidateRequest
@@ -17,6 +20,13 @@ from app.config.settings import get_settings
 from ..utils.dataset_manager import get_dataset_manager
 from app.utils.responses import success_response
 from app.utils.face_image_storage import prepare_image_for_storage, validate_face_image
+from app.utils.cache import (
+    get_cached_candidate_analytics,
+    set_cached_candidate_analytics,
+    get_cached_bulk_analytics,
+    set_cached_bulk_analytics,
+    invalidate_test_analytics_cache
+)
 from pydantic import BaseModel
 from ..config import API_GATEWAY_URL
 
@@ -204,30 +214,204 @@ async def create_test(
             "is_published": created_test.get("is_published", False),
             "question_ids": [str(qid) for qid in created_test.get("question_ids", [])],
         }
+        
+        # Invalidate cache for this user
+        from app.utils.cache import invalidate_user_tests_cache
+        await invalidate_user_tests_cache(user_id)
+        
         return test_dict
     
     test_dict["id"] = str(result.inserted_id)
+    
+    # Invalidate cache for this user
+    from app.utils.cache import invalidate_user_tests_cache
+    await invalidate_user_tests_cache(user_id)
+    
     return test_dict
 
-@router.get("/", response_model=List[dict])
-async def get_tests(
+@router.get("/dashboard", response_model=Dict[str, Any])
+async def get_tests_dashboard(
+    page: int = Query(1, ge=1, description="Page number"),
+    limit: int = Query(20, ge=1, le=100, description="Items per page"),
     current_user: Dict[str, Any] = Depends(get_current_user)
 ):
     """
-    Get all tests for the current user
+    Lightweight dashboard endpoint for AIML test lists.
+    Optimized with MongoDB field projection, Redis caching, and pagination.
     """
+    from app.utils.cache import get_cached_dashboard, set_cached_dashboard
+    import asyncio
+    
+    try:
+        if not current_user:
+            raise HTTPException(status_code=401, detail="Authentication required")
+        
+        db = get_database()
+        user_id = current_user.get("id") or current_user.get("_id")
+        if not user_id:
+            raise HTTPException(status_code=400, detail="Invalid user ID")
+        user_id = str(user_id).strip()
+        
+        # Try cache first
+        cached_data = await get_cached_dashboard(user_id, page, limit)
+        if cached_data:
+            return cached_data
+        
+        # Build query with field projection
+        query = {"created_by": user_id, "test_type": "aiml"}
+        skip = (page - 1) * limit
+        
+        # Use aggregation pipeline for optimized query
+        pipeline = [
+            {"$match": query},
+            {
+                "$project": {
+                    "_id": 1,
+                    "title": 1,
+                    "is_published": 1,
+                    "is_active": 1,
+                    "created_at": 1,
+                    "updated_at": 1,
+                    "start_time": 1,
+                    "end_time": 1,
+                    "duration_minutes": 1,
+                    "pausedAt": 1,
+                    "schedule.startTime": 1,
+                    "schedule.endTime": 1,
+                    "schedule.duration": 1,
+                }
+            },
+            {"$sort": {"created_at": -1}},
+            {"$skip": skip},
+            {"$limit": limit}
+        ]
+        
+        # Get total count and tests in parallel
+        count_task = db.tests.count_documents(query)
+        tests_task = db.tests.aggregate(pipeline).to_list(length=limit)
+        
+        total_count, tests = await asyncio.gather(count_task, tests_task)
+        
+        # Format results
+        def safe_isoformat(dt):
+            if not dt:
+                return None
+            if isinstance(dt, datetime):
+                return dt.isoformat()
+            return str(dt) if dt else None
+        
+        result = []
+        for test in tests:
+            schedule = test.get("schedule", {})
+            has_schedule = bool(test.get("start_time") and test.get("end_time"))
+            
+            result.append({
+                "id": str(test["_id"]),
+                "title": test.get("title", ""),
+                "status": "active" if test.get("is_published") else "draft",
+                "is_published": test.get("is_published", False),
+                "is_active": test.get("is_active", False),
+                "hasSchedule": has_schedule,
+                "scheduleStatus": {
+                    "startTime": safe_isoformat(schedule.get("startTime") or test.get("start_time")),
+                    "endTime": safe_isoformat(schedule.get("endTime") or test.get("end_time")),
+                    "duration": schedule.get("duration") or test.get("duration_minutes", 0),
+                    "isActive": test.get("is_active", False)
+                } if has_schedule else None,
+                "created_at": safe_isoformat(test.get("created_at")),
+                "updated_at": safe_isoformat(test.get("updated_at")),
+                "pausedAt": safe_isoformat(test.get("pausedAt")) if test.get("pausedAt") else None,
+            })
+        
+        # Build response with pagination
+        total_pages = (total_count + limit - 1) // limit if total_count > 0 else 0
+        response_data = {
+            "tests": result,
+            "pagination": {
+                "page": page,
+                "limit": limit,
+                "total": total_count,
+                "total_pages": total_pages,
+                "has_next": page < total_pages,
+                "has_prev": page > 1
+            }
+        }
+        
+        # Cache the result
+        await set_cached_dashboard(user_id, response_data, page, limit)
+        
+        return response_data
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(f"[get_tests_dashboard] Unexpected error: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to fetch dashboard tests: {str(e)}"
+        )
+
+@router.get("/", response_model=List[dict])
+async def get_tests(
+    page: int = Query(1, ge=1, description="Page number"),
+    limit: int = Query(100, ge=1, le=100, description="Items per page"),
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
+    """
+    Get all tests for the current user.
+    Optimized with Redis caching, MongoDB field projection, and pagination.
+    """
+    from app.utils.cache import get_cached_tests, set_cached_tests, invalidate_user_tests_cache
+    
     db = get_database()
     user_id = current_user.get("id") or current_user.get("_id")
     if not user_id:
         raise HTTPException(status_code=400, detail="Invalid user ID")
     user_id = str(user_id).strip()
     
+    # Try cache first
+    cached_tests = await get_cached_tests(user_id, page, limit)
+    if cached_tests is not None:
+        return cached_tests
+    
     try:
-        # Filter by both user and test_type to only get AIML tests
-        # Limit to 100 to avoid timeout issues
-        tests = await db.tests.find(
-            {"created_by": user_id, "test_type": "aiml"}
-        ).sort("created_at", -1).limit(100).to_list(length=100)
+        # Build query with field projection and pagination
+        query = {"created_by": user_id, "test_type": "aiml"}
+        skip = (page - 1) * limit
+        
+        # Use aggregation pipeline for optimized query
+        pipeline = [
+            {"$match": query},
+            {
+                "$project": {
+                    "_id": 1,
+                    "title": 1,
+                    "description": 1,
+                    "duration_minutes": 1,
+                    "start_time": 1,
+                    "end_time": 1,
+                    "timer_mode": 1,
+                    "question_timings": 1,
+                    "examMode": 1,
+                    "schedule": 1,
+                    "proctoringSettings": 1,
+                    "is_active": 1,
+                    "is_published": 1,
+                    "question_ids": 1,
+                    "test_token": 1,
+                    "created_by": 1,
+                    "test_type": 1,
+                    "created_at": 1,
+                    "updated_at": 1,
+                    "pausedAt": 1,
+                }
+            },
+            {"$sort": {"created_at": -1}},
+            {"$skip": skip},
+            {"$limit": limit}
+        ]
+        
+        tests = await db.tests.aggregate(pipeline).to_list(length=limit)
     except (NetworkTimeout, ServerSelectionTimeoutError) as e:
         logger.error(f"MongoDB timeout error for user {user_id}: {e}", exc_info=True)
         # Return empty list on timeout to prevent 500 error
@@ -285,6 +469,10 @@ async def get_tests(
             logger.error(f"Error serializing test {test.get('_id')}: {e}", exc_info=True)
             # Continue with other tests even if one fails
             continue
+    
+    # Cache the result
+    await set_cached_tests(user_id, result, page, limit)
+    
     return result
 
 @router.patch("/{test_id}/publish", response_model=dict)
@@ -323,6 +511,11 @@ async def publish_test(
         {"_id": ObjectId(test_id)},
         {"$set": update_data}
     )
+    
+    # Invalidate analytics cache for this test
+    await invalidate_test_analytics_cache(test_id)
+    # Invalidate user tests cache
+    await invalidate_user_tests_cache(user_id)
     
     updated_test = await db.tests.find_one({"_id": ObjectId(test_id)})
     return {
@@ -533,6 +726,12 @@ async def update_test(
     proctoring_settings = updated_test.get("proctoringSettings")
     if not proctoring_settings and isinstance(updated_test.get("schedule"), dict):
         proctoring_settings = updated_test.get("schedule", {}).get("proctoringSettings")
+    
+    # Invalidate cache for this user
+    from app.utils.cache import invalidate_user_tests_cache
+    await invalidate_user_tests_cache(user_id)
+    # Invalidate analytics cache for this test
+    await invalidate_test_analytics_cache(test_id)
     
     return {
         "id": str(updated_test["_id"]),
@@ -1849,6 +2048,9 @@ async def process_ai_evaluation_background(
             }}
         )
         
+        # Invalidate analytics cache after AI evaluation completes
+        await invalidate_test_analytics_cache(test_id)
+        
         logger.info(f"Background AI evaluation completed for test {test_id}, user {user_id}. Score: {final_score}/100")
     except Exception as e:
         logger.error(f"Error in background AI evaluation for test {test_id}, user {user_id}: {e}", exc_info=True)
@@ -2017,6 +2219,9 @@ async def submit_test(
         {"$set": update_data}
     )
     
+    # Invalidate analytics cache for this test (submission completed)
+    await invalidate_test_analytics_cache(test_id)
+    
     # Schedule AI evaluation in background
     background_tasks.add_task(
         process_ai_evaluation_background,
@@ -2089,6 +2294,10 @@ async def pause_test(
         }
     )
     
+    # Invalidate analytics cache
+    await invalidate_test_analytics_cache(test_id)
+    await invalidate_user_tests_cache(user_id)
+    
     logger.info(f"Test {test_id} paused by user {user_id} at {now}")
     
     return {
@@ -2145,6 +2354,10 @@ async def resume_test(
             }
         }
     )
+    
+    # Invalidate analytics cache
+    await invalidate_test_analytics_cache(test_id)
+    await invalidate_user_tests_cache(user_id)
     
     logger.info(f"Test {test_id} resumed by user {user_id} at {now}")
     
@@ -2278,6 +2491,12 @@ async def delete_test(
     result = await db.tests.delete_one({"_id": ObjectId(test_id)})
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Test not found")
+    
+    # Invalidate cache for this user
+    from app.utils.cache import invalidate_user_tests_cache
+    await invalidate_user_tests_cache(user_id)
+    # Invalidate analytics cache for this test
+    await invalidate_test_analytics_cache(test_id)
     
     return {"message": "Test deleted successfully"}
 
@@ -2872,113 +3091,398 @@ async def get_candidate_analytics(
     current_user: Dict[str, Any] = Depends(get_current_user)
 ):
     """
-    Get detailed analytics for a specific candidate (requires authentication and ownership)
+    Get detailed analytics for a specific candidate (requires authentication and ownership).
+    Optimized with batch question fetching, caching, and parallel processing.
     """
-    db = get_database()
-    admin_user_id = current_user.get("id") or current_user.get("_id")
-    if not admin_user_id:
-        raise HTTPException(status_code=400, detail="Invalid user ID")
-    admin_user_id = str(admin_user_id).strip()
+    request_id = str(uuid.uuid4())
+    start_time = time.time()
     
-    if not ObjectId.is_valid(test_id):
-        raise HTTPException(status_code=400, detail="Invalid test ID")
-    if not ObjectId.is_valid(user_id):
-        raise HTTPException(status_code=400, detail="Invalid user ID")
-    
-    # Verify test ownership
-    test = await db.tests.find_one({"_id": ObjectId(test_id)})
-    if not test:
-        raise HTTPException(status_code=404, detail="Test not found")
-    
-    if str(test.get("created_by")) != admin_user_id:
-        raise HTTPException(status_code=403, detail="You don't have permission to view analytics for this test")
-    
-    # Get candidate info
-    candidate = await db.test_candidates.find_one({
-        "test_id": test_id,
-        "user_id": user_id
-    })
-    if not candidate:
-        raise HTTPException(status_code=404, detail="Candidate not found")
-    
-    # Get candidateInfo from candidate record (even if no submission)
-    candidate_info = candidate.get("candidateInfo", {})
-    
-    # Get test submission
-    submission = await db.test_submissions.find_one({
-        "test_id": test_id,
-        "user_id": user_id
-    })
-    
-    if not submission:
-        return {
+    try:
+        db = get_database()
+        admin_user_id = current_user.get("id") or current_user.get("_id")
+        if not admin_user_id:
+            raise HTTPException(status_code=400, detail="Invalid user ID")
+        admin_user_id = str(admin_user_id).strip()
+        
+        # Input validation
+        if not ObjectId.is_valid(test_id):
+            raise HTTPException(status_code=400, detail="Invalid test ID")
+        if not ObjectId.is_valid(user_id):
+            raise HTTPException(status_code=400, detail="Invalid user ID")
+        
+        # Check cache first
+        cached = await get_cached_candidate_analytics(test_id, user_id)
+        if cached:
+            logger.info(f"[{request_id}] Cache HIT for candidate analytics: test={test_id}, candidate={user_id}")
+            return cached
+        
+        # Parallel fetch: test, candidate, and submission
+        test_task = db.tests.find_one({"_id": ObjectId(test_id)}, {"created_by": 1, "question_ids": 1})
+        candidate_task = db.test_candidates.find_one({
+            "test_id": test_id,
+            "user_id": user_id
+        }, {"name": 1, "email": 1, "candidateInfo": 1})
+        submission_task = db.test_submissions.find_one({
+            "test_id": test_id,
+            "user_id": user_id
+        })
+        
+        test, candidate, submission = await asyncio.gather(
+            test_task, candidate_task, submission_task,
+            return_exceptions=True
+        )
+        
+        # Handle exceptions from parallel fetch
+        if isinstance(test, Exception):
+            logger.error(f"[{request_id}] Error fetching test: {test}")
+            raise HTTPException(status_code=500, detail="Failed to fetch test data")
+        if isinstance(candidate, Exception):
+            logger.error(f"[{request_id}] Error fetching candidate: {candidate}")
+            raise HTTPException(status_code=500, detail="Failed to fetch candidate data")
+        if isinstance(submission, Exception):
+            logger.error(f"[{request_id}] Error fetching submission: {submission}")
+            raise HTTPException(status_code=500, detail="Failed to fetch submission data")
+        
+        # Verify test ownership
+        if not test:
+            raise HTTPException(status_code=404, detail="Test not found")
+        
+        if str(test.get("created_by")) != admin_user_id:
+            raise HTTPException(status_code=403, detail="You don't have permission to view analytics for this test")
+        
+        if not candidate:
+            raise HTTPException(status_code=404, detail="Candidate not found")
+        
+        # Get candidateInfo from candidate record (even if no submission)
+        candidate_info = candidate.get("candidateInfo", {})
+        
+        if not submission:
+            result = {
+                "candidate": {
+                    "name": candidate.get("name"),
+                    "email": candidate.get("email")
+                },
+                "candidateInfo": candidate_info if candidate_info else None,
+                "submission": None,
+                "question_analytics": [],
+                "activity_logs": []
+            }
+            # Cache even empty results
+            await set_cached_candidate_analytics(test_id, user_id, result)
+            return result
+        
+        # Get question IDs from test
+        question_ids = test.get("question_ids", [])
+        if not question_ids:
+            result = {
+                "candidate": {
+                    "name": candidate.get("name"),
+                    "email": candidate.get("email")
+                },
+                "candidateInfo": candidate_info if candidate_info else None,
+                "submission": {
+                    "score": submission.get("score", 0),
+                    "started_at": submission.get("started_at").isoformat() if submission.get("started_at") else None,
+                    "submitted_at": submission.get("submitted_at").isoformat() if submission.get("submitted_at") else None,
+                    "is_completed": submission.get("is_completed", False),
+                    "ai_feedback_status": submission.get("ai_feedback_status", "pending"),
+                    "evaluations": submission.get("evaluations", [])
+                },
+                "question_analytics": [],
+                "activity_logs": []
+            }
+            await set_cached_candidate_analytics(test_id, user_id, result)
+            return result
+        
+        # OPTIMIZATION: Batch fetch all questions in a single query (fixes N+1 problem)
+        valid_question_ids = [ObjectId(qid) for qid in question_ids if ObjectId.is_valid(qid)]
+        if not valid_question_ids:
+            logger.warning(f"[{request_id}] No valid question IDs found")
+            question_analytics = []
+        else:
+            # Single query with field projection
+            questions_cursor = db.questions.find(
+                {"_id": {"$in": valid_question_ids}},
+                {"_id": 1, "title": 1, "description": 1, "tasks": 1, "difficulty": 1}
+            )
+            questions_list = await questions_cursor.to_list(length=len(valid_question_ids))
+            
+            # Convert to dict for O(1) lookup
+            questions_dict = {str(q["_id"]): q for q in questions_list}
+            
+            # Get submissions for each question
+            question_analytics = []
+            submissions_list = submission.get("submissions", [])
+            # Create submission lookup dict for O(1) access
+            submissions_dict = {str(sub.get("question_id")): sub for sub in submissions_list if sub.get("question_id")}
+            
+            for qid in question_ids:
+                if not ObjectId.is_valid(qid):
+                    continue
+                
+                question = questions_dict.get(qid)
+                if not question:
+                    logger.warning(f"[{request_id}] Question {qid} not found in batch fetch")
+                    continue
+                
+                # O(1) lookup instead of O(n) loop
+                question_submission = submissions_dict.get(qid)
+                
+                # Get AI feedback from submission if available
+                ai_feedback = question_submission.get("ai_feedback") if question_submission else None
+                question_score = question_submission.get("score", 0) if question_submission else 0
+                
+                question_analytics.append({
+                    "question_id": str(qid),
+                    "question_title": question.get("title", ""),
+                    "description": question.get("description", ""),
+                    "tasks": question.get("tasks", []),
+                    "difficulty": question.get("difficulty", "medium"),
+                    "language": "python3",
+                    "status": question_submission.get("status", "submitted") if question_submission else "not_submitted",
+                    "code": question_submission.get("source_code", "") if question_submission else "",
+                    "outputs": question_submission.get("outputs", []) if question_submission else [],
+                    "submitted_at": question_submission.get("submitted_at").isoformat() if question_submission and question_submission.get("submitted_at") else None,
+                    "created_at": question_submission.get("submitted_at").isoformat() if question_submission and question_submission.get("submitted_at") else None,
+                    # AI Feedback fields
+                    "score": question_score,
+                    "ai_feedback": ai_feedback,
+                })
+        
+        result = {
             "candidate": {
                 "name": candidate.get("name"),
                 "email": candidate.get("email")
             },
-            "candidateInfo": candidate_info if candidate_info else None,  # Include candidate requirements data
-            "submission": None,
-            "question_analytics": [],
-            "activity_logs": []
+            "candidateInfo": candidate_info if candidate_info else None,
+            "submission": {
+                "score": submission.get("score", 0),
+                "started_at": submission.get("started_at").isoformat() if submission.get("started_at") else None,
+                "submitted_at": submission.get("submitted_at").isoformat() if submission.get("submitted_at") else None,
+                "is_completed": submission.get("is_completed", False),
+                "ai_feedback_status": submission.get("ai_feedback_status", "pending"),
+                "evaluations": submission.get("evaluations", [])
+            },
+            "question_analytics": question_analytics,
+            "activity_logs": []  # AIML doesn't have proctoring logs yet
         }
-    
-    # Get question IDs from test
-    question_ids = test.get("question_ids", [])
-    
-    # Get submissions for each question
-    question_analytics = []
-    submissions_list = submission.get("submissions", [])
-    
-    for qid in question_ids:
-        question = await db.questions.find_one({"_id": ObjectId(qid)})
-        if not question:
-            continue
         
-        # Find submission for this question
-        question_submission = None
-        for sub in submissions_list:
-            if sub.get("question_id") == str(qid):
-                question_submission = sub
-                break
+        # Cache the result
+        await set_cached_candidate_analytics(test_id, user_id, result)
         
-        # Get AI feedback from submission if available
-        ai_feedback = question_submission.get("ai_feedback") if question_submission else None
-        question_score = question_submission.get("score", 0) if question_submission else 0
+        # Log performance
+        elapsed = time.time() - start_time
+        logger.info(f"[{request_id}] Candidate analytics fetched in {elapsed:.2f}s: test={test_id}, candidate={user_id}, questions={len(question_analytics)}")
         
-        question_analytics.append({
-            "question_id": str(qid),
-            "question_title": question.get("title", ""),
-            "description": question.get("description", ""),
-            "tasks": question.get("tasks", []),
-            "difficulty": question.get("difficulty", "medium"),
-            "language": "python3",
-            "status": question_submission.get("status", "submitted") if question_submission else "not_submitted",
-            "code": question_submission.get("source_code", "") if question_submission else "",
-            "outputs": question_submission.get("outputs", []) if question_submission else [],
-            "submitted_at": question_submission.get("submitted_at").isoformat() if question_submission and question_submission.get("submitted_at") else None,
-            "created_at": question_submission.get("submitted_at").isoformat() if question_submission and question_submission.get("submitted_at") else None,
-            # AI Feedback fields
-            "score": question_score,
-            "ai_feedback": ai_feedback,
-        })
+        return result
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        elapsed = time.time() - start_time
+        logger.error(f"[{request_id}] Error fetching candidate analytics after {elapsed:.2f}s: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to fetch candidate analytics: {str(e)}")
+
+
+@router.get("/{test_id}/analytics")
+async def get_test_analytics_bulk(
+    test_id: str,
+    page: int = Query(1, ge=1, le=100, description="Page number"),
+    limit: int = Query(20, ge=1, le=100, description="Items per page"),
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
+    """
+    Get bulk analytics for all candidates in a test (requires authentication and ownership).
+    Production-ready endpoint with:
+    - Batch question fetching (fixes N+1 problem)
+    - Redis caching with graceful degradation
+    - Parallel processing
+    - Field projection
+    - Pagination
+    - Comprehensive error handling
+    """
+    request_id = str(uuid.uuid4())
+    start_time = time.time()
     
-    return {
-        "candidate": {
-            "name": candidate.get("name"),
-            "email": candidate.get("email")
-        },
-        "candidateInfo": candidate_info if candidate_info else None,  # Include candidate requirements data
-        "submission": {
-            "score": submission.get("score", 0),
-            "started_at": submission.get("started_at").isoformat() if submission.get("started_at") else None,
-            "submitted_at": submission.get("submitted_at").isoformat() if submission.get("submitted_at") else None,
-            "is_completed": submission.get("is_completed", False),
-            "ai_feedback_status": submission.get("ai_feedback_status", "pending"),
-            "evaluations": submission.get("evaluations", [])
-        },
-        "question_analytics": question_analytics,
-        "activity_logs": []  # AIML doesn't have proctoring logs yet
-    }
+    try:
+        db = get_database()
+        admin_user_id = current_user.get("id") or current_user.get("_id")
+        if not admin_user_id:
+            raise HTTPException(status_code=400, detail="Invalid user ID")
+        admin_user_id = str(admin_user_id).strip()
+        
+        # Input validation
+        if not ObjectId.is_valid(test_id):
+            raise HTTPException(status_code=400, detail="Invalid test ID")
+        
+        # Check cache first
+        cached = await get_cached_bulk_analytics(test_id, page, limit)
+        if cached:
+            logger.info(f"[{request_id}] Cache HIT for bulk analytics: test={test_id}, page={page}")
+            return cached
+        
+        # Verify test ownership with timeout protection
+        try:
+            test = await asyncio.wait_for(
+                db.tests.find_one(
+                    {"_id": ObjectId(test_id)},
+                    {"created_by": 1, "question_ids": 1, "title": 1}
+                ),
+                timeout=2.0
+            )
+        except asyncio.TimeoutError:
+            logger.error(f"[{request_id}] Timeout fetching test {test_id}")
+            raise HTTPException(status_code=504, detail="Request timeout")
+        
+        if not test:
+            raise HTTPException(status_code=404, detail="Test not found")
+        
+        if str(test.get("created_by")) != admin_user_id:
+            raise HTTPException(status_code=403, detail="You don't have permission to view analytics for this test")
+        
+        # Get question IDs and batch fetch questions
+        question_ids = test.get("question_ids", [])
+        questions_dict = {}
+        
+        if question_ids:
+            valid_question_ids = [ObjectId(qid) for qid in question_ids if ObjectId.is_valid(qid)]
+            if valid_question_ids:
+                try:
+                    questions_cursor = db.questions.find(
+                        {"_id": {"$in": valid_question_ids}},
+                        {"_id": 1, "title": 1, "description": 1, "tasks": 1, "difficulty": 1}
+                    )
+                    questions_list = await questions_cursor.to_list(length=len(valid_question_ids))
+                    questions_dict = {str(q["_id"]): q for q in questions_list}
+                except Exception as e:
+                    logger.warning(f"[{request_id}] Error fetching questions: {e}")
+        
+        # Calculate pagination
+        skip = (page - 1) * limit
+        
+        # Fetch candidates with pagination
+        candidates_cursor = db.test_candidates.find(
+            {"test_id": test_id},
+            {"user_id": 1, "name": 1, "email": 1, "candidateInfo": 1, "status": 1}
+        ).sort("created_at", -1).skip(skip).limit(limit)
+        
+        candidates = await candidates_cursor.to_list(length=limit)
+        
+        # Get total count
+        total_count = await db.test_candidates.count_documents({"test_id": test_id})
+        
+        # Get all user_ids for batch fetching submissions
+        user_ids = [c.get("user_id") for c in candidates if c.get("user_id")]
+        
+        # Batch fetch all submissions for these candidates
+        submissions_dict = {}
+        if user_ids:
+            try:
+                submissions_cursor = db.test_submissions.find(
+                    {"test_id": test_id, "user_id": {"$in": user_ids}},
+                    {"user_id": 1, "score": 1, "started_at": 1, "submitted_at": 1, 
+                     "is_completed": 1, "ai_feedback_status": 1, "evaluations": 1, "submissions": 1}
+                )
+                submissions_list = await submissions_cursor.to_list(length=len(user_ids))
+                submissions_dict = {str(sub.get("user_id")): sub for sub in submissions_list}
+            except Exception as e:
+                logger.warning(f"[{request_id}] Error fetching submissions: {e}")
+        
+        # Build analytics for each candidate
+        candidates_analytics = []
+        for candidate in candidates:
+            user_id = candidate.get("user_id")
+            if not user_id:
+                continue
+            
+            user_id_str = str(user_id)
+            submission = submissions_dict.get(user_id_str)
+            
+            # Build question analytics if submission exists
+            question_analytics = []
+            if submission and question_ids:
+                submissions_list = submission.get("submissions", [])
+                submissions_lookup = {str(sub.get("question_id")): sub for sub in submissions_list if sub.get("question_id")}
+                
+                for qid in question_ids:
+                    if not ObjectId.is_valid(qid):
+                        continue
+                    
+                    question = questions_dict.get(qid)
+                    if not question:
+                        continue
+                    
+                    question_submission = submissions_lookup.get(qid)
+                    ai_feedback = question_submission.get("ai_feedback") if question_submission else None
+                    question_score = question_submission.get("score", 0) if question_submission else 0
+                    
+                    question_analytics.append({
+                        "question_id": str(qid),
+                        "question_title": question.get("title", ""),
+                        "description": question.get("description", ""),
+                        "tasks": question.get("tasks", []),
+                        "difficulty": question.get("difficulty", "medium"),
+                        "score": question_score,
+                        "ai_feedback": ai_feedback,
+                        "status": question_submission.get("status", "submitted") if question_submission else "not_submitted",
+                    })
+            
+            candidate_data = {
+                "user_id": user_id_str,
+                "candidate": {
+                    "name": candidate.get("name"),
+                    "email": candidate.get("email")
+                },
+                "candidateInfo": candidate.get("candidateInfo") if candidate.get("candidateInfo") else None,
+                "submission": {
+                    "score": submission.get("score", 0) if submission else 0,
+                    "started_at": submission.get("started_at").isoformat() if submission and submission.get("started_at") else None,
+                    "submitted_at": submission.get("submitted_at").isoformat() if submission and submission.get("submitted_at") else None,
+                    "is_completed": submission.get("is_completed", False) if submission else False,
+                    "ai_feedback_status": submission.get("ai_feedback_status", "pending") if submission else "pending",
+                    "evaluations": submission.get("evaluations", []) if submission else []
+                } if submission else None,
+                "question_analytics": question_analytics,
+                "activity_logs": []  # AIML doesn't have proctoring logs yet
+            }
+            
+            candidates_analytics.append(candidate_data)
+        
+        # Build response with pagination
+        total_pages = (total_count + limit - 1) // limit if total_count > 0 else 0
+        result = {
+            "test_id": test_id,
+            "test_title": test.get("title", ""),
+            "candidates": candidates_analytics,
+            "pagination": {
+                "page": page,
+                "limit": limit,
+                "total": total_count,
+                "total_pages": total_pages,
+                "has_next": page < total_pages,
+                "has_prev": page > 1
+            }
+        }
+        
+        # Cache the result
+        await set_cached_bulk_analytics(test_id, result, page, limit)
+        
+        # Log performance
+        elapsed = time.time() - start_time
+        logger.info(f"[{request_id}] Bulk analytics fetched in {elapsed:.2f}s: test={test_id}, candidates={len(candidates_analytics)}, page={page}")
+        
+        return result
+        
+    except HTTPException:
+        raise
+    except asyncio.TimeoutError:
+        elapsed = time.time() - start_time
+        logger.error(f"[{request_id}] Timeout after {elapsed:.2f}s")
+        raise HTTPException(status_code=504, detail="Request timeout")
+    except Exception as e:
+        elapsed = time.time() - start_time
+        logger.error(f"[{request_id}] Error fetching bulk analytics after {elapsed:.2f}s: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to fetch bulk analytics: {str(e)}")
 
 
 @router.post("/{test_id}/candidates/{user_id}/send-feedback")
