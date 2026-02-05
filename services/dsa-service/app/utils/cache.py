@@ -21,8 +21,12 @@ _redis_client: Optional[Any] = None
 # Cache configuration
 CACHE_TTL_TESTS = 300  # 5 minutes for test lists
 CACHE_TTL_DASHBOARD = 180  # 3 minutes for dashboard endpoint
+CACHE_TTL_TEST = 300  # 5 minutes for single test
+CACHE_TTL_QUESTIONS = 300  # 5 minutes for questions list
 CACHE_KEY_PREFIX_TESTS = "dsa:tests:"
 CACHE_KEY_PREFIX_DASHBOARD = "dsa:dashboard:"
+CACHE_KEY_PREFIX_TEST = "dsa:test:"
+CACHE_KEY_PREFIX_QUESTIONS = "dsa:questions:"
 
 
 def init_redis_cache(redis_client: Any) -> None:
@@ -207,4 +211,73 @@ async def invalidate_user_tests_cache(user_id: str) -> None:
             logger.info(f"✅ Invalidated {len(keys)} cache keys for user {user_id}")
     except Exception as e:
         logger.warning(f"Failed to invalidate cache for user {user_id}: {e}")
+
+# Single test caching
+async def get_cached_test(test_id: str, user_id: str) -> Optional[Dict[str, Any]]:
+    if not _redis_client: return None
+    try:
+        cache_key = f"{CACHE_KEY_PREFIX_TEST}{test_id}:{user_id}"
+        cached_data = await _redis_client.get(cache_key)
+        if cached_data:
+            logger.info(f"✅ Cache HIT for test {test_id}")
+            return json.loads(cached_data.decode('utf-8'))
+    except Exception as e: logger.warning(f"Cache read error for test {test_id}: {e}")
+    return None
+
+async def set_cached_test(test_id: str, user_id: str, data: Dict[str, Any]) -> None:
+    if not _redis_client: return
+    try:
+        cache_key = f"{CACHE_KEY_PREFIX_TEST}{test_id}:{user_id}"
+        cache_data = json.dumps(data, default=str)
+        await _redis_client.setex(cache_key, CACHE_TTL_TEST, cache_data)
+        logger.info(f"✅ Cached test {test_id} for user {user_id}")
+    except Exception as e: logger.warning(f"Cache write error for test {test_id}: {e}")
+
+async def invalidate_test_cache(test_id: str, user_id: Optional[str] = None) -> None:
+    if not _redis_client: return
+    try:
+        if user_id:
+            cache_key = f"{CACHE_KEY_PREFIX_TEST}{test_id}:{user_id}"
+            await _redis_client.delete(cache_key)
+            logger.info(f"✅ Invalidated test cache for {test_id}:{user_id}")
+        else:
+            pattern = f"{CACHE_KEY_PREFIX_TEST}{test_id}:*"
+            keys = []
+            async for key in _redis_client.scan_iter(match=pattern): keys.append(key)
+            if keys:
+                await _redis_client.delete(*keys)
+                logger.info(f"✅ Invalidated {len(keys)} test cache keys for test {test_id}")
+    except Exception as e: logger.warning(f"Failed to invalidate test cache for {test_id}: {e}")
+
+# Questions list caching
+async def get_cached_questions(user_id: str, skip: int = 0, limit: int = 1000) -> Optional[List[Dict[str, Any]]]:
+    if not _redis_client: return None
+    try:
+        cache_key = f"{CACHE_KEY_PREFIX_QUESTIONS}{user_id}:s{skip}:l{limit}"
+        cached_data = await _redis_client.get(cache_key)
+        if cached_data:
+            logger.info(f"✅ Cache HIT for questions (user {user_id}, skip {skip}, limit {limit})")
+            return json.loads(cached_data.decode('utf-8'))
+    except Exception as e: logger.warning(f"Cache read error for questions {user_id}: {e}")
+    return None
+
+async def set_cached_questions(user_id: str, data: List[Dict[str, Any]], skip: int = 0, limit: int = 1000) -> None:
+    if not _redis_client: return
+    try:
+        cache_key = f"{CACHE_KEY_PREFIX_QUESTIONS}{user_id}:s{skip}:l{limit}"
+        cache_data = json.dumps(data, default=str)
+        await _redis_client.setex(cache_key, CACHE_TTL_QUESTIONS, cache_data)
+        logger.info(f"✅ Cached {len(data)} questions for user {user_id}")
+    except Exception as e: logger.warning(f"Cache write error for questions {user_id}: {e}")
+
+async def invalidate_questions_cache(user_id: str) -> None:
+    if not _redis_client: return
+    try:
+        pattern = f"{CACHE_KEY_PREFIX_QUESTIONS}{user_id}:*"
+        keys = []
+        async for key in _redis_client.scan_iter(match=pattern): keys.append(key)
+        if keys:
+            await _redis_client.delete(*keys)
+            logger.info(f"✅ Invalidated {len(keys)} questions cache keys for user {user_id}")
+    except Exception as e: logger.warning(f"Failed to invalidate questions cache for user {user_id}: {e}")
 

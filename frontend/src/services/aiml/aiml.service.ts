@@ -151,8 +151,9 @@ export const aimlService = {
   /**
    * List questions
    */
-  listQuestions: async (): Promise<ApiResponse<AIMLQuestion[]>> => {
-    const response = await apiClient.get<ApiResponse<AIMLQuestion[]>>('/api/v1/aiml/questions');
+  listQuestions: async (lightweight: boolean = false): Promise<ApiResponse<AIMLQuestion[]>> => {
+    const endpoint = lightweight ? '/api/v1/aiml/questions/lightweight' : '/api/v1/aiml/questions';
+    const response = await apiClient.get<ApiResponse<AIMLQuestion[]>>(endpoint);
     return response.data;
   },
 

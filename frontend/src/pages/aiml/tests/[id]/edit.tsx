@@ -47,9 +47,9 @@ export default function EditAIMLCompetencyPage() {
     end_time: "",
   });
 
-  // React Query hooks
+  // React Query hooks - use lightweight questions for edit page
   const { data: testData, isLoading: loadingTest } = useAIMLTest(testId);
-  const { data: questionsData, refetch: refetchQuestions } = useAIMLQuestions();
+  const { data: questionsData, isLoading: loadingQuestions, refetch: refetchQuestions } = useAIMLQuestions(true); // lightweight=true
   const updateTestMutation = useUpdateAIMLTest();
   const deleteQuestionMutation = useDeleteAIMLQuestion();
 
@@ -355,10 +355,25 @@ export default function EditAIMLCompetencyPage() {
     }
   };
 
-  if (fetching) {
+  // Show loading state while fetching test or questions data
+  // Only wait for testData if we're still loading it, not if it failed
+  if (loadingTest || loadingQuestions || (loadingTest === false && !testData)) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="text-center text-gray-600">Loading test...</div>
+        <div className="text-center text-gray-600">
+          {loadingTest ? "Loading test data..." : loadingQuestions ? "Loading questions..." : "Loading..."}
+        </div>
+      </div>
+    );
+  }
+  
+  // If testData is still null after loading completes, show error
+  if (!testData && !loadingTest) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-center text-red-600">
+          Failed to load test data. Please try refreshing the page.
+        </div>
       </div>
     );
   }
