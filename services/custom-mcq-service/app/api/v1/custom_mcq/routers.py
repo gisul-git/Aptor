@@ -751,6 +751,7 @@ async def list_custom_mcq_assessments(
         assessments_docs = await db.custom_mcq_assessments.aggregate(pipeline).to_list(length=limit)
         
         assessments = []
+        assessment_count = 0
         for assessment in assessments_docs:
             assessment_count += 1
             assessment_serialized = serialize_document(assessment)
