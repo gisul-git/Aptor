@@ -80,7 +80,11 @@ export function useDashboardAssessments(): UseDashboardAssessmentsReturn {
 
   // Check if each service has assessments
   const hasAIAssessments = useMemo(() => {
+
+    return Array.isArray(assessmentsData) && assessmentsData.length > 0;
+
     return !!(assessmentsData && Array.isArray(assessmentsData) && assessmentsData.length > 0);
+
   }, [assessmentsData]);
 
   const hasCustomMCQAssessments = useMemo(() => {

@@ -106,6 +106,7 @@ export const assessmentService = {
    * Get assessment by ID
    */
   getById: async (id: string): Promise<ApiResponse<Assessment>> => {
+
     const response = await apiClient.get<ApiResponse<any>>(
       `/api/v1/assessments/${id}/questions`
     );
@@ -123,6 +124,7 @@ export const assessmentService = {
       ...raw,
       data: normalizedAssessment,
     };
+
   },
 
   /**
