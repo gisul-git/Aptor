@@ -24,6 +24,7 @@ from .schemas import (
     LiveProctoringSessionData,
 )
 from .websocket_manager import connection_manager
+from .agora_service import generate_agora_token
 from ....utils.responses import success_response
 from ....utils.mongo import to_object_id
 
@@ -685,6 +686,50 @@ async def get_all_live_proctoring_sessions(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to fetch sessions: {str(exc)}"
         ) from exc
+
+
+@router.post("/agora/get-token")
+async def get_agora_token(
+    payload: Dict[str, Any],
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """
+    Generate Agora token for live proctoring.
+
+    Request body:
+        { "assessmentId": str, "candidateId"?: str, "adminId"?: str, "role": "candidate" | "admin" }
+
+    Returns: { "status": "ok", "token", "appId", "channel", "uid", "expiresAt" }
+    """
+    try:
+        assessment_id = payload.get("assessmentId")
+        candidate_id = payload.get("candidateId")
+        admin_id = payload.get("adminId")
+        role = payload.get("role", "candidate")
+
+        if not assessment_id:
+            raise HTTPException(status_code=400, detail="assessmentId is required")
+
+        if role == "candidate":
+            if not candidate_id:
+                raise HTTPException(status_code=400, detail="candidateId required for candidate role")
+            user_id = candidate_id
+        else:
+            if not admin_id:
+                raise HTTPException(status_code=400, detail="adminId required for admin role")
+            user_id = f"admin-{admin_id}"
+
+        channel_name = assessment_id
+        uid = user_id
+        agora_role = "publisher" if role == "candidate" else "subscriber"
+        token_data = generate_agora_token(channel_name, uid, agora_role)
+        return {"status": "ok", **token_data}
+    except ValueError as ve:
+        raise HTTPException(status_code=500, detail=str(ve))
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Failed to generate Agora token: {str(exc)}")
 
 
 @router.websocket("/ws/live/candidate/{session_id}")

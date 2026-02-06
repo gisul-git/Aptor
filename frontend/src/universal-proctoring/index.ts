@@ -150,11 +150,7 @@ export type {
 
 export {
   CandidateLiveService,
-  getCandidateLiveService,
-  resetCandidateLiveService,
   AdminLiveService,
-  getAdminLiveService,
-  resetAdminLiveService,
 } from "./live";
 
 // Utilities

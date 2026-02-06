@@ -25,7 +25,8 @@ from app.utils.cache import (
     set_cached_candidate_analytics,
     get_cached_bulk_analytics,
     set_cached_bulk_analytics,
-    invalidate_test_analytics_cache
+    invalidate_test_analytics_cache,
+    invalidate_user_tests_cache
 )
 from pydantic import BaseModel
 from ..config import API_GATEWAY_URL

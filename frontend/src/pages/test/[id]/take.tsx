@@ -175,11 +175,6 @@ export default function TestTakePage() {
   const thumbVideoRef = useRef<HTMLVideoElement>(null);
   const liveProctoringServiceRef = useRef<CandidateLiveService | null>(null);
   const liveProctoringStartedRef = useRef(false);
-  const startSessionCalledRef = useRef(false); // Guard: prevent multiple start-session calls
-  const candidateWsRef = useRef<WebSocket | null>(null); // Store candidate WebSocket to pass to service
-  const candidateSessionIdRef = useRef<string | null>(null); // Store sessionId to pass to service
-  const pendingAnswerRef = useRef<any>(null); // Queue answer message if received before service starts
-  const pendingIceCandidatesRef = useRef<any[]>([]); // Queue ICE candidates if received before service starts
 
   const editorRef = useRef<HTMLDivElement>(null);
   const [debugMode, setDebugMode] = useState(false);
@@ -576,9 +571,14 @@ export default function TestTakePage() {
           assessmentId: assessmentIdStr,
         },
         videoElement: aiProctoringEnabled ? thumbVideoRef.current : null,
-      }).then((success) => {
+      }).then(async (success) => {
         if (success) {
           console.log('[DSA Take] ✅ Universal Proctoring started');
+          
+          // Start Agora Live Proctoring immediately after AI proctoring starts
+          if (liveProctoringEnabled && !liveProctoringStartedRef.current) {
+            await startLiveProctoring();
+          }
         } else {
           console.error('[DSA Take] ❌ Failed to start Universal Proctoring');
         }
@@ -586,20 +586,22 @@ export default function TestTakePage() {
     }
   }, [test, questions.length, isProctoringRunning, isClient, aiProctoringEnabled, liveProctoringEnabled, candidateIdStr, assessmentIdStr, startUniversalProctoring, isAdminPreview]);
 
-  // ✅ PHASE 2.4: Lazy start function (called only when admin connects)
-  const startLiveProctoring = useCallback((sessionId: string, ws: WebSocket) => {
-    console.log('[DSA Take] 🔵 startLiveProctoring called with sessionId:', sessionId, 'ws.readyState:', ws.readyState);
-    
+  // Start Agora Live Proctoring when exam starts
+  const startLiveProctoring = useCallback(async () => {
     if (liveProctoringStartedRef.current) {
-      console.log('[DSA Take] ⚠️ Live Proctoring already started, skipping');
+      console.log('[DSA Take] Live Proctoring already started');
       return;
     }
 
-    console.log('[DSA Take] 🚀 Admin connected! Starting WebRTC...');
+    if (!assessmentIdStr || !candidateIdStr) {
+      console.error('[DSA Take] Missing assessmentId or candidateId for live proctoring');
+      return;
+    }
+
+    console.log('[DSA Take] 🚀 Starting Agora Live Proctoring...');
     liveProctoringStartedRef.current = true;
 
     // Extract raw candidateId for live proctoring (remove email: or public: prefix)
-    // Live proctoring backend expects raw email or token, not formatted userId
     let rawCandidateId = candidateIdStr;
     if (candidateIdStr.startsWith('email:')) {
       rawCandidateId = candidateIdStr.replace('email:', '');
@@ -607,205 +609,54 @@ export default function TestTakePage() {
       rawCandidateId = candidateIdStr.replace('public:', '');
     }
 
-    console.log('[DSA Take] Creating CandidateLiveService with:', {
-      assessmentId: assessmentIdStr,
-      candidateId: rawCandidateId, // Use raw email/token for live proctoring
-      debugMode: debugMode,
-    });
-    
-    const liveService = new CandidateLiveService({
-      assessmentId: assessmentIdStr,
-      candidateId: rawCandidateId, // Use raw email/token for live proctoring
-      debugMode: debugMode,
-    });
-    
-    console.log('[DSA Take] ✅ CandidateLiveService created');
+    try {
+      const liveService = new CandidateLiveService({
+        assessmentId: assessmentIdStr,
+        candidateId: rawCandidateId,
+        debugMode: debugMode,
+      });
 
-    const existingWebcamStream = thumbVideoRef.current?.srcObject as MediaStream | null;
-    console.log('[DSA Take] Existing streams:', {
-      webcam: !!existingWebcamStream,
-      screen: !!liveProctorScreenStream,
-    });
+      // Wait for webcam stream to be available
+      let webcamStream = thumbVideoRef.current?.srcObject as MediaStream | null;
+      if (!webcamStream || !webcamStream.active) {
+        console.log('[DSA Take] ⏳ Waiting for webcam stream...');
+        let retries = 0;
+        while (retries < 20 && (!webcamStream || !webcamStream.active)) {
+          await new Promise(resolve => setTimeout(resolve, 500));
+          webcamStream = thumbVideoRef.current?.srcObject as MediaStream | null;
+          retries++;
+        }
+      }
 
-    console.log('[DSA Take] Calling liveService.start()...');
-    liveService.start(
-      {
-        onStateChange: (state) => {
-          console.log('[DSA Take] Live proctoring state:', state);
+      const success = await liveService.start(
+        {
+          onStateChange: (state) => {
+            console.log('[DSA Take] Live proctoring state:', state);
+          },
+          onError: (error) => {
+            console.error('[DSA Take] Live Proctoring error:', error);
+          },
         },
-        onError: (error) => {
-          console.error('[DSA Take] Live Proctoring error:', error);
-        },
-      },
-      liveProctorScreenStream,
-      existingWebcamStream,
-      sessionId, // Pass existing sessionId
-      ws // Pass existing WebSocket
-    ).then((success) => {
+        liveProctorScreenStream || null,
+        webcamStream || null,
+        null, // sessionId - not needed for Agora
+        null  // WebSocket - not needed for Agora
+      );
+
       if (success) {
-        console.log('[DSA Take] ✅ Live Proctoring WebRTC connected');
+        console.log('[DSA Take] ✅ Live Proctoring (Agora) started successfully');
         liveProctoringServiceRef.current = liveService;
-        
-        // CRITICAL: Process queued answer and ICE candidates if they arrived before service started
-        // The service's WebSocket handler is now set up, but we need to manually process
-        // the messages that arrived before the handler was set up
-        if (pendingAnswerRef.current) {
-          console.log('[DSA Take] Processing queued answer...');
-          // The service's handler should process this, but since we already consumed the message,
-          // we need to manually trigger it. The service's handler will handle future messages.
-          // For now, we'll rely on the service's handler being set up before more messages arrive.
-          // Actually, the answer was already received, so we need to re-send it or manually process.
-          // Since handleAnswer is private, we'll create a synthetic message event
-          const syntheticEvent = {
-            data: JSON.stringify({
-              type: 'answer',
-              answer: pendingAnswerRef.current
-            })
-          } as MessageEvent;
-          // The service's handler is now set up, so we can't easily call it
-          // Instead, we'll just log and hope the service processes it via its handler
-          // Actually, the answer was already consumed, so we need a different approach
-          console.log('[DSA Take] ⚠️ Answer was queued but already consumed - service may need to request new offer');
-          pendingAnswerRef.current = null;
-        }
-        
-        // Process queued ICE candidates
-        if (pendingIceCandidatesRef.current.length > 0) {
-          console.log('[DSA Take] Processing', pendingIceCandidatesRef.current.length, 'queued ICE candidates...');
-          // Similar issue - these were already consumed
-          pendingIceCandidatesRef.current = [];
-        }
       } else {
         console.error('[DSA Take] ❌ Failed to start Live Proctoring');
         liveProctoringStartedRef.current = false;
       }
-    });
+    } catch (error) {
+      console.error('[DSA Take] ❌ Error starting Live Proctoring:', error);
+      liveProctoringStartedRef.current = false;
+    }
   }, [assessmentIdStr, candidateIdStr, debugMode, liveProctorScreenStream]);
 
-  // ✅ PHASE 2: Lazy WebRTC - Register session and wait for admin signal
-  useEffect(() => {
-    if (!liveProctoringEnabled || !liveProctorScreenStream || !test || questions.length === 0) {
-      return;
-    }
-
-    // Guard: Ensure start-session is called only once per candidate per test
-    if (startSessionCalledRef.current) {
-      console.log('[DSA Take] ⏭️ start-session already called, skipping to prevent duplicate sessions');
-      return;
-    }
-
-    // Mark as called immediately to prevent race conditions
-    startSessionCalledRef.current = true;
-
-    // Register live session (backend sets status to "candidate_initiated")
-    console.log('[DSA Take] 📝 Registering Live Proctoring session...');
-    
-    // Phase 2.2: Register session with backend
-    // Extract raw candidateId for live proctoring (remove email: or public: prefix)
-    let rawCandidateId = candidateIdStr;
-    if (candidateIdStr.startsWith('email:')) {
-      rawCandidateId = candidateIdStr.replace('email:', '');
-    } else if (candidateIdStr.startsWith('public:')) {
-      rawCandidateId = candidateIdStr.replace('public:', '');
-    }
-
-    fetch('/api/v1/proctor/live/start-session', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        assessmentId: assessmentIdStr,
-        candidateId: rawCandidateId, // Use raw email/token for live proctoring
-      }),
-    })
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.success && data.data?.sessionId) {
-          const sessionId = data.data.sessionId;
-          candidateSessionIdRef.current = sessionId;
-          console.log(`[DSA Take] ✅ Session registered: ${sessionId}`);
-
-          // Phase 2.3: Connect WebSocket and listen for ADMIN_CONNECTED
-          // Use backend host for WebSocket connection
-          // Use rawCandidateId (without email: or public: prefix) for WebSocket URL
-          const { LIVE_PROCTORING_ENDPOINTS } = require("@/universal-proctoring/live/types");
-          const wsUrl = LIVE_PROCTORING_ENDPOINTS.candidateWs(sessionId, rawCandidateId);
-          console.log('[DSA Take] Candidate WS connecting...', wsUrl);
-          const ws = new WebSocket(wsUrl);
-          candidateWsRef.current = ws;
-
-          ws.onopen = () => {
-            console.log('[DSA Take] Candidate WS connected');
-            
-            // CRITICAL FIX: Wait for camera stream to be available before starting WebRTC
-            // The camera is initialized by useUniversalProctoring, so we need to wait for it
-            let retryCount = 0;
-            const maxRetries = 20; // 10 seconds max wait (20 * 500ms)
-            
-            const checkCameraAndStart = () => {
-              const webcamStream = thumbVideoRef.current?.srcObject as MediaStream | null;
-              if (webcamStream && webcamStream.active) {
-                console.log('[DSA Take] ✅ Camera stream available - starting WebRTC...');
-                startLiveProctoring(sessionId, ws);
-              } else if (retryCount < maxRetries) {
-                retryCount++;
-                console.log(`[DSA Take] ⏳ Waiting for camera stream... (attempt ${retryCount}/${maxRetries})`);
-                setTimeout(checkCameraAndStart, 500);
-              } else {
-                console.error('[DSA Take] ❌ Camera stream not available after 10 seconds - starting WebRTC anyway (may fail)');
-                // Start anyway - the service will handle the error
-                startLiveProctoring(sessionId, ws);
-              }
-            };
-            
-            // Start checking immediately
-            checkCameraAndStart();
-          };
-
-          // Temporary handler for messages that arrive before service starts
-          // Once service starts, it will replace this with its own handler
-          ws.onmessage = (event) => {
-            const message = JSON.parse(event.data);
-            console.log('[DSA Take] WebSocket message received (before service handler):', message.type);
-            
-            // If service hasn't started yet, queue messages
-            // Once service starts, its handler will take over
-            if (!liveProctoringStartedRef.current) {
-              if (message.type === 'answer') {
-                console.log('[DSA Take] Queueing answer until service starts...');
-                pendingAnswerRef.current = message.answer;
-              } else if (message.type === 'ice_candidate') {
-                console.log('[DSA Take] Queueing ICE candidate until service starts...');
-                pendingIceCandidatesRef.current.push(message.candidate);
-              }
-            }
-            // Note: Once service starts, it replaces this handler, so future messages
-            // will be handled by the service's handler automatically
-          };
-
-          ws.onerror = (error) => {
-            console.error('[DSA Take] WebSocket error:', error);
-          };
-
-          ws.onclose = () => {
-            console.log('[DSA Take] WebSocket closed');
-            candidateWsRef.current = null;
-          };
-        }
-      })
-      .catch((error) => {
-        console.error('[DSA Take] Failed to register Live Proctoring session:', error);
-      });
-    
-    console.log('[DSA Take] ⏸️ Live Proctoring ready, waiting for admin to connect...');
-
-    // Cleanup WebSocket on unmount
-    return () => {
-      if (candidateWsRef.current) {
-        candidateWsRef.current.close();
-        candidateWsRef.current = null;
-      }
-    };
-  }, [liveProctoringEnabled, liveProctorScreenStream, test, questions.length, assessmentIdStr, candidateIdStr, startLiveProctoring]);
+  // Note: Old WebSocket-based lazy approach removed - now using immediate Agora start
 
   // Stop proctoring when assessment ends
   useEffect(() => {

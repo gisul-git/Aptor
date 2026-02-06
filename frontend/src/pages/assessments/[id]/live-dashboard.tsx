@@ -55,6 +55,11 @@ export default function LiveProctoringDashboard({
 
   // Service instance
   const serviceRef = useRef<AdminLiveService | null>(null)
+  const sessionIdRef = useRef(0)
+  
+  // Production-level: Track async operation state to prevent premature cleanup
+  const isInitializingRef = useRef(false) // Track if async init is in progress
+  const connectionEstablishedRef = useRef(false) // Track if connection was successfully established
 
   // State
   const [isMonitoring, setIsMonitoring] = useState(false)
@@ -194,85 +199,173 @@ export default function LiveProctoringDashboard({
     return () => clearTimeout(timeoutId);
   }, [candidates, expandedSessionId]);
 
-  // Initialize service
+  // Initialize service and start/stop monitoring (combined to prevent UID_CONFLICT in React Strict Mode)
   useEffect(() => {
-    if (!assessmentId || typeof assessmentId !== 'string' || !adminId) {
-      return;
-    }
+    if (!isOpen) return;
+    if (!assessmentId || typeof assessmentId !== 'string' || !adminId) return;
 
-    console.log('[Live Dashboard] Initializing AdminLiveService...')
+    // Generate unique session ID for this mount
+    const currentSessionId = ++sessionIdRef.current;
+    let service: AdminLiveService | null = null;
+    const connectionCreatedByThisMountRef = { current: false }; // Track if THIS mount created the connection
+    
+    // Production-level: Mark async operation as in progress
+    isInitializingRef.current = true;
+    connectionEstablishedRef.current = false;
 
-    const service = new AdminLiveService({
-      assessmentId,
-      adminId: adminId,
-      debugMode: true,
-    })
+    const initMonitoring = async () => {
+      try {
+        // Check if this session is still valid
+        if (currentSessionId !== sessionIdRef.current) {
+          console.log('[Live Dashboard] Session outdated, aborting');
+          isInitializingRef.current = false;
+          return;
+        }
 
-    serviceRef.current = service
+        setIsLoading(true);
+        
+        // Cleanup old service if exists
+        if (serviceRef.current) {
+          console.log('[Live Dashboard] Cleaning up existing service...');
+          await serviceRef.current.stopMonitoring().catch(() => {});
+          serviceRef.current = null;
+        }
 
-    // Cleanup on unmount
-    return () => {
-      console.log('[Live Dashboard] Cleanup: stopping monitoring')
-      if (serviceRef.current) {
-        serviceRef.current.stopMonitoring()
+        // Check again before creating service
+        if (currentSessionId !== sessionIdRef.current) {
+          console.log('[Live Dashboard] Session outdated before service creation');
+          isInitializingRef.current = false;
+          return;
+        }
+
+        service = new AdminLiveService({
+          assessmentId,
+          adminId: adminId,
+          debugMode: true,
+        });
+
+        // Check again before async operation
+        if (currentSessionId !== sessionIdRef.current) {
+          // Don't call stopMonitoring - service was never started
+          isInitializingRef.current = false;
+          return;
+        }
+
+        serviceRef.current = service;
+
+        // Start monitoring
+        const monitoringResult = await service.startMonitoring({
+          onStateChange: (state: Partial<AdminLiveState>) => {
+            if (currentSessionId !== sessionIdRef.current) return;
+            console.log('[Live Dashboard] State changed:', state);
+
+            if (state.isMonitoring !== undefined) {
+              setIsMonitoring(state.isMonitoring);
+            }
+
+            if (state.isLoading !== undefined) {
+              setIsLoading(state.isLoading);
+            }
+
+            if (state.candidateStreams) {
+              updateCandidates(state.candidateStreams);
+            }
+          },
+          onCandidateConnected: (sessionId: string, candidateId: string) => {
+            if (currentSessionId === sessionIdRef.current) {
+              console.log(`[Live Dashboard] ✅ Candidate connected: ${sessionId}`);
+            }
+          },
+          onCandidateDisconnected: (sessionId: string) => {
+            if (currentSessionId === sessionIdRef.current) {
+              console.log(`[Live Dashboard] ⚠️ Candidate disconnected: ${sessionId}`);
+            }
+          },
+          onError: (error: string) => {
+            if (currentSessionId === sessionIdRef.current) {
+              console.error(`[Live Dashboard] ❌ Error: ${error}`);
+              setError(error);
+              setIsLoading(false);
+            }
+          },
+        });
+
+        // Check if session was invalidated during async operation
+        if (currentSessionId !== sessionIdRef.current) {
+          console.log('[Live Dashboard] Session invalidated during startMonitoring');
+          // Don't call stopMonitoring - connection was reused by newer mount
+          isInitializingRef.current = false;
+          connectionEstablishedRef.current = false;
+          return;
+        }
+
+        // Production-level: Track if THIS mount created the connection
+        connectionCreatedByThisMountRef.current = monitoringResult.success && !monitoringResult.connectionReused;
+
+        // Final check before setting state
+        if (currentSessionId === sessionIdRef.current && monitoringResult.success) {
+          setIsMonitoring(true);
+          setIsLoading(false);
+          console.log(`[Live Dashboard] ✅ Monitoring started (connection ${connectionCreatedByThisMountRef.current ? 'created' : 'reused'})`);
+          connectionEstablishedRef.current = true;
+        } else {
+          // Don't call stopMonitoring - connection was reused or failed
+          connectionEstablishedRef.current = false;
+        }
+      } catch (error) {
+        if (currentSessionId === sessionIdRef.current) {
+          console.error('[Live Dashboard] Failed to start:', error);
+          setError(error instanceof Error ? error.message : 'Failed to start monitoring');
+          setIsLoading(false);
+        }
+        connectionEstablishedRef.current = false;
+      } finally {
+        // Production-level: Always mark async as complete when done
+        isInitializingRef.current = false;
       }
-    }
-  }, [assessmentId, adminId])
+    };
 
-  // Start/stop monitoring based on isOpen prop
-  useEffect(() => {
-    if (!serviceRef.current || !assessmentId || typeof assessmentId !== 'string') {
-      return;
-    }
+    initMonitoring();
 
-    const service = serviceRef.current;
-
-    if (isOpen) {
-      // Start monitoring when modal is opened
-      console.log('[Live Dashboard] Modal opened - starting monitoring...')
-      service.startMonitoring({
-        onStateChange: (state: Partial<AdminLiveState>) => {
-          console.log('[Live Dashboard] State changed:', state)
-
-          if (state.isMonitoring !== undefined) {
-            setIsMonitoring(state.isMonitoring)
-          }
-
-          if (state.isLoading !== undefined) {
-            setIsLoading(state.isLoading)
-          }
-
-          if (state.candidateStreams) {
-            updateCandidates(state.candidateStreams)
-          }
-        },
-        onCandidateConnected: (sessionId: string, candidateId: string) => {
-          console.log(`[Live Dashboard] ✅ Candidate connected: ${sessionId}`)
-        },
-        onCandidateDisconnected: (sessionId: string) => {
-          console.log(`[Live Dashboard] ⚠️ Candidate disconnected: ${sessionId}`)
-        },
-        onError: (error: string) => {
-          console.error(`[Live Dashboard] ❌ Error: ${error}`)
-          setError(error)
-        },
-      })
-    } else {
-      // Stop monitoring when modal is closed
-      console.log('[Live Dashboard] Modal closed - stopping monitoring...')
-      service.stopMonitoring()
-      setIsMonitoring(false)
-      setCandidates([])
-    }
-
-    // Cleanup: stop monitoring when component unmounts or isOpen becomes false
     return () => {
-      if (!isOpen && serviceRef.current) {
-        console.log('[Live Dashboard] Cleanup: stopping monitoring')
-        serviceRef.current.stopMonitoring()
+      console.log(`[Live Dashboard] Cleanup: invalidating session ${currentSessionId}`);
+      
+      // Production-level: Check if async operation is still in progress
+      const isAsyncInProgress = isInitializingRef.current;
+      const isLatestSession = currentSessionId === sessionIdRef.current;
+      const serviceWasReplaced = service && serviceRef.current !== service;
+      const connectionCreatedByThisMount = connectionCreatedByThisMountRef.current;
+      
+      // Production-level: Only stop monitoring if ALL conditions are met:
+      const shouldStopMonitoring = 
+        !isAsyncInProgress && // ✅ Async completed
+        isLatestSession && // ✅ Latest session
+        connectionCreatedByThisMount && // ✅ This mount created the connection (not reused)
+        !serviceWasReplaced && // ✅ Not replaced
+        connectionEstablishedRef.current; // ✅ Successfully established
+      
+      if (shouldStopMonitoring) {
+        console.log(`[Live Dashboard] 🛑 Stopping monitoring (session ${currentSessionId} created connection)`);
+        if (service) {
+          service.stopMonitoring().catch(console.error);
+          serviceRef.current = null;
+        }
+        connectionEstablishedRef.current = false;
+      } else {
+        const reasons = [];
+        if (isAsyncInProgress) reasons.push('async still in progress');
+        if (!isLatestSession) reasons.push('session is stale');
+        if (!connectionCreatedByThisMount) reasons.push('connection was reused (not created by this mount)');
+        if (serviceWasReplaced) reasons.push('service was replaced');
+        if (!connectionEstablishedRef.current) reasons.push('connection not established');
+        
+        console.log(`[Live Dashboard] ⏭️ Skipping cleanup - ${reasons.join(', ') || 'unknown reason'}`);
       }
-    }
-  }, [isOpen, assessmentId, updateCandidates]) // Re-run when isOpen or assessmentId changes
+      
+      // Always increment session ID to invalidate any ongoing operations
+      sessionIdRef.current++;
+    };
+  }, [isOpen, assessmentId, adminId, updateCandidates]);
 
   // Refresh specific candidate connection
   const refreshCandidate = useCallback((sessionId: string) => {

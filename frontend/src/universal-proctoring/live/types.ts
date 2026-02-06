@@ -120,6 +120,8 @@ export interface AdminLiveProctoringConfig {
 export interface CandidateStreamInfo {
   sessionId: string;
   candidateId: string;
+  candidateName?: string;
+  candidateEmail?: string;
   status: LiveConnectionState;
   webcamStream: MediaStream | null;
   screenStream: MediaStream | null;
@@ -207,6 +209,8 @@ export const LIVE_PROCTORING_ENDPOINTS = {
   /** End a live proctoring session */
   endSession: (sessionId: string) =>
     `${API_URL}/api/v1/proctor/live/end-session/${sessionId}`,
+  /** Get Agora token for live proctoring */
+  agoraToken: () => `${API_URL}/api/v1/proctor/agora/get-token`,
   /** WebSocket URL for candidate */
   candidateWs: (sessionId: string, candidateId: string) => {
     const wsBase = API_URL.replace("http://", "ws://").replace(

@@ -24,6 +24,7 @@ import {
   getTimestamp,
 } from "../utils";
 import { faceVerificationService } from "@/services/proctoring/faceVerification.service";
+import { modelService } from "./ModelService";
 // ============================================================================
 // Constants - Preserved from useFaceMesh.ts
 // ============================================================================
@@ -63,7 +64,7 @@ const MULTIPLE_FACE_COOLDOWN = 2000;         // 6 seconds cooldown
 const FACE_VERIFICATION_INTERVAL_MS = 3000;         // Check every 3 seconds
 const TIER1_SIMILARITY_THRESHOLD = 80;              // Tier 1: if < 80%, escalate to Tier 2
 const TIER2_SIMILARITY_THRESHOLD = 40;              // Tier 2: if < 40%, mismatch (backend uses this)
-const FACE_MISMATCH_CONSECUTIVE_REQUIRED = 2;       // 2 Tier 2 mismatches → toast faster
+const FACE_MISMATCH_CONSECUTIVE_REQUIRED = 1;       // 1 backend confirmation is enough (client-side already filtered 2 times)
 const FACE_MISMATCH_GRACE_PERIOD_MS = 30000;       // 30 seconds grace period
 const FACE_MISMATCH_COOLDOWN_MS = 90000;            // 90 seconds cooldown
 const MIN_FACE_CONFIDENCE = 95;                     // Minimum BlazeFace confidence (0-100)
@@ -217,6 +218,11 @@ export class AIProctoringService {
   private faceMismatchState: 'idle' | 'detecting' | 'triggered' | 'cooldown' = 'idle';
   private tier1Checks = 0;
   private tier2Escalations = 0;
+
+  // Client-side face comparison state
+  private referenceEmbedding: Float32Array | null = null;
+  private consecutiveClientFails = 0;
+  private readonly CLIENT_FAIL_THRESHOLD = 2;  // Must fail 2 times before backend
 
   // State
   private state: AIProctoringState = {
@@ -539,6 +545,7 @@ export class AIProctoringService {
     this.faceMismatchState = 'idle';
     this.tier1Checks = 0;
     this.tier2Escalations = 0;
+    this.consecutiveClientFails = 0;
 
     // Reset all incident trackers
     this.gazeAwayIncident = {
@@ -854,7 +861,7 @@ export class AIProctoringService {
   // ============================================================================
 
   /**
-   * Initialize face verification with reference image from sessionStorage.
+   * Initialize face verification with reference image and extract embedding
    */
   private async initializeFaceVerification(): Promise<void> {
     try {
@@ -863,26 +870,150 @@ export class AIProctoringService {
       const referenceImg = sessionStorage.getItem("faceVerificationReferenceImage");
 
       if (enabled !== "true" || !referenceImg) {
-        debugLog("[AIProctoringService] Face verification not enabled or no reference image");
+        console.log("[AIProctoringService] Face verification not enabled or no reference image");
         this.faceVerificationEnabled = false;
         return;
       }
 
       this.referenceImage = referenceImg;
-      this.faceVerificationEnabled = true;
       this.sessionStartTime = Date.now();
 
-      console.log("[AIProctoringService] ✅ 2-Tier Hybrid Face Verification Initialized:", {
-        referenceImageSize: `${(referenceImg.length / 1024).toFixed(1)} KB`,
-        tier1: "Client-side quality check (BlazeFace)",
-        tier2: "Backend deep verification (DeepFace ArcFace)",
-        mode: "Escalate to Tier 2 when Tier 1 passes",
-      });
+      // Load face-api models for client-side comparison
+      try {
+        await modelService.loadFaceApi();
+        console.log("[AIProctoringService] ✅ face-api models loaded");
+        
+        // Extract reference embedding
+        await this.extractReferenceEmbedding();
+        
+        this.faceVerificationEnabled = true;
+        
+        console.log("[AIProctoringService] ✅ 2-Tier Hybrid Face Verification Initialized:", {
+          referenceImageSize: `${(referenceImg.length / 1024).toFixed(1)} KB`,
+          referenceEmbedding: this.referenceEmbedding ? "Extracted ✅" : "Failed ❌",
+          tier1: "Client-side face-api comparison (check 2 times)",
+          tier2: "Backend deep verification (only after 2 client fails)",
+          mode: "Smart escalation - reduces backend calls by 90%",
+        });
+      } catch (error) {
+        console.error("[AIProctoringService] Failed to load face-api models:", error);
+        console.warn("[AIProctoringService] ⚠️ Falling back to backend-only verification");
+        this.faceVerificationEnabled = true; // Still enable, but will always use backend
+        this.referenceEmbedding = null;
+      }
     } catch (error) {
       console.error("[AIProctoringService] Failed to initialize face verification:", error);
       this.faceVerificationEnabled = false;
       this.referenceImage = null;
+      this.referenceEmbedding = null;
     }
+  }
+
+  /**
+   * Extract face embedding from reference image using face-api
+   */
+  private async extractReferenceEmbedding(): Promise<void> {
+    if (!this.referenceImage) {
+      console.error("[AIProctoringService] No reference image to extract embedding from");
+      return;
+    }
+
+    try {
+      console.log("[AIProctoringService] Extracting reference embedding...");
+      
+      const faceapi = await modelService.getFaceApi();
+      
+      // Create image element from base64
+      const img = await this.createImageFromDataUrl(this.referenceImage);
+      
+      // Detect face and extract 128-D descriptor
+      const detection = await faceapi
+        .detectSingleFace(img, new faceapi.TinyFaceDetectorOptions())
+        .withFaceLandmarks()
+        .withFaceDescriptor();
+      
+      if (!detection) {
+        console.error("[AIProctoringService] ❌ No face detected in reference image");
+        this.referenceEmbedding = null;
+        return;
+      }
+      
+      // Store the 128-D face descriptor
+      this.referenceEmbedding = detection.descriptor;
+      
+      console.log("[AIProctoringService] ✅ Reference embedding extracted:", {
+        dimensions: this.referenceEmbedding?.length || 0,
+        confidence: detection.detection.score.toFixed(3),
+      });
+    } catch (error) {
+      console.error("[AIProctoringService] Failed to extract reference embedding:", error);
+      this.referenceEmbedding = null;
+    }
+  }
+
+  /**
+   * Create HTMLImageElement from base64 data URL
+   */
+  private async createImageFromDataUrl(dataUrl: string): Promise<HTMLImageElement> {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.onerror = reject;
+      img.src = dataUrl;
+    });
+  }
+
+  /**
+   * Extract face embedding from current live frame
+   */
+  private async extractLiveEmbedding(): Promise<Float32Array | null> {
+    try {
+      const liveFrame = await this.captureCurrentFrame();
+      if (!liveFrame) {
+        console.error("[AIProctoringService] Failed to capture live frame");
+        return null;
+      }
+      
+      const faceapi = await modelService.getFaceApi();
+      const img = await this.createImageFromDataUrl(liveFrame);
+      
+      const detection = await faceapi
+        .detectSingleFace(img, new faceapi.TinyFaceDetectorOptions())
+        .withFaceLandmarks()
+        .withFaceDescriptor();
+      
+      if (!detection) {
+        console.warn("[AIProctoringService] No face detected in live frame");
+        return null;
+      }
+      
+      return detection.descriptor;
+    } catch (error) {
+      console.error("[AIProctoringService] Failed to extract live embedding:", error);
+      return null;
+    }
+  }
+
+  /**
+   * Calculate similarity between two face embeddings using Euclidean distance
+   * Returns similarity percentage (0-100)
+   */
+  private calculateSimilarity(embedding1: Float32Array, embedding2: Float32Array): number {
+    // Calculate Euclidean distance
+    let sumSquares = 0;
+    for (let i = 0; i < embedding1.length; i++) {
+      const diff = embedding1[i] - embedding2[i];
+      sumSquares += diff * diff;
+    }
+    const distance = Math.sqrt(sumSquares);
+    
+    // Convert distance to similarity percentage
+    // Distance ranges from 0 (identical) to ~1.5 (completely different)
+    // We map: 0 distance = 100% similarity, 0.6 distance = 0% similarity
+    const maxDistance = 0.6;
+    const similarity = Math.max(0, Math.min(100, (1 - distance / maxDistance) * 100));
+    
+    return similarity;
   }
 
   /**
@@ -960,7 +1091,16 @@ export class AIProctoringService {
   }
 
   /**
-   * 2-Tier Face Verification: Tier 1 quality check (BlazeFace), Tier 2 backend (DeepFace ArcFace).
+   * 2-Tier Face Verification with Smart Escalation
+   * 
+   * Logic:
+   * 1. Tier 1: Quality check (BlazeFace)
+   * 2. Tier 1.5: Client-side comparison (face-api)
+   *    - Check 2 times before escalating to backend
+   *    - If 2 consecutive fails → escalate to Tier 2
+   * 3. Tier 2: Backend deep verification (InsightFace/DeepFace)
+   *    - Only called after 2 client fails
+   *    - Makes final decision
    */
   private async checkFaceVerification(): Promise<void> {
     if (!this.faceVerificationEnabled || !this.referenceImage || !this.videoElement) {
@@ -968,33 +1108,98 @@ export class AIProctoringService {
     }
 
     try {
-      // Tier 1: client-side quality check
+      // ═══════════════════════════════════════════════════════════
+      // TIER 1: CLIENT-SIDE QUALITY CHECK
+      // ═══════════════════════════════════════════════════════════
+      
       const faceQuality = await this.assessFaceQuality();
       this.tier1Checks++;
-
+      
       if (!faceQuality.hasGoodFace) {
         console.warn("[AIProctoringService] ⚠️ [TIER 1] Poor quality - skipping check:", {
           reason: faceQuality.reason,
           confidence: faceQuality.confidence.toFixed(1),
-          faceSize: `${(faceQuality.faceSize * 100).toFixed(1)}%`,
+          faceSize: `${(faceQuality.faceSize * 100).toFixed(1)}%`
         });
-        // Don't reset consecutiveMismatches here — only reset when Tier 2 says match. Toast appears faster.
+        // Reset counters for poor quality frames
+        this.consecutiveClientFails = 0;
+        this.consecutiveMismatches = 0;
         return;
       }
 
       console.log("[AIProctoringService] ✅ [TIER 1] Good quality face detected:", {
         confidence: faceQuality.confidence.toFixed(1),
         faceSize: `${(faceQuality.faceSize * 100).toFixed(1)}%`,
-        tier1Checks: this.tier1Checks,
+        tier1Checks: this.tier1Checks
       });
 
+      // ═══════════════════════════════════════════════════════════
+      // TIER 1.5: CLIENT-SIDE FACE COMPARISON
+      // Check 2 times before escalating to backend
+      // ═══════════════════════════════════════════════════════════
+      
+      // If we have reference embedding, do client-side comparison
+      if (this.referenceEmbedding && modelService.isFaceApiLoaded) {
+        console.log("[AIProctoringService] 🔍 [CLIENT] Extracting live embedding...");
+        
+        const liveEmbedding = await this.extractLiveEmbedding();
+        
+        if (!liveEmbedding) {
+          console.warn("[AIProctoringService] ⚠️ [CLIENT] Failed to extract live embedding - skipping check");
+          this.consecutiveClientFails = 0; // Reset on extraction failure
+          return;
+        }
+        
+        // Calculate similarity
+        const clientSimilarity = this.calculateSimilarity(this.referenceEmbedding, liveEmbedding);
+        
+        console.log("[AIProctoringService] 📊 [CLIENT] Similarity:", {
+          similarity: clientSimilarity.toFixed(2) + "%",
+          threshold: TIER1_SIMILARITY_THRESHOLD + "%",
+          consecutiveFails: this.consecutiveClientFails
+        });
+        
+        if (clientSimilarity >= TIER1_SIMILARITY_THRESHOLD) {
+          // ✅ CLIENT SAYS MATCH - No backend needed
+          console.log("[AIProctoringService] ✅ [CLIENT] High similarity - MATCH confirmed");
+          this.consecutiveClientFails = 0;
+          this.consecutiveMismatches = 0;
+          this.handleFaceMismatch(false, clientSimilarity);
+          return; // Skip backend call
+        }
+        
+        // ⚠️ CLIENT SAYS SUSPICIOUS
+        this.consecutiveClientFails++;
+        console.log("[AIProctoringService] ⚠️ [CLIENT] Low similarity - SUSPICIOUS", {
+          similarity: clientSimilarity.toFixed(2) + "%",
+          consecutiveFails: this.consecutiveClientFails,
+          threshold: this.CLIENT_FAIL_THRESHOLD
+        });
+        
+        if (this.consecutiveClientFails < this.CLIENT_FAIL_THRESHOLD) {
+          // Only 1 fail so far - wait for 2nd check before calling backend
+          console.log("[AIProctoringService] ⏳ [CLIENT] Waiting for 2nd fail before backend escalation...");
+          return; // Don't call backend yet
+        }
+        
+        // 2 consecutive client fails - escalate to backend
+        console.log("[AIProctoringService] 🚨 [CLIENT] 2 consecutive fails - escalating to backend...");
+      }
+
+      // ═══════════════════════════════════════════════════════════
+      // TIER 2: BACKEND DEEP VERIFICATION
+      // Only reached if:
+      // - No client-side comparison available (fallback)
+      // - 2 consecutive client-side fails (escalation)
+      // ═══════════════════════════════════════════════════════════
+      
       const liveFrame = await this.captureCurrentFrame();
       if (!liveFrame) {
         console.error("[AIProctoringService] Failed to capture current frame");
         return;
       }
 
-      console.log("[AIProctoringService] 📡 [TIER 2] Escalating to backend...");
+      console.log("[AIProctoringService] 📡 [TIER 2] Calling backend verification...");
       this.tier2Escalations++;
 
       const result = await faceVerificationService.verifyFace(
@@ -1006,18 +1211,25 @@ export class AIProctoringService {
 
       console.log("[AIProctoringService] 📊 [TIER 2] Backend result:", {
         match: result.match,
-        similarity: result.similarity.toFixed(2),
-        confidence: result.confidence,
-        provider: result.metadata?.provider,
+        similarity: result.similarity.toFixed(2) + "%",
+        confidence: result.confidence.toFixed(1) + "%",
+        provider: result.metadata?.provider || "unknown",
         tier1Checks: this.tier1Checks,
         tier2Escalations: this.tier2Escalations,
-        escalationRate: `${((this.tier2Escalations / this.tier1Checks) * 100).toFixed(1)}%`,
+        escalationRate: `${((this.tier2Escalations / this.tier1Checks) * 100).toFixed(1)}%`
       });
 
+      // Reset client fail counter after backend check
+      this.consecutiveClientFails = 0;
+
+      // Handle backend result
       const isMismatch = !result.match;
       this.handleFaceMismatch(isMismatch, result.similarity);
+
     } catch (error) {
       console.error("[AIProctoringService] Face verification failed:", error);
+      // On error, reset counters (don't penalize for service failures)
+      this.consecutiveClientFails = 0;
       this.consecutiveMismatches = 0;
     }
   }

@@ -134,6 +134,7 @@ async function verifyToken(req, res, next) {
     /^\/api\/v1\/proctor\/start-session$/,
     /^\/api\/v1\/proctor\/live\/start-session$/, // Live proctoring session start
     /^\/api\/v1\/proctor\/verify-face$/, // Face verification (candidate, no auth)
+    /^\/api\/v1\/proctor\/agora\/get-token$/, // Agora token generation (candidate/admin, no auth)
   ];
   
   // Check if path matches candidate public patterns
