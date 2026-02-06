@@ -101,9 +101,10 @@ export default function CustomMCQTakePage() {
               // Convert minutes to seconds for timers
               const mcqSeconds = (sectionTimersConfig.MCQ || 20) * 60;
               const subjectiveSeconds = (sectionTimersConfig.Subjective || 30) * 60;
-              const totalDurationSeconds = mcqSeconds + subjectiveSeconds;
+              const codingSeconds = (sectionTimersConfig.Coding || 0) * 60;
+              const totalDurationSeconds = mcqSeconds + subjectiveSeconds + codingSeconds;
               
-              setSectionTimers({ MCQ: mcqSeconds, Subjective: subjectiveSeconds });
+              setSectionTimers({ MCQ: mcqSeconds, Subjective: subjectiveSeconds, Coding: codingSeconds });
               // Set global timer to total duration (sum of section timers)
               setTimeRemaining(totalDurationSeconds);
             } else {
@@ -133,9 +134,10 @@ export default function CustomMCQTakePage() {
               // Convert minutes to seconds for timers
               const mcqSeconds = (sectionTimersConfig.MCQ || 20) * 60;
               const subjectiveSeconds = (sectionTimersConfig.Subjective || 30) * 60;
-              const totalDurationSeconds = mcqSeconds + subjectiveSeconds;
+              const codingSeconds = (sectionTimersConfig.Coding || 0) * 60;
+              const totalDurationSeconds = mcqSeconds + subjectiveSeconds + codingSeconds;
               
-              setSectionTimers({ MCQ: mcqSeconds, Subjective: subjectiveSeconds });
+              setSectionTimers({ MCQ: mcqSeconds, Subjective: subjectiveSeconds, Coding: codingSeconds });
               // Set global timer to total duration (sum of section timers)
               setTimeRemaining(totalDurationSeconds);
             } else {
@@ -180,7 +182,7 @@ export default function CustomMCQTakePage() {
   
   // Sequential flow: MCQ first, then Subjective
   const [assessmentPhase, setAssessmentPhase] = useState<"mcq" | "subjective" | "coding">("mcq");
-  const assessmentPhaseRef = useRef<"mcq" | "subjective">("mcq");
+  const assessmentPhaseRef = useRef<"mcq" | "subjective" | "coding">("mcq");
   const [mcqSubmitted, setMcqSubmitted] = useState(false);
   const [codingSubmitted, setCodingSubmitted] = useState(false);
   
@@ -689,11 +691,13 @@ export default function CustomMCQTakePage() {
               // Convert minutes to seconds for timers
               const mcqSeconds = (sectionTimersConfig.MCQ || 20) * 60;
               const subjectiveSeconds = (sectionTimersConfig.Subjective || 30) * 60;
-              const totalDurationSeconds = mcqSeconds + subjectiveSeconds;
+              const codingSeconds = (sectionTimersConfig.Coding || 0) * 60;
+              const totalDurationSeconds = mcqSeconds + subjectiveSeconds + codingSeconds;
               
               setSectionTimers({
                 MCQ: mcqSeconds,
                 Subjective: subjectiveSeconds,
+                Coding: codingSeconds,
               });
               // Set global timer to total duration (sum of section timers)
               setTimeRemaining(totalDurationSeconds);
@@ -1070,7 +1074,7 @@ export default function CustomMCQTakePage() {
     }
 
     // Determine current section based on assessmentPhase
-    const currentSection = assessmentPhase === "mcq" ? "MCQ" : "Subjective";
+    const currentSection = assessmentPhase === "mcq" ? "MCQ" : assessmentPhase === "coding" ? "Coding" : "Subjective";
     
     // Check if current section is already locked
     const isLocked = lockedSections.has(assessmentPhase);
@@ -1786,7 +1790,7 @@ export default function CustomMCQTakePage() {
               
               if (enablePerSectionTimers && examStarted) {
                 // Show both per-section timer and global duration timer
-                const currentSection = assessmentPhase === "mcq" ? "MCQ" : "Subjective";
+                const currentSection = assessmentPhase === "mcq" ? "MCQ" : assessmentPhase === "coding" ? "Coding" : "Subjective";
                 const currentTimer = sectionTimers[currentSection] || 0;
                 const isLocked = lockedSections.has(assessmentPhase);
                 

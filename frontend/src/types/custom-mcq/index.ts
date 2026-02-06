@@ -105,10 +105,12 @@ export interface AssessmentSubmission {
   startedAt?: string;
   submittedAt?: string;
   gradingStatus?: "pending" | "grading" | "completed" | "error";
+  aiEvaluationStatus?: "pending" | "evaluating" | "completed" | "error";
   mcqScore?: number;
   mcqTotal?: number;
   subjectiveScore?: number;
   subjectiveTotal?: number;
   codingScore?: number;
   codingTotal?: number;
+  showResultToCandidate?: boolean;
 }

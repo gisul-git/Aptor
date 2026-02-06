@@ -163,10 +163,13 @@ export const customMCQApi = {
     percentage: number;
     passed: boolean;
     gradingStatus?: string;
+    aiEvaluationStatus?: "pending" | "evaluating" | "completed" | "error";
     mcqScore?: number;
     mcqTotal?: number;
     subjectiveScore?: number;
     subjectiveTotal?: number;
+    codingScore?: number;
+    codingTotal?: number;
     showResultToCandidate?: boolean;
   }> => {
     const response = await fastApiClient.post(`${BASE_URL}/submit`, {

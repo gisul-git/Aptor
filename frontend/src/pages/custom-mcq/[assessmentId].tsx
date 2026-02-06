@@ -1890,7 +1890,7 @@ export default function CustomMCQDetailsPage({ session }: CustomMCQDetailsPagePr
                                       <div style={{ display: "grid", gap: "1rem" }}>
                                         {codingSubmissions.map((submissionEntry: any, idx: number) => {
                                           const question = questions.find((q: any) => (q.id || q._id) === submissionEntry.questionId);
-                                          const questionText = question?.question || question?.questionText || "No question text";
+                                          const questionText = question?.question || "No question text";
                                           
                                           return (
                                             <div
