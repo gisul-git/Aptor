@@ -3,7 +3,7 @@ import { useState, useEffect } from "react";
 
 export default function CustomMCQResultPage() {
   const router = useRouter();
-  const { score, total, percentage, passed, token, gradingStatus, mcqScore, mcqTotal, subjectiveScore, subjectiveTotal, showResult } = router.query;
+  const { score, total, percentage, passed, token, gradingStatus, mcqScore, mcqTotal, subjectiveScore, subjectiveTotal, codingScore, codingTotal, showResult, isEvaluating } = router.query;
 
   const scoreNum = parseFloat(score as string) || 0;
   const totalNum = parseFloat(total as string) || 0;
@@ -14,8 +14,11 @@ export default function CustomMCQResultPage() {
   const mcqTotalNum = parseFloat(mcqTotal as string) || 0;
   const subjectiveScoreNum = parseFloat(subjectiveScore as string) || 0;
   const subjectiveTotalNum = parseFloat(subjectiveTotal as string) || 0;
-  const hasSeparateScores = mcqTotalNum > 0 || subjectiveTotalNum > 0;
+  const codingScoreNum = parseFloat(codingScore as string) || 0;
+  const codingTotalNum = parseFloat(codingTotal as string) || 0;
+  const hasSeparateScores = mcqTotalNum > 0 || subjectiveTotalNum > 0 || codingTotalNum > 0;
   const showResultToCandidate = showResult !== "false"; // Default to true if not specified
+  const isEvaluatingBool = isEvaluating === "true" || gradingStatusStr === "grading";
 
   // If showResultToCandidate is false, show only submission message
   if (!showResultToCandidate) {
@@ -50,11 +53,13 @@ export default function CustomMCQResultPage() {
           </div>
 
           <h1 style={{ marginBottom: "1rem", color: "#1E5A3B" }}>
-            Assessment Submitted
+            {isEvaluatingBool ? "Test Submitted" : "Assessment Submitted"}
           </h1>
 
           <p style={{ marginBottom: "2rem", color: "#2D7A52", fontSize: "1.125rem" }}>
-            Thank you for completing the assessment. Your submission has been received successfully.
+            {isEvaluatingBool 
+              ? "Thank you for completing the assessment. Your submission has been received successfully. AI evaluation is in progress and results will be available shortly."
+              : "Thank you for completing the assessment. Your submission has been received successfully."}
           </p>
 
           <p style={{ color: "#4A9A6A", fontSize: "0.875rem", marginBottom: "1.5rem" }}>
@@ -106,13 +111,23 @@ export default function CustomMCQResultPage() {
         </div>
 
         <h1 style={{ marginBottom: "1rem", color: "#1E5A3B" }}>
-          {passedBool ? "Congratulations!" : "Assessment Completed"}
+          {isEvaluatingBool ? "Test Submitted" : (passedBool ? "Congratulations!" : "Assessment Completed")}
         </h1>
+        
+        {isEvaluatingBool && (
+          <div style={{ marginBottom: "1.5rem", padding: "1rem", backgroundColor: "#FEF3C7", borderRadius: "0.5rem", border: "1px solid #FCD34D" }}>
+            <p style={{ color: "#92400E", fontSize: "0.875rem", margin: 0 }}>
+              AI evaluation is in progress. Your results will be updated automatically when evaluation completes.
+            </p>
+          </div>
+        )}
 
         <p style={{ marginBottom: "2rem", color: "#2D7A52", fontSize: "1.125rem" }}>
-          {passedBool
-            ? "You have successfully passed the assessment!"
-            : "Thank you for taking the assessment. Better luck next time!"}
+          {isEvaluatingBool
+            ? "Thank you for completing the assessment. Your submission has been received successfully. AI evaluation is in progress and results will be available shortly."
+            : (passedBool
+              ? "You have successfully passed the assessment!"
+              : "Thank you for taking the assessment. Better luck next time!")}
         </p>
 
         <div
@@ -161,6 +176,17 @@ export default function CustomMCQResultPage() {
                     </div>
                     <div style={{ fontSize: "0.75rem", color: "#2D7A52", marginTop: "0.25rem" }}>
                       {subjectiveTotalNum > 0 ? ((subjectiveScoreNum / subjectiveTotalNum) * 100).toFixed(1) : 0}%
+                    </div>
+                  </div>
+                )}
+                {codingTotalNum > 0 && (
+                  <div style={{ padding: "1rem", backgroundColor: "#ffffff", borderRadius: "0.5rem", border: "1px solid #A8E8BC" }}>
+                    <div style={{ fontSize: "0.875rem", color: "#4A9A6A", marginBottom: "0.5rem" }}>Coding Score</div>
+                    <div style={{ fontSize: "1.5rem", fontWeight: 700, color: "#1E5A3B" }}>
+                      {codingScoreNum} / {codingTotalNum}
+                    </div>
+                    <div style={{ fontSize: "0.75rem", color: "#2D7A52", marginTop: "0.25rem" }}>
+                      {codingTotalNum > 0 ? ((codingScoreNum / codingTotalNum) * 100).toFixed(1) : 0}%
                     </div>
                   </div>
                 )}

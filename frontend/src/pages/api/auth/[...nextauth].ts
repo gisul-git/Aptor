@@ -17,15 +17,17 @@ export const authOptions: NextAuthOptions = {
     maxAge: 30 * 24 * 60 * 60, // 30 days (matches refresh token expiration)
   },
   debug: process.env.NODE_ENV === "development",
-  useSecureCookies: process.env.NODE_ENV === "production", // Secure cookies only in production
+  // Only use secure cookies if NEXTAUTH_URL is HTTPS
+  useSecureCookies: process.env.NEXTAUTH_URL?.startsWith("https://") ?? false,
   cookies: {
     sessionToken: {
-      name: `${process.env.NODE_ENV === "production" ? "__Secure-" : ""}next-auth.session-token`,
+      name: `${process.env.NEXTAUTH_URL?.startsWith("https://") ? "__Secure-" : ""}next-auth.session-token`,
       options: {
         httpOnly: true,
         sameSite: "lax", // Changed from strict to allow OAuth redirects
         path: "/",
-        secure: process.env.NODE_ENV === "production" || process.env.NEXT_PUBLIC_FORCE_SECURE_COOKIES === "true", // Secure in production or when forced
+        // Only use secure cookies when using HTTPS
+        secure: process.env.NEXTAUTH_URL?.startsWith("https://") || process.env.NEXT_PUBLIC_FORCE_SECURE_COOKIES === "true",
       },
     },
   },

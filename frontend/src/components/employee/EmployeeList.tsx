@@ -51,12 +51,19 @@ export default function EmployeeList({ onAddEmployee, onEditEmployee }: Employee
     }
   };
 
-  const handleResendEmail = async (aaptorId: string) => {
+  const handleResendEmail = async (aaptorId: string, employeeName?: string) => {
+    // Find the employee to get their name for better feedback
+    const employee = employees?.find(emp => emp.aaptorId === aaptorId);
+    const displayName = employeeName || employee?.name || 'employee';
+    
     try {
       await resendEmailMutation.mutateAsync(aaptorId);
-      alert('Email sent successfully! The employee will receive their Aaptor ID and password information.');
+      alert(`Email sent successfully to ${displayName} (${employee?.email || 'employee'})! The employee will receive their Aaptor ID and password information.`);
+      // Refetch to update any status changes
+      await refetch();
     } catch (error: any) {
-      alert(error?.response?.data?.detail || error?.message || 'Failed to send email');
+      const errorMsg = error?.response?.data?.detail || error?.message || 'Failed to send email';
+      alert(`Failed to send email to ${displayName}: ${errorMsg}`);
     }
   };
 
@@ -77,7 +84,15 @@ export default function EmployeeList({ onAddEmployee, onEditEmployee }: Employee
     let failCount = 0;
     const errors: string[] = [];
 
-    for (const employee of employees) {
+    // Add delay between requests to avoid overwhelming the email service
+    for (let i = 0; i < employees.length; i++) {
+      const employee = employees[i];
+      
+      // Add small delay between requests (except for first one)
+      if (i > 0) {
+        await new Promise(resolve => setTimeout(resolve, 300)); // 300ms delay between emails
+      }
+      
       try {
         await resendEmailMutation.mutateAsync(employee.aaptorId);
         successCount++;
@@ -193,22 +208,108 @@ export default function EmployeeList({ onAddEmployee, onEditEmployee }: Employee
         return;
       }
 
-      // Add employees one by one (same as single add)
+      // Helper function to translate technical errors to user-friendly messages
+      const translateError = (err: any): string => {
+        const errorCode = err?.code || err?.response?.status || '';
+        const errorMessage = err?.response?.data?.detail || err?.message || '';
+        
+        // Network/connection errors
+        if (errorCode === 'ECONNRESET' || errorMessage.includes('ECONNRESET')) {
+          return 'Connection lost. Please try again.';
+        }
+        if (errorCode === 'ECONNREFUSED' || errorMessage.includes('ECONNREFUSED')) {
+          return 'Unable to connect to server. Please check your connection.';
+        }
+        if (errorCode === 'ETIMEDOUT' || errorMessage.includes('timeout') || errorMessage.includes('TIMEDOUT')) {
+          return 'Request timed out. Please try again.';
+        }
+        if (errorCode === 'ENOTFOUND' || errorMessage.includes('ENOTFOUND')) {
+          return 'Server not found. Please check your connection.';
+        }
+        if (errorMessage.includes('Network Error') || errorMessage.includes('network')) {
+          return 'Network error. Please check your connection and try again.';
+        }
+        
+        // HTTP status errors
+        if (errorCode === 429 || errorMessage.includes('rate limit')) {
+          return 'Too many requests. Please wait a moment and try again.';
+        }
+        if (errorCode === 503 || errorMessage.includes('Service Unavailable')) {
+          return 'Service temporarily unavailable. Please try again in a moment.';
+        }
+        if (errorCode === 500 || errorMessage.includes('Internal Server Error')) {
+          return 'Server error. Please try again later.';
+        }
+        
+        // Business logic errors (keep as-is)
+        if (errorMessage.includes('already exists') || errorMessage.includes('Email already')) {
+          return 'Email already exists';
+        }
+        if (errorMessage.includes('Invalid') || errorMessage.includes('invalid')) {
+          return errorMessage; // Keep validation errors as-is
+        }
+        
+        // Default fallback
+        return errorMessage || 'Failed to add employee. Please try again.';
+      };
+
+      // Helper function to retry with exponential backoff
+      const retryWithBackoff = async (
+        fn: () => Promise<any>,
+        maxRetries: number = 3,
+        baseDelay: number = 500
+      ): Promise<any> => {
+        let lastError: any;
+        for (let attempt = 0; attempt <= maxRetries; attempt++) {
+          try {
+            return await fn();
+          } catch (err: any) {
+            lastError = err;
+            // Don't retry on business logic errors (4xx except 429)
+            if (err?.response?.status >= 400 && err?.response?.status < 500 && err?.response?.status !== 429) {
+              throw err;
+            }
+            // Don't retry on last attempt
+            if (attempt === maxRetries) {
+              throw err;
+            }
+            // Exponential backoff: 500ms, 1000ms, 2000ms
+            const delay = baseDelay * Math.pow(2, attempt);
+            await new Promise(resolve => setTimeout(resolve, delay));
+          }
+        }
+        throw lastError;
+      };
+
+      // Add employees one by one with retry logic and delays
       let successCount = 0;
       let failCount = 0;
-      const errors: string[] = [];
+      const errors: Array<{ email: string; name: string; error: string }> = [];
 
-      for (const employee of employeesToAdd) {
+      for (let i = 0; i < employeesToAdd.length; i++) {
+        const employee = employeesToAdd[i];
+        
+        // Add small delay between requests to avoid overwhelming the server (except for first request)
+        if (i > 0) {
+          await new Promise(resolve => setTimeout(resolve, 200)); // 200ms delay between requests
+        }
+        
         try {
-          await addEmployeeMutation.mutateAsync({
-            name: employee.name,
-            email: employee.email,
+          await retryWithBackoff(async () => {
+            return await addEmployeeMutation.mutateAsync({
+              name: employee.name,
+              email: employee.email,
+            });
           });
           successCount++;
         } catch (err: any) {
           failCount++;
-          const errorMsg = err?.response?.data?.detail || err?.message || 'Failed to add employee';
-          errors.push(`${employee.email}: ${errorMsg}`);
+          const friendlyError = translateError(err);
+          errors.push({
+            email: employee.email,
+            name: employee.name,
+            error: friendlyError
+          });
         }
       }
 
@@ -228,7 +329,12 @@ export default function EmployeeList({ onAddEmployee, onEditEmployee }: Employee
       }
 
       if (failCount > 0 && errors.length > 0) {
-        setCsvError(message + '\n\nErrors:\n' + errors.slice(0, 5).join('\n') + (errors.length > 5 ? '...' : ''));
+        // Format errors in a user-friendly way
+        const errorDetails = errors.slice(0, 10).map(e => 
+          `• ${e.name || e.email}: ${e.error}`
+        ).join('\n');
+        const moreErrors = errors.length > 10 ? `\n... and ${errors.length - 10} more error(s)` : '';
+        setCsvError(message + '\n\nFailed employees:\n' + errorDetails + moreErrors);
       } else {
         setCsvSuccess(message);
       }
@@ -279,7 +385,13 @@ export default function EmployeeList({ onAddEmployee, onEditEmployee }: Employee
       {csvError && (
         <Card className="border-red-200 bg-red-50">
           <CardContent className="p-4">
-            <p className="text-sm text-red-600 whitespace-pre-line">{csvError}</p>
+            <div className="space-y-2">
+              <p className="text-sm font-medium text-red-800">Upload Results</p>
+              <p className="text-sm text-red-700 whitespace-pre-line">{csvError}</p>
+              <p className="text-xs text-red-600 mt-2">
+                💡 Tip: You can try uploading the failed employees again. Network errors are automatically retried.
+              </p>
+            </div>
             <Button
               variant="ghost"
               size="sm"
@@ -287,7 +399,7 @@ export default function EmployeeList({ onAddEmployee, onEditEmployee }: Employee
                 setCsvError(null);
                 setCsvSuccess(null);
               }}
-              className="mt-2"
+              className="mt-3"
             >
               Dismiss
             </Button>
@@ -460,8 +572,12 @@ export default function EmployeeList({ onAddEmployee, onEditEmployee }: Employee
                             <Button
                               variant="outline"
                               size="sm"
-                              onClick={() => handleResendEmail(employee.aaptorId)}
-                              disabled={resendEmailMutation.isPending}
+                              onClick={(e) => {
+                                e.stopPropagation(); // Prevent any event bubbling
+                                handleResendEmail(employee.aaptorId, employee.name);
+                              }}
+                              disabled={resendEmailMutation.isPending || sendingToAll}
+                              title={`Send welcome email to ${employee.name}`}
                             >
                               <MailIcon className="h-4 w-4 mr-1" />
                               Send Email

@@ -36,6 +36,17 @@ class SubjectiveQuestion(BaseModel):
     updatedAt: Optional[datetime] = None
 
 
+class CodingQuestion(BaseModel):
+    """Coding Question model"""
+    id: Optional[str] = None
+    questionType: str = Field(default="coding", pattern=r"^coding$")
+    section: str
+    question: str
+    marks: int = Field(default=1, ge=1)
+    createdAt: Optional[datetime] = None
+    updatedAt: Optional[datetime] = None
+
+
 class Candidate(BaseModel):
     """Candidate model"""
     name: str
@@ -52,7 +63,7 @@ class CreateCustomMCQAssessmentRequest(BaseModel):
     """Request to create a custom MCQ assessment"""
     title: Optional[str] = None  # Optional for drafts
     description: Optional[str] = None
-    questions: Optional[List[Any]] = None  # Can contain both MCQQuestion and SubjectiveQuestion
+    questions: Optional[List[Any]] = None  # Can contain MCQQuestion, SubjectiveQuestion, and CodingQuestion
     candidates: Optional[List[Candidate]] = None
     accessMode: str = Field(default="private", pattern=r"^(private|public)$")
     examMode: str = Field(default="strict", pattern=r"^(strict|flexible)$")
@@ -63,7 +74,7 @@ class CreateCustomMCQAssessmentRequest(BaseModel):
     status: Optional[str] = Field(default="draft", pattern=r"^(draft|scheduled|active)$")  # Draft, scheduled, or active
     currentStation: Optional[int] = Field(default=1, ge=1, le=5)  # Track which station user is on
     enablePerSectionTimers: Optional[bool] = Field(default=False, description="Enable per-section timers")
-    sectionTimers: Optional[Dict[str, int]] = Field(default=None, description="Timer durations in minutes for each section (MCQ, Subjective)")
+    sectionTimers: Optional[Dict[str, int]] = Field(default=None, description="Timer durations in minutes for each section (MCQ, Subjective, Coding)")
     proctoringSettings: Optional[ProctoringSettings] = None
     showResultToCandidate: Optional[bool] = Field(default=True, description="Whether to show results to candidates after submission")
 
@@ -72,7 +83,7 @@ class UpdateCustomMCQAssessmentRequest(BaseModel):
     """Request to update a custom MCQ assessment"""
     title: Optional[str] = None
     description: Optional[str] = None
-    questions: Optional[List[Any]] = None  # Can contain both MCQQuestion and SubjectiveQuestion
+    questions: Optional[List[Any]] = None  # Can contain MCQQuestion, SubjectiveQuestion, and CodingQuestion
     candidates: Optional[List[Candidate]] = None
     accessMode: Optional[str] = Field(default=None, pattern=r"^(private|public)$")
     examMode: Optional[str] = Field(default=None, pattern=r"^(strict|flexible)$")
@@ -83,7 +94,7 @@ class UpdateCustomMCQAssessmentRequest(BaseModel):
     status: Optional[str] = Field(default=None, pattern=r"^(draft|scheduled|active)$")  # Allow status updates
     currentStation: Optional[int] = Field(default=None, ge=1, le=5)  # Track which station user is on
     enablePerSectionTimers: Optional[bool] = Field(default=None, description="Enable per-section timers")
-    sectionTimers: Optional[Dict[str, int]] = Field(default=None, description="Timer durations in minutes for each section (MCQ, Subjective)")
+    sectionTimers: Optional[Dict[str, int]] = Field(default=None, description="Timer durations in minutes for each section (MCQ, Subjective, Coding)")
     proctoringSettings: Optional[ProctoringSettings] = None
     showResultToCandidate: Optional[bool] = Field(default=None, description="Whether to show results to candidates after submission")
 
@@ -98,6 +109,7 @@ class CandidateSubmission(BaseModel):
     questionId: str
     selectedAnswers: Optional[List[str]] = None  # For MCQ questions: List of selected option labels (e.g., ["A", "B"])
     textAnswer: Optional[str] = None  # For subjective questions: Text answer
+    codeAnswer: Optional[str] = None  # For coding questions: Code answer
 
 
 class SubmitCustomMCQRequest(BaseModel):
@@ -173,6 +185,17 @@ class FrontendSubjectiveQuestion(BaseModel):
     updatedAt: Optional[str] = Field(None, description="Update timestamp")
 
 
+class FrontendCodingQuestion(BaseModel):
+    """Frontend Coding question format."""
+    id: Optional[str] = Field(None, description="Question ID")
+    questionType: str = Field("coding", description="Question type: 'coding'")
+    section: str = Field(..., description="Section name")
+    question: str = Field(..., description="Question text")
+    marks: int = Field(..., gt=0, description="Marks for this question")
+    createdAt: Optional[str] = Field(None, description="Creation timestamp")
+    updatedAt: Optional[str] = Field(None, description="Update timestamp")
+
+
 class Candidate(BaseModel):
     """Candidate information for frontend format."""
     name: str = Field(..., description="Candidate name")
@@ -183,7 +206,7 @@ class CreateCustomMCQAssessmentRequest(BaseModel):
     """Request to create a custom MCQ assessment (frontend format)."""
     title: str = Field(..., description="Assessment title")
     description: Optional[str] = Field(None, description="Assessment description")
-    questions: List[Any] = Field(default_factory=list, description="List of questions (MCQ or Subjective)")
+    questions: List[Any] = Field(default_factory=list, description="List of questions (MCQ, Subjective, or Coding)")
     candidates: Optional[List[Candidate]] = Field(None, description="List of candidates")
     accessMode: str = Field("private", description="'private' or 'public'")
     examMode: str = Field("strict", description="'strict' or 'flexible'")
@@ -194,7 +217,7 @@ class CreateCustomMCQAssessmentRequest(BaseModel):
     status: Optional[str] = Field("draft", description="Assessment status")
     currentStation: Optional[int] = Field(1, description="Current station/step")
     enablePerSectionTimers: Optional[bool] = Field(default=False, description="Enable per-section timers")
-    sectionTimers: Optional[Dict[str, int]] = Field(default=None, description="Timer durations in minutes for each section (MCQ, Subjective)")
+    sectionTimers: Optional[Dict[str, int]] = Field(default=None, description="Timer durations in minutes for each section (MCQ, Subjective, Coding)")
     proctoringSettings: Optional[ProctoringSettings] = None
     showResultToCandidate: Optional[bool] = Field(default=True, description="Whether to show results to candidates after submission")
 
@@ -203,7 +226,7 @@ class UpdateCustomMCQAssessmentRequest(BaseModel):
     """Request to update a custom MCQ assessment (frontend format)."""
     title: Optional[str] = Field(None, description="Assessment title")
     description: Optional[str] = Field(None, description="Assessment description")
-    questions: Optional[List[Any]] = Field(None, description="List of questions (MCQ or Subjective)")
+    questions: Optional[List[Any]] = Field(None, description="List of questions (MCQ, Subjective, or Coding)")
     candidates: Optional[List[Candidate]] = Field(None, description="List of candidates")
     accessMode: Optional[str] = Field(None, description="'private' or 'public'")
     examMode: Optional[str] = Field(None, description="'strict' or 'flexible'")
@@ -214,7 +237,7 @@ class UpdateCustomMCQAssessmentRequest(BaseModel):
     status: Optional[str] = Field(None, description="Assessment status")
     currentStation: Optional[int] = Field(None, description="Current station/step")
     enablePerSectionTimers: Optional[bool] = Field(default=None, description="Enable per-section timers")
-    sectionTimers: Optional[Dict[str, int]] = Field(default=None, description="Timer durations in minutes for each section (MCQ, Subjective)")
+    sectionTimers: Optional[Dict[str, int]] = Field(default=None, description="Timer durations in minutes for each section (MCQ, Subjective, Coding)")
     proctoringSettings: Optional[ProctoringSettings] = None
     showResultToCandidate: Optional[bool] = Field(default=None, description="Whether to show results to candidates after submission")
 
@@ -229,6 +252,7 @@ class CandidateSubmission(BaseModel):
     questionId: str = Field(..., description="Question ID")
     selectedAnswers: Optional[List[str]] = Field(None, description="Selected answer(s) for MCQ questions")
     textAnswer: Optional[str] = Field(None, description="Text answer for subjective questions")
+    codeAnswer: Optional[str] = Field(None, description="Code answer for coding questions")
 
 
 class SubmitCustomMCQRequest(BaseModel):

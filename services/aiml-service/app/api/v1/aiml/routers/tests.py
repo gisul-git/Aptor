@@ -217,7 +217,6 @@ async def create_test(
         }
         
         # Invalidate cache for this user
-        from app.utils.cache import invalidate_user_tests_cache
         await invalidate_user_tests_cache(user_id)
         
         return test_dict
@@ -225,7 +224,6 @@ async def create_test(
     test_dict["id"] = str(result.inserted_id)
     
     # Invalidate cache for this user
-    from app.utils.cache import invalidate_user_tests_cache
     await invalidate_user_tests_cache(user_id)
     
     return test_dict
@@ -362,7 +360,7 @@ async def get_tests(
     Get all tests for the current user.
     Optimized with Redis caching, MongoDB field projection, and pagination.
     """
-    from app.utils.cache import get_cached_tests, set_cached_tests, invalidate_user_tests_cache
+    from app.utils.cache import get_cached_tests, set_cached_tests
     
     db = get_database()
     user_id = current_user.get("id") or current_user.get("_id")
@@ -729,7 +727,6 @@ async def update_test(
         proctoring_settings = updated_test.get("schedule", {}).get("proctoringSettings")
     
     # Invalidate cache for this user
-    from app.utils.cache import invalidate_user_tests_cache
     await invalidate_user_tests_cache(user_id)
     # Invalidate analytics cache for this test
     await invalidate_test_analytics_cache(test_id)
@@ -944,8 +941,10 @@ async def get_test(
 ):
     """
     Get a specific test by ID (requires authentication and ownership)
+    Optimized with Redis caching.
     """
-    db = get_database()
+    from app.utils.cache import get_cached_test, set_cached_test
+    
     if not ObjectId.is_valid(test_id):
         raise HTTPException(status_code=400, detail="Invalid test ID")
     
@@ -954,7 +953,36 @@ async def get_test(
         raise HTTPException(status_code=400, detail="Invalid user ID")
     user_id = str(user_id).strip()
     
-    test = await db.tests.find_one({"_id": ObjectId(test_id)})
+    # Try cache first
+    cached_test = await get_cached_test(test_id, user_id)
+    if cached_test:
+        return cached_test
+    
+    db = get_database()
+    
+    # Use field projection to only fetch needed fields (exclude large fields)
+    projection = {
+        "_id": 1,
+        "title": 1,
+        "description": 1,
+        "duration_minutes": 1,
+        "start_time": 1,
+        "end_time": 1,
+        "timer_mode": 1,
+        "question_timings": 1,
+        "examMode": 1,
+        "schedule": 1,
+        "proctoringSettings": 1,
+        "is_active": 1,
+        "is_published": 1,
+        "question_ids": 1,
+        "test_token": 1,
+        "invitationTemplate": 1,
+        "created_by": 1
+        # Excluded: candidateResponses, large nested objects that aren't needed for edit page
+    }
+    
+    test = await db.tests.find_one({"_id": ObjectId(test_id)}, projection)
     if not test:
         raise HTTPException(status_code=404, detail="Test not found")
     
@@ -962,24 +990,55 @@ async def get_test(
     if str(test.get("created_by")) != user_id:
         raise HTTPException(status_code=403, detail="You don't have permission to access this test")
     
-    return {
+    # Helper function to safely serialize datetime
+    def safe_isoformat(dt):
+        if not dt:
+            return None
+        if isinstance(dt, datetime):
+            return dt.isoformat()
+        return str(dt) if dt else None
+    
+    # Helper function to serialize schedule
+    def serialize_schedule(schedule):
+        if not schedule:
+            return None
+        if not isinstance(schedule, dict):
+            return schedule
+        serialized = {}
+        for key, value in schedule.items():
+            if isinstance(value, datetime):
+                serialized[key] = value.isoformat()
+            elif isinstance(value, ObjectId):
+                serialized[key] = str(value)
+            elif isinstance(value, dict):
+                serialized[key] = serialize_schedule(value)
+            else:
+                serialized[key] = value
+        return serialized
+    
+    result = {
         "id": str(test["_id"]),
         "title": test.get("title", ""),
         "description": test.get("description", ""),
         "duration_minutes": test.get("duration_minutes", 0),
-        "start_time": test.get("start_time").isoformat() if test.get("start_time") else None,
-        "end_time": test.get("end_time").isoformat() if test.get("end_time") else None,
+        "start_time": safe_isoformat(test.get("start_time")),
+        "end_time": safe_isoformat(test.get("end_time")),
         "timer_mode": test.get("timer_mode", "GLOBAL"),
         "question_timings": test.get("question_timings"),
         "examMode": test.get("examMode", "strict"),
-        "schedule": test.get("schedule"),
-        "proctoringSettings": test.get("proctoringSettings"),  # Include proctoring settings
+        "schedule": serialize_schedule(test.get("schedule")),
+        "proctoringSettings": test.get("proctoringSettings"),
         "is_active": test.get("is_active", False),
         "is_published": test.get("is_published", False),
         "question_ids": [str(qid) for qid in test.get("question_ids", [])],
         "test_token": test.get("test_token"),
         "invitationTemplate": test.get("invitationTemplate"),
     }
+    
+    # Cache the result
+    await set_cached_test(test_id, user_id, result)
+    
+    return result
 
 
 @router.get("/{test_id}/verify-link")
@@ -1359,6 +1418,9 @@ async def start_test(test_id: str, user_id: str = Query(..., description="User I
                 }
             }
         )
+        if result.modified_count > 0:
+            # New candidate started - invalidate analytics cache
+            await invalidate_test_analytics_cache(test_id)
         if result.modified_count == 0:
             # Another process already set started_at (race condition prevented)
             updated = await db.test_submissions.find_one({"_id": existing["_id"]})
@@ -1396,6 +1458,9 @@ async def start_test(test_id: str, user_id: str = Query(..., description="User I
     
     # Create test submission (only reached if no existing submission found above)
     result = await db.test_submissions.insert_one(test_submission)
+    
+    # New candidate started - invalidate analytics cache to show fresh data
+    await invalidate_test_analytics_cache(test_id)
     
     # Materialize datasets for all questions in this test
     try:
@@ -1921,6 +1986,8 @@ async def submit_answer(
         }
         result = await db.test_submissions.insert_one(test_submission)
         test_submission["_id"] = result.inserted_id
+        # New candidate started answering - invalidate analytics cache
+        await invalidate_test_analytics_cache(test_id)
     
     # Update or add submission for this question
     submissions = test_submission.get("submissions", [])
@@ -2249,6 +2316,7 @@ async def submit_test(
 @router.post("/{test_id}/pause")
 async def pause_test(
     test_id: str,
+    background_tasks: BackgroundTasks,
     current_user: Dict[str, Any] = Depends(require_editor)
 ):
     """
@@ -2265,7 +2333,11 @@ async def pause_test(
         raise HTTPException(status_code=400, detail="Invalid user ID")
     user_id = str(user_id)
     
-    test = await db.tests.find_one({"_id": ObjectId(test_id)})
+    # Use field projection to only fetch necessary fields (faster query)
+    test = await db.tests.find_one(
+        {"_id": ObjectId(test_id)},
+        {"created_by": 1, "is_published": 1, "pausedAt": 1}
+    )
     if not test:
         raise HTTPException(status_code=404, detail="Test not found")
     
@@ -2295,9 +2367,9 @@ async def pause_test(
         }
     )
     
-    # Invalidate analytics cache
-    await invalidate_test_analytics_cache(test_id)
-    await invalidate_user_tests_cache(user_id)
+    # Invalidate caches in background (non-blocking for faster response)
+    background_tasks.add_task(invalidate_test_analytics_cache, test_id)
+    background_tasks.add_task(invalidate_user_tests_cache, user_id)
     
     logger.info(f"Test {test_id} paused by user {user_id} at {now}")
     
@@ -2312,6 +2384,7 @@ async def pause_test(
 @router.post("/{test_id}/resume")
 async def resume_test(
     test_id: str,
+    background_tasks: BackgroundTasks,
     current_user: Dict[str, Any] = Depends(require_editor)
 ):
     """
@@ -2327,7 +2400,11 @@ async def resume_test(
         raise HTTPException(status_code=400, detail="Invalid user ID")
     user_id = str(user_id)
     
-    test = await db.tests.find_one({"_id": ObjectId(test_id)})
+    # Use field projection to only fetch necessary fields (faster query)
+    test = await db.tests.find_one(
+        {"_id": ObjectId(test_id)},
+        {"created_by": 1, "is_published": 1, "pausedAt": 1, "statusBeforePause": 1}
+    )
     if not test:
         raise HTTPException(status_code=404, detail="Test not found")
     
@@ -2356,9 +2433,9 @@ async def resume_test(
         }
     )
     
-    # Invalidate analytics cache
-    await invalidate_test_analytics_cache(test_id)
-    await invalidate_user_tests_cache(user_id)
+    # Invalidate caches in background (non-blocking for faster response)
+    background_tasks.add_task(invalidate_test_analytics_cache, test_id)
+    background_tasks.add_task(invalidate_user_tests_cache, user_id)
     
     logger.info(f"Test {test_id} resumed by user {user_id} at {now}")
     
@@ -2383,17 +2460,23 @@ async def clone_test(
       - keepSchedule: bool (optional, default False)
       - keepCandidates: bool (optional, default False)
     """
+    logger.info(f"🧠 [AIML Clone] Clone request received - test_id: {test_id}, user_id: {current_user.get('id')}, payload: {payload}")
+    
     db = get_database()
     if not ObjectId.is_valid(test_id):
+        logger.error(f"❌ [AIML Clone] Invalid test ID: {test_id}")
         raise HTTPException(status_code=400, detail="Invalid test ID")
     
     user_id = current_user.get("id") or current_user.get("_id")
     if not user_id:
+        logger.error(f"❌ [AIML Clone] Invalid user ID from current_user: {current_user}")
         raise HTTPException(status_code=400, detail="Invalid user ID")
     user_id = str(user_id).strip()
     
+    logger.info(f"🔍 [AIML Clone] Looking up test {test_id} for user {user_id}")
     original = await db.tests.find_one({"_id": ObjectId(test_id)})
     if not original:
+        logger.error(f"❌ [AIML Clone] Test not found: {test_id}")
         raise HTTPException(status_code=404, detail="Test not found")
 
     # Ensure AIML test
@@ -2440,10 +2523,45 @@ async def clone_test(
         cloned["start_time"] = now
         cloned["end_time"] = now + timedelta(minutes=duration_minutes)
 
+    logger.info(f"💾 [AIML Clone] Inserting cloned test into database...")
     res = await db.tests.insert_one(cloned)
     created = await db.tests.find_one({"_id": res.inserted_id})
     if not created:
+        logger.error(f"❌ [AIML Clone] Failed to retrieve cloned test after insertion - inserted_id: {res.inserted_id}")
         raise HTTPException(status_code=500, detail="Failed to clone test")
+
+    logger.info(f"✅ [AIML Clone] Test cloned successfully - new_test_id: {res.inserted_id}, new_title: {new_title}")
+
+    # Invalidate cache for this user so the new test appears in the list
+    logger.info(f"🔄 [AIML Clone] Invalidating cache for user: {user_id}")
+    await invalidate_user_tests_cache(user_id)
+
+    # Helper function to safely convert datetime to ISO format
+    def safe_isoformat(dt):
+        if not dt:
+            return None
+        if isinstance(dt, datetime):
+            return dt.isoformat()
+        return str(dt) if dt else None
+    
+    # Helper function to serialize schedule (convert datetime objects to ISO format)
+    def serialize_schedule(schedule):
+        if not schedule:
+            return None
+        if not isinstance(schedule, dict):
+            return schedule
+        serialized = {}
+        for key, value in schedule.items():
+            if isinstance(value, datetime):
+                serialized[key] = value.isoformat()
+            elif isinstance(value, ObjectId):
+                serialized[key] = str(value)
+            elif isinstance(value, dict):
+                # Recursively serialize nested dictionaries
+                serialized[key] = serialize_schedule(value)
+            else:
+                serialized[key] = value
+        return serialized
 
     return {
         "message": "Test cloned successfully",
@@ -2452,15 +2570,15 @@ async def clone_test(
             "title": created.get("title", ""),
             "description": created.get("description", ""),
             "duration_minutes": created.get("duration_minutes", 0),
-            "start_time": created.get("start_time").isoformat() if created.get("start_time") else None,
-            "end_time": created.get("end_time").isoformat() if created.get("end_time") else None,
+            "start_time": safe_isoformat(created.get("start_time")),
+            "end_time": safe_isoformat(created.get("end_time")),
             "examMode": created.get("examMode", "strict"),
-            "schedule": created.get("schedule"),
+            "schedule": serialize_schedule(created.get("schedule")),
             "is_active": created.get("is_active", False),
             "is_published": created.get("is_published", False),
             "invited_users": created.get("invited_users", []),
             "test_token": created.get("test_token"),
-            "pausedAt": created.get("pausedAt"),
+            "pausedAt": safe_isoformat(created.get("pausedAt")),
         }
     }
 
@@ -2471,35 +2589,99 @@ async def delete_test(
     current_user: Dict[str, Any] = Depends(require_editor)
 ):
     """
-    Delete a test (requires authentication and ownership)
+    Delete a test with cascade delete (requires authentication and ownership).
+    
+    This will delete:
+    - The test document
+    - All test_candidates records (including proctor reference images)
+    - All test_submissions records
+    - All related analytics data
+    
+    Optimized with parallel operations and efficient cache invalidation.
     """
+    import asyncio
+    import time
+    
+    start_time = time.time()
     db = get_database()
     if not ObjectId.is_valid(test_id):
         raise HTTPException(status_code=400, detail="Invalid test ID")
     
+    # Check if test exists and belongs to the current user
     user_id = current_user.get("id") or current_user.get("_id")
     if not user_id:
         raise HTTPException(status_code=400, detail="Invalid user ID")
     user_id = str(user_id)
     
-    test = await db.tests.find_one({"_id": ObjectId(test_id)})
-    if not test:
+    existing_test = await db.tests.find_one({"_id": ObjectId(test_id)})
+    if not existing_test:
         raise HTTPException(status_code=404, detail="Test not found")
     
-    if str(test.get("created_by")) != user_id:
+    # Verify ownership
+    existing_created_by = existing_test.get("created_by")
+    if not existing_created_by or str(existing_created_by).strip() != user_id.strip():
+        logger.error(f"[delete_test] SECURITY ISSUE: User {user_id} attempted to delete test {test_id} created by {existing_created_by}")
         raise HTTPException(status_code=403, detail="You don't have permission to delete this test")
     
-    result = await db.tests.delete_one({"_id": ObjectId(test_id)})
-    if result.deleted_count == 0:
-        raise HTTPException(status_code=404, detail="Test not found")
+    # Get test title for logging
+    test_title = existing_test.get("title", "Unknown")
+    logger.info(f"[delete_test] Starting cascade delete for test {test_id} ({test_title}) by user {user_id}")
     
-    # Invalidate cache for this user
-    from app.utils.cache import invalidate_user_tests_cache
-    await invalidate_user_tests_cache(user_id)
-    # Invalidate analytics cache for this test
-    await invalidate_test_analytics_cache(test_id)
+    # CASCADE DELETE: Delete all related data in parallel where possible
+    deletion_stats = {
+        "test_candidates": 0,
+        "test_submissions": 0
+    }
     
-    return {"message": "Test deleted successfully"}
+    try:
+        # Delete related data in parallel for better performance
+        candidates_task = db.test_candidates.delete_many({"test_id": test_id})
+        submissions_task = db.test_submissions.delete_many({"test_id": test_id})
+        
+        # Execute deletions in parallel
+        candidates_result, submissions_result = await asyncio.gather(
+            candidates_task,
+            submissions_task
+        )
+        
+        deletion_stats["test_candidates"] = candidates_result.deleted_count
+        deletion_stats["test_submissions"] = submissions_result.deleted_count
+        
+        logger.info(f"[delete_test] Deleted {deletion_stats['test_candidates']} candidate record(s) and {deletion_stats['test_submissions']} submission record(s)")
+        
+        # Finally, delete the test document itself
+        result = await db.tests.delete_one({"_id": ObjectId(test_id)})
+        if result.deleted_count == 0:
+            raise HTTPException(status_code=404, detail="Test not found")
+        
+        logger.info(f"[delete_test] Deleted test document {test_id}")
+        
+        # Invalidate caches in parallel for better performance
+        await asyncio.gather(
+            invalidate_user_tests_cache(user_id),
+            invalidate_test_analytics_cache(test_id),
+            return_exceptions=True  # Don't fail if cache invalidation fails
+        )
+        
+        elapsed = time.time() - start_time
+        logger.info(f"[delete_test] Cascade delete completed in {elapsed:.2f}s for test {test_id}")
+        
+        return {
+            "message": "Test deleted successfully",
+            "deleted": {
+                "test": 1,
+                "candidates": deletion_stats["test_candidates"],
+                "submissions": deletion_stats["test_submissions"]
+            }
+        }
+        
+    except Exception as e:
+        elapsed = time.time() - start_time
+        logger.error(f"[delete_test] Error during cascade delete after {elapsed:.2f}s: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to delete test: {str(e)}"
+        )
 
 
 @router.post("/{test_id}/add-candidate")

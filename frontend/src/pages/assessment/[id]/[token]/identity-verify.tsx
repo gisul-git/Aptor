@@ -622,8 +622,9 @@ export default function IdentityVerificationPage() {
       // Try to start the test/assessment - backend will also validate start time
       let response: Response | null = null;
       
-      if (isAIAssessment || isCustomMCQ) {
-        // For AI assessments, attempt to call start-session (optional - may not exist)
+      if (isAIAssessment) {
+        // For AI assessments only, attempt to call start-session (optional - may not exist)
+        // Custom MCQ doesn't have a start-session endpoint - it tracks startedAt on submission
         // If it fails, we'll proceed anyway since attempt is created when fetching questions
         try {
           response = await fetch("/api/assessment/start-session", {
@@ -650,6 +651,11 @@ export default function IdentityVerificationPage() {
           console.warn("[Identity] Start-session endpoint not available, proceeding to assessment:", err);
           response = null; // Treat as success - we'll proceed
         }
+      } else if (isCustomMCQ) {
+        // Custom MCQ doesn't need start-session - it tracks startedAt when candidate submits
+        // Just proceed to the assessment
+        console.log("[Identity] Custom MCQ assessment - skipping start-session (not needed)");
+        response = null; // Treat as success - we'll proceed
       } else if (isDSATest || isAIMLTest) {
         // Use DSA or AIML test start endpoint
         const apiGatewayUrl = await getApiGatewayUrl();

@@ -640,12 +640,29 @@ export default function QuestionCreatePage() {
       console.error('Error status:', err.response?.status)
       
       let errorMessage = 'Failed to generate question with AI.'
-      if (err.response?.data?.detail) {
-        errorMessage = err.response.data.detail
-      } else if (err.message) {
-        errorMessage = `${errorMessage} Error: ${err.message}`
-      } else if (err.code === 'ERR_NETWORK') {
+      
+      // Try to extract detailed error message from response
+      if (err.response?.data) {
+        // Check for detail field (FastAPI standard)
+        if (err.response.data.detail) {
+          errorMessage = err.response.data.detail
+        } 
+        // Check for message field
+        else if (err.response.data.message) {
+          errorMessage = err.response.data.message
+        }
+        // Check for error field
+        else if (err.response.data.error) {
+          errorMessage = err.response.data.error
+        }
+      } 
+      // Network errors
+      else if (err.code === 'ERR_NETWORK' || err.message?.includes('Network Error')) {
         errorMessage = 'Network error. Make sure the backend server is running.'
+      }
+      // Other errors
+      else if (err.message) {
+        errorMessage = `${errorMessage} ${err.message}`
       }
       
       setError(errorMessage)
