@@ -68,7 +68,8 @@ services:
       - DSA_SERVICE_URL=http://dsa-service:3004
       - PROCTORING_SERVICE_URL=http://proctoring-service:3005
       - SUPER_ADMIN_SERVICE_URL=http://super-admin-service:3006
-      - CORS_ORIGINS=http://localhost:3000,http://frontend:3000,http://localhost:3001
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://103.99.36.70:3000,http://frontend:3000,http://localhost:3000,http://localhost:3001}
+      - EMPLOYEE_SERVICE_URL=${EMPLOYEE_SERVICE_URL:-http://employee-service:4005}
     depends_on:
       - auth-service
     networks:
@@ -90,13 +91,24 @@ services:
       - JWT_ALGORITHM=HS256
       - JWT_EXP_MINUTES=60
       - JWT_REFRESH_EXP_DAYS=30
-      - CORS_ORIGINS=http://localhost:3000,http://frontend:3000
-      - EMAIL_PROVIDER=sendgrid
+      - JWT_RSA_PRIVATE_KEY_PATH=${JWT_RSA_PRIVATE_KEY_PATH}
+      - JWT_RSA_PUBLIC_KEY_PATH=${JWT_RSA_PUBLIC_KEY_PATH}
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://103.99.36.70:3000,http://localhost:3000,http://frontend:3000}
+      - EMAIL_PROVIDER=${EMAIL_PROVIDER:-sendgrid}
       - SENDGRID_API_KEY=${SENDGRID_API_KEY}
       - SENDGRID_FROM_EMAIL=${SENDGRID_FROM_EMAIL}
+      - SENDGRID_FROM_NAME=${SENDGRID_FROM_NAME:-AI Assessment Platform}
       - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
+      - REDIS_URL=redis://redis:6379/0
+      - AWS_ACCESS_KEY=${AWS_ACCESS_KEY}
+      - AWS_SECRET_KEY=${AWS_SECRET_KEY}
+      - AWS_REGION=${AWS_REGION}
+      - AWS_EMAIL_SOURCE=${AWS_EMAIL_SOURCE}
+      - AZURE_COMM_CONNECTION_STRING=${AZURE_COMM_CONNECTION_STRING}
+      - AZURE_COMM_SENDER_ADDRESS=${AZURE_COMM_SENDER_ADDRESS}
     depends_on:
       - mongo
+      - redis
     networks:
       - microservices-network
     restart: unless-stopped
@@ -115,7 +127,17 @@ services:
       - REDIS_URL=redis://redis:6379/0
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - GEMINI_API_KEY=${GEMINI_API_KEY}
-      - CORS_ORIGINS=http://localhost:3000,http://frontend:3000
+      - GEMINI_MODEL_SUMMARY=${GEMINI_MODEL_SUMMARY:-gemini-pro}
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://103.99.36.70:3000,http://localhost:3000,http://frontend:3000}
+      - AIML_SERVICE_URL=${AIML_SERVICE_URL:-http://aiml-service:3003}
+      - DSA_SERVICE_URL=${DSA_SERVICE_URL:-http://dsa-service:3004}
+      - AWS_ACCESS_KEY=${AWS_ACCESS_KEY}
+      - AWS_SECRET_KEY=${AWS_SECRET_KEY}
+      - AWS_REGION=${AWS_REGION}
+      - EMAIL_PROVIDER=${EMAIL_PROVIDER:-sendgrid}
+      - SENDGRID_API_KEY=${SENDGRID_API_KEY}
+      - SENDGRID_FROM_EMAIL=${SENDGRID_FROM_EMAIL}
+      - DEBUG=${DEBUG:-false}
     depends_on:
       - mongo
       - redis
@@ -136,7 +158,12 @@ services:
       - MONGO_URI=mongodb://mongo:27017
       - MONGO_DB=custom_mcq_db
       - REDIS_URL=redis://redis:6379/0
-      - CORS_ORIGINS=http://localhost:3000,http://frontend:3000
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://103.99.36.70:3000,http://localhost:3000,http://frontend:3000}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - EMAIL_PROVIDER=${EMAIL_PROVIDER:-sendgrid}
+      - SENDGRID_API_KEY=${SENDGRID_API_KEY}
+      - SENDGRID_FROM_EMAIL=${SENDGRID_FROM_EMAIL}
+      - SENDGRID_FROM_NAME=${SENDGRID_FROM_NAME:-AI Assessment Platform}
     depends_on:
       - mongo
       - redis
@@ -157,7 +184,17 @@ services:
       - MONGO_URI=mongodb://mongo:27017
       - MONGO_DB=aiml_db
       - REDIS_URL=redis://redis:6379/0
-      - CORS_ORIGINS=http://localhost:3000,http://frontend:3000
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://103.99.36.70:3000,http://localhost:3000,http://frontend:3000}
+      - EMAIL_PROVIDER=${EMAIL_PROVIDER:-sendgrid}
+      - SENDGRID_API_KEY=${SENDGRID_API_KEY}
+      - SENDGRID_FROM_EMAIL=${SENDGRID_FROM_EMAIL}
+      - SENDGRID_FROM_NAME=${SENDGRID_FROM_NAME:-AI Assessment Platform}
+      - AWS_ACCESS_KEY=${AWS_ACCESS_KEY}
+      - AWS_SECRET_KEY=${AWS_SECRET_KEY}
+      - AWS_REGION=${AWS_REGION}
+      - AWS_EMAIL_SOURCE=${AWS_EMAIL_SOURCE}
+      - AZURE_COMM_CONNECTION_STRING=${AZURE_COMM_CONNECTION_STRING}
+      - AZURE_COMM_SENDER_ADDRESS=${AZURE_COMM_SENDER_ADDRESS}
     depends_on:
       - mongo
       - redis
@@ -179,8 +216,18 @@ services:
       - REDIS_URL=redis://redis:6379/0
       - JUDGE0_URL=${JUDGE0_URL}
       - JUDGE0_API_KEY=${JUDGE0_API_KEY}
+      - JUDGE0_TIMEOUT=${JUDGE0_TIMEOUT:-60}
+      - JUDGE0_POLL_INTERVAL=${JUDGE0_POLL_INTERVAL:-1.5}
+      - JUDGE0_MAX_POLLS=${JUDGE0_MAX_POLLS:-20}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - CORS_ORIGINS=http://localhost:3000,http://frontend:3000
+      - CUSTOM_PYTHON_ENGINE_URL=${CUSTOM_PYTHON_ENGINE_URL:-http://localhost:9000}
+      - USE_CUSTOM_ENGINE=${USE_CUSTOM_ENGINE:-true}
+      - SQL_ENGINE_URL=${SQL_ENGINE_URL}
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://103.99.36.70:3000,http://localhost:3000,http://frontend:3000}
+      - EMAIL_PROVIDER=${EMAIL_PROVIDER:-sendgrid}
+      - SENDGRID_API_KEY=${SENDGRID_API_KEY}
+      - SENDGRID_FROM_EMAIL=${SENDGRID_FROM_EMAIL}
+      - SENDGRID_FROM_NAME=${SENDGRID_FROM_NAME:-AI Assessment Platform}
     depends_on:
       - mongo
       - redis
@@ -200,7 +247,11 @@ services:
       - MONGO_URI=mongodb://mongo:27017
       - MONGO_DB=proctoring_db
       - REDIS_URL=redis://redis:6379/1
-      - CORS_ORIGINS=http://localhost:3000,http://frontend:3000
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://103.99.36.70:3000,http://localhost:3000,http://frontend:3000}
+      - AWS_ACCESS_KEY=${AWS_ACCESS_KEY}
+      - AWS_SECRET_KEY=${AWS_SECRET_KEY}
+      - AWS_REGION=${AWS_REGION}
+      - AWS_S3_BUCKET=${AWS_S3_BUCKET}
     depends_on:
       - mongo
       - redis
@@ -223,7 +274,10 @@ services:
       - JWT_ALGORITHM=HS256
       - JWT_EXP_MINUTES=60
       - JWT_REFRESH_EXP_DAYS=30
-      - CORS_ORIGINS=http://localhost:3000,http://frontend:3000
+      - JWT_RSA_PRIVATE_KEY_PATH=${JWT_RSA_PRIVATE_KEY_PATH}
+      - JWT_RSA_PUBLIC_KEY_PATH=${JWT_RSA_PUBLIC_KEY_PATH}
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://103.99.36.70:3000,http://localhost:3000,http://frontend:3000}
+      - DEBUG=${DEBUG:-false}
     depends_on:
       - mongo
     networks:
