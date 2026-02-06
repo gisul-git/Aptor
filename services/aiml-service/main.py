@@ -1,5 +1,5 @@
 """
-AIML Service - Microservice for AI/ML competency assessmentss
+AIML Service - Microservice for AI/ML competency assessments
 """
 from contextlib import asynccontextmanager
 import logging
