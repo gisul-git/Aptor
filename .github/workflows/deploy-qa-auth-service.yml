@@ -1,0 +1,83 @@
+name: Deploy Auth Service to QA (Debian VM)
+
+on:
+  push:
+    branches:
+      - QA
+    paths:
+      - 'services/auth-service/**'
+      - '.github/workflows/deploy-qa-auth-service.yml'
+  pull_request:
+    types: [closed]
+    branches:
+      - QA
+    paths:
+      - 'services/auth-service/**'
+  workflow_dispatch:
+
+env:
+  VM_HOST: ${{ secrets.QA_VM_HOST }}
+  VM_USER: ${{ secrets.QA_VM_USER }}
+  VM_SSH_KEY: ${{ secrets.QA_VM_SSH_KEY }}
+  VM_DEPLOY_PATH: ${{ secrets.QA_VM_DEPLOY_PATH }}
+
+jobs:
+  deploy-auth-service-qa:
+    runs-on: ubuntu-latest
+    if: |
+      github.event_name == 'push' ||
+      (github.event_name == 'pull_request' && github.event.pull_request.merged == true) ||
+      github.event_name == 'workflow_dispatch'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: QA
+
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ env.VM_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H ${{ env.VM_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Deploy Auth Service to QA VM
+        run: |
+          DEPLOY_PATH="${{ env.VM_DEPLOY_PATH }}"
+          if [ -z "$DEPLOY_PATH" ]; then
+            DEPLOY_PATH="/opt/aptor"
+          fi
+          
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no ${{ env.VM_USER }}@${{ env.VM_HOST }} bash << EOF
+            set -e
+            
+            echo "🚀 Starting Auth Service QA deployment..."
+            
+            cd ${DEPLOY_PATH}
+            git fetch origin
+            git checkout QA
+            git pull origin QA
+            
+            echo "🔨 Rebuilding Auth Service..."
+            docker-compose build auth-service
+            
+            echo "🔄 Restarting Auth Service..."
+            docker-compose up -d --no-deps auth-service
+            
+            sleep 5
+            
+            if docker-compose ps auth-service | grep -q "Up"; then
+              echo "✅ Auth Service deployed successfully!"
+              docker-compose ps auth-service
+            else
+              echo "❌ Auth Service deployment failed!"
+              docker-compose logs auth-service
+              exit 1
+            fi
+          EOF
+
+      - name: Verify Deployment
+        run: |
+          echo "✅ Auth Service deployment completed"
+

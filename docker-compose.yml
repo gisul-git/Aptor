@@ -25,6 +25,32 @@ services:
     networks:
       - microservices-network
 
+  # Frontend
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: gisul-frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - NEXT_TELEMETRY_DISABLED=1
+      - NEXTAUTH_URL=${NEXTAUTH_URL:-http://localhost:3000}
+      - NEXTAUTH_SECRET=${NEXTAUTH_SECRET}
+      - NEXT_PUBLIC_API_URL=http://api-gateway:80
+      - API_GATEWAY_URL=http://api-gateway:80
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
+      - AZURE_AD_CLIENT_ID=${AZURE_AD_CLIENT_ID}
+      - AZURE_AD_CLIENT_SECRET=${AZURE_AD_CLIENT_SECRET}
+      - AZURE_AD_TENANT_ID=${AZURE_AD_TENANT_ID:-common}
+    depends_on:
+      - api-gateway
+    networks:
+      - microservices-network
+    restart: unless-stopped
+
   # API Gateway
   api-gateway:
     build:
@@ -42,7 +68,7 @@ services:
       - DSA_SERVICE_URL=http://dsa-service:3004
       - PROCTORING_SERVICE_URL=http://proctoring-service:3005
       - SUPER_ADMIN_SERVICE_URL=http://super-admin-service:3006
-      - CORS_ORIGINS=http://localhost:3000,http://localhost:3001
+      - CORS_ORIGINS=http://localhost:3000,http://frontend:3000,http://localhost:3001
     depends_on:
       - auth-service
     networks:
@@ -64,7 +90,7 @@ services:
       - JWT_ALGORITHM=HS256
       - JWT_EXP_MINUTES=60
       - JWT_REFRESH_EXP_DAYS=30
-      - CORS_ORIGINS=http://localhost:3000
+      - CORS_ORIGINS=http://localhost:3000,http://frontend:3000
       - EMAIL_PROVIDER=sendgrid
       - SENDGRID_API_KEY=${SENDGRID_API_KEY}
       - SENDGRID_FROM_EMAIL=${SENDGRID_FROM_EMAIL}
@@ -89,7 +115,7 @@ services:
       - REDIS_URL=redis://redis:6379/0
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - GEMINI_API_KEY=${GEMINI_API_KEY}
-      - CORS_ORIGINS=http://localhost:3000
+      - CORS_ORIGINS=http://localhost:3000,http://frontend:3000
     depends_on:
       - mongo
       - redis
@@ -110,7 +136,7 @@ services:
       - MONGO_URI=mongodb://mongo:27017
       - MONGO_DB=custom_mcq_db
       - REDIS_URL=redis://redis:6379/0
-      - CORS_ORIGINS=http://localhost:3000
+      - CORS_ORIGINS=http://localhost:3000,http://frontend:3000
     depends_on:
       - mongo
       - redis
@@ -131,7 +157,7 @@ services:
       - MONGO_URI=mongodb://mongo:27017
       - MONGO_DB=aiml_db
       - REDIS_URL=redis://redis:6379/0
-      - CORS_ORIGINS=http://localhost:3000
+      - CORS_ORIGINS=http://localhost:3000,http://frontend:3000
     depends_on:
       - mongo
       - redis
@@ -154,7 +180,7 @@ services:
       - JUDGE0_URL=${JUDGE0_URL}
       - JUDGE0_API_KEY=${JUDGE0_API_KEY}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - CORS_ORIGINS=http://localhost:3000
+      - CORS_ORIGINS=http://localhost:3000,http://frontend:3000
     depends_on:
       - mongo
       - redis
@@ -174,7 +200,7 @@ services:
       - MONGO_URI=mongodb://mongo:27017
       - MONGO_DB=proctoring_db
       - REDIS_URL=redis://redis:6379/1
-      - CORS_ORIGINS=http://localhost:3000
+      - CORS_ORIGINS=http://localhost:3000,http://frontend:3000
     depends_on:
       - mongo
       - redis
@@ -197,7 +223,7 @@ services:
       - JWT_ALGORITHM=HS256
       - JWT_EXP_MINUTES=60
       - JWT_REFRESH_EXP_DAYS=30
-      - CORS_ORIGINS=http://localhost:3000
+      - CORS_ORIGINS=http://localhost:3000,http://frontend:3000
     depends_on:
       - mongo
     networks:
