@@ -30,7 +30,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       password,
     };
     
-    // Add optional fields if provided
+    // Add optional fields if providedd
     if (organization) {
       payload.organization = organization;
     }
