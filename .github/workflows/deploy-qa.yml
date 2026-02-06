@@ -63,9 +63,17 @@ jobs:
               echo "⚠️  Warning: .env file not found. Please ensure environment variables are set."
             fi
             
-            # Stop existing containers
+            # Stop existing containers (with timeout and force removal)
             echo "🛑 Stopping existing containers..."
-            docker compose down || true
+            docker compose down --timeout 30 --remove-orphans || true
+            
+            # Force stop any remaining containers from this project
+            echo "🛑 Force stopping any remaining containers..."
+            docker compose ps -q | xargs -r docker stop -t 10 || true
+            docker compose ps -q | xargs -r docker rm -f || true
+            
+            # Remove any orphaned containers with our naming pattern
+            docker ps -a --filter "name=gisul-" --format "{{.ID}}" | xargs -r docker rm -f || true
             
             # Cleanup old images
             echo "🧹 Cleaning up old Docker images..."
