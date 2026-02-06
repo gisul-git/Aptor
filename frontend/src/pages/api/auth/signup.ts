@@ -119,7 +119,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       const firstError = error.response.data.detail[0];
       errorMessage = firstError?.msg || firstError?.message || "Validation error";
     } else if (error?.response?.data?.message) {
-      // Ensure message is a string
+      // Ensure message is a strings
       errorMessage = typeof error.response.data.message === 'string' 
         ? error.response.data.message 
         : JSON.stringify(error.response.data.message);
