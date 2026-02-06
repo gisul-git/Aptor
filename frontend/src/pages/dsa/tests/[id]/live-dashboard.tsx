@@ -73,18 +73,19 @@ export default function LiveProctoringDashboard({
     // Group sessions by candidateId and deduplicate
     const sessionsByCandidate: Record<string, CandidateData[]> = {};
     streamMap.forEach((info, sessionId) => {
-      // Map candidateId to assessmentCandidates
-      let resolvedName = undefined;
-      let resolvedEmail = undefined;
-      if (assessmentCandidates && assessmentCandidates.length > 0) {
+      // Prioritize candidate name/email from backend (info.candidateName/Email)
+      // Fallback to assessmentCandidates lookup if not available
+      let resolvedName = info.candidateName;
+      let resolvedEmail = info.candidateEmail;
+      
+      // Fallback to assessmentCandidates lookup if backend didn't provide name
+      if (!resolvedName && assessmentCandidates && assessmentCandidates.length > 0) {
         const found = assessmentCandidates.find((c: any) => c.email === info.candidateId || (c as any).id === info.candidateId);
         if (found) {
           resolvedName = found.name || undefined;
-          resolvedEmail = found.email || undefined;
+          resolvedEmail = resolvedEmail || found.email || undefined;
         }
       }
-      if (!resolvedName) resolvedName = undefined;
-      if (!resolvedEmail) resolvedEmail = undefined;
 
       const candidateData: CandidateData = {
         sessionId: info.sessionId,
@@ -575,7 +576,6 @@ export default function LiveProctoringDashboard({
             )}
             <div>
               <h1 className="text-xl font-semibold text-gray-900">Live Proctoring Dashboard</h1>
-              <p className="text-sm text-gray-600">DSA Test: {assessmentId}</p>
             </div>
           </div>
           <div className="flex items-center gap-3">
@@ -662,7 +662,9 @@ function CandidateTile({ candidate, onExpand, onRefresh, videoRefs }: CandidateT
           <p className="font-medium text-gray-900 truncate">
             {candidate.candidateName || candidate.candidateEmail || 'Unknown Candidate'}
           </p>
-          <p className="text-xs text-gray-500 truncate">{candidate.candidateId}</p>
+          {candidate.candidateEmail && candidate.candidateEmail !== candidate.candidateName && (
+            <p className="text-xs text-gray-500 truncate">{candidate.candidateEmail}</p>
+          )}
         </div>
         <div className="flex items-center gap-2">
           <div

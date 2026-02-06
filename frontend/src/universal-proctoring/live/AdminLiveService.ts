@@ -21,6 +21,47 @@ const GLOBAL_AGORA_CONNECTIONS = new Map<string, {
 // Track pending connections to prevent race conditions
 const PENDING_CONNECTIONS = new Map<string, Promise<boolean>>();
 
+// Global map to store candidate info (name/email) by candidateId
+// Populated when candidates request tokens, used by admin to display names
+const CANDIDATE_INFO_MAP = new Map<string, {
+  candidateName?: string;
+  candidateEmail?: string;
+  timestamp: number;
+}>();
+
+// Initialize global map on window if not exists (for CandidateLiveService to access)
+if (typeof window !== 'undefined') {
+  (window as any).__CANDIDATE_INFO_MAP = CANDIDATE_INFO_MAP;
+  
+  // Sync from window if CandidateLiveService already populated it
+  const syncFromWindow = () => {
+    const windowMap = (window as any).__CANDIDATE_INFO_MAP;
+    if (windowMap && windowMap instanceof Map) {
+      for (const [key, value] of Array.from(windowMap.entries())) {
+        if (!CANDIDATE_INFO_MAP.has(key)) {
+          CANDIDATE_INFO_MAP.set(key, value as any);
+        }
+      }
+    }
+  };
+  
+  // Sync periodically
+  setInterval(syncFromWindow, 1000);
+  
+  // Cleanup old candidate info every 5 minutes
+  setInterval(() => {
+    const now = Date.now();
+    for (const [candidateId, info] of Array.from(CANDIDATE_INFO_MAP.entries())) {
+      if (now - info.timestamp > 300000) { // 5 minutes
+        CANDIDATE_INFO_MAP.delete(candidateId);
+        if ((window as any).__CANDIDATE_INFO_MAP) {
+          (window as any).__CANDIDATE_INFO_MAP.delete(candidateId);
+        }
+      }
+    }
+  }, 60000); // Check every minute
+}
+
 // Cleanup old connections every 10 seconds
 if (typeof window !== 'undefined') {
   setInterval(() => {
@@ -141,7 +182,7 @@ export class AdminLiveService {
    * 
    * Production-level: Handles multiple video tracks per user (webcam + screen).
    */
-  private rebuildCandidateStreamsFromRemoteUsers(): void {
+  private async rebuildCandidateStreamsFromRemoteUsers(): Promise<void> {
     if (!this.client) {
       return;
     }
@@ -226,12 +267,79 @@ export class AdminLiveService {
         // Use candidateId as sessionId
         const sessionId = candidateId;
 
+        // Look up candidate info - try multiple sources
+        let candidateName: string | undefined;
+        let candidateEmail: string | undefined;
+        
+        // 1. Check window map (same tab only)
+        if (typeof window !== 'undefined') {
+          const windowMap = (window as any).__CANDIDATE_INFO_MAP;
+          if (windowMap && windowMap instanceof Map) {
+            const windowInfo = windowMap.get(candidateId);
+            if (windowInfo) {
+              candidateName = windowInfo.candidateName;
+              candidateEmail = windowInfo.candidateEmail;
+            }
+          }
+        }
+        
+        // 2. Check local map
+        const localInfo = CANDIDATE_INFO_MAP.get(candidateId);
+        if (localInfo) {
+          candidateName = candidateName || localInfo.candidateName;
+          candidateEmail = candidateEmail || localInfo.candidateEmail;
+        }
+        
+        // 3. Fetch from backend if not found (works across tabs/windows)
+        if (!candidateName && !candidateEmail) {
+          try {
+            const tokenResponse = await fetch(LIVE_PROCTORING_ENDPOINTS.agoraToken(), {
+              method: "POST",
+              credentials: "include",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                assessmentId: this.config.assessmentId,
+                candidateId: candidateId,
+                role: "candidate",
+              }),
+            });
+            
+            if (tokenResponse.ok) {
+              const tokenData = await tokenResponse.json();
+              if (tokenData.candidateName || tokenData.candidateEmail) {
+                candidateName = tokenData.candidateName;
+                candidateEmail = tokenData.candidateEmail;
+                
+                // Store in maps for future use
+                CANDIDATE_INFO_MAP.set(candidateId, {
+                  candidateName,
+                  candidateEmail,
+                  timestamp: Date.now(),
+                });
+                if (typeof window !== 'undefined') {
+                  const windowMap = (window as any).__CANDIDATE_INFO_MAP || new Map();
+                  windowMap.set(candidateId, { candidateName, candidateEmail, timestamp: Date.now() });
+                  (window as any).__CANDIDATE_INFO_MAP = windowMap;
+                }
+                
+                this.log(`✅ Fetched candidate info from backend: ${candidateName || candidateEmail || 'none'}`);
+              }
+            }
+          } catch (error) {
+            // Silently fail - fallback to existing lookup
+          }
+        }
+
         // Create CandidateStreamInfo
         const streamInfo = this.toCandidateStreamInfo(
           sessionId,
           candidateId,
           existing.webcam || null,
-          existing.screen || null
+          existing.screen || null,
+          candidateName,
+          candidateEmail
         );
 
         this.candidateStreams.set(sessionId, streamInfo);
@@ -338,7 +446,7 @@ export class AdminLiveService {
         this.setupClientCallbacks();
         
         // 🔥 PRODUCTION FIX: Rebuild candidateStreams from existing client's remoteUsers
-        this.rebuildCandidateStreamsFromRemoteUsers();
+        await this.rebuildCandidateStreamsFromRemoteUsers();
         
         this.updateState({
           candidateStreams: new Map(this.candidateStreams),
@@ -367,7 +475,7 @@ export class AdminLiveService {
           this.setupClientCallbacks();
           
           // 🔥 PRODUCTION FIX: Rebuild candidateStreams from existing client's remoteUsers
-          this.rebuildCandidateStreamsFromRemoteUsers();
+          await this.rebuildCandidateStreamsFromRemoteUsers();
           
           this.updateState({
             candidateStreams: new Map(this.candidateStreams),
@@ -607,12 +715,96 @@ export class AdminLiveService {
       // Use candidateId as sessionId
       const sessionId = candidateId;
 
+      // Look up candidate info - try multiple sources
+      let candidateName: string | undefined;
+      let candidateEmail: string | undefined;
+      
+      this.log(`🔍 [DEBUG] Looking up candidate info for candidateId: ${candidateId}`);
+      
+      // 1. Check window map (same tab only)
+      if (typeof window !== 'undefined') {
+        const windowMap = (window as any).__CANDIDATE_INFO_MAP;
+        if (windowMap && windowMap instanceof Map) {
+          const windowInfo = windowMap.get(candidateId);
+          if (windowInfo) {
+            candidateName = windowInfo.candidateName;
+            candidateEmail = windowInfo.candidateEmail;
+            this.log(`✅ Found candidate info from window map: ${candidateName || candidateEmail || 'none'}`);
+          }
+        }
+      }
+      
+      // 2. Check local map
+      const localInfo = CANDIDATE_INFO_MAP.get(candidateId);
+      if (localInfo) {
+        candidateName = candidateName || localInfo.candidateName;
+        candidateEmail = candidateEmail || localInfo.candidateEmail;
+        if (candidateName || candidateEmail) {
+          this.log(`✅ Found candidate info from local map: ${candidateName || candidateEmail || 'none'}`);
+        }
+      }
+      
+      // 3. Fetch from backend if not found (works across tabs/windows)
+      if (!candidateName && !candidateEmail) {
+        try {
+          this.log(`🔍 [DEBUG] Fetching candidate info from backend for candidateId: ${candidateId}`);
+          const tokenResponse = await fetch(LIVE_PROCTORING_ENDPOINTS.agoraToken(), {
+            method: "POST",
+            credentials: "include",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              assessmentId: this.config.assessmentId,
+              candidateId: candidateId,
+              role: "candidate",
+            }),
+          });
+          
+          if (tokenResponse.ok) {
+            const tokenData = await tokenResponse.json();
+            if (tokenData.candidateName || tokenData.candidateEmail) {
+              candidateName = tokenData.candidateName;
+              candidateEmail = tokenData.candidateEmail;
+              
+              // Store in maps for future use
+              CANDIDATE_INFO_MAP.set(candidateId, {
+                candidateName,
+                candidateEmail,
+                timestamp: Date.now(),
+              });
+              if (typeof window !== 'undefined') {
+                const windowMap = (window as any).__CANDIDATE_INFO_MAP || new Map();
+                windowMap.set(candidateId, { candidateName, candidateEmail, timestamp: Date.now() });
+                (window as any).__CANDIDATE_INFO_MAP = windowMap;
+              }
+              
+              this.log(`✅ Fetched candidate info from backend: ${candidateName || candidateEmail || 'none'}`);
+            } else {
+              this.log(`⚠️ Backend token response has no candidate info for candidateId: ${candidateId}`);
+            }
+          } else {
+            this.log(`⚠️ Failed to fetch candidate info from backend: ${tokenResponse.statusText}`);
+          }
+        } catch (error) {
+          this.log(`⚠️ Error fetching candidate info from backend: ${error}`);
+        }
+      }
+      
+      if (!candidateName && !candidateEmail) {
+        this.log(`⚠️ No candidate info found for candidateId: ${candidateId}`);
+      } else {
+        this.log(`✅ Final candidate info: name=${candidateName || 'none'}, email=${candidateEmail || 'none'}`);
+      }
+
       // Create or update CandidateStreamInfo
       const streamInfo = this.toCandidateStreamInfo(
         sessionId,
         candidateId,
         existing.webcam || null,
-        existing.screen || null
+        existing.screen || null,
+        candidateName,
+        candidateEmail
       );
 
       this.candidateStreams.set(sessionId, streamInfo);

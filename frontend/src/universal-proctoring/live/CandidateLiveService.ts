@@ -184,7 +184,7 @@ export class CandidateLiveService {
       this.sessionId = existingSessionId || null;
 
       // 5. Get Agora token
-      this.log("Requesting Agora token...");
+      this.log(`🔍 [DEBUG] Requesting Agora token with candidateId: ${this.config.candidateId}`);
       const tokenResponse = await fetch(LIVE_PROCTORING_ENDPOINTS.agoraToken(), {
         method: "POST",
         credentials: "include",
@@ -208,6 +208,28 @@ export class CandidateLiveService {
       }
 
       this.log("✅ Agora token received");
+      this.log(`🔍 [DEBUG] Token response keys: ${Object.keys(tokenData).join(', ')}`);
+      this.log(`🔍 [DEBUG] Token response candidateName: ${tokenData.candidateName || 'MISSING'}`);
+      this.log(`🔍 [DEBUG] Token response candidateEmail: ${tokenData.candidateEmail || 'MISSING'}`);
+      
+      // Store candidate info in global map for admin to use
+      if (typeof window !== 'undefined') {
+        const candidateInfoMap = (window as any).__CANDIDATE_INFO_MAP || new Map();
+        if (tokenData.candidateName || tokenData.candidateEmail) {
+          candidateInfoMap.set(this.config.candidateId, {
+            candidateName: tokenData.candidateName,
+            candidateEmail: tokenData.candidateEmail,
+            timestamp: Date.now(),
+          });
+          (window as any).__CANDIDATE_INFO_MAP = candidateInfoMap;
+          this.log(`✅ Stored candidate info: ${tokenData.candidateName || tokenData.candidateEmail || 'no name'} (candidateId: ${this.config.candidateId})`);
+          this.log(`🔍 [DEBUG] Map size after store: ${candidateInfoMap.size}`);
+          this.log(`🔍 [DEBUG] Map keys: ${Array.from(candidateInfoMap.keys()).join(', ')}`);
+        } else {
+          this.log(`⚠️ No candidate name/email in token response for candidateId: ${this.config.candidateId}`);
+          this.log(`🔍 [DEBUG] Full token response:`, JSON.stringify(tokenData, null, 2));
+        }
+      }
 
       // 6. Create separate Agora clients for webcam and screen
       // RTC mode doesn't support multiple video tracks per client, so we need two clients
