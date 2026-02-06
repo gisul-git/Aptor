@@ -4,7 +4,7 @@
  */
 
 // ============================================================================
-// Extension Detection Configuration
+// Extension Detection Configurations
 // ============================================================================
 
 export const EXTENSION_DETECTION_CONFIG = {
