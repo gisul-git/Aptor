@@ -284,6 +284,40 @@ services:
       - microservices-network
     restart: unless-stopped
 
+  # Employee Service
+  employee-service:
+    build:
+      context: ./services/employee-service
+      dockerfile: Dockerfile
+    container_name: gisul-employee-service
+    ports:
+      - "4005:4005"
+    environment:
+      - MONGO_URI=mongodb://mongo:27017
+      - MONGO_DB=employee_db
+      - ORG_ADMINS_DB=org_admins_db
+      - ORGANIZATION_MONGO_DB=organization_db
+      - JWT_SECRET=${JWT_SECRET}
+      - JWT_ALGORITHM=HS256
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://103.99.36.70:3000,http://localhost:3000,http://frontend:3000}
+      - NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL:-http://localhost:3000}
+      - EMAIL_PROVIDER=${EMAIL_PROVIDER:-sendgrid}
+      - SENDGRID_API_KEY=${SENDGRID_API_KEY}
+      - SENDGRID_FROM_EMAIL=${SENDGRID_FROM_EMAIL}
+      - SENDGRID_FROM_NAME=${SENDGRID_FROM_NAME:-AI Assessment Platform}
+      - AWS_ACCESS_KEY=${AWS_ACCESS_KEY}
+      - AWS_SECRET_KEY=${AWS_SECRET_KEY}
+      - AWS_REGION=${AWS_REGION}
+      - AWS_EMAIL_SOURCE=${AWS_EMAIL_SOURCE}
+      - AZURE_COMM_CONNECTION_STRING=${AZURE_COMM_CONNECTION_STRING}
+      - AZURE_COMM_SENDER_ADDRESS=${AZURE_COMM_SENDER_ADDRESS}
+      - DEBUG=${DEBUG:-false}
+    depends_on:
+      - mongo
+    networks:
+      - microservices-network
+    restart: unless-stopped
+
 volumes:
   mongo_data:
   redis_data:
