@@ -1,18 +1,18 @@
 version: '3.8'
 
 services:
-  # MongoDB
-  mongo:
-    image: mongo:7.0
-    container_name: gisul-mongo
-    ports:
-      - "27017:27017"
-    volumes:
-      - mongo_data:/data/db
-    environment:
-      - MONGO_INITDB_DATABASE=ai_assessment
-    networks:
-      - microservices-network
+  # MongoDB - Commented out, using MongoDB Atlas instead
+  # mongo:
+  #   image: mongo:7.0
+  #   container_name: gisul-mongo
+  #   ports:
+  #     - "27017:27017"
+  #   volumes:
+  #     - mongo_data:/data/db
+  #   environment:
+  #     - MONGO_INITDB_DATABASE=ai_assessment
+  #   networks:
+  #     - microservices-network
 
   # Redis
   redis:
@@ -85,7 +85,7 @@ services:
     ports:
       - "4000:4000"
     environment:
-      - MONGO_URI=mongodb://mongo:27017
+      - MONGO_URI=${MONGO_URI}
       - MONGO_DB=auth_db
       - JWT_SECRET=${JWT_SECRET}
       - JWT_ALGORITHM=HS256
@@ -107,7 +107,6 @@ services:
       - AZURE_COMM_CONNECTION_STRING=${AZURE_COMM_CONNECTION_STRING}
       - AZURE_COMM_SENDER_ADDRESS=${AZURE_COMM_SENDER_ADDRESS}
     depends_on:
-      - mongo
       - redis
     networks:
       - microservices-network
@@ -122,7 +121,7 @@ services:
     ports:
       - "3001:3001"
     environment:
-      - MONGO_URI=mongodb://mongo:27017
+      - MONGO_URI=${MONGO_URI}
       - MONGO_DB=ai_assessment_db
       - REDIS_URL=redis://redis:6379/0
       - OPENAI_API_KEY=${OPENAI_API_KEY}
@@ -139,7 +138,6 @@ services:
       - SENDGRID_FROM_EMAIL=${SENDGRID_FROM_EMAIL}
       - DEBUG=${DEBUG:-false}
     depends_on:
-      - mongo
       - redis
     networks:
       - microservices-network
@@ -155,7 +153,7 @@ services:
     ports:
       - "3002:3002"
     environment:
-      - MONGO_URI=mongodb://mongo:27017
+      - MONGO_URI=${MONGO_URI}
       - MONGO_DB=custom_mcq_db
       - REDIS_URL=redis://redis:6379/0
       - CORS_ORIGINS=${CORS_ORIGINS:-http://103.99.36.70:3000,http://localhost:3000,http://frontend:3000}
@@ -165,7 +163,6 @@ services:
       - SENDGRID_FROM_EMAIL=${SENDGRID_FROM_EMAIL}
       - SENDGRID_FROM_NAME=${SENDGRID_FROM_NAME:-AI Assessment Platform}
     depends_on:
-      - mongo
       - redis
     networks:
       - microservices-network
@@ -181,7 +178,7 @@ services:
       - "3003:3003"
       - "8889:8889"  # WebSocket agent port
     environment:
-      - MONGO_URI=mongodb://mongo:27017
+      - MONGO_URI=${MONGO_URI}
       - MONGO_DB=aiml_db
       - REDIS_URL=redis://redis:6379/0
       - CORS_ORIGINS=${CORS_ORIGINS:-http://103.99.36.70:3000,http://localhost:3000,http://frontend:3000}
@@ -196,7 +193,6 @@ services:
       - AZURE_COMM_CONNECTION_STRING=${AZURE_COMM_CONNECTION_STRING}
       - AZURE_COMM_SENDER_ADDRESS=${AZURE_COMM_SENDER_ADDRESS}
     depends_on:
-      - mongo
       - redis
     networks:
       - microservices-network
@@ -211,7 +207,7 @@ services:
     ports:
       - "3004:3004"
     environment:
-      - MONGO_URI=mongodb://mongo:27017
+      - MONGO_URI=${MONGO_URI}
       - MONGO_DB=dsa_db
       - REDIS_URL=redis://redis:6379/0
       - JUDGE0_URL=${JUDGE0_URL}
@@ -229,7 +225,6 @@ services:
       - SENDGRID_FROM_EMAIL=${SENDGRID_FROM_EMAIL}
       - SENDGRID_FROM_NAME=${SENDGRID_FROM_NAME:-AI Assessment Platform}
     depends_on:
-      - mongo
       - redis
     networks:
       - microservices-network
@@ -244,7 +239,7 @@ services:
     ports:
       - "3005:3005"
     environment:
-      - MONGO_URI=mongodb://mongo:27017
+      - MONGO_URI=${MONGO_URI}
       - MONGO_DB=proctoring_db
       - REDIS_URL=redis://redis:6379/1
       - CORS_ORIGINS=${CORS_ORIGINS:-http://103.99.36.70:3000,http://localhost:3000,http://frontend:3000}
@@ -253,7 +248,6 @@ services:
       - AWS_REGION=${AWS_REGION}
       - AWS_S3_BUCKET=${AWS_S3_BUCKET}
     depends_on:
-      - mongo
       - redis
     networks:
       - microservices-network
@@ -268,7 +262,7 @@ services:
     ports:
       - "3006:3006"
     environment:
-      - MONGO_URI=mongodb://mongo:27017
+      - MONGO_URI=${MONGO_URI}
       - MONGO_DB=auth_db
       - JWT_SECRET=${JWT_SECRET}
       - JWT_ALGORITHM=HS256
@@ -278,8 +272,6 @@ services:
       - JWT_RSA_PUBLIC_KEY_PATH=${JWT_RSA_PUBLIC_KEY_PATH}
       - CORS_ORIGINS=${CORS_ORIGINS:-http://103.99.36.70:3000,http://localhost:3000,http://frontend:3000}
       - DEBUG=${DEBUG:-false}
-    depends_on:
-      - mongo
     networks:
       - microservices-network
     restart: unless-stopped
@@ -293,7 +285,7 @@ services:
     ports:
       - "4005:4005"
     environment:
-      - MONGO_URI=mongodb://mongo:27017
+      - MONGO_URI=${MONGO_URI}
       - MONGO_DB=employee_db
       - ORG_ADMINS_DB=org_admins_db
       - ORGANIZATION_MONGO_DB=organization_db
@@ -312,14 +304,12 @@ services:
       - AZURE_COMM_CONNECTION_STRING=${AZURE_COMM_CONNECTION_STRING}
       - AZURE_COMM_SENDER_ADDRESS=${AZURE_COMM_SENDER_ADDRESS}
       - DEBUG=${DEBUG:-false}
-    depends_on:
-      - mongo
     networks:
       - microservices-network
     restart: unless-stopped
 
 volumes:
-  mongo_data:
+  # mongo_data:  # Not needed when using Atlas
   redis_data:
 
 networks:
