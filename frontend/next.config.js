@@ -1,6 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  reactStrictMode: true,
+  reactStrictMode: false,
   // Stub Node built-ins for browser bundles (e.g. face-api.js references 'fs' in unused Node code path)
   webpack: (config, { isServer }) => {
     if (!isServer) {
@@ -10,6 +10,23 @@ const nextConfig = {
         path: false,
       };
     }
+    
+    // Exclude face-api and agora-rtc-sdk-ng from SSR to avoid Node.js dependencies
+    if (isServer) {
+      config.externals = config.externals || [];
+      // Use a function to properly externalize these modules
+      const originalExternals = config.externals;
+      config.externals = [
+        ...(Array.isArray(originalExternals) ? originalExternals : [originalExternals]),
+        ({ request }, callback) => {
+          if (request === '@vladmandic/face-api' || request === 'agora-rtc-sdk-ng') {
+            return callback(null, `commonjs ${request}`);
+          }
+          callback();
+        },
+      ];
+    }
+    
     return config;
   },
   // Proxy API requests to backend server (exclude NextAuth routes)

@@ -278,9 +278,6 @@ export default function CandidateAssessmentPage() {
   const thumbVideoRef = useRef<HTMLVideoElement>(null);
   const liveProctoringServiceRef = useRef<CandidateLiveService | null>(null);
   const liveProctoringStartedRef = useRef(false);
-  const startSessionCalledRef = useRef(false); // Guard: prevent multiple start-session calls
-  const candidateWsRef = useRef<WebSocket | null>(null); // Store candidate WebSocket to pass to service
-  const candidateSessionIdRef = useRef<string | null>(null); // Store sessionId to pass to service
   const [debugMode, setDebugMode] = useState(false);
 
   // Get client-side values safely
@@ -355,6 +352,19 @@ export default function CandidateAssessmentPage() {
     return success;
   }, [requestFullscreenLock, setFullscreenLocked]);
 
+  // Handle warning callback from universal proctoring (non-violation notifications)
+  const handleUniversalWarning = useCallback((warning: any) => {
+    if (warning.type === 'FACE_NOT_CLEARLY_VISIBLE') {
+      pushViolationToast({
+        id: `warning-${warning.type}-${Date.now()}`,
+        eventType: warning.type,
+        message: warning.message,
+        timestamp: new Date(warning.timestamp).toISOString(),
+        isWarning: true, // Mark as warning (yellow styling)
+      });
+    }
+  }, []);
+
   // Universal proctoring hook - handles AI proctoring, tab switch, fullscreen
   const {
     state: proctoringState,
@@ -366,6 +376,7 @@ export default function CandidateAssessmentPage() {
     isFullscreen,
   } = useUniversalProctoring({
     onViolation: handleUniversalViolation,
+    onWarning: handleUniversalWarning,
     debug: debugMode,
   });
 
@@ -399,20 +410,35 @@ export default function CandidateAssessmentPage() {
           assessmentId: assessmentIdStr,
         },
         videoElement: aiProctoringEnabled ? thumbVideoRef.current : null,
+      }).then(async (success) => {
+        if (success) {
+          console.log('[Assessment Take] ✅ Universal Proctoring started');
+          
+          // Start Agora Live Proctoring immediately after AI proctoring starts
+          if (liveProctoringEnabled && !liveProctoringStartedRef.current) {
+            await startLiveProctoring();
+          }
+        }
       });
     }
   }, [appState, isProctoringRunning, isClient, aiProctoringEnabled, liveProctoringEnabled, candidateIdStr, assessmentIdStr, startUniversalProctoring]);
 
-  // ✅ PHASE 2.4: Lazy start function (called only when admin connects)
-  const startLiveProctoring = useCallback((sessionId: string, ws: WebSocket) => {
+  // Start Agora Live Proctoring when exam starts
+  const startLiveProctoring = useCallback(async () => {
     if (liveProctoringStartedRef.current) {
+      console.log('[Assessment Take] Live Proctoring already started');
       return;
     }
 
+    if (!assessmentIdStr || !candidateIdStr) {
+      console.error('[Assessment Take] Missing assessmentId or candidateId for live proctoring');
+      return;
+    }
+
+    console.log('[Assessment Take] 🚀 Starting Agora Live Proctoring...');
     liveProctoringStartedRef.current = true;
 
     // Extract raw candidateId for live proctoring (remove email: or public: prefix)
-    // Live proctoring backend expects raw email or token, not formatted userId
     let rawCandidateId = candidateIdStr;
     if (candidateIdStr.startsWith('email:')) {
       rawCandidateId = candidateIdStr.replace('email:', '');
@@ -420,103 +446,54 @@ export default function CandidateAssessmentPage() {
       rawCandidateId = candidateIdStr.replace('public:', '');
     }
 
-    const liveService = new CandidateLiveService({
-      assessmentId: assessmentIdStr,
-      candidateId: rawCandidateId, // Use raw email/token for live proctoring
-      debugMode: debugMode,
-    });
-
-    // Get existing webcam stream from video element
-    const existingWebcamStream = thumbVideoRef.current?.srcObject as MediaStream | null;
-
-    liveService.start(
-      {
-        onStateChange: (state) => {
-          // State change handler
-        },
-        onError: (error) => {
-          // Error handler
-        },
-      },
-      liveProctorScreenStream,
-      existingWebcamStream,
-      sessionId, // Pass existing sessionId
-      ws // Pass existing WebSocket
-    ).then((success) => {
-      if (success) {
-        liveProctoringServiceRef.current = liveService;
-      } else {
-        liveProctoringStartedRef.current = false;
-      }
-    });
-  }, [assessmentIdStr, candidateIdStr, debugMode, liveProctorScreenStream]);
-
-  // ✅ PHASE 2: Lazy WebRTC - Register session and wait for admin signal
-  useEffect(() => {
-    if (!liveProctoringEnabled || !liveProctorScreenStream || appState !== 'ready') {
-      return;
-    }
-
-    // Guard: Ensure start-session is called only once per candidate per test
-    if (startSessionCalledRef.current) {
-      return;
-    }
-
-    // Mark as called immediately to prevent race conditions
-    startSessionCalledRef.current = true;
-
-    // Register live session (backend sets status to "candidate_initiated")
-    // Phase 2.2: Register session with backend
-    startProctorSessionMutation.mutateAsync({
-      assessmentId: assessmentIdStr,
-      userId: candidateIdStr,
-    })
-      .then((response) => {
-        const data = response.data || response;
-        if (data.success && data.data?.sessionId) {
-          const sessionId = data.data.sessionId;
-          candidateSessionIdRef.current = sessionId;
-
-          // Phase 2.3: Connect WebSocket and listen for ADMIN_CONNECTED
-          // Use backend host for WebSocket connection
-          // eslint-disable-next-line @typescript-eslint/no-var-requires
-          const { LIVE_PROCTORING_ENDPOINTS } = require("@/universal-proctoring/live/types");
-          const wsUrl = LIVE_PROCTORING_ENDPOINTS.candidateWs(sessionId, candidateIdStr);
-          const ws = new WebSocket(wsUrl);
-          candidateWsRef.current = ws;
-
-          ws.onopen = () => {
-            // WebSocket connected
-          };
-
-          ws.onmessage = (event) => {
-            const message = JSON.parse(event.data);
-            if (message.type === 'ADMIN_CONNECTED') {
-              startLiveProctoring(sessionId, ws);
-            }
-          };
-
-          ws.onerror = (error) => {
-            // WebSocket error
-          };
-
-          ws.onclose = () => {
-            candidateWsRef.current = null;
-          };
-        }
-      })
-      .catch((error) => {
-        // Failed to register session
+    try {
+      const liveService = new CandidateLiveService({
+        assessmentId: assessmentIdStr,
+        candidateId: rawCandidateId,
+        debugMode: debugMode,
       });
 
-    // Cleanup WebSocket on unmount
-    return () => {
-      if (candidateWsRef.current) {
-        candidateWsRef.current.close();
-        candidateWsRef.current = null;
+      // Wait for webcam stream to be available
+      let webcamStream = thumbVideoRef.current?.srcObject as MediaStream | null;
+      if (!webcamStream || !webcamStream.active) {
+        console.log('[Assessment Take] ⏳ Waiting for webcam stream...');
+        let retries = 0;
+        while (retries < 20 && (!webcamStream || !webcamStream.active)) {
+          await new Promise(resolve => setTimeout(resolve, 500));
+          webcamStream = thumbVideoRef.current?.srcObject as MediaStream | null;
+          retries++;
+        }
       }
-    };
-  }, [liveProctoringEnabled, liveProctorScreenStream, appState, assessmentIdStr, candidateIdStr, startLiveProctoring]);
+
+      const success = await liveService.start(
+        {
+          onStateChange: (state) => {
+            console.log('[Assessment Take] Live proctoring state:', state);
+          },
+          onError: (error) => {
+            console.error('[Assessment Take] Live Proctoring error:', error);
+          },
+        },
+        liveProctorScreenStream || null,
+        webcamStream || null,
+        null, // sessionId - not needed for Agora
+        null  // WebSocket - not needed for Agora
+      );
+
+      if (success) {
+        console.log('[Assessment Take] ✅ Live Proctoring (Agora) started successfully');
+        liveProctoringServiceRef.current = liveService;
+      } else {
+        console.error('[Assessment Take] ❌ Failed to start Live Proctoring');
+        liveProctoringStartedRef.current = false;
+      }
+    } catch (error) {
+      console.error('[Assessment Take] ❌ Error starting Live Proctoring:', error);
+      liveProctoringStartedRef.current = false;
+    }
+  }, [assessmentIdStr, candidateIdStr, debugMode, liveProctorScreenStream]);
+
+  // Note: Old WebSocket-based lazy approach removed - now using immediate Agora start
 
   // Stop proctoring when assessment ends
   useEffect(() => {

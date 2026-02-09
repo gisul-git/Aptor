@@ -136,7 +136,7 @@ export const aimlService = {
    * Update test
    */
   updateTest: async (testId: string, data: Partial<CreateAIMLTestDto>): Promise<ApiResponse<AIMLTest>> => {
-    const response = await apiClient.put<ApiResponse<AIMLTest>>(`/api/v1/aiml/tests/${testId}`, data);
+    const response = await apiClient.patch<ApiResponse<AIMLTest>>(`/api/v1/aiml/tests/${testId}`, data);
     return response.data;
   },
 

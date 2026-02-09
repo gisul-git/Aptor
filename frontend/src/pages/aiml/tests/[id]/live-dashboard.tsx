@@ -7,7 +7,7 @@ import { GetServerSideProps } from 'next'
 import { requireAuth } from '../../../../lib/auth'
 import { AdminLiveService } from '../../../../universal-proctoring/live/AdminLiveService'
 import { CandidateStreamInfo, AdminLiveState } from '../../../../universal-proctoring/live/types'
-import { ArrowLeft, Maximize2, Minimize2, RefreshCw, Users, Loader2 } from 'lucide-react'
+import { ArrowLeft, Maximize2, Minimize2, RefreshCw, Users, Loader2, Flag, X } from 'lucide-react'
 import Link from 'next/link'
 import { useAIMLCandidates } from '@/hooks/api/useAIML'
 
@@ -59,6 +59,11 @@ export default function LiveProctoringDashboard({
 
   // Service instance
   const serviceRef = useRef<AdminLiveService | null>(null)
+  const sessionIdRef = useRef(0)
+  
+  // Production-level: Track async operation state to prevent premature cleanup
+  const isInitializingRef = useRef(false) // Track if async init is in progress
+  const connectionEstablishedRef = useRef(false) // Track if connection was successfully established
 
   // State
   const [isMonitoring, setIsMonitoring] = useState(false)
@@ -66,6 +71,9 @@ export default function LiveProctoringDashboard({
   const [candidates, setCandidates] = useState<CandidateData[]>([])
   const [expandedSessionId, setExpandedSessionId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [flaggingCandidate, setFlaggingCandidate] = useState<string | null>(null)
+  const [flagReason, setFlagReason] = useState('')
+  const [flagSeverity, setFlagSeverity] = useState<'low' | 'medium' | 'high'>('medium')
 
   // Refs for video elements
   const videoRefs = useRef<Map<string, HTMLVideoElement>>(new Map())
@@ -75,18 +83,19 @@ export default function LiveProctoringDashboard({
     // Group sessions by candidateId and deduplicate
     const sessionsByCandidate: Record<string, CandidateData[]> = {};
     streamMap.forEach((info, sessionId) => {
-      // Map candidateId to assessmentCandidates
-      let resolvedName = undefined;
-      let resolvedEmail = undefined;
-      if (assessmentCandidates && assessmentCandidates.length > 0) {
+      // Prioritize candidate name/email from backend (info.candidateName/Email)
+      // Fallback to assessmentCandidates lookup if not available
+      let resolvedName = info.candidateName;
+      let resolvedEmail = info.candidateEmail;
+      
+      // Fallback to assessmentCandidates lookup if backend didn't provide name
+      if (!resolvedName && assessmentCandidates && assessmentCandidates.length > 0) {
         const found = assessmentCandidates.find((c) => c.email === info.candidateId || c.id === info.candidateId);
         if (found) {
           resolvedName = found.name || undefined;
-          resolvedEmail = found.email || undefined;
+          resolvedEmail = resolvedEmail || found.email || undefined;
         }
       }
-      if (!resolvedName) resolvedName = undefined;
-      if (!resolvedEmail) resolvedEmail = undefined;
 
       const candidateData: CandidateData = {
         sessionId: info.sessionId,
@@ -158,85 +167,193 @@ export default function LiveProctoringDashboard({
     // NOTE: Stream attachment is now handled by useEffect below, not here
   }, [assessmentCandidates])
 
-  // Initialize service
+  // Initialize service and start/stop monitoring (combined to prevent UID_CONFLICT in React Strict Mode)
   useEffect(() => {
-    if (!assessmentId || typeof assessmentId !== 'string' || !adminId) {
-      return;
-    }
+    // Debug: Check if effect runs twice (Strict Mode indicator)
+    const mountTime = Date.now();
+    console.log(`[Live Dashboard] 🔍 Effect mounted at ${mountTime}`);
+    
+    if (!isOpen) return;
+    if (!assessmentId || typeof assessmentId !== 'string' || !adminId) return;
 
-    console.log('[Live Dashboard] Initializing AdminLiveService...')
-
-    const service = new AdminLiveService({
-      assessmentId,
-      adminId: adminId,
-      debugMode: true,
-    })
-
-    serviceRef.current = service
-
-    // Cleanup on unmount
-    return () => {
-      console.log('[Live Dashboard] Cleanup: stopping monitoring')
-      if (serviceRef.current) {
-        serviceRef.current.stopMonitoring()
-      }
-    }
-  }, [assessmentId, adminId])
-
-  // Start/stop monitoring based on isOpen prop
-  useEffect(() => {
-    if (!serviceRef.current || !assessmentId || typeof assessmentId !== 'string') {
-      return;
-    }
-
-    const service = serviceRef.current;
-
-    if (isOpen) {
-      // Start monitoring when modal is opened
-      console.log('[Live Dashboard] Modal opened - starting monitoring...')
-      service.startMonitoring({
-        onStateChange: (state: Partial<AdminLiveState>) => {
-          console.log('[Live Dashboard] State changed:', state)
-
-          if (state.isMonitoring !== undefined) {
-            setIsMonitoring(state.isMonitoring)
-          }
-
-          if (state.isLoading !== undefined) {
-            setIsLoading(state.isLoading)
-          }
-
-          if (state.candidateStreams) {
-            updateCandidates(state.candidateStreams)
-          }
-        },
-        onCandidateConnected: (sessionId: string, candidateId: string) => {
-          console.log(`[Live Dashboard] ✅ Candidate connected: ${sessionId}`)
-        },
-        onCandidateDisconnected: (sessionId: string) => {
-          console.log(`[Live Dashboard] ⚠️ Candidate disconnected: ${sessionId}`)
-        },
-        onError: (error: string) => {
-          console.error(`[Live Dashboard] ❌ Error: ${error}`)
-          setError(error)
-        },
-      })
+    // Generate unique session ID for this mount
+    const currentSessionId = ++sessionIdRef.current;
+    console.log(`[Live Dashboard] Session ID: ${currentSessionId}`);
+    
+    if (currentSessionId > 1) {
+      console.log('[Live Dashboard] ⚠️ STRICT MODE IS STILL ACTIVE - Effect ran multiple times');
     } else {
-      // Stop monitoring when modal is closed
-      console.log('[Live Dashboard] Modal closed - stopping monitoring...')
-      service.stopMonitoring()
-      setIsMonitoring(false)
-      setCandidates([])
+      console.log('[Live Dashboard] ✅ Effect running for first time (Strict Mode OFF)');
     }
+    
+    let service: AdminLiveService | null = null;
+    const connectionCreatedByThisMountRef = { current: false }; // Track if THIS mount created the connection
+    
+    // Production-level: Mark async operation as in progress
+    isInitializingRef.current = true;
+    connectionEstablishedRef.current = false;
 
-    // Cleanup: stop monitoring when component unmounts or isOpen becomes false
-    return () => {
-      if (!isOpen && serviceRef.current) {
-        console.log('[Live Dashboard] Cleanup: stopping monitoring')
-        serviceRef.current.stopMonitoring()
+    const initMonitoring = async () => {
+      try {
+        // Check if this session is still valid
+        if (currentSessionId !== sessionIdRef.current) {
+          console.log('[Live Dashboard] Session outdated, aborting');
+          isInitializingRef.current = false; // Mark async as complete
+          return;
+        }
+
+        setIsLoading(true);
+        
+        // Cleanup old service if exists
+        if (serviceRef.current) {
+          console.log('[Live Dashboard] Cleaning up existing service...');
+          await serviceRef.current.stopMonitoring().catch(() => {});
+          serviceRef.current = null;
+        }
+
+        // Check again before creating service
+        if (currentSessionId !== sessionIdRef.current) {
+          console.log('[Live Dashboard] Session outdated before service creation');
+          isInitializingRef.current = false; // Mark async as complete
+          return;
+        }
+
+        service = new AdminLiveService({
+          assessmentId,
+          adminId: adminId,
+          debugMode: true,
+        });
+
+        // Check again before async operation
+        if (currentSessionId !== sessionIdRef.current) {
+          // Don't call stopMonitoring - service was never started
+          isInitializingRef.current = false; // Mark async as complete
+          return;
+        }
+
+        serviceRef.current = service;
+
+        // Start monitoring
+        const monitoringResult = await service.startMonitoring({
+          onStateChange: (state: Partial<AdminLiveState>) => {
+            if (currentSessionId !== sessionIdRef.current) return;
+            console.log('[Live Dashboard] State changed:', state);
+
+            if (state.isMonitoring !== undefined) {
+              setIsMonitoring(state.isMonitoring);
+            }
+
+            if (state.isLoading !== undefined) {
+              setIsLoading(state.isLoading);
+            }
+
+            if (state.candidateStreams) {
+              updateCandidates(state.candidateStreams);
+            }
+          },
+          onCandidateConnected: (sessionId: string, candidateId: string) => {
+            if (currentSessionId === sessionIdRef.current) {
+              console.log(`[Live Dashboard] ✅ Candidate connected: ${sessionId}`);
+            }
+          },
+          onCandidateDisconnected: (sessionId: string) => {
+            if (currentSessionId === sessionIdRef.current) {
+              console.log(`[Live Dashboard] ⚠️ Candidate disconnected: ${sessionId}`);
+            }
+          },
+          onError: (error: string) => {
+            if (currentSessionId === sessionIdRef.current) {
+              console.error(`[Live Dashboard] ❌ Error: ${error}`);
+              setError(error);
+              setIsLoading(false);
+            }
+          },
+        });
+
+        // Check if session was invalidated during async operation
+        if (currentSessionId !== sessionIdRef.current) {
+          console.log('[Live Dashboard] Session invalidated during startMonitoring');
+          // Don't call stopMonitoring - connection was reused by newer mount
+          isInitializingRef.current = false; // Mark async as complete
+          connectionEstablishedRef.current = false;
+          return;
+        }
+
+        // Production-level: Track if THIS mount created the connection
+        // connectionReused = true means we reused an existing connection (didn't create it)
+        // connectionReused = false means we created a new connection (this mount owns it)
+        connectionCreatedByThisMountRef.current = monitoringResult.success && !monitoringResult.connectionReused;
+
+        // Final check before setting state
+        if (currentSessionId === sessionIdRef.current && monitoringResult.success) {
+          setIsMonitoring(true);
+          setIsLoading(false);
+          console.log(`[Live Dashboard] ✅ Monitoring started (connection ${connectionCreatedByThisMountRef.current ? 'created' : 'reused'})`);
+          // Production-level: Mark connection as successfully established
+          connectionEstablishedRef.current = true;
+        } else {
+          // Don't call stopMonitoring - connection was reused or failed
+          connectionEstablishedRef.current = false;
+        }
+      } catch (error) {
+        if (currentSessionId === sessionIdRef.current) {
+          console.error('[Live Dashboard] Failed to start:', error);
+          setError(error instanceof Error ? error.message : 'Failed to start monitoring');
+          setIsLoading(false);
+        }
+        connectionEstablishedRef.current = false;
+      } finally {
+        // Production-level: Always mark async as complete when done
+        isInitializingRef.current = false;
       }
-    }
-  }, [isOpen, assessmentId, updateCandidates]) // Re-run when isOpen or assessmentId changes
+    };
+
+    initMonitoring();
+
+    return () => {
+      console.log(`[Live Dashboard] Cleanup: invalidating session ${currentSessionId}`);
+      
+      // Production-level: Check if async operation is still in progress
+      const isAsyncInProgress = isInitializingRef.current;
+      const isLatestSession = currentSessionId === sessionIdRef.current;
+      const serviceWasReplaced = service && serviceRef.current !== service;
+      const connectionCreatedByThisMount = connectionCreatedByThisMountRef.current;
+      
+      // Production-level: Only stop monitoring if ALL conditions are met:
+      // 1. Async operation completed (not still initializing)
+      // 2. This is the latest session (not a stale mount)
+      // 3. THIS mount created the connection (not reused from another mount)
+      // 4. Service was NOT replaced (newer session didn't take over)
+      // 5. Connection was successfully established (not a failed attempt)
+      const shouldStopMonitoring = 
+        !isAsyncInProgress && // ✅ Async completed
+        isLatestSession && // ✅ Latest session
+        connectionCreatedByThisMount && // ✅ This mount created the connection (not reused)
+        !serviceWasReplaced && // ✅ Not replaced
+        connectionEstablishedRef.current; // ✅ Successfully established
+      
+      if (shouldStopMonitoring) {
+        console.log(`[Live Dashboard] 🛑 Stopping monitoring (session ${currentSessionId} created connection)`);
+        if (service) {
+          service.stopMonitoring().catch(console.error);
+          serviceRef.current = null;
+        }
+        connectionEstablishedRef.current = false;
+      } else {
+        const reasons = [];
+        if (isAsyncInProgress) reasons.push('async still in progress');
+        if (!isLatestSession) reasons.push('session is stale');
+        if (!connectionCreatedByThisMount) reasons.push('connection was reused (not created by this mount)');
+        if (serviceWasReplaced) reasons.push('service was replaced');
+        if (!connectionEstablishedRef.current) reasons.push('connection not established');
+        
+        console.log(`[Live Dashboard] ⏭️ Skipping cleanup - ${reasons.join(', ') || 'unknown reason'}`);
+      }
+      
+      // Always increment session ID to invalidate any ongoing operations
+      sessionIdRef.current++;
+    };
+  }, [isOpen, assessmentId, adminId, updateCandidates]);
 
   // Refresh specific candidate connection
   const refreshCandidate = useCallback((sessionId: string) => {
@@ -424,6 +541,13 @@ export default function LiveProctoringDashboard({
             >
               <RefreshCw className="w-5 h-5 text-white" />
             </button>
+            <button
+              onClick={() => expandedCandidate && setFlaggingCandidate(expandedCandidate.candidateId)}
+              className="p-2 hover:bg-gray-800 rounded-lg transition-colors"
+              title="Flag candidate for suspicious behavior"
+            >
+              <Flag className="w-5 h-5 text-white" />
+            </button>
           </div>
         </div>
 
@@ -489,7 +613,6 @@ export default function LiveProctoringDashboard({
             )}
             <div>
               <h1 className="text-xl font-semibold text-gray-900">Live Proctoring Dashboard</h1>
-              <p className="text-sm text-gray-600">AIML Test: {assessmentId}</p>
             </div>
           </div>
           <div className="flex items-center gap-3">
@@ -546,12 +669,113 @@ export default function LiveProctoringDashboard({
                 candidate={candidate}
                 onExpand={toggleExpand}
                 onRefresh={refreshCandidate}
+                onFlag={() => setFlaggingCandidate(candidate.candidateId)}
                 videoRefs={videoRefs}
               />
             ))}
           </div>
         )}
       </div>
+
+      {/* Flag Candidate Modal */}
+      {flaggingCandidate && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl font-semibold text-gray-900">Flag Candidate</h2>
+              <button
+                onClick={() => {
+                  setFlaggingCandidate(null);
+                  setFlagReason('');
+                  setFlagSeverity('medium');
+                }}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Reason for flagging
+              </label>
+              <textarea
+                value={flagReason}
+                onChange={(e) => setFlagReason(e.target.value)}
+                placeholder="Enter reason for flagging this candidate..."
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                rows={4}
+              />
+            </div>
+
+            <div className="mb-6">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Severity
+              </label>
+              <div className="flex gap-2">
+                {(['low', 'medium', 'high'] as const).map((severity) => (
+                  <button
+                    key={severity}
+                    onClick={() => setFlagSeverity(severity)}
+                    className={`flex-1 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                      flagSeverity === severity
+                        ? severity === 'low'
+                          ? 'bg-yellow-100 text-yellow-800 border-2 border-yellow-500'
+                          : severity === 'medium'
+                          ? 'bg-orange-100 text-orange-800 border-2 border-orange-500'
+                          : 'bg-red-100 text-red-800 border-2 border-red-500'
+                        : 'bg-gray-100 text-gray-700 border-2 border-transparent hover:bg-gray-200'
+                    }`}
+                  >
+                    {severity.charAt(0).toUpperCase() + severity.slice(1)}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => {
+                  setFlaggingCandidate(null);
+                  setFlagReason('');
+                  setFlagSeverity('medium');
+                }}
+                className="flex-1 px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={async () => {
+                  if (!flagReason.trim()) {
+                    alert('Please enter a reason for flagging');
+                    return;
+                  }
+                  
+                  if (serviceRef.current) {
+                    const success = await serviceRef.current.flagCandidate(
+                      flaggingCandidate,
+                      flagReason.trim(),
+                      flagSeverity
+                    );
+                    
+                    if (success) {
+                      alert('Candidate flagged successfully');
+                      setFlaggingCandidate(null);
+                      setFlagReason('');
+                      setFlagSeverity('medium');
+                    } else {
+                      alert('Failed to flag candidate. Please try again.');
+                    }
+                  }
+                }}
+                className="flex-1 px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors"
+              >
+                Flag Candidate
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -564,10 +788,11 @@ interface CandidateTileProps {
   candidate: CandidateData
   onExpand: (sessionId: string) => void
   onRefresh: (sessionId: string) => void
+  onFlag: () => void
   videoRefs: React.MutableRefObject<Map<string, HTMLVideoElement>>
 }
 
-function CandidateTile({ candidate, onExpand, onRefresh, videoRefs }: CandidateTileProps) {
+function CandidateTile({ candidate, onExpand, onRefresh, onFlag, videoRefs }: CandidateTileProps) {
   return (
     <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
       {/* Header */}
@@ -576,7 +801,9 @@ function CandidateTile({ candidate, onExpand, onRefresh, videoRefs }: CandidateT
           <p className="font-medium text-gray-900 truncate">
             {candidate.candidateName || candidate.candidateEmail || 'Unknown Candidate'}
           </p>
-          <p className="text-xs text-gray-500 truncate">{candidate.candidateId}</p>
+          {candidate.candidateEmail && candidate.candidateEmail !== candidate.candidateName && (
+            <p className="text-xs text-gray-500 truncate">{candidate.candidateEmail}</p>
+          )}
         </div>
         <div className="flex items-center gap-2">
           <div
@@ -633,13 +860,23 @@ function CandidateTile({ candidate, onExpand, onRefresh, videoRefs }: CandidateT
           <RefreshCw className="w-4 h-4" />
           Refresh
         </button>
-        <button
-          onClick={() => onExpand(candidate.sessionId)}
-          className="flex items-center gap-2 px-3 py-1.5 text-sm bg-blue-600 text-white hover:bg-blue-700 rounded transition-colors"
-        >
-          <Maximize2 className="w-4 h-4" />
-          Expand
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={onFlag}
+            className="flex items-center gap-2 px-3 py-1.5 text-sm bg-red-600 text-white hover:bg-red-700 rounded transition-colors"
+            title="Flag candidate for suspicious behavior"
+          >
+            <Flag className="w-4 h-4" />
+            Flag
+          </button>
+          <button
+            onClick={() => onExpand(candidate.sessionId)}
+            className="flex items-center gap-2 px-3 py-1.5 text-sm bg-blue-600 text-white hover:bg-blue-700 rounded transition-colors"
+          >
+            <Maximize2 className="w-4 h-4" />
+            Expand
+          </button>
+        </div>
       </div>
     </div>
   )

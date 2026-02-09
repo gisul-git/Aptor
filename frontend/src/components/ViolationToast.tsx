@@ -13,6 +13,7 @@ export interface ToastPayload {
   message: string;
   thumbnailUrl?: string;
   timestamp: string;
+  isWarning?: boolean; // true for warnings (yellow), false for violations (red)
 }
 
 // Event type to title mapping
@@ -23,10 +24,12 @@ const titleMap: Record<string, string> = {
   TAB_SWITCH: 'Tab Switch Detected',
   FOCUS_LOST: 'Focus Lost',
   FULLSCREEN_EXIT: 'Fullscreen Exited',
+  FACE_NOT_CLEARLY_VISIBLE: 'Face Detection',
 };
 
 // Constants
-const TOAST_DURATION = 3000; // 3 seconds
+const TOAST_DURATION = 3000; // 3 seconds (violations)
+const WARNING_DURATION = 4000; // 4 seconds (warnings)
 const TOAST_GAP = 5000; // 5 seconds between toasts
 
 // Global toast state
@@ -82,7 +85,8 @@ export function ViolationToast() {
     isToastVisibleRef.current = true;
     lastToastTimeRef.current = now;
 
-    // Auto-hide after duration
+    // Auto-hide after duration (longer for warnings)
+    const duration = payload.isWarning ? WARNING_DURATION : TOAST_DURATION;
     timeoutRef.current = setTimeout(() => {
       setIsAnimatingOut(true);
       setTimeout(() => {
@@ -97,7 +101,7 @@ export function ViolationToast() {
           setTimeout(() => showToast(queued), 100);
         }
       }, 280); // Match toastSlideUp animation duration
-    }, TOAST_DURATION);
+    }, duration);
   }, []);
 
   // Register global show function
@@ -114,6 +118,20 @@ export function ViolationToast() {
   if (!visible || !toast) return null;
 
   const title = titleMap[toast.eventType] || toast.eventType;
+  const isWarning = toast.isWarning || false;
+
+  // Dynamic styles based on warning vs violation
+  const toastStyles = {
+    background: isWarning 
+      ? 'linear-gradient(145deg, #451a03 0%, #78350f 50%, #451a03 100%)' 
+      : 'linear-gradient(145deg, #1e1b2e 0%, #2a2541 50%, #1f1c2f 100%)',
+    border: isWarning ? 'rgba(245, 158, 11, 0.5)' : 'rgba(139, 92, 246, 0.35)',
+    boxShadow: isWarning 
+      ? '0 12px 40px rgba(245, 158, 11, 0.2), 0 0 0 1px rgba(255, 255, 255, 0.04) inset' 
+      : '0 12px 40px rgba(0, 0, 0, 0.35), 0 0 0 1px rgba(255, 255, 255, 0.04) inset',
+  };
+
+  const titleColor = isWarning ? '#f59e0b' : '#fbbf24';
 
   return (
     <>
@@ -121,6 +139,7 @@ export function ViolationToast() {
         className={`violation-toast ${isAnimatingOut ? 'toast-exit' : 'toast-enter'}`}
         role="status"
         aria-live="polite"
+        style={toastStyles}
       >
         {toast.thumbnailUrl && (
           <div className="toast-thumbnail">
@@ -128,7 +147,7 @@ export function ViolationToast() {
           </div>
         )}
         <div className="toast-content">
-          <div className="toast-title">{title}</div>
+          <div className="toast-title" style={{ color: titleColor }}>{title}</div>
           <div className="toast-message">{toast.message}</div>
         </div>
       </div>
@@ -146,10 +165,7 @@ export function ViolationToast() {
           max-width: 360px;
           width: calc(100% - 32px);
           padding: 16px 20px;
-          background: linear-gradient(145deg, #1e1b2e 0%, #2a2541 50%, #1f1c2f 100%);
-          border: 1px solid rgba(139, 92, 246, 0.35);
           border-radius: 14px;
-          box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35), 0 0 0 1px rgba(255, 255, 255, 0.04) inset;
           color: #fff;
           backdrop-filter: blur(12px);
         }
@@ -209,7 +225,6 @@ export function ViolationToast() {
           font-weight: 700;
           font-size: 14px;
           letter-spacing: 0.02em;
-          color: #fbbf24;
           margin-bottom: 4px;
         }
 
