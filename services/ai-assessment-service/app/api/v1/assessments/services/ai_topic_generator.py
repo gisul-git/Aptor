@@ -1006,6 +1006,20 @@ Generate topics that are GENUINELY DIFFERENT while still being relevant to the s
 Examples: Ruby, Swift, PHP, Perl, Scala, R, Bash → MCQ/Subjective
 Examples: Django, Flask, React, Angular, Spring → MCQ/Subjective"""
     
+    # Build distribution text (extracted to avoid backslash in f-string expression)
+    if is_non_tech:
+        distribution_text = "- MCQ: ~30%, Subjective: ~45%, PseudoCode: ~25%"
+    else:
+        coding_skills_str = ', '.join(set(coding_skills)) if coding_skills else 'N/A'
+        sql_count = str(1 if has_sql_skills else 0)
+        aiml_count = str(1 if has_aiml_skills else 0)
+        distribution_text = (
+            f"- Coding topics: MINIMUM 2 topics (for: {coding_skills_str})\n"
+            f"   - SQL topics: {sql_count}-2 topics\n"
+            f"   - AIML topics: {aiml_count}-2 topics (Python + ML only)\n"
+            f"   - MCQ/Subjective/PseudoCode: Remaining topics (balanced distribution)"
+        )
+    
     prompt = f"""
 You are an expert assessment designer creating topics for {len(combined_skills)} skills.
 
@@ -1033,12 +1047,7 @@ Each topic should be specific, testable, and appropriate for {mode_context} at {
 REQUIREMENTS:
 1. **STRICTLY FOLLOW QUESTION TYPE RULES AND DISTRIBUTION ABOVE** - This is CRITICAL
 2. Topic distribution:
-   {("- MCQ: ~30%, Subjective: ~45%, PseudoCode: ~25%" if is_non_tech else (
-       "- Coding topics: MINIMUM 2 topics (for: " + (', '.join(set(coding_skills)) if coding_skills else 'N/A') + ")\n" +
-       "   - SQL topics: " + str(1 if has_sql_skills else 0) + "-2 topics\n" +
-       "   - AIML topics: " + str(1 if has_aiml_skills else 0) + "-2 topics (Python + ML only)\n" +
-       "   - MCQ/Subjective/PseudoCode: Remaining topics (balanced distribution)"
-   ))}
+   {distribution_text}
 3. Ensure all skills are covered across the topics
 4. Vary question types and difficulties
 5. Set canUseJudge0 to true ONLY for Coding questions with executable languages

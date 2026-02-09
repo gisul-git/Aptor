@@ -239,7 +239,8 @@ export const authOptions: NextAuthOptions = {
       }
 
       try {
-        const baseURL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:80"; // API Gateway
+        // Server-side: use internal API Gateway URL
+        const baseURL = process.env.API_GATEWAY_URL || "http://api-gateway:80";
         
         // Skip health check for OAuth - go directly to login
         // Health check was causing timeouts. OAuth login will fail fast if backend is down.
@@ -332,7 +333,7 @@ export const authOptions: NextAuthOptions = {
           response: error?.response?.data,
           status: error?.response?.status,
           code: error?.code,
-          baseURL: process.env.NEXT_PUBLIC_API_URL || "http://localhost:80", // API Gateway
+          baseURL: process.env.API_GATEWAY_URL || "http://api-gateway:80",
         });
         
         // Check if this is a signup required error
@@ -354,7 +355,7 @@ export const authOptions: NextAuthOptions = {
         }
         
         // Handle connection errors
-        const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:80";
+        const apiUrl = process.env.API_GATEWAY_URL || "http://api-gateway:80";
         if (error?.code === "ECONNREFUSED" || error?.message?.includes("ECONNREFUSED")) {
           throw new Error(`Cannot connect to API Gateway. Please ensure the gateway is running on ${apiUrl}`);
         } else if (error?.code === "ETIMEDOUT" || error?.message?.includes("timeout")) {
