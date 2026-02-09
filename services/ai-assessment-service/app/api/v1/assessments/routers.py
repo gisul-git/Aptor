@@ -92,6 +92,13 @@ from .services import (
 from ....utils.mongo import convert_object_ids, serialize_document, to_object_id
 from bson import ObjectId
 from ....utils.responses import success_response
+from ....utils.cache import (
+    get_cached_assessments,
+    set_cached_assessments,
+    get_cached_dashboard,
+    set_cached_dashboard,
+    invalidate_user_assessments_cache
+)
 from ....models.aptitude_topics import (
     APTITUDE_MAIN_TOPICS,
     APTITUDE_TOPICS_STRUCTURE,
@@ -450,6 +457,13 @@ async def generate_topics_old(
 
     result = await db.assessments.insert_one(assessment_doc)
     assessment_doc["_id"] = result.inserted_id
+    
+    # Invalidate cache for this user/organization
+    user_id = current_user.get("id")
+    user_org = current_user.get("organization")
+    cache_key_id = str(user_id) if user_id else (str(user_org) if user_org else "unknown")
+    await invalidate_user_assessments_cache(cache_key_id)
+    
     return success_response("Topics generated successfully", serialize_document(assessment_doc))
 
 
@@ -1161,6 +1175,12 @@ async def create_assessment_from_job_designation(
             
             result = await db.assessments.insert_one(assessment_doc)
             assessment_doc["_id"] = result.inserted_id
+        
+        # Invalidate cache for this user/organization
+        user_id = current_user.get("id")
+        user_org = current_user.get("organization")
+        cache_key_id = str(user_id) if user_id else (str(user_org) if user_org else "unknown")
+        await invalidate_user_assessments_cache(cache_key_id)
         
         return success_response(
             "Assessment created successfully" if not existing_assessment else "Assessment topics regenerated successfully",
@@ -2111,6 +2131,12 @@ async def update_assessment_draft(
     else:
         logger.error(f"[UPDATE_DRAFT] ❌ FAILED: scoringRules were NOT saved correctly or are empty!")
     logger.info("=" * 80)
+    
+    # Invalidate cache for this user/organization
+    user_id = current_user.get("id")
+    user_org = current_user.get("organization")
+    cache_key_id = str(user_id) if user_id else (str(user_org) if user_org else "unknown")
+    await invalidate_user_assessments_cache(cache_key_id)
     
     return success_response("Draft updated successfully", serialize_document(assessment))
 

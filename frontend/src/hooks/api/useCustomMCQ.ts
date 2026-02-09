@@ -190,6 +190,7 @@ export const useVerifyCustomMCQCandidate = () => {
       email: string;
       name: string;
     }) => customMCQService.verifyCandidate(data.assessmentId, data.token, data.email, data.name),
+    retry: false, // Disable automatic retries to prevent multiple calls
   });
 };
 

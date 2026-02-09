@@ -160,7 +160,10 @@ apiClient.interceptors.request.use(
     // Candidate assessment routes use token from URL params, not JWT
     const url = config.url || '';
     const isAuthRoute = url.includes('/api/v1/auth/') || url.includes('/api/auth/');
-    const isCandidateRoute = url.includes('/api/assessment/') || url.includes('/api/v1/candidate/');
+    const isCandidateRoute = url.includes('/api/assessment/') || url.includes('/api/v1/candidate/') || 
+                             url.includes('/api/v1/custom-mcq/take/') || 
+                             url.includes('/api/v1/custom-mcq/verify-candidate') ||
+                             url.includes('/api/v1/custom-mcq/submit');
     // DSA test routes that can be accessed by candidates (submission, start, public, question, final-submit)
     // These routes can be accessed by both candidates (no auth) and admins (with auth)
     const isDSACandidateRoute = url.includes('/api/v1/dsa/tests/') && 
@@ -274,7 +277,10 @@ apiClient.interceptors.response.use(
     // Skip token refresh for candidate routes (they don't require auth)
     const url = originalRequest.url || '';
     const isAuthRoute = url.includes('/api/v1/auth/') || url.includes('/api/auth/');
-    const isCandidateRoute = url.includes('/api/assessment/') || url.includes('/api/v1/candidate/');
+    const isCandidateRoute = url.includes('/api/assessment/') || url.includes('/api/v1/candidate/') ||
+                             url.includes('/api/v1/custom-mcq/take/') || 
+                             url.includes('/api/v1/custom-mcq/verify-candidate') ||
+                             url.includes('/api/v1/custom-mcq/submit');
     const isDSACandidateRoute = url.includes('/api/v1/dsa/tests/') && 
       (url.includes('/submission') || url.includes('/start') || url.includes('/public') || url.includes('/question/') || url.includes('/final-submit'));
     

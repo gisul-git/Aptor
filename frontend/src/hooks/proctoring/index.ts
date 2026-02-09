@@ -11,6 +11,7 @@ export { useProctor } from './useProctor';
 export { useProctorPolling } from './useProctorPolling';
 export { useSimpleProctor } from './useSimpleProctor';
 export { useMultiLiveProctorAdmin } from './useMultiLiveProctorAdmin';
+export { useAgoraLiveProctorAdmin } from './useAgoraLiveProctorAdmin';
 
 // Export types
 export type {

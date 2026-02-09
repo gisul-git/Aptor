@@ -5,7 +5,7 @@ const BASE_URL = "/api/v1/custom-mcq";
 
 export const customMCQApi = {
   // Download sample CSV
-  downloadSampleCSV: async (questionType: "mcq" | "subjective" = "mcq"): Promise<Blob> => {
+  downloadSampleCSV: async (questionType: "mcq" | "subjective" | "coding" = "mcq"): Promise<Blob> => {
     const response = await fastApiClient.get(`${BASE_URL}/sample-csv`, {
       params: { questionType },
       responseType: "blob",
@@ -14,7 +14,7 @@ export const customMCQApi = {
   },
 
   // Upload CSV
-  uploadCSV: async (file: File, questionType: "mcq" | "subjective" = "mcq"): Promise<{ questions: any[]; totalQuestions: number }> => {
+  uploadCSV: async (file: File, questionType: "mcq" | "subjective" | "coding" = "mcq"): Promise<{ questions: any[]; totalQuestions: number }> => {
     const formData = new FormData();
     formData.append("file", file);
     
@@ -163,10 +163,13 @@ export const customMCQApi = {
     percentage: number;
     passed: boolean;
     gradingStatus?: string;
+    aiEvaluationStatus?: "pending" | "evaluating" | "completed" | "error";
     mcqScore?: number;
     mcqTotal?: number;
     subjectiveScore?: number;
     subjectiveTotal?: number;
+    codingScore?: number;
+    codingTotal?: number;
     showResultToCandidate?: boolean;
   }> => {
     const response = await fastApiClient.post(`${BASE_URL}/submit`, {

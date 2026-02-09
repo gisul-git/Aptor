@@ -41,11 +41,11 @@ export const useDSATest = (testId: string | undefined) => {
   });
 };
 
-export const useDSAQuestions = () => {
+export const useDSAQuestions = (lightweight: boolean = false) => {
   return useQuery({
-    queryKey: QUERY_KEYS.questions,
+    queryKey: [...QUERY_KEYS.questions, lightweight ? 'lightweight' : 'full'],
     queryFn: async () => {
-      const response = await dsaService.listQuestions();
+      const response = await dsaService.listQuestions(lightweight);
       return response.data || [];
     },
     staleTime: 5 * 60 * 1000,
@@ -80,6 +80,18 @@ export const useUpdateDSATest = () => {
   return useMutation({
     mutationFn: ({ testId, data }: { testId: string; data: Partial<CreateDSATestDto> }) =>
       dsaService.updateTest(testId, data),
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.test(variables.testId) });
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.tests });
+    },
+  });
+};
+
+export const usePatchDSATest = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ testId, data }: { testId: string; data: Partial<CreateDSATestDto> }) =>
+      dsaService.patchTest(testId, data),
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.test(variables.testId) });
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.tests });

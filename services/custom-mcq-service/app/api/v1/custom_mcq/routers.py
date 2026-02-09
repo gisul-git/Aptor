@@ -7,13 +7,15 @@ import logging
 import secrets
 import copy
 import uuid
+import json
+import asyncio
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 from zoneinfo import ZoneInfo
 import csv
 import io
 
-from fastapi import APIRouter, Body, Depends, HTTPException, Query, status, UploadFile, File, Request
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, status, UploadFile, File, Request, BackgroundTasks
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from pydantic import ValidationError
 
@@ -21,9 +23,18 @@ from ....core.dependencies import require_editor, get_current_user
 from ....db.mongo import get_db
 from ....utils.mongo import serialize_document, to_object_id
 from ....utils.responses import success_response, error_response
+from ....utils.cache import (
+    get_cached_tests,
+    set_cached_tests,
+    get_cached_dashboard,
+    set_cached_dashboard,
+    invalidate_user_tests_cache
+)
+import asyncio
 from .schemas import (
     MCQQuestion,
     SubjectiveQuestion,
+    CodingQuestion,
     ValidateCSVRequest,
     CreateCustomMCQAssessmentRequest,
     UpdateCustomMCQAssessmentRequest,
@@ -35,6 +46,7 @@ from .ai_grading import grade_multiple_subjective_answers
 from ..assessments.services.unified_ai_evaluation import (
     evaluate_pseudocode_answer,
     evaluate_subjective_answer_enhanced,
+    evaluate_coding_answer_enhanced,
     aggregate_section_evaluation,
     generate_overall_assessment_summary
 )
@@ -167,16 +179,55 @@ def _parse_csv_to_subjective_questions(csv_data: List[Dict[str, Any]]) -> List[S
     return questions
 
 
+def _parse_csv_to_coding_questions(csv_data: List[Dict[str, Any]]) -> List[CodingQuestion]:
+    """Parse CSV data to CodingQuestion objects (section, question, and marks columns)"""
+    questions = []
+    
+    for idx, row in enumerate(csv_data):
+        try:
+            # Extract section and question
+            section = str(row.get("section", "")).strip() or "coding"  # Default to "coding" if not provided
+            question_text = str(row.get("question", "")).strip()
+            
+            if not question_text:
+                continue
+            
+            # Extract marks
+            try:
+                marks = int(row.get("marks", 1))
+                if marks < 1:
+                    marks = 1
+            except (ValueError, TypeError):
+                marks = 1
+            
+            question = CodingQuestion(
+                questionType="coding",
+                section=section,
+                question=question_text,
+                marks=marks,
+            )
+            questions.append(question)
+            
+        except Exception as e:
+            logger.error(f"Error parsing row {idx + 1}: {e}")
+            continue
+    
+    return questions
+
+
 @router.post("/validate-csv")
 async def validate_csv(
     request: ValidateCSVRequest,
-    questionType: str = Query("mcq", description="Question type: 'mcq' or 'subjective'"),
+    questionType: str = Query("mcq", description="Question type: 'mcq', 'subjective', or 'coding'"),
     current_user: Dict[str, Any] = Depends(require_editor),
 ) -> Dict[str, Any]:
     """Validate CSV data and parse it into questions"""
     try:
-        if questionType.lower() == "subjective":
+        question_type_lower = questionType.lower()
+        if question_type_lower == "subjective":
             questions = _parse_csv_to_subjective_questions(request.csvData)
+        elif question_type_lower == "coding":
+            questions = _parse_csv_to_coding_questions(request.csvData)
         else:
             questions = _parse_csv_to_mcq_questions(request.csvData)
         
@@ -199,7 +250,7 @@ async def validate_csv(
 @router.post("/upload-csv", response_model=None)
 async def upload_csv(
     file: UploadFile = File(...),
-    questionType: str = Query("mcq", description="Question type: 'mcq' or 'subjective'"),
+    questionType: str = Query("mcq", description="Question type: 'mcq', 'subjective', or 'coding'"),
     current_user: Dict[str, Any] = Depends(require_editor),
 ) -> Dict[str, Any]:
     """Upload and parse CSV file"""
@@ -218,8 +269,11 @@ async def upload_csv(
             return error_response("CSV file is empty", status_code=400)
         
         # Validate and parse questions based on type
-        if questionType.lower() == "subjective":
+        question_type_lower = questionType.lower()
+        if question_type_lower == "subjective":
             questions = _parse_csv_to_subjective_questions(csv_data)
+        elif question_type_lower == "coding":
+            questions = _parse_csv_to_coding_questions(csv_data)
         else:
             questions = _parse_csv_to_mcq_questions(csv_data)
         
@@ -240,13 +294,14 @@ async def upload_csv(
 
 @router.get("/sample-csv")
 async def download_sample_csv(
-    questionType: str = Query("mcq", description="Question type: 'mcq' or 'subjective'"),
+    questionType: str = Query("mcq", description="Question type: 'mcq', 'subjective', or 'coding'"),
     current_user: Dict[str, Any] = Depends(require_editor),
 ) -> Any:
     """Download sample CSV file"""
     from fastapi.responses import Response
     
-    if questionType.lower() == "subjective":
+    question_type_lower = questionType.lower()
+    if question_type_lower == "subjective":
         # Sample CSV content for subjective questions (only question and marks columns)
         sample_csv = """question,marks
 What is Cloud Computing and why is it used in software applications?,5
@@ -255,6 +310,15 @@ Describe the difference between SQL and NoSQL databases.,4
 What are the key principles of object-oriented programming?,5
 Explain how a binary search algorithm works.,4"""
         filename = "sample_subjective.csv"
+    elif question_type_lower == "coding":
+        # Sample CSV content for coding questions (section, question, and marks columns)
+        sample_csv = """section,question,marks
+coding,Write a function to reverse a string in Python.,5
+coding,Implement a binary search algorithm in Java.,10
+coding,Create a function to find the factorial of a number using recursion.,5
+coding,Write a program to check if a number is prime.,5
+coding,Implement a function to find the maximum element in an array.,5"""
+        filename = "sample_coding.csv"
     else:
         # Sample CSV content for MCQ questions
         sample_csv = """section,question,optionA,optionB,optionC,optionD,optionE,optionF,correctAn,answerType,marks
@@ -334,12 +398,17 @@ async def create_custom_mcq_assessment(
                 
                 # Ensure questionType is set
                 question_type = q_dict.get("questionType", "mcq")
-                if question_type not in ["mcq", "subjective"]:
+                if question_type not in ["mcq", "subjective", "coding"]:
                     # Try to infer from structure
                     if "options" in q_dict and "correctAn" in q_dict:
                         question_type = "mcq"
                     else:
-                        question_type = "subjective"
+                        # Check if it's coding by section or other indicators
+                        section = q_dict.get("section", "").lower()
+                        if section == "coding" or (question_type and "coding" in str(question_type).lower()):
+                            question_type = "coding"
+                        else:
+                            question_type = "subjective"
                     q_dict["questionType"] = question_type
                 
                 q_dict["id"] = q_dict.get("id") or f"q_{idx + 1}"
@@ -348,17 +417,27 @@ async def create_custom_mcq_assessment(
                 q_dict["updatedAt"] = _now_utc()
                 questions_with_ids.append(q_dict)
         
-        # Sort questions: MCQ first, then Subjective
+        # Sort questions: MCQ first, then Coding, then Subjective
         def get_question_type_order(q):
-            """Return 0 for MCQ, 1 for Subjective (for sorting)"""
+            """Return 0 for MCQ, 1 for Coding, 2 for Subjective (for sorting)"""
             q_type = q.get("questionType", "mcq")
-            if q_type not in ["mcq", "subjective"]:
+            if q_type not in ["mcq", "subjective", "coding"]:
                 # Infer from structure
                 if "options" in q and "correctAn" in q:
                     return 0  # MCQ
                 else:
-                    return 1  # Subjective
-            return 0 if q_type == "mcq" else 1
+                    # Check if it's coding by section
+                    section = q.get("section", "").lower()
+                    if section == "coding" or (q_type and "coding" in str(q_type).lower()):
+                        return 1  # Coding
+                    else:
+                        return 2  # Subjective
+            if q_type == "mcq":
+                return 0
+            elif q_type == "coding":
+                return 1
+            else:
+                return 2  # Subjective
         
         questions_with_ids.sort(key=get_question_type_order)
         
@@ -490,6 +569,9 @@ async def create_custom_mcq_assessment(
         if assessment_token:
             assessment_url = f"/custom-mcq/entry/{assessment_id}?token={assessment_token}"
         
+        # Invalidate cache for this user
+        await invalidate_user_tests_cache(user_id)
+        
         return success_response(
             "Custom MCQ assessment created successfully",
             {
@@ -508,23 +590,169 @@ async def create_custom_mcq_assessment(
         return error_response(f"Failed to create assessment: {str(e)}", status_code=500)
 
 
-@router.get("/list")
-async def list_custom_mcq_assessments(
+@router.get("/dashboard")
+async def get_assessments_dashboard(
+    page: int = Query(1, ge=1, description="Page number"),
+    limit: int = Query(20, ge=1, le=100, description="Items per page"),
     current_user: Dict[str, Any] = Depends(require_editor),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ) -> Dict[str, Any]:
-    """List all custom MCQ assessments for the current user"""
+    """
+    Lightweight dashboard endpoint for Custom MCQ assessments.
+    Optimized with MongoDB field projection, Redis caching, and pagination.
+    """
+    try:
+        user_id = current_user.get("id") or current_user.get("_id")
+        if not user_id:
+            return error_response("User ID not found", status_code=401)
+        user_id = str(user_id)
+        
+        # Try cache first
+        cached_data = await get_cached_dashboard(user_id, page, limit)
+        if cached_data:
+            return success_response("Custom MCQ assessments fetched successfully", cached_data)
+        
+        # Build query with field projection
+        query = {"created_by": user_id}
+        skip = (page - 1) * limit
+        
+        # Use aggregation pipeline for optimized query
+        pipeline = [
+            {"$match": query},
+            {
+                "$project": {
+                    "_id": 1,
+                    "title": 1,
+                    "status": 1,
+                    "created_at": 1,
+                    "updated_at": 1,
+                    "schedule.startTime": 1,
+                    "schedule.endTime": 1,
+                    "schedule.duration": 1,
+                    "pausedAt": 1,
+                }
+            },
+            {"$sort": {"created_at": -1}},
+            {"$skip": skip},
+            {"$limit": limit}
+        ]
+        
+        # Get total count and assessments in parallel
+        count_task = db.custom_mcq_assessments.count_documents(query)
+        assessments_task = db.custom_mcq_assessments.aggregate(pipeline).to_list(length=limit)
+        
+        total_count, assessments = await asyncio.gather(count_task, assessments_task)
+        
+        # Format results
+        result = []
+        for assessment in assessments:
+            schedule = assessment.get("schedule", {})
+            has_schedule = bool(schedule.get("startTime") and schedule.get("endTime"))
+            
+            status_val = assessment.get("status", "draft")
+            if assessment.get("pausedAt"):
+                status_val = "paused"
+            
+            result.append({
+                "id": str(assessment["_id"]),
+                "title": assessment.get("title", ""),
+                "status": status_val,
+                "hasSchedule": has_schedule,
+                "scheduleStatus": {
+                    "startTime": schedule.get("startTime"),
+                    "endTime": schedule.get("endTime"),
+                    "duration": schedule.get("duration"),
+                    "isActive": status_val == "active",
+                } if has_schedule else None,
+                "createdAt": assessment.get("created_at"),
+                "updatedAt": assessment.get("updated_at"),
+                "pausedAt": assessment.get("pausedAt"),
+            })
+        
+        # Build response with pagination
+        total_pages = (total_count + limit - 1) // limit if total_count > 0 else 0
+        response_data = {
+            "assessments": result,
+            "pagination": {
+                "page": page,
+                "limit": limit,
+                "total": total_count,
+                "total_pages": total_pages,
+                "has_next": page < total_pages,
+                "has_prev": page > 1
+            }
+        }
+        
+        # Cache the result
+        await set_cached_dashboard(user_id, response_data, page, limit)
+        
+        return success_response("Custom MCQ assessments fetched successfully", response_data)
+        
+    except Exception as e:
+        logger.exception(f"Error in dashboard endpoint: {e}")
+        return error_response(f"Failed to fetch assessments: {str(e)}", status_code=500)
+
+@router.get("/list")
+async def list_custom_mcq_assessments(
+    page: int = Query(1, ge=1, description="Page number"),
+    limit: int = Query(100, ge=1, le=100, description="Items per page"),
+    current_user: Dict[str, Any] = Depends(require_editor),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+) -> Dict[str, Any]:
+    """
+    List all custom MCQ assessments for the current user.
+    Optimized with Redis caching, MongoDB field projection, and pagination.
+    """
     try:
         user_id = current_user.get("id") or current_user.get("_id")
         if not user_id:
             logger.warning("[Custom MCQ List] User ID not found in current_user")
             return error_response("User ID not found", status_code=401)
         user_id = str(user_id)
+        
+        # Try cache first
+        cached_assessments = await get_cached_tests(user_id, page, limit)
+        if cached_assessments is not None:
+            return success_response(
+                "Custom MCQ assessments fetched successfully",
+                {"assessments": cached_assessments, "total": len(cached_assessments)}
+            )
+        
         logger.info(f"[Custom MCQ List] Fetching assessments for user_id: {user_id}")
+        
+        # Build query with pagination
+        query = {"created_by": user_id}
+        skip = (page - 1) * limit
+        
+        # Use aggregation pipeline with field projection
+        pipeline = [
+            {"$match": query},
+            {
+                "$project": {
+                    "_id": 1,
+                    "title": 1,
+                    "description": 1,
+                    "status": 1,
+                    "questions": 1,
+                    "totalMarks": 1,
+                    "submissions": 1,
+                    "created_at": 1,
+                    "updated_at": 1,
+                    "currentStation": 1,
+                    "schedule": 1,
+                    "pausedAt": 1,
+                }
+            },
+            {"$sort": {"created_at": -1}},
+            {"$skip": skip},
+            {"$limit": limit}
+        ]
+        
+        assessments_docs = await db.custom_mcq_assessments.aggregate(pipeline).to_list(length=limit)
         
         assessments = []
         assessment_count = 0
-        async for assessment in db.custom_mcq_assessments.find({"created_by": user_id}).sort("created_at", -1):
+        for assessment in assessments_docs:
             assessment_count += 1
             assessment_serialized = serialize_document(assessment)
             if not assessment_serialized:
@@ -611,6 +839,8 @@ async def get_custom_mcq_assessment(
                 "mcqTotal": submission_data.get("mcqTotal", 0),
                 "subjectiveScore": submission_data.get("subjectiveScore", 0),
                 "subjectiveTotal": submission_data.get("subjectiveTotal", 0),
+                "codingScore": submission_data.get("codingScore", 0),
+                "codingTotal": submission_data.get("codingTotal", 0),
                 "answerLogs": submission_data.get("answerLogs", {}),  # Include answer logs
                 "submissions": submission_data.get("submissions", []),  # Include graded submissions with marks
                 "candidateRequirements": submission_data.get("candidateRequirements", {}),  # Include candidate requirements
@@ -674,12 +904,17 @@ async def update_custom_mcq_assessment(
                 
                 # Ensure questionType is set
                 question_type = q_dict.get("questionType", "mcq")
-                if question_type not in ["mcq", "subjective"]:
+                if question_type not in ["mcq", "subjective", "coding"]:
                     # Try to infer from structure
                     if "options" in q_dict and "correctAn" in q_dict:
                         question_type = "mcq"
                     else:
-                        question_type = "subjective"
+                        # Check if it's coding by section or other indicators
+                        section = q_dict.get("section", "").lower()
+                        if section == "coding" or (question_type and "coding" in str(question_type).lower()):
+                            question_type = "coding"
+                        else:
+                            question_type = "subjective"
                     q_dict["questionType"] = question_type
                 
                 q_dict["id"] = q_dict.get("id") or f"q_{idx + 1}"
@@ -688,17 +923,27 @@ async def update_custom_mcq_assessment(
                     q_dict["createdAt"] = _now_utc()
                 questions_with_ids.append(q_dict)
             
-            # Sort questions: MCQ first, then Subjective
+            # Sort questions: MCQ first, then Coding, then Subjective
             def get_question_type_order(q):
-                """Return 0 for MCQ, 1 for Subjective (for sorting)"""
+                """Return 0 for MCQ, 1 for Coding, 2 for Subjective (for sorting)"""
                 q_type = q.get("questionType", "mcq")
-                if q_type not in ["mcq", "subjective"]:
+                if q_type not in ["mcq", "subjective", "coding"]:
                     # Infer from structure
                     if "options" in q and "correctAn" in q:
                         return 0  # MCQ
                     else:
-                        return 1  # Subjective
-                return 0 if q_type == "mcq" else 1
+                        # Check if it's coding by section
+                        section = q.get("section", "").lower()
+                        if section == "coding" or (q_type and "coding" in str(q_type).lower()):
+                            return 1  # Coding
+                        else:
+                            return 2  # Subjective
+                if q_type == "mcq":
+                    return 0
+                elif q_type == "coding":
+                    return 1
+                else:
+                    return 2  # Subjective
             
             questions_with_ids.sort(key=get_question_type_order)
             update_doc["questions"] = questions_with_ids
@@ -917,6 +1162,9 @@ async def update_custom_mcq_assessment(
             response_data["assessmentToken"] = assessment_token
             response_data["assessmentUrl"] = f"/custom-mcq/entry/{assessment_id}?token={assessment_token}"
         
+        # Invalidate cache for this user
+        await invalidate_user_tests_cache(user_id)
+        
         return success_response("Assessment updated successfully", response_data)
         
     except Exception as e:
@@ -948,6 +1196,9 @@ async def delete_custom_mcq_assessment(
             return error_response("Access denied", status_code=403)
         
         await db.custom_mcq_assessments.delete_one({"_id": assessment_oid})
+        
+        # Invalidate cache for this user
+        await invalidate_user_tests_cache(user_id)
         
         return success_response("Assessment deleted successfully")
         
@@ -1115,22 +1366,34 @@ async def verify_custom_mcq_candidate(
 ) -> Dict[str, Any]:
     """Verify candidate access to custom MCQ assessment"""
     try:
+        # Log request details
+        logger.info(f"[VERIFY-CANDIDATE] Starting verification - AssessmentId: {request.assessmentId}, Email: {request.email}, Name: {request.name}")
+        
         # Fetch assessment by ID
         assessment_id = request.assessmentId
         oid = to_object_id(assessment_id)
         assessment = await db.custom_mcq_assessments.find_one({"_id": oid})
 
         if not assessment:
+            logger.error(f"[VERIFY-CANDIDATE] Assessment not found: {assessment_id}")
             return error_response("Assessment not found", status_code=404)
+        
+        logger.info(f"[VERIFY-CANDIDATE] Assessment found: {assessment_id}, Title: {assessment.get('title', 'N/A')}")
         
         # Check token (basic validation)
         assessment_token = assessment.get("assessmentToken")
         if not assessment_token:
-            logger.error(f"Assessment {assessment_id} has no assessmentToken configured")
+            logger.error(f"[VERIFY-CANDIDATE] Assessment {assessment_id} has no assessmentToken configured")
             return error_response("Assessment token not configured", status_code=500)
+        
+        logger.info(f"[VERIFY-CANDIDATE] Token check - Expected: {assessment_token[:10]}..., Received: {request.token[:10] if request.token else 'None'}...")
+        
         if assessment_token != request.token:
-            logger.warning(f"Token mismatch for assessment {assessment_id}. Expected: {assessment_token[:10]}..., Got: {request.token[:10] if request.token else 'None'}...")
+            logger.warning(f"[VERIFY-CANDIDATE] ❌ TOKEN MISMATCH - Assessment {assessment_id}. Expected: {assessment_token[:10]}..., Got: {request.token[:10] if request.token else 'None'}...")
+            logger.warning(f"[VERIFY-CANDIDATE] Returning 403 - Invalid token")
             return error_response("Invalid or expired assessment token. Please use the correct assessment link.", status_code=403)
+        
+        logger.info(f"[VERIFY-CANDIDATE] ✅ Token validated successfully")
         
         # Check if candidate already submitted (BEFORE checking access mode)
         # This prevents retaking the assessment in both public and private modes
@@ -1185,6 +1448,8 @@ async def verify_custom_mcq_candidate(
         start_time_str = schedule.get("startTime") if isinstance(schedule, dict) else None
         end_time_str = schedule.get("endTime") if isinstance(schedule, dict) else None
         
+        logger.info(f"[VERIFY-CANDIDATE] Time check - ExamMode: {exam_mode}, CurrentTime (IST): {now.strftime('%Y-%m-%d %H:%M:%S')}, StartTime: {start_time_str}, EndTime: {end_time_str}")
+        
         if exam_mode == "strict" and start_time_str:
             # Strict mode: Check if assessment has started and if it has ended
             # Times are stored in UTC, convert to IST for comparison
@@ -1201,9 +1466,13 @@ async def verify_custom_mcq_candidate(
             # Convert UTC to IST for comparison
             start_time = start_time_utc.astimezone(IST).replace(tzinfo=None)
             
+            logger.info(f"[VERIFY-CANDIDATE] Strict mode time comparison - Now: {now.strftime('%Y-%m-%d %H:%M:%S')}, StartTime: {start_time.strftime('%Y-%m-%d %H:%M:%S')}, Now < StartTime: {now < start_time}")
+            
             if now < start_time:
                 # Too early - cannot access yet
                 start_time_formatted = start_time.strftime('%Y-%m-%d %H:%M:%S IST')
+                logger.warning(f"[VERIFY-CANDIDATE] ❌ TOO EARLY (Strict Mode) - Now: {now.strftime('%Y-%m-%d %H:%M:%S IST')}, StartTime: {start_time_formatted}")
+                logger.warning(f"[VERIFY-CANDIDATE] Returning 403 - Assessment hasn't started yet")
                 return error_response(
                     f"You cannot access this assessment yet. The assessment will start at {start_time_formatted}.",
                     status_code=403
@@ -1220,9 +1489,13 @@ async def verify_custom_mcq_candidate(
                     end_time_utc = end_time_utc.replace(tzinfo=timezone.utc)
                 end_time = end_time_utc.astimezone(IST).replace(tzinfo=None)
                 
+                logger.info(f"[VERIFY-CANDIDATE] Strict mode end time check - Now: {now.strftime('%Y-%m-%d %H:%M:%S')}, EndTime: {end_time.strftime('%Y-%m-%d %H:%M:%S')}, Now > EndTime: {now > end_time}")
+                
                 if now > end_time:
                     # After scheduled end time - window has closed
                     end_time_formatted = end_time.strftime('%Y-%m-%d %H:%M:%S IST')
+                    logger.warning(f"[VERIFY-CANDIDATE] ❌ TOO LATE (Strict Mode) - Now: {now.strftime('%Y-%m-%d %H:%M:%S IST')}, EndTime: {end_time_formatted}")
+                    logger.warning(f"[VERIFY-CANDIDATE] Returning 403 - Assessment time has ended")
                     return error_response(
                         f"The assessment time has ended. The assessment was available until {end_time_formatted}. You cannot take this assessment.",
                         status_code=403
@@ -1242,9 +1515,13 @@ async def verify_custom_mcq_candidate(
                 start_time_utc = start_time_utc.replace(tzinfo=timezone.utc)
             start_time = start_time_utc.astimezone(IST).replace(tzinfo=None)
             
+            logger.info(f"[VERIFY-CANDIDATE] Flexible mode time comparison - Now: {now.strftime('%Y-%m-%d %H:%M:%S')}, StartTime: {start_time.strftime('%Y-%m-%d %H:%M:%S')}, Now < StartTime: {now < start_time}")
+            
             if now < start_time:
                 # Before scheduled start time - cannot access yet
                 start_time_formatted = start_time.strftime('%Y-%m-%d %H:%M:%S IST')
+                logger.warning(f"[VERIFY-CANDIDATE] ❌ TOO EARLY (Flexible Mode) - Now: {now.strftime('%Y-%m-%d %H:%M:%S IST')}, StartTime: {start_time_formatted}")
+                logger.warning(f"[VERIFY-CANDIDATE] Returning 403 - Assessment window hasn't started yet")
                 return error_response(
                     f"You cannot access this assessment yet. The assessment window will be available from {start_time_formatted}.",
                     status_code=403
@@ -1260,18 +1537,24 @@ async def verify_custom_mcq_candidate(
                     end_time_utc = end_time_utc.replace(tzinfo=timezone.utc)
                 end_time = end_time_utc.astimezone(IST).replace(tzinfo=None)
                 
+                logger.info(f"[VERIFY-CANDIDATE] Flexible mode end time check - Now: {now.strftime('%Y-%m-%d %H:%M:%S')}, EndTime: {end_time.strftime('%Y-%m-%d %H:%M:%S')}, Now > EndTime: {now > end_time}")
+                
                 if now > end_time:
                     # After scheduled end time - window has closed
                     end_time_formatted = end_time.strftime('%Y-%m-%d %H:%M:%S IST')
+                    logger.warning(f"[VERIFY-CANDIDATE] ❌ TOO LATE (Flexible Mode) - Now: {now.strftime('%Y-%m-%d %H:%M:%S IST')}, EndTime: {end_time_formatted}")
+                    logger.warning(f"[VERIFY-CANDIDATE] Returning 403 - Assessment window has ended")
                     return error_response(
                         f"The assessment window has ended. The assessment was available until {end_time_formatted}. You cannot take this assessment.",
                         status_code=403
                     )
         
         access_mode = assessment.get("accessMode", "private")
+        logger.info(f"[VERIFY-CANDIDATE] Access mode check - Mode: {access_mode}")
         
         # For public mode, anyone with the link can access (if not already submitted)
         if access_mode == "public":
+            logger.info(f"[VERIFY-CANDIDATE] ✅ Access granted - Public mode")
             return success_response("Access granted", {
                 "verified": True,
                 "accessMode": "public",
@@ -1281,14 +1564,30 @@ async def verify_custom_mcq_candidate(
         candidates = assessment.get("candidates", [])
         candidate_found = False
         
-        for candidate in candidates:
-            if (candidate.get("email", "").lower() == request.email.lower() and
-                candidate.get("name", "").strip().lower() == request.name.strip().lower()):
+        logger.info(f"[VERIFY-CANDIDATE] Private mode - Checking candidate list. Total candidates: {len(candidates)}")
+        logger.info(f"[VERIFY-CANDIDATE] Looking for - Email: {request.email.lower()}, Name: {request.name.strip().lower()}")
+        
+        for idx, candidate in enumerate(candidates):
+            candidate_email = candidate.get("email", "").lower()
+            candidate_name = candidate.get("name", "").strip().lower()
+            request_email = request.email.lower()
+            request_name = request.name.strip().lower()
+            
+            logger.info(f"[VERIFY-CANDIDATE] Candidate {idx+1}: Email='{candidate_email}' (match: {candidate_email == request_email}), Name='{candidate_name}' (match: {candidate_name == request_name})")
+            
+            if (candidate_email == request_email and candidate_name == request_name):
                 candidate_found = True
+                logger.info(f"[VERIFY-CANDIDATE] ✅ Candidate found in list at index {idx}")
                 break
         
         if not candidate_found:
+            logger.warning(f"[VERIFY-CANDIDATE] ❌ CANDIDATE NOT FOUND IN LIST")
+            logger.warning(f"[VERIFY-CANDIDATE] Requested - Email: '{request.email.lower()}', Name: '{request.name.strip().lower()}'")
+            logger.warning(f"[VERIFY-CANDIDATE] Available candidates: {[(c.get('email', '').lower(), c.get('name', '').strip().lower()) for c in candidates]}")
+            logger.warning(f"[VERIFY-CANDIDATE] Returning 403 - Not authorized (not in candidate list)")
             return error_response("You are not authorized to access this assessment", status_code=403)
+        
+        logger.info(f"[VERIFY-CANDIDATE] ✅ Access granted - Private mode, candidate verified")
         
         return success_response("Access granted", {
             "verified": True,
@@ -1533,9 +1832,671 @@ async def get_custom_mcq_assessment_for_taking(
         return error_response(f"Failed to get assessment: {str(exc)}", status_code=500)
 
 
+async def process_ai_evaluation_background(
+    assessment_id: str,
+    candidate_key: str,
+    subjective_submissions: List[Dict[str, Any]],
+    coding_submissions: List[Dict[str, Any]],
+    pseudocode_submissions: List[Dict[str, Any]],
+    questions: List[Dict[str, Any]],
+    mcq_score: float,
+    mcq_total: float,
+    existing_graded_submissions: List[Dict[str, Any]],
+    all_mcq_questions: List[Dict[str, Any]],
+    all_subjective_questions: List[Dict[str, Any]],
+    all_coding_questions: List[Dict[str, Any]],
+    all_pseudocode_questions: List[Dict[str, Any]],
+    pass_percentage: float,
+    started_at: str,
+    submitted_at: str,
+):
+    """
+    Background task to evaluate subjective and coding questions with AI and update the submission.
+    This runs asynchronously after the test submission is marked as submitted.
+    """
+    from ....db.mongo import get_database
+    
+    db = get_database()
+    try:
+        logger.info(f"[BACKGROUND EVAL] Starting background AI evaluation for assessment {assessment_id}, candidate {candidate_key}")
+        
+        oid = to_object_id(assessment_id)
+        assessment = await db.custom_mcq_assessments.find_one({"_id": oid})
+        if not assessment:
+            logger.error(f"[BACKGROUND EVAL] Assessment {assessment_id} not found")
+            return
+        
+        submissions = assessment.get("submissions", {})
+        submission_data = submissions.get(candidate_key, {})
+        if not submission_data:
+            logger.error(f"[BACKGROUND EVAL] Submission not found for candidate {candidate_key}")
+            return
+        
+        graded_submissions = existing_graded_submissions.copy()
+        subjective_score = 0
+        subjective_total = 0
+        coding_score = 0
+        coding_total = 0
+        pseudocode_score = 0
+        pseudocode_total = 0
+        grading_status = "grading"
+        
+        # Define async functions for each evaluation type
+        async def evaluate_subjective_questions():
+            """Evaluate all subjective questions."""
+            nonlocal subjective_score, subjective_total, graded_submissions, grading_status
+            if not subjective_submissions:
+                return
+            
+            try:
+                logger.info(f"[BACKGROUND EVAL] [Subjective Evaluation] Starting grading process")
+                logger.info(f"[BACKGROUND EVAL] [Subjective Evaluation] Found {len(subjective_submissions)} subjective questions to grade")
+                
+                ai_results = await grade_multiple_subjective_answers(subjective_submissions)
+                logger.info(f"[BACKGROUND EVAL] [Subjective Evaluation] AI grading function returned {len(ai_results)} results")
+                
+                for result in ai_results:
+                    question_id = result.get("questionId")
+                    if not question_id:
+                        continue
+                    
+                    score = float(result.get("score", 0))
+                    submission_item = next(
+                        (s for s in subjective_submissions if s["questionId"] == question_id),
+                        None
+                    )
+                    if not submission_item:
+                        continue
+                    
+                    max_marks = submission_item.get("max_marks", 1)
+                    if isinstance(max_marks, str):
+                        try:
+                            max_marks = int(float(max_marks))
+                        except (ValueError, TypeError):
+                            max_marks = 1
+                    elif isinstance(max_marks, float):
+                        max_marks = int(max_marks)
+                    else:
+                        max_marks = int(max_marks) if max_marks else 1
+                    
+                    if max_marks < 1:
+                        max_marks = 1
+                    
+                    subjective_total += max_marks
+                    subjective_score += score
+                    
+                    feedback_text = result.get("feedback", "")
+                    if isinstance(feedback_text, dict):
+                        feedback_text = feedback_text.get("summary", "") or ""
+                    if not isinstance(feedback_text, str):
+                        feedback_text = str(feedback_text) if feedback_text else ""
+                    
+                    reasoning = result.get("reasoning", "")
+                    if not isinstance(reasoning, str):
+                        reasoning = str(reasoning) if reasoning else ""
+                    
+                    graded_submission = {
+                        "questionId": question_id,
+                        "questionType": "subjective",
+                        "textAnswer": submission_item.get("answer", ""),
+                        "marksAwarded": round(score, 2),
+                        "maxMarks": max_marks,
+                        "feedback": feedback_text,
+                        "reasoning": reasoning,
+                    }
+                    
+                    # Add enhanced evaluation fields if available - ensure they're serializable
+                    if "criteria_scores" in result and isinstance(result["criteria_scores"], dict):
+                        criteria_scores = {}
+                        for k, v in result["criteria_scores"].items():
+                            if isinstance(v, (str, int, float, bool, type(None))):
+                                criteria_scores[str(k)] = v
+                            elif isinstance(v, (list, dict)):
+                                try:
+                                    json.dumps(v)
+                                    criteria_scores[str(k)] = v
+                                except (TypeError, ValueError):
+                                    criteria_scores[str(k)] = str(v)
+                            else:
+                                criteria_scores[str(k)] = str(v)
+                        graded_submission["criteriaScores"] = criteria_scores
+                    
+                    if "completeness_check" in result:
+                        completeness_check = result["completeness_check"]
+                        if isinstance(completeness_check, (str, int, float, bool, type(None), dict, list)):
+                            try:
+                                json.dumps(completeness_check)
+                                graded_submission["completenessCheck"] = completeness_check
+                            except (TypeError, ValueError):
+                                graded_submission["completenessCheck"] = str(completeness_check)
+                        else:
+                            graded_submission["completenessCheck"] = str(completeness_check)
+                    
+                    if "detailed_feedback" in result:
+                        detailed_feedback = result.get("detailed_feedback", {})
+                        if isinstance(detailed_feedback, dict):
+                            safe_feedback = {}
+                            for k, v in detailed_feedback.items():
+                                if isinstance(v, (str, int, float, bool, type(None), list)):
+                                    safe_feedback[str(k)] = v
+                                elif isinstance(v, dict):
+                                    try:
+                                        json.dumps(v)
+                                        safe_feedback[str(k)] = v
+                                    except (TypeError, ValueError):
+                                        safe_feedback[str(k)] = str(v)
+                                else:
+                                    safe_feedback[str(k)] = str(v)
+                            graded_submission["detailedFeedback"] = safe_feedback
+                    
+                    if "flags" in result and isinstance(result["flags"], dict):
+                        flags = {}
+                        for k, v in result["flags"].items():
+                            if isinstance(v, (str, int, float, bool, type(None))):
+                                flags[str(k)] = v
+                            else:
+                                flags[str(k)] = str(v)
+                        graded_submission["evaluationFlags"] = flags
+                    
+                    # Find and update existing placeholder submission instead of appending
+                    question_id = graded_submission.get("questionId")
+                    existing_index = None
+                    for idx, existing_sub in enumerate(graded_submissions):
+                        if existing_sub.get("questionId") == question_id and existing_sub.get("questionType") == "subjective":
+                            existing_index = idx
+                            break
+                    
+                    if existing_index is not None:
+                        # Update existing placeholder entry
+                        graded_submissions[existing_index] = graded_submission
+                        logger.info(f"[BACKGROUND EVAL] [Subjective Evaluation] Updated existing submission for questionId={question_id}")
+                    else:
+                        # If no existing entry found, append (shouldn't happen, but safety check)
+                        graded_submissions.append(graded_submission)
+                        logger.warning(f"[BACKGROUND EVAL] [Subjective Evaluation] No existing submission found for questionId={question_id}, appended new entry")
+                
+                logger.info(f"[BACKGROUND EVAL] [Subjective Evaluation] Completed. Final totals: score={subjective_score}, total={subjective_total}")
+            except Exception as e:
+                logger.exception(f"[BACKGROUND EVAL] Error during subjective AI grading: {e}")
+                for sub in subjective_submissions:
+                    max_marks = sub["max_marks"]
+                    subjective_total += max_marks
+                    graded_submissions.append({
+                        "questionId": sub["questionId"],
+                        "questionType": "subjective",
+                        "textAnswer": sub["answer"],
+                        "marksAwarded": 0,
+                        "maxMarks": max_marks,
+                        "feedback": "Error during AI grading. Please contact administrator.",
+                        "reasoning": "",
+                    })
+        
+        async def evaluate_coding_questions():
+            """Evaluate all coding questions in parallel."""
+            nonlocal coding_score, coding_total, graded_submissions
+            if not coding_submissions:
+                return
+            
+            try:
+                logger.info(f"[BACKGROUND EVAL] [Coding Evaluation] Starting parallel AI grading for {len(coding_submissions)} coding questions")
+                
+                async def evaluate_single_coding_submission(sub: Dict[str, Any]) -> Dict[str, Any]:
+                    """Helper function to evaluate a single coding submission."""
+                    try:
+                        evaluation = await evaluate_coding_answer_enhanced(
+                            question_id=sub["questionId"],
+                            problem_statement=sub["question"],
+                            source_code=sub["source_code"],
+                            language=sub.get("language", "python"),
+                            max_marks=sub["max_marks"],
+                            section=sub.get("section"),
+                            test_results=None,
+                            passed_count=0,
+                            total_count=0,
+                            starter_code=None,
+                            difficulty=sub.get("difficulty", "Medium"),
+                            use_cache=True
+                        )
+                        
+                        score = float(evaluation.get("score", 0))
+                        max_marks = sub["max_marks"]
+                        
+                        feedback_text = evaluation.get("feedback", "")
+                        if isinstance(feedback_text, dict):
+                            feedback_text = feedback_text.get("summary", "") or ""
+                        if not isinstance(feedback_text, str):
+                            feedback_text = str(feedback_text) if feedback_text else ""
+                        
+                        answer_log = evaluation.get("answer_log", {})
+                        reasoning = ""
+                        if isinstance(answer_log, dict):
+                            reasoning = answer_log.get("partial_credit_reasoning", "") or ""
+                        if not isinstance(reasoning, str):
+                            reasoning = str(reasoning) if reasoning else ""
+                        
+                        graded_submission = {
+                            "questionId": sub["questionId"],
+                            "questionType": "coding",
+                            "codeAnswer": sub["source_code"],
+                            "marksAwarded": round(score, 2),
+                            "maxMarks": max_marks,
+                            "feedback": feedback_text,
+                            "reasoning": reasoning,
+                            "score": score,  # Store score for aggregation
+                        }
+                        
+                        # Add enhanced evaluation fields if available - ensure they're serializable
+                        if "criteria_scores" in evaluation and isinstance(evaluation["criteria_scores"], dict):
+                            criteria_scores = {}
+                            for k, v in evaluation["criteria_scores"].items():
+                                if isinstance(v, (str, int, float, bool, type(None))):
+                                    criteria_scores[str(k)] = v
+                                elif isinstance(v, (list, dict)):
+                                    try:
+                                        json.dumps(v)
+                                        criteria_scores[str(k)] = v
+                                    except (TypeError, ValueError):
+                                        criteria_scores[str(k)] = str(v)
+                                else:
+                                    criteria_scores[str(k)] = str(v)
+                            graded_submission["criteriaScores"] = criteria_scores
+                        
+                        if "detailed_feedback" in evaluation:
+                            detailed_feedback = evaluation.get("feedback", {})
+                            if isinstance(detailed_feedback, dict):
+                                safe_feedback = {}
+                                for k, v in detailed_feedback.items():
+                                    if isinstance(v, (str, int, float, bool, type(None), list)):
+                                        safe_feedback[str(k)] = v
+                                    elif isinstance(v, dict):
+                                        try:
+                                            json.dumps(v)
+                                            safe_feedback[str(k)] = v
+                                        except (TypeError, ValueError):
+                                            safe_feedback[str(k)] = str(v)
+                                    else:
+                                        safe_feedback[str(k)] = str(v)
+                                graded_submission["detailedFeedback"] = safe_feedback
+                        
+                        if "flags" in evaluation and isinstance(evaluation["flags"], dict):
+                            flags = {}
+                            for k, v in evaluation["flags"].items():
+                                if isinstance(v, (str, int, float, bool, type(None))):
+                                    flags[str(k)] = v
+                                else:
+                                    flags[str(k)] = str(v)
+                            graded_submission["evaluationFlags"] = flags
+                        
+                        return graded_submission
+                    except Exception as e:
+                        logger.exception(f"[BACKGROUND EVAL] [Coding Evaluation] Error evaluating coding question {sub.get('questionId', 'unknown')}: {e}")
+                        max_marks = sub["max_marks"]
+                        return {
+                            "questionId": sub["questionId"],
+                            "questionType": "coding",
+                            "codeAnswer": sub["source_code"],
+                            "marksAwarded": 0,
+                            "maxMarks": max_marks,
+                            "feedback": f"Error during AI evaluation: {str(e)}",
+                            "reasoning": "",
+                            "score": 0,
+                        }
+                
+                # Run all coding evaluations in parallel
+                evaluation_tasks = [evaluate_single_coding_submission(sub) for sub in coding_submissions]
+                graded_coding_results = await asyncio.gather(*evaluation_tasks)
+                
+                # Process results and aggregate scores
+                for result in graded_coding_results:
+                    score = result.get("score", 0)
+                    max_marks = result.get("maxMarks", 0)
+                    coding_total += max_marks
+                    coding_score += score
+                    
+                    # Remove temporary score field
+                    result.pop("score", None)
+                    
+                    # Find and update existing placeholder submission instead of appending
+                    question_id = result.get("questionId")
+                    existing_index = None
+                    for idx, existing_sub in enumerate(graded_submissions):
+                        if existing_sub.get("questionId") == question_id and existing_sub.get("questionType") == "coding":
+                            existing_index = idx
+                            break
+                    
+                    if existing_index is not None:
+                        # Update existing placeholder entry
+                        graded_submissions[existing_index] = result
+                        logger.info(f"[BACKGROUND EVAL] [Coding Evaluation] Updated existing submission for questionId={question_id}")
+                    else:
+                        # If no existing entry found, append (shouldn't happen, but safety check)
+                        graded_submissions.append(result)
+                        logger.warning(f"[BACKGROUND EVAL] [Coding Evaluation] No existing submission found for questionId={question_id}, appended new entry")
+                
+                logger.info(f"[BACKGROUND EVAL] [Coding Evaluation] Completed parallel evaluation. Total: {coding_score}/{coding_total}")
+            except Exception as e:
+                logger.exception(f"[BACKGROUND EVAL] [Coding Evaluation] Error during coding AI grading: {e}")
+                for sub in coding_submissions:
+                    max_marks = sub["max_marks"]
+                    coding_total += max_marks
+                    graded_submissions.append({
+                        "questionId": sub["questionId"],
+                        "questionType": "coding",
+                        "codeAnswer": sub["source_code"],
+                        "marksAwarded": 0,
+                        "maxMarks": max_marks,
+                        "feedback": "Error during AI grading. Please contact administrator.",
+                        "reasoning": "",
+                    })
+        
+        async def evaluate_pseudocode_questions():
+            """Evaluate all pseudocode questions in parallel."""
+            nonlocal pseudocode_score, pseudocode_total, graded_submissions
+            if not pseudocode_submissions:
+                return
+            
+            try:
+                logger.info(f"[BACKGROUND EVAL] [Pseudocode Evaluation] Starting parallel AI grading for {len(pseudocode_submissions)} pseudocode questions")
+                
+                async def evaluate_single_pseudocode_submission(sub: Dict[str, Any]) -> Dict[str, Any]:
+                    """Helper function to evaluate a single pseudocode submission."""
+                    try:
+                        evaluation = await evaluate_pseudocode_answer(
+                            question_id=sub["questionId"],
+                            question_text=sub["questionText"],
+                            candidate_answer=sub["answer"],
+                            max_marks=sub["max_marks"],
+                            section=sub.get("section"),
+                            sample_input=sub.get("sampleInput"),
+                            expected_output=sub.get("expectedOutput"),
+                            rubric=sub.get("rubric"),
+                            difficulty=sub.get("difficulty", "Medium")
+                        )
+                        
+                        score = float(evaluation.get("score", 0))
+                        max_marks = sub["max_marks"]
+                        
+                        return {
+                            "questionId": sub["questionId"],
+                            "questionType": "pseudocode",
+                            "textAnswer": sub["answer"],
+                            "marksAwarded": round(score, 2),
+                            "maxMarks": max_marks,
+                            "feedback": evaluation.get("feedback", {}).get("summary", ""),
+                            "detailed_feedback": evaluation.get("feedback", {}),
+                            "reasoning": evaluation.get("answer_log", {}).get("partial_credit_reasoning", ""),
+                            "ai_evaluation": evaluation,
+                            "score": score,  # Store score for aggregation
+                        }
+                    except Exception as e:
+                        logger.exception(f"[BACKGROUND EVAL] [Pseudocode Evaluation] Error evaluating pseudocode question {sub.get('questionId', 'unknown')}: {e}")
+                        max_marks = sub["max_marks"]
+                        return {
+                            "questionId": sub["questionId"],
+                            "questionType": "pseudocode",
+                            "textAnswer": sub["answer"],
+                            "marksAwarded": 0,
+                            "maxMarks": max_marks,
+                            "feedback": f"Error during AI evaluation: {str(e)}",
+                            "detailed_feedback": {},
+                            "reasoning": "",
+                            "ai_evaluation": None,
+                            "score": 0,
+                        }
+                
+                # Run all pseudocode evaluations in parallel
+                evaluation_tasks = [evaluate_single_pseudocode_submission(sub) for sub in pseudocode_submissions]
+                graded_pseudocode_results = await asyncio.gather(*evaluation_tasks)
+                
+                # Process results and aggregate scores
+                for result in graded_pseudocode_results:
+                    score = result.get("score", 0)
+                    max_marks = result.get("maxMarks", 0)
+                    pseudocode_total += max_marks
+                    pseudocode_score += score
+                    
+                    # Remove temporary score field
+                    result.pop("score", None)
+                    
+                    # Find and update existing placeholder submission instead of appending
+                    question_id = result.get("questionId")
+                    existing_index = None
+                    for idx, existing_sub in enumerate(graded_submissions):
+                        if existing_sub.get("questionId") == question_id and existing_sub.get("questionType") == "pseudocode":
+                            existing_index = idx
+                            break
+                    
+                    if existing_index is not None:
+                        # Update existing placeholder entry
+                        graded_submissions[existing_index] = result
+                        logger.info(f"[BACKGROUND EVAL] [Pseudocode Evaluation] Updated existing submission for questionId={question_id}")
+                    else:
+                        # If no existing entry found, append (shouldn't happen, but safety check)
+                        graded_submissions.append(result)
+                        logger.warning(f"[BACKGROUND EVAL] [Pseudocode Evaluation] No existing submission found for questionId={question_id}, appended new entry")
+                
+                logger.info(f"[BACKGROUND EVAL] [Pseudocode Evaluation] Completed parallel evaluation. Total: {pseudocode_score}/{pseudocode_total}")
+            except Exception as e:
+                logger.exception(f"[BACKGROUND EVAL] [Pseudocode Evaluation] Error during pseudocode AI grading: {e}")
+                for sub in pseudocode_submissions:
+                    max_marks = sub["max_marks"]
+                    pseudocode_total += max_marks
+                    graded_submissions.append({
+                        "questionId": sub["questionId"],
+                        "questionType": "pseudocode",
+                        "textAnswer": sub["answer"],
+                        "marksAwarded": 0,
+                        "maxMarks": max_marks,
+                        "feedback": "Error during AI grading. Please contact administrator.",
+                        "detailed_feedback": {},
+                        "reasoning": "",
+                        "ai_evaluation": None
+                    })
+        
+        # Run all evaluation types in parallel
+        evaluation_tasks = []
+        if subjective_submissions:
+            evaluation_tasks.append(evaluate_subjective_questions())
+        if coding_submissions:
+            evaluation_tasks.append(evaluate_coding_questions())
+        if pseudocode_submissions:
+            evaluation_tasks.append(evaluate_pseudocode_questions())
+        
+        if evaluation_tasks:
+            logger.info(f"[BACKGROUND EVAL] Running {len(evaluation_tasks)} evaluation types in parallel")
+            await asyncio.gather(*evaluation_tasks)
+            grading_status = "completed"
+        
+        # Old duplicate code blocks removed - evaluation is handled by async functions above
+        # The standalone blocks below were causing duplicates and have been removed
+        if False:  # Disabled - replaced with parallel evaluation functions
+            try:
+                logger.info(f"[BACKGROUND EVAL] [Subjective Evaluation] Starting grading process")
+                logger.info(f"[BACKGROUND EVAL] [Subjective Evaluation] Found {len(subjective_submissions)} subjective questions to grade")
+                
+                ai_results = await grade_multiple_subjective_answers(subjective_submissions)
+                logger.info(f"[BACKGROUND EVAL] [Subjective Evaluation] AI grading function returned {len(ai_results)} results")
+                
+                for result in ai_results:
+                    question_id = result.get("questionId")
+                    if not question_id:
+                        continue
+                    
+                    score = float(result.get("score", 0))
+                    submission_item = next(
+                        (s for s in subjective_submissions if s["questionId"] == question_id),
+                        None
+                    )
+                    if not submission_item:
+                        continue
+                    
+                    max_marks = submission_item.get("max_marks", 1)
+                    if isinstance(max_marks, str):
+                        try:
+                            max_marks = int(float(max_marks))
+                        except (ValueError, TypeError):
+                            max_marks = 1
+                    elif isinstance(max_marks, float):
+                        max_marks = int(max_marks)
+                    else:
+                        max_marks = int(max_marks) if max_marks else 1
+                    
+                    if max_marks < 1:
+                        max_marks = 1
+                    
+                    subjective_total += max_marks
+                    subjective_score += score
+                    
+                    feedback_text = result.get("feedback", "")
+                    if isinstance(feedback_text, dict):
+                        feedback_text = feedback_text.get("summary", "") or ""
+                    if not isinstance(feedback_text, str):
+                        feedback_text = str(feedback_text) if feedback_text else ""
+                    
+                    reasoning = result.get("reasoning", "")
+                    if not isinstance(reasoning, str):
+                        reasoning = str(reasoning) if reasoning else ""
+                    
+                    graded_submission = {
+                        "questionId": question_id,
+                        "questionType": "subjective",
+                        "textAnswer": submission_item.get("answer", ""),
+                        "marksAwarded": round(score, 2),
+                        "maxMarks": max_marks,
+                        "feedback": feedback_text,
+                        "reasoning": reasoning,
+                    }
+                    
+                    # Add enhanced evaluation fields if available - ensure they're serializable
+                    if "criteria_scores" in result and isinstance(result["criteria_scores"], dict):
+                        criteria_scores = {}
+                        for k, v in result["criteria_scores"].items():
+                            if isinstance(v, (str, int, float, bool, type(None))):
+                                criteria_scores[str(k)] = v
+                            elif isinstance(v, (list, dict)):
+                                try:
+                                    json.dumps(v)
+                                    criteria_scores[str(k)] = v
+                                except (TypeError, ValueError):
+                                    criteria_scores[str(k)] = str(v)
+                            else:
+                                criteria_scores[str(k)] = str(v)
+                        graded_submission["criteriaScores"] = criteria_scores
+                    
+                    if "completeness_check" in result:
+                        completeness_check = result["completeness_check"]
+                        if isinstance(completeness_check, (str, int, float, bool, type(None), dict, list)):
+                            try:
+                                json.dumps(completeness_check)
+                                graded_submission["completenessCheck"] = completeness_check
+                            except (TypeError, ValueError):
+                                graded_submission["completenessCheck"] = str(completeness_check)
+                        else:
+                            graded_submission["completenessCheck"] = str(completeness_check)
+                    
+                    if "detailed_feedback" in result:
+                        detailed_feedback = result.get("detailed_feedback", {})
+                        if isinstance(detailed_feedback, dict):
+                            safe_feedback = {}
+                            for k, v in detailed_feedback.items():
+                                if isinstance(v, (str, int, float, bool, type(None), list)):
+                                    safe_feedback[str(k)] = v
+                                elif isinstance(v, dict):
+                                    try:
+                                        json.dumps(v)
+                                        safe_feedback[str(k)] = v
+                                    except (TypeError, ValueError):
+                                        safe_feedback[str(k)] = str(v)
+                                else:
+                                    safe_feedback[str(k)] = str(v)
+                            graded_submission["detailedFeedback"] = safe_feedback
+                    
+                    if "flags" in result and isinstance(result["flags"], dict):
+                        flags = {}
+                        for k, v in result["flags"].items():
+                            if isinstance(v, (str, int, float, bool, type(None))):
+                                flags[str(k)] = v
+                            else:
+                                flags[str(k)] = str(v)
+                        graded_submission["evaluationFlags"] = flags
+                    
+                    graded_submissions.append(graded_submission)
+                
+                logger.info(f"[BACKGROUND EVAL] [Subjective Evaluation] Completed. Final totals: score={subjective_score}, total={subjective_total}")
+                grading_status = "completed"
+            except Exception as e:
+                logger.exception(f"[BACKGROUND EVAL] Error during subjective AI grading: {e}")
+                grading_status = "error"
+                for sub in subjective_submissions:
+                    max_marks = sub["max_marks"]
+                    subjective_total += max_marks
+                    graded_submissions.append({
+                        "questionId": sub["questionId"],
+                        "questionType": "subjective",
+                        "textAnswer": sub["answer"],
+                        "marksAwarded": 0,
+                        "maxMarks": max_marks,
+                        "feedback": "Error during AI grading. Please contact administrator.",
+                        "reasoning": "",
+                    })
+        
+        # Duplicate code blocks removed - evaluation is handled by async functions above
+        # The standalone blocks below were causing duplicates and have been removed
+        
+        # Calculate actual totals including unanswered questions
+        actual_subjective_total = sum(q.get("marks", 1) for q in all_subjective_questions)
+        actual_coding_total = sum(q.get("marks", 1) for q in all_coding_questions)
+        actual_pseudocode_total = sum(q.get("marks", 1) for q in all_pseudocode_questions)
+        
+        if actual_subjective_total > subjective_total:
+            subjective_total = actual_subjective_total
+        if actual_coding_total > coding_total:
+            coding_total = actual_coding_total
+        if actual_pseudocode_total > pseudocode_total:
+            pseudocode_total = actual_pseudocode_total
+        
+        # Calculate final totals
+        total_score = mcq_score + subjective_score + coding_score + pseudocode_score
+        total_marks = mcq_total + subjective_total + coding_total + pseudocode_total
+        percentage = (total_score / total_marks * 100) if total_marks > 0 else 0
+        passed = percentage >= pass_percentage
+        
+        logger.info(f"[BACKGROUND EVAL] Final scores: MCQ={mcq_score}/{mcq_total}, Subjective={subjective_score}/{subjective_total}, Coding={coding_score}/{coding_total}, Pseudocode={pseudocode_score}/{pseudocode_total}, Total={total_score}/{total_marks}, Percentage={percentage:.2f}%")
+        
+        # Update submission with final scores
+        submission_data.update({
+            "submissions": graded_submissions,
+            "score": total_score,
+            "totalMarks": total_marks,
+            "percentage": round(percentage, 2),
+            "passed": passed,
+            "status": "completed" if grading_status == "completed" else "grading",
+            "gradingStatus": grading_status,
+            "mcqScore": mcq_score,
+            "mcqTotal": mcq_total,
+            "subjectiveScore": subjective_score,
+            "subjectiveTotal": subjective_total,
+            "codingScore": coding_score,
+            "codingTotal": coding_total,
+        })
+        
+        submissions[candidate_key] = submission_data
+        
+        await db.custom_mcq_assessments.update_one(
+            {"_id": oid},
+            {"$set": {"submissions": submissions, "updated_at": _now_utc()}}
+        )
+        
+        logger.info(f"[BACKGROUND EVAL] Successfully updated submission for candidate {candidate_key} with final scores")
+        
+    except Exception as e:
+        logger.exception(f"[BACKGROUND EVAL] Error in background AI evaluation: {e}")
+
+
 @router.post("/submit")
 async def submit_custom_mcq_assessment(
     request: SubmitCustomMCQRequest,
+    background_tasks: BackgroundTasks,
     db: AsyncIOMotorDatabase = Depends(get_db),
 ) -> Dict[str, Any]:
     """Submit custom MCQ assessment answers"""
@@ -1569,9 +2530,10 @@ async def submit_custom_mcq_assessment(
         mcq_total = 0
         graded_submissions = []
 
-        # Separate MCQ, subjective, and pseudocode submissions
+        # Separate MCQ, subjective, coding, and pseudocode submissions
         mcq_submissions = []
         subjective_submissions = []
+        coding_submissions = []
         pseudocode_submissions = []
 
         for submission in request.submissions:
@@ -1592,6 +2554,8 @@ async def submit_custom_mcq_assessment(
             # If questionType is explicitly set, use it
             if question_type in ["pseudocode", "pseudo code", "pseudocode"]:
                 question_type = "pseudocode"
+            elif question_type == "coding":
+                question_type = "coding"
             elif question_type == "subjective":
                 question_type = "subjective"
             elif question_type == "mcq":
@@ -1603,7 +2567,7 @@ async def submit_custom_mcq_assessment(
                 # Default to subjective if no options/correctAn (subjective questions don't have these)
                 question_type = "subjective"
             
-            logger.info(f"Question {submission.questionId}: detected_type={question_type}, hasSelectedAnswers={bool(submission.selectedAnswers)}, hasTextAnswer={bool(submission.textAnswer)}, marks={question.get('marks', 'N/A')}")
+            logger.info(f"Question {submission.questionId}: detected_type={question_type}, hasSelectedAnswers={bool(submission.selectedAnswers)}, hasTextAnswer={bool(submission.textAnswer)}, hasCodeAnswer={bool(submission.codeAnswer)}, marks={question.get('marks', 'N/A')}")
 
             if question_type == "mcq" and submission.selectedAnswers:
                 mcq_submissions.append({
@@ -1637,6 +2601,32 @@ async def submit_custom_mcq_assessment(
                     })
                 else:
                     logger.warning(f"Question {submission.questionId} is pseudocode but has no textAnswer provided")
+            elif question_type == "coding":
+                logger.info(f"[Coding Evaluation] Detected coding question: questionId={submission.questionId}, has_codeAnswer={bool(submission.codeAnswer)}")
+                if submission.codeAnswer:
+                    # Get marks from question, default to 1 if not found
+                    question_marks = question.get("marks", 1)
+                    if isinstance(question_marks, str):
+                        try:
+                            question_marks = int(question_marks)
+                        except (ValueError, TypeError):
+                            question_marks = 1
+                    if question_marks < 1:
+                        question_marks = 1
+                    
+                    logger.info(f"[Coding Evaluation] Adding coding submission: questionId={submission.questionId}, marks={question_marks}, code_length={len(submission.codeAnswer)}")
+                    coding_submissions.append({
+                        "questionId": submission.questionId,
+                        "question": question.get("question", "") or question.get("questionText", ""),
+                        "source_code": submission.codeAnswer,
+                        "max_marks": question_marks,
+                        "section": question.get("section", ""),
+                        "language": question.get("language", "python"),  # Default to python if not specified
+                        "difficulty": question.get("difficulty", "Medium"),
+                    })
+                    logger.info(f"[Coding Evaluation] Successfully added coding submission. Total coding submissions: {len(coding_submissions)}")
+                else:
+                    logger.warning(f"[Coding Evaluation] Question {submission.questionId} is coding but has no codeAnswer provided")
             elif question_type == "subjective":
                 logger.info(f"[Subjective Evaluation] Detected subjective question: questionId={submission.questionId}, has_textAnswer={bool(submission.textAnswer)}")
                 if submission.textAnswer:
@@ -1668,7 +2658,7 @@ async def submit_custom_mcq_assessment(
                 else:
                     logger.warning(f"[Subjective Evaluation] Question {submission.questionId} is subjective but has no textAnswer provided")
             else:
-                logger.warning(f"Question {submission.questionId}: type={question_type}, but missing required answer data (MCQ needs selectedAnswers, Subjective needs textAnswer)")
+                logger.warning(f"Question {submission.questionId}: type={question_type}, but missing required answer data (MCQ needs selectedAnswers, Subjective needs textAnswer, Coding needs codeAnswer)")
 
         # Grade MCQ questions
         for mcq_sub in mcq_submissions:
@@ -1700,212 +2690,74 @@ async def submit_custom_mcq_assessment(
                 "maxMarks": marks,
             })
 
-        # Grade subjective questions using AI
+        # Check if AI evaluation is needed (subjective, coding, or pseudocode)
+        needs_ai_evaluation = len(subjective_submissions) > 0 or len(coding_submissions) > 0 or len(pseudocode_submissions) > 0
+        
+        # Initialize scores for AI-evaluated questions (will be updated in background)
         subjective_score = 0
         subjective_total = 0
-        grading_status = "completed"
-
-        logger.info(f"[Subjective Evaluation] Starting grading process")
-        logger.info(f"[Subjective Evaluation] Submission counts - MCQ: {len(mcq_submissions)}, Subjective: {len(subjective_submissions)}, Pseudocode: {len(pseudocode_submissions)}")
-        
-        if subjective_submissions:
-            try:
-                logger.info(f"[Subjective Evaluation] Found {len(subjective_submissions)} subjective questions to grade")
-                logger.info(f"[Subjective Evaluation] Subjective submissions details:")
-                for idx, sub in enumerate(subjective_submissions):
-                    logger.info(f"[Subjective Evaluation]   [{idx+1}] questionId={sub.get('questionId')}, max_marks={sub.get('max_marks')}, answer_length={len(sub.get('answer', ''))}, has_rubric={bool(sub.get('rubric'))}, has_answer_key={bool(sub.get('answer_key'))}")
-                
-                grading_status = "grading"
-                logger.info(f"[Subjective Evaluation] Calling grade_multiple_subjective_answers with {len(subjective_submissions)} submissions")
-                ai_results = await grade_multiple_subjective_answers(subjective_submissions)
-                logger.info(f"[Subjective Evaluation] AI grading function returned {len(ai_results)} results")
-                
-                if not ai_results:
-                    logger.error(f"[Subjective Evaluation] CRITICAL: grade_multiple_subjective_answers returned empty list!")
-                else:
-                    logger.info(f"[Subjective Evaluation] AI results breakdown:")
-                    for idx, result in enumerate(ai_results):
-                        logger.info(f"[Subjective Evaluation]   [{idx+1}] questionId={result.get('questionId')}, score={result.get('score', 0)}, max_marks={result.get('max_marks', 'N/A')}, has_feedback={bool(result.get('feedback'))}")
-
-                logger.info(f"[Subjective Evaluation] Processing {len(ai_results)} AI grading results...")
-                for idx, result in enumerate(ai_results):
-                    logger.info(f"[Subjective Evaluation] Processing result {idx+1}/{len(ai_results)}")
-                    question_id = result.get("questionId")
-                    if not question_id:
-                        logger.error(f"[Subjective Evaluation] CRITICAL: AI result missing questionId. Result keys: {list(result.keys())}")
-                        continue
-                    
-                    logger.info(f"[Subjective Evaluation] Processing questionId={question_id}")
-                    score = float(result.get("score", 0))
-                    logger.info(f"[Subjective Evaluation] Extracted score={score} for questionId={question_id}")
-                    
-                    # Get max_marks from the original submission
-                    submission_item = next(
-                        (s for s in subjective_submissions if s["questionId"] == question_id),
-                        None
-                    )
-                    if not submission_item:
-                        logger.error(f"[Subjective Evaluation] CRITICAL: Could not find submission for questionId={question_id}. Available IDs: {[s.get('questionId') for s in subjective_submissions]}")
-                        continue
-                    
-                    logger.info(f"[Subjective Evaluation] Found submission item for questionId={question_id}")
-                    max_marks = submission_item.get("max_marks", 1)
-                    logger.info(f"[Subjective Evaluation] Original max_marks from submission: {max_marks} (type: {type(max_marks).__name__})")
-                    
-                    # Ensure max_marks is an integer
-                    if isinstance(max_marks, str):
-                        try:
-                            max_marks = int(float(max_marks))
-                            logger.info(f"[Subjective Evaluation] Converted max_marks from string to int: {max_marks}")
-                        except (ValueError, TypeError):
-                            logger.warning(f"[Subjective Evaluation] Failed to convert max_marks string '{max_marks}', defaulting to 1")
-                            max_marks = 1
-                    elif isinstance(max_marks, float):
-                        max_marks = int(max_marks)
-                        logger.info(f"[Subjective Evaluation] Converted max_marks from float to int: {max_marks}")
-                    else:
-                        max_marks = int(max_marks) if max_marks else 1
-                        logger.info(f"[Subjective Evaluation] Using max_marks as int: {max_marks}")
-                    
-                    if max_marks < 1:
-                        logger.warning(f"[Subjective Evaluation] max_marks {max_marks} is less than 1, setting to 1")
-                        max_marks = 1
-                    
-                    subjective_total += max_marks
-                    subjective_score += score
-                    
-                    logger.info(f"[Subjective Evaluation] Question {question_id}: scored {score}/{max_marks}. Running totals: score={subjective_score}, total={subjective_total}")
-
-                    # Handle enhanced evaluation response structure
-                    feedback_text = result.get("feedback", "")
-                    if isinstance(feedback_text, dict):
-                        feedback_text = feedback_text.get("summary", "")
-                    
-                    graded_submission = {
-                        "questionId": question_id,
-                        "questionType": "subjective",
-                        "textAnswer": submission_item.get("answer", ""),
-                        "marksAwarded": round(score, 2),
-                        "maxMarks": max_marks,
-                        "feedback": feedback_text,
-                        "reasoning": result.get("reasoning", ""),
-                    }
-                    
-                    # Add enhanced evaluation fields if available
-                    if "criteria_scores" in result:
-                        graded_submission["criteriaScores"] = result["criteria_scores"]
-                    if "completeness_check" in result:
-                        graded_submission["completenessCheck"] = result["completeness_check"]
-                    if "detailed_feedback" in result:
-                        graded_submission["detailedFeedback"] = result["detailed_feedback"]
-                    if "flags" in result:
-                        graded_submission["evaluationFlags"] = result["flags"]
-                        # Log if human review is needed
-                        if result["flags"].get("requires_human_review", False):
-                            logger.warning(f"Question {question_id} flagged for human review")
-                    
-                    graded_submissions.append(graded_submission)
-                    logger.info(f"[Subjective Evaluation] Added graded submission for questionId={question_id} to graded_submissions list")
-                
-                logger.info(f"[Subjective Evaluation] Completed processing all subjective results. Final totals: score={subjective_score}, total={subjective_total}, graded_count={len([s for s in graded_submissions if s.get('questionType') == 'subjective'])}")
-                grading_status = "completed"
-            except Exception as e:
-                logger.exception(f"Error during AI grading: {e}")
-                grading_status = "error"
-                # Still save submissions but with 0 marks for subjective
-                for sub in subjective_submissions:
-                    max_marks = sub["max_marks"]
-                    subjective_total += max_marks
-                    graded_submissions.append({
-                        "questionId": sub["questionId"],
-                        "questionType": "subjective",
-                        "textAnswer": sub["answer"],
-                        "marksAwarded": 0,
-                        "maxMarks": max_marks,
-                        "feedback": "Error during AI grading. Please contact administrator.",
-                        "reasoning": "",
-                    })
-
-        # Grade pseudocode questions using AI
+        coding_score = 0
+        coding_total = 0
         pseudocode_score = 0
         pseudocode_total = 0
+        grading_status = "grading" if needs_ai_evaluation else "completed"
+        
+        # Add placeholder submissions for subjective/coding/pseudocode (will be updated in background)
+        if subjective_submissions:
+            for sub in subjective_submissions:
+                max_marks = sub["max_marks"]
+                subjective_total += max_marks
+                graded_submissions.append({
+                    "questionId": sub["questionId"],
+                    "questionType": "subjective",
+                    "textAnswer": sub["answer"],
+                    "marksAwarded": 0,  # Will be updated in background
+                    "maxMarks": max_marks,
+                    "feedback": "Evaluation in progress...",
+                    "reasoning": "",
+                })
 
+        # Add placeholder submissions for coding questions (will be updated in background)
+        if coding_submissions:
+            for sub in coding_submissions:
+                max_marks = sub["max_marks"]
+                coding_total += max_marks
+                graded_submissions.append({
+                    "questionId": sub["questionId"],
+                    "questionType": "coding",
+                    "codeAnswer": sub["source_code"],
+                    "marksAwarded": 0,  # Will be updated in background
+                    "maxMarks": max_marks,
+                    "feedback": "Evaluation in progress...",
+                    "reasoning": "",
+                })
+
+        # Add placeholder submissions for pseudocode questions (will be updated in background)
         if pseudocode_submissions:
-            try:
-                logger.info(f"Starting AI grading for {len(pseudocode_submissions)} pseudocode questions")
-                for sub in pseudocode_submissions:
-                    try:
-                        evaluation = await evaluate_pseudocode_answer(
-                            question_id=sub["questionId"],
-                            question_text=sub["questionText"],
-                            candidate_answer=sub["answer"],
-                            max_marks=sub["max_marks"],
-                            section=sub.get("section"),
-                            sample_input=sub.get("sampleInput"),
-                            expected_output=sub.get("expectedOutput"),
-                            rubric=sub.get("rubric"),
-                            difficulty=sub.get("difficulty", "Medium")
-                        )
-                        
-                        score = float(evaluation.get("score", 0))
-                        max_marks = sub["max_marks"]
-                        pseudocode_total += max_marks
-                        pseudocode_score += score
-                        
-                        logger.info(f"Pseudocode question {sub['questionId']}: scored {score}/{max_marks}")
-                        
-                        graded_submissions.append({
-                            "questionId": sub["questionId"],
-                            "questionType": "pseudocode",
-                            "textAnswer": sub["answer"],
-                            "marksAwarded": round(score, 2),
-                            "maxMarks": max_marks,
-                            "feedback": evaluation.get("feedback", {}).get("summary", ""),
-                            "detailed_feedback": evaluation.get("feedback", {}),
-                            "reasoning": evaluation.get("answer_log", {}).get("partial_credit_reasoning", ""),
-                            "ai_evaluation": evaluation
-                        })
-                    except Exception as e:
-                        logger.exception(f"Error evaluating pseudocode question {sub['questionId']}: {e}")
-                        max_marks = sub["max_marks"]
-                        pseudocode_total += max_marks
-                        graded_submissions.append({
-                            "questionId": sub["questionId"],
-                            "questionType": "pseudocode",
-                            "textAnswer": sub["answer"],
-                            "marksAwarded": 0,
-                            "maxMarks": max_marks,
-                            "feedback": f"Error during AI evaluation: {str(e)}",
-                            "detailed_feedback": {},
-                            "reasoning": "",
-                            "ai_evaluation": None
-                        })
-            except Exception as e:
-                logger.exception(f"Error during pseudocode AI grading: {e}")
-                for sub in pseudocode_submissions:
-                    max_marks = sub["max_marks"]
-                    pseudocode_total += max_marks
-                    graded_submissions.append({
-                        "questionId": sub["questionId"],
-                        "questionType": "pseudocode",
-                        "textAnswer": sub["answer"],
-                        "marksAwarded": 0,
-                        "maxMarks": max_marks,
-                        "feedback": "Error during AI grading. Please contact administrator.",
-                        "detailed_feedback": {},
-                        "reasoning": "",
-                        "ai_evaluation": None
-                    })
+            for sub in pseudocode_submissions:
+                max_marks = sub["max_marks"]
+                pseudocode_total += max_marks
+                graded_submissions.append({
+                    "questionId": sub["questionId"],
+                    "questionType": "pseudocode",
+                    "textAnswer": sub["answer"],
+                    "marksAwarded": 0,  # Will be updated in background
+                    "maxMarks": max_marks,
+                    "feedback": "Evaluation in progress...",
+                    "reasoning": "",
+                })
 
         # Calculate totals - also count unanswered questions in total marks
         # Get all questions to calculate proper totals
         all_mcq_questions = [q for q in questions if q.get("questionType", "").lower() == "mcq" or ("options" in q and "correctAn" in q)]
         all_subjective_questions = [q for q in questions if q.get("questionType", "").lower() == "subjective" and not ("options" in q and "correctAn" in q)]
+        all_coding_questions = [q for q in questions if q.get("questionType", "").lower() == "coding"]
         all_pseudocode_questions = [q for q in questions if q.get("questionType", "").lower() in ["pseudocode", "pseudo code"]]
         
         # Calculate actual totals including unanswered questions
         actual_mcq_total = sum(q.get("marks", 1) for q in all_mcq_questions)
         actual_subjective_total = sum(q.get("marks", 1) for q in all_subjective_questions)
+        actual_coding_total = sum(q.get("marks", 1) for q in all_coding_questions)
         actual_pseudocode_total = sum(q.get("marks", 1) for q in all_pseudocode_questions)
         
         # Use actual totals if they differ from what we calculated
@@ -1915,18 +2767,21 @@ async def submit_custom_mcq_assessment(
         if actual_subjective_total > subjective_total:
             logger.info(f"Subjective total includes unanswered questions: calculated={subjective_total}, actual={actual_subjective_total}")
             subjective_total = actual_subjective_total
+        if actual_coding_total > coding_total:
+            logger.info(f"Coding total includes unanswered questions: calculated={coding_total}, actual={actual_coding_total}")
+            coding_total = actual_coding_total
         if actual_pseudocode_total > pseudocode_total:
             logger.info(f"Pseudocode total includes unanswered questions: calculated={pseudocode_total}, actual={actual_pseudocode_total}")
             pseudocode_total = actual_pseudocode_total
         
-        # Calculate totals
-        total_score = mcq_score + subjective_score + pseudocode_score
-        total_marks = mcq_total + subjective_total + pseudocode_total
+        # Calculate initial totals (MCQ only for now, AI-evaluated questions will be updated in background)
+        total_score = mcq_score  # Only MCQ score for now
+        total_marks = mcq_total + subjective_total + coding_total + pseudocode_total
         percentage = (total_score / total_marks * 100) if total_marks > 0 else 0
         pass_percentage = assessment.get("passPercentage", 50)
-        passed = percentage >= pass_percentage
+        passed = percentage >= pass_percentage  # Will be recalculated after AI evaluation
         
-        logger.info(f"Final scores: MCQ={mcq_score}/{mcq_total}, Subjective={subjective_score}/{subjective_total}, Pseudocode={pseudocode_score}/{pseudocode_total}, Total={total_score}/{total_marks}, Percentage={percentage:.2f}%")
+        logger.info(f"Initial scores (MCQ only): MCQ={mcq_score}/{mcq_total}, Subjective={subjective_score}/{subjective_total} (pending), Coding={coding_score}/{coding_total} (pending), Pseudocode={pseudocode_score}/{pseudocode_total} (pending), Total={total_score}/{total_marks}, Percentage={percentage:.2f}%")
 
         # Get existing submission data to preserve answerLogs
         existing_submission = submissions.get(candidate_key, {})
@@ -1977,6 +2832,8 @@ async def submit_custom_mcq_assessment(
             "mcqTotal": mcq_total,
             "subjectiveScore": subjective_score,
             "subjectiveTotal": subjective_total,
+            "codingScore": coding_score,
+            "codingTotal": coding_total,
             "answerLogs": existing_answer_logs,  # Preserve answer logs from previous saves
             "candidateRequirements": candidate_requirements,  # Store merged candidate requirements (including resume)
         }
@@ -1990,24 +2847,116 @@ async def submit_custom_mcq_assessment(
             {"$set": {"submissions": submissions, "updated_at": _now_utc()}}
         )
 
-        return success_response(
-            "Assessment submitted successfully",
-            {
-                "score": total_score,
-                "totalMarks": total_marks,
-                "percentage": round(percentage, 2),
-                "passed": passed,
-                "gradingStatus": grading_status,
-                "mcqScore": mcq_score,
-                "mcqTotal": mcq_total,
-                "subjectiveScore": subjective_score,
-                "subjectiveTotal": subjective_total,
-                "showResultToCandidate": assessment.get("showResultToCandidate", True),
-            }
-        )
+        # Schedule AI evaluation as background task if needed
+        if needs_ai_evaluation:
+            logger.info(f"[SUBMIT] Scheduling background AI evaluation for assessment {request.assessmentId}, candidate {candidate_key}")
+            background_tasks.add_task(
+                process_ai_evaluation_background,
+                assessment_id=request.assessmentId,
+                candidate_key=candidate_key,
+                subjective_submissions=subjective_submissions,
+                coding_submissions=coding_submissions,
+                pseudocode_submissions=pseudocode_submissions,
+                questions=questions,
+                mcq_score=mcq_score,
+                mcq_total=mcq_total,
+                existing_graded_submissions=graded_submissions,
+                all_mcq_questions=all_mcq_questions,
+                all_subjective_questions=all_subjective_questions,
+                all_coding_questions=all_coding_questions,
+                all_pseudocode_questions=all_pseudocode_questions,
+                pass_percentage=pass_percentage,
+                started_at=request.startedAt.isoformat() if request.startedAt else _now_utc().isoformat(),
+                submitted_at=request.submittedAt.isoformat() if request.submittedAt else _now_utc().isoformat(),
+            )
+            logger.info(f"[SUBMIT] Background AI evaluation task scheduled successfully")
+
+        # DEBUG: Log graded_submissions structure before serialization
+        logger.info(f"[SUBMIT DEBUG] Total graded_submissions count: {len(graded_submissions)}")
+        for idx, sub in enumerate(graded_submissions):
+            logger.info(f"[SUBMIT DEBUG] Submission {idx+1}: questionId={sub.get('questionId')}, questionType={sub.get('questionType')}, keys={list(sub.keys())}")
+            # Check each field for serializability
+            for key, value in sub.items():
+                try:
+                    json.dumps(value)
+                    logger.debug(f"[SUBMIT DEBUG]   {key}: serializable (type: {type(value).__name__})")
+                except (TypeError, ValueError) as e:
+                    logger.error(f"[SUBMIT DEBUG]   {key}: NOT SERIALIZABLE (type: {type(value).__name__}), error: {str(e)}")
+                    logger.error(f"[SUBMIT DEBUG]   {key} value preview: {str(value)[:200]}")
+
+        # Prepare response data
+        response_data = {
+            "score": total_score,
+            "totalMarks": total_marks,
+            "percentage": round(percentage, 2),
+            "passed": passed,
+            "gradingStatus": grading_status,
+            "mcqScore": mcq_score,
+            "mcqTotal": mcq_total,
+            "subjectiveScore": subjective_score,
+            "subjectiveTotal": subjective_total,
+            "codingScore": coding_score,
+            "codingTotal": coding_total,
+            "showResultToCandidate": assessment.get("showResultToCandidate", True),
+            "submissions": graded_submissions,  # Include individual submission details
+        }
+        
+        # DEBUG: Test serialization of response_data
+        logger.info("[SUBMIT DEBUG] Testing response_data serialization...")
+        try:
+            json.dumps(response_data)
+            logger.info("[SUBMIT DEBUG] ✓ response_data is serializable")
+        except (TypeError, ValueError) as e:
+            logger.error(f"[SUBMIT DEBUG] ✗ response_data is NOT serializable: {str(e)}")
+            logger.error(f"[SUBMIT DEBUG] Error type: {type(e).__name__}")
+            # Try to identify which field is causing the issue
+            for key, value in response_data.items():
+                try:
+                    json.dumps(value)
+                    logger.debug(f"[SUBMIT DEBUG]   {key}: serializable")
+                except (TypeError, ValueError) as field_error:
+                    logger.error(f"[SUBMIT DEBUG]   {key}: NOT SERIALIZABLE - {str(field_error)}")
+                    if key == "submissions":
+                        logger.error(f"[SUBMIT DEBUG]   submissions is a list with {len(value)} items")
+                        # Check each submission
+                        for sub_idx, sub_item in enumerate(value):
+                            try:
+                                json.dumps(sub_item)
+                            except (TypeError, ValueError) as sub_error:
+                                logger.error(f"[SUBMIT DEBUG]     submission[{sub_idx}]: NOT SERIALIZABLE - {str(sub_error)}")
+                                logger.error(f"[SUBMIT DEBUG]     submission[{sub_idx}] keys: {list(sub_item.keys()) if isinstance(sub_item, dict) else 'not a dict'}")
+                                for sub_key, sub_value in (sub_item.items() if isinstance(sub_item, dict) else []):
+                                    try:
+                                        json.dumps(sub_value)
+                                    except (TypeError, ValueError) as sub_field_error:
+                                        logger.error(f"[SUBMIT DEBUG]       submission[{sub_idx}].{sub_key}: NOT SERIALIZABLE - {str(sub_field_error)}")
+                                        logger.error(f"[SUBMIT DEBUG]       submission[{sub_idx}].{sub_key} type: {type(sub_value).__name__}")
+                                        logger.error(f"[SUBMIT DEBUG]       submission[{sub_idx}].{sub_key} value preview: {str(sub_value)[:200]}")
+            raise  # Re-raise to see full traceback
+
+        logger.info("[SUBMIT DEBUG] Returning success_response...")
+        if needs_ai_evaluation:
+            logger.info(f"[SUBMIT] Returning immediate response - AI evaluation will complete in background")
+            return success_response(
+                "Test submitted successfully. AI evaluation is in progress.",
+                {
+                    **response_data,
+                    "message": "Test submitted successfully. AI evaluation is in progress.",
+                    "aiEvaluationStatus": "evaluating",
+                }
+            )
+        else:
+            return success_response(
+                "Assessment submitted successfully",
+                response_data
+            )
 
     except Exception as e:
-        logger.exception(f"Error submitting assessment: {e}")
+        logger.exception(f"[SUBMIT ERROR] Error submitting assessment: {e}")
+        logger.error(f"[SUBMIT ERROR] Exception type: {type(e).__name__}")
+        logger.error(f"[SUBMIT ERROR] Exception args: {e.args}")
+        import traceback
+        logger.error(f"[SUBMIT ERROR] Full traceback:\n{traceback.format_exc()}")
         return error_response(f"Failed to submit assessment: {str(e)}", status_code=500)
 
 

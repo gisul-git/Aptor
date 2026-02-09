@@ -13,7 +13,7 @@ export default function Station2UploadCSV({ assessmentData, updateAssessmentData
   const [validating, setValidating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
-  const [questionType, setQuestionType] = useState<"mcq" | "subjective">("mcq");
+  const [questionType, setQuestionType] = useState<"mcq" | "subjective" | "coding">("mcq");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleDownloadSample = async () => {
@@ -22,7 +22,10 @@ export default function Station2UploadCSV({ assessmentData, updateAssessmentData
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = questionType === "subjective" ? "sample_subjective.csv" : "sample_mcq.csv";
+      let filename = "sample_mcq.csv";
+      if (questionType === "subjective") filename = "sample_subjective.csv";
+      else if (questionType === "coding") filename = "sample_coding.csv";
+      a.download = filename;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -118,7 +121,7 @@ export default function Station2UploadCSV({ assessmentData, updateAssessmentData
           }}
         >
           <h3 style={{ marginBottom: "1rem", color: "#1E5A3B" }}>Question Type</h3>
-          <div style={{ display: "flex", gap: "1rem" }}>
+          <div style={{ display: "flex", gap: "1rem", flexWrap: "wrap" }}>
             <button
               type="button"
               onClick={() => setQuestionType("mcq")}
@@ -149,6 +152,21 @@ export default function Station2UploadCSV({ assessmentData, updateAssessmentData
             >
               Subjective Questions
             </button>
+            <button
+              type="button"
+              onClick={() => setQuestionType("coding")}
+              style={{
+                padding: "0.75rem 1.5rem",
+                border: questionType === "coding" ? "2px solid #2D7A52" : "1px solid #A8E8BC",
+                borderRadius: "0.5rem",
+                backgroundColor: questionType === "coding" ? "#E8FAF0" : "#ffffff",
+                color: questionType === "coding" ? "#1E5A3B" : "#2D7A52",
+                fontWeight: questionType === "coding" ? 600 : 400,
+                cursor: "pointer",
+              }}
+            >
+              Coding Questions
+            </button>
           </div>
         </div>
 
@@ -164,7 +182,9 @@ export default function Station2UploadCSV({ assessmentData, updateAssessmentData
           <h3 style={{ marginBottom: "0.5rem", color: "#1E5A3B" }}>Sample CSV File</h3>
           <p style={{ marginBottom: "1rem", color: "#2D7A52", fontSize: "0.875rem" }}>
             {questionType === "subjective" 
-              ? "Download the sample CSV file for subjective questions with columns: section, question, marks"
+              ? "Download the sample CSV file for subjective questions with columns: question, marks"
+              : questionType === "coding"
+              ? "Download the sample CSV file for coding questions with columns: section, question, marks"
               : "Download the sample CSV file for MCQ questions with columns: section, question, optionA, optionB, optionC, optionD, correctAn, answerType, marks"}
           </p>
           <button
@@ -173,7 +193,7 @@ export default function Station2UploadCSV({ assessmentData, updateAssessmentData
             className="btn-secondary"
             style={{ width: "fit-content" }}
           >
-            📥 Download Sample CSV ({questionType === "subjective" ? "Subjective" : "MCQ"})
+            📥 Download Sample CSV ({questionType === "subjective" ? "Subjective" : questionType === "coding" ? "Coding" : "MCQ"})
           </button>
         </div>
 

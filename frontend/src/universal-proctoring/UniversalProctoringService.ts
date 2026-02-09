@@ -77,9 +77,18 @@ export interface StartProctoringOptions {
 /**
  * Callbacks for proctoring events.
  */
+export interface ProctoringWarning {
+  type: 'FACE_NOT_CLEARLY_VISIBLE';
+  message: string;
+  timestamp: number;
+  metadata?: Record<string, unknown>;
+}
+
 export interface ProctoringCallbacks {
   /** Called on any violation */
   onViolation?: (violation: ProctoringViolation) => void;
+  /** Called on warnings (non-violation notifications) */
+  onWarning?: (warning: ProctoringWarning) => void;
   /** Called when state changes */
   onStateChange?: (state: ProctoringState) => void;
   /** Called when fullscreen is exited */
@@ -189,6 +198,7 @@ export class UniversalProctoringService {
             {
               onViolation: this.handleViolation.bind(this),
               onStateChange: this.handleAIStateChange.bind(this),
+              onWarning: this.handleWarning.bind(this),
             },
             videoElement,
             canvasElement
@@ -355,6 +365,18 @@ export class UniversalProctoringService {
 
     // Send to backend
     this.sendViolationToBackend(violation);
+  }
+
+  /**
+   * Handle warnings from AI service (non-violation notifications).
+   */
+  private handleWarning(warning: ProctoringWarning): void {
+    debugLog("UniversalProctoringService: Warning received", warning);
+
+    // Notify callback (warnings are not stored or sent to backend)
+    if (this.callbacks.onWarning) {
+      this.callbacks.onWarning(warning);
+    }
   }
 
   /**

@@ -96,9 +96,16 @@ export class FullscreenService {
     this.session = session;
     this.callbacks = callbacks;
 
-    // Check current fullscreen state
-    this.wasFullscreen = this.isCurrentlyFullscreen();
-    this.updateState({ isFullscreen: this.wasFullscreen });
+    // Check current fullscreen state and sync both tracking variables
+    const currentFullscreen = this.isCurrentlyFullscreen();
+    this.wasFullscreen = currentFullscreen;
+    this.updateState({ isFullscreen: currentFullscreen });
+    
+    // Log initial state for debugging
+    console.log("[FullscreenService] Initial fullscreen state:", {
+      isFullscreen: currentFullscreen,
+      wasFullscreen: this.wasFullscreen,
+    });
 
     // Attach fullscreen change listeners (cross-browser)
     if (this.config.enableDetection) {
@@ -249,29 +256,79 @@ export class FullscreenService {
    */
   private handleFullscreenChange(): void {
     const isFullscreen = this.isCurrentlyFullscreen();
+    
+    // Always log fullscreen changes for debugging (even if debug mode is off)
+    console.log("[FullscreenService] Fullscreen change detected:", {
+      wasFullscreen: this.wasFullscreen,
+      isFullscreen,
+      isMonitoring: this.state.isMonitoring,
+      stateIsFullscreen: this.state.isFullscreen,
+    });
 
-    if (this.wasFullscreen && !isFullscreen) {
-      // Exited fullscreen
-      this.state.exitCount += 1;
-      this.recordViolation("FULLSCREEN_EXIT", {
-        totalExits: this.state.exitCount,
-      });
-      this.updateState({
-        isFullscreen: false,
-        exitCount: this.state.exitCount,
-      });
-
-      // Notify exit callback
-      if (this.callbacks?.onFullscreenExit) {
-        this.callbacks.onFullscreenExit();
-      }
-    } else if (!this.wasFullscreen && isFullscreen) {
+    // Check if user entered fullscreen
+    if (!this.wasFullscreen && isFullscreen) {
       // Entered fullscreen - record as enabled (informational, not violation)
+      console.log("[FullscreenService] ✅ Entered fullscreen");
       this.recordViolation("FULLSCREEN_ENABLED", {});
       this.updateState({ isFullscreen: true });
+      this.wasFullscreen = true;
+      return;
     }
 
+    // Check if user exited fullscreen
+    if (!isFullscreen && this.state.isMonitoring) {
+      // User exited fullscreen - record violation
+      // The fullscreenchange event only fires on state transitions, so if isFullscreen is false
+      // and we're monitoring, the user was in fullscreen and just exited
+      // We check wasFullscreen OR state.isFullscreen to handle cases where enter was missed
+      if (this.wasFullscreen || this.state.isFullscreen) {
+        console.log("[FullscreenService] ✅ Exiting fullscreen", {
+          wasTracked: this.wasFullscreen,
+          stateWasFullscreen: this.state.isFullscreen,
+        });
+        this.state.exitCount += 1;
+        this.recordViolation("FULLSCREEN_EXIT", {
+          totalExits: this.state.exitCount,
+        });
+        this.updateState({
+          isFullscreen: false,
+          exitCount: this.state.exitCount,
+        });
+
+        // Notify exit callback
+        if (this.callbacks?.onFullscreenExit) {
+          this.callbacks.onFullscreenExit();
+        }
+      } else {
+        // Edge case: fullscreenchange fired but we didn't track the enter
+        // This shouldn't happen, but if it does, still record the exit since
+        // the event firing means the user was in fullscreen
+        console.log("[FullscreenService] ⚠️ Exiting fullscreen (untracked enter)");
+        this.state.exitCount += 1;
+        this.recordViolation("FULLSCREEN_EXIT", {
+          totalExits: this.state.exitCount,
+          note: "Exit detected but enter was not tracked",
+        });
+        this.updateState({
+          isFullscreen: false,
+          exitCount: this.state.exitCount,
+        });
+
+        // Notify exit callback
+        if (this.callbacks?.onFullscreenExit) {
+          this.callbacks.onFullscreenExit();
+        }
+      }
+    }
+
+    // Always update wasFullscreen to current state
     this.wasFullscreen = isFullscreen;
+    
+    // Also sync state.isFullscreen if it's out of sync
+    if (this.state.isFullscreen !== isFullscreen) {
+      console.log("[FullscreenService] 🔄 Syncing state.isFullscreen:", isFullscreen);
+      this.updateState({ isFullscreen });
+    }
   }
 
   // ============================================================================

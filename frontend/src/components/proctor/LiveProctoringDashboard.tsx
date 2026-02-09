@@ -11,7 +11,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { X, Video, Monitor, RefreshCw, User, Maximize2, ArrowLeft } from "lucide-react";
-import { useMultiLiveProctorAdmin } from "@/hooks/proctoring/useMultiLiveProctorAdmin";
+import { useAgoraLiveProctorAdmin } from "@/hooks/proctoring/useAgoraLiveProctorAdmin";
 
 interface LiveProctoringDashboardProps {
   isOpen: boolean;
@@ -532,7 +532,7 @@ export function LiveProctoringDashboard({
     startMonitoring,
     stopMonitoring,
     refreshCandidate,
-  } = useMultiLiveProctorAdmin({
+  } = useAgoraLiveProctorAdmin({
     assessmentId,
     adminId,
     debugMode: false,

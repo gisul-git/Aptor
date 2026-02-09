@@ -7,6 +7,7 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { initializeFaceDetection, detectFaces, cleanupFaceDetection, type FaceDetectionState } from "../engine/faceDetection";
 import { modelService } from "@/universal-proctoring/services/ModelService";
+import { faceRecognitionService } from "@/universal-proctoring/services/FaceRecognitionService";
 import axios from "@/lib/axios-config"; // Use configured axios with auth interceptor
 import { getGateContext } from "@/lib/gateContext";
 
@@ -1006,18 +1007,34 @@ export default function IdentityVerification({
         return; // Skip embedding extraction
       }
       
-      console.log('[IdentityVerification] ✅ Face Mismatch Detection ENABLED - storing reference image for backend verification');
+      console.log('[IdentityVerification] ✅ Face Mismatch Detection ENABLED - extracting reference embedding');
 
-      // Hybrid backend: store reference image for AWS Rekognition verification during assessment
+      // Client-side face recognition: extract reference embedding using MobileFaceNet
       try {
-        sessionStorage.setItem('faceVerificationReferenceImage', photoData);
+        // Initialize FaceRecognitionService (loads MobileFaceNet model)
+        await faceRecognitionService.initialize();
+        
+        // Extract reference embedding from captured photo
+        console.log('[IdentityVerification] Extracting reference embedding from captured photo...');
+        const referenceEmbedding = await faceRecognitionService.extractEmbedding(photoData);
+        
+        // Store reference embedding as JSON (Float32Array serialization)
+        const embeddingArray = Array.from(referenceEmbedding.embedding);
+        sessionStorage.setItem('faceVerificationReferenceEmbedding', JSON.stringify(embeddingArray));
+        sessionStorage.setItem('faceVerificationReferenceImage', photoData); // Keep image for display/debugging
         sessionStorage.setItem('faceVerificationEnabled', 'true');
+        
+        console.log('[IdentityVerification] ✅ Reference embedding extracted and stored:', {
+          dimensions: referenceEmbedding.embedding.length,
+          confidence: referenceEmbedding.confidence,
+        });
+        
         setPhotoQualityValid(true);
         setPhotoQualityErrors([]);
         setStatusMessage("✅ Photo captured. Click 'Confirm & Continue' to proceed. Face will be verified during the assessment.");
       } catch (error) {
-        console.error('[IdentityVerification] ❌ Error storing reference image:', error);
-        setStatusMessage("⚠️ Error saving photo. Please click 'Retry Photo' and try again.");
+        console.error('[IdentityVerification] ❌ Error extracting reference embedding:', error);
+        setStatusMessage("⚠️ Error extracting face embedding. Please click 'Retry Photo' and try again.");
         setPhotoQualityValid(false);
         setPhotoQualityErrors([`Error: ${error instanceof Error ? error.message : String(error)}`]);
       }
@@ -1205,6 +1222,7 @@ export default function IdentityVerification({
                 
                 // Clear old reference image and embedding from sessionStorage
                 sessionStorage.removeItem('faceVerificationReferenceImage');
+                sessionStorage.removeItem('faceVerificationReferenceEmbedding');
                 sessionStorage.removeItem('faceVerificationEnabled');
                 sessionStorage.removeItem(`referenceFace_${assessmentId}`);
                 sessionStorage.removeItem(`capturedPhoto_${assessmentId}`);

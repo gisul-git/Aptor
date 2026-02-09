@@ -10,6 +10,7 @@ import { useSession } from "next-auth/react";
 import { Eye, Video } from "lucide-react";
 import axios from "axios";
 import Link from "next/link";
+import EmailInvitationModal from "../../components/custom-mcq/EmailInvitationModal";
 // React Query hooks
 import { 
   useCustomMCQAssessment, 
@@ -48,6 +49,8 @@ export default function CustomMCQDetailsPage({ session }: CustomMCQDetailsPagePr
   const [expandedAnswerLogsUser, setExpandedAnswerLogsUser] = useState<string | null>(null);
   const [expandedRequirementsUser, setExpandedRequirementsUser] = useState<string | null>(null);
   const [showCandidates, setShowCandidates] = useState(false);
+  const [expandedCodingLogsUser, setExpandedCodingLogsUser] = useState<string | null>(null);
+  const [expandedOverallFeedbackUser, setExpandedOverallFeedbackUser] = useState<string | null>(null);
   const [referencePhotos, setReferencePhotos] = useState<Record<string, string | null>>({});
   const [showAddCandidateModal, setShowAddCandidateModal] = useState(false);
   const [newCandidateName, setNewCandidateName] = useState("");
@@ -55,6 +58,7 @@ export default function CustomMCQDetailsPage({ session }: CustomMCQDetailsPagePr
   const [emailError, setEmailError] = useState<string | null>(null);
   const [addingCandidate, setAddingCandidate] = useState(false);
   const [showEmailTemplateModal, setShowEmailTemplateModal] = useState(false);
+  const [showSendEmailModal, setShowSendEmailModal] = useState(false);
   const [emailTemplate, setEmailTemplate] = useState({
     logoUrl: "",
     companyName: "",
@@ -167,7 +171,7 @@ export default function CustomMCQDetailsPage({ session }: CustomMCQDetailsPagePr
     }
   };
 
-  const handleSendInvitationsToAll = async () => {
+  const handleSendInvitationsToAll = () => {
     if (!assessmentId || typeof assessmentId !== "string" || !assessment) return;
 
     const candidates = assessment.candidates || [];
@@ -176,7 +180,21 @@ export default function CustomMCQDetailsPage({ session }: CustomMCQDetailsPagePr
       return;
     }
 
-    if (!confirm(`Send invitation emails to all ${candidates.length} candidates?`)) {
+    // Open the email customization modal instead of sending directly
+    setShowSendEmailModal(true);
+  };
+
+  const handleSendEmailsWithTemplate = async (template: {
+    subject: string;
+    message: string;
+    footer: string;
+    sentBy: string;
+  }) => {
+    if (!assessmentId || typeof assessmentId !== "string" || !assessment) return;
+
+    const candidates = assessment.candidates || [];
+    if (candidates.length === 0) {
+      alert("No candidates to send invitations to.");
       return;
     }
 
@@ -186,18 +204,19 @@ export default function CustomMCQDetailsPage({ session }: CustomMCQDetailsPagePr
       const assessmentToken = (assessment as any).assessmentToken || "";
       const assessmentUrl = `${window.location.origin}/custom-mcq/entry/${assessmentId}?token=${assessmentToken}`;
 
-      // Prepare template
-      const template = {
-        message: emailTemplate.message,
-        footer: emailTemplate.footer,
-        sentBy: emailTemplate.sentBy,
+      // Prepare template with subject
+      const emailTemplateData = {
+        subject: template.subject,
+        message: template.message,
+        footer: template.footer,
+        sentBy: template.sentBy,
       };
 
       const response = await sendInvitationsMutation.mutateAsync({
         assessmentId,
         candidates: candidates.map((c: any) => ({ name: c.name, email: c.email })),
         assessmentUrl,
-        template,
+        template: emailTemplateData,
       });
 
       // React Query will automatically refetch and update the UI
@@ -224,6 +243,278 @@ export default function CustomMCQDetailsPage({ session }: CustomMCQDetailsPagePr
     } finally {
       setSendingInvitations(false);
     }
+  };
+
+  // Helper function to aggregate subjective feedback summary
+  const getSubjectiveFeedbackSummary = (submissionEntries: any[]) => {
+    const subjectiveSubmissions = submissionEntries.filter((s: any) => s.questionType === "subjective" && s.feedback && s.feedback !== "Evaluation in progress...");
+    
+    if (subjectiveSubmissions.length === 0) return "";
+    
+    const allStrengths: string[] = [];
+    const allWeaknesses: string[] = [];
+    const allSuggestions: string[] = [];
+    let totalScore = 0;
+    let totalMaxMarks = 0;
+    
+    subjectiveSubmissions.forEach((sub: any) => {
+      totalScore += sub.marksAwarded || 0;
+      totalMaxMarks += sub.maxMarks || 0;
+      
+      const feedback = sub.feedback;
+      if (typeof feedback === "string") {
+        if (feedback.toLowerCase().includes("good") || feedback.toLowerCase().includes("well") || feedback.toLowerCase().includes("correct")) {
+          allStrengths.push("Demonstrated understanding in subjective responses");
+        }
+        if (feedback.toLowerCase().includes("improve") || feedback.toLowerCase().includes("lack") || feedback.toLowerCase().includes("missing")) {
+          allWeaknesses.push("Areas for improvement identified");
+        }
+      } else if (feedback && typeof feedback === "object") {
+        if (feedback.strengths && Array.isArray(feedback.strengths)) {
+          allStrengths.push(...feedback.strengths);
+        }
+        if (feedback.weaknesses && Array.isArray(feedback.weaknesses)) {
+          allWeaknesses.push(...feedback.weaknesses);
+        }
+        if (feedback.suggestions && Array.isArray(feedback.suggestions)) {
+          allSuggestions.push(...feedback.suggestions);
+        }
+      }
+      
+      if (sub.detailedFeedback && typeof sub.detailedFeedback === "object") {
+        if (sub.detailedFeedback.strengths && Array.isArray(sub.detailedFeedback.strengths)) {
+          allStrengths.push(...sub.detailedFeedback.strengths);
+        }
+        if (sub.detailedFeedback.weaknesses && Array.isArray(sub.detailedFeedback.weaknesses)) {
+          allWeaknesses.push(...sub.detailedFeedback.weaknesses);
+        }
+        if (sub.detailedFeedback.suggestions && Array.isArray(sub.detailedFeedback.suggestions)) {
+          allSuggestions.push(...sub.detailedFeedback.suggestions);
+        }
+      }
+    });
+    
+    const percentage = totalMaxMarks > 0 ? ((totalScore / totalMaxMarks) * 100).toFixed(1) : "0";
+    const uniqueStrengths = Array.from(new Set(allStrengths)).slice(0, 5);
+    const uniqueWeaknesses = Array.from(new Set(allWeaknesses)).slice(0, 5);
+    const uniqueSuggestions = Array.from(new Set(allSuggestions)).slice(0, 5);
+    
+    return `Overall performance across ${subjectiveSubmissions.length} subjective question${subjectiveSubmissions.length > 1 ? 's' : ''}: ${totalScore}/${totalMaxMarks} (${percentage}%)`;
+  };
+
+  // Helper function to aggregate coding feedback
+  const getCodingFeedbackSummary = (submissionEntries: any[]) => {
+    const codingSubmissions = submissionEntries.filter((s: any) => s.questionType === "coding" && s.feedback && s.feedback !== "Evaluation in progress...");
+    
+    if (codingSubmissions.length === 0) return "";
+    
+    const allFeedbackTexts: string[] = [];
+    const allStrengths: string[] = [];
+    const allWeaknesses: string[] = [];
+    const allIssues: string[] = [];
+    const allSuggestions: string[] = [];
+    let totalScore = 0;
+    let totalMaxMarks = 0;
+    
+    codingSubmissions.forEach((sub: any) => {
+      totalScore += sub.marksAwarded || 0;
+      totalMaxMarks += sub.maxMarks || 0;
+      
+      const feedback = sub.feedback;
+      const reasoning = sub.reasoning;
+      
+      if (typeof feedback === "string" && feedback.trim()) {
+        allFeedbackTexts.push(feedback);
+      } else if (feedback && typeof feedback === "object") {
+        if (feedback.feedback && typeof feedback.feedback === "string") {
+          allFeedbackTexts.push(feedback.feedback);
+        }
+        if (feedback.overall_feedback && typeof feedback.overall_feedback === "string") {
+          allFeedbackTexts.push(feedback.overall_feedback);
+        }
+        if (feedback.strengths && Array.isArray(feedback.strengths)) {
+          allStrengths.push(...feedback.strengths);
+        }
+        if (feedback.weaknesses && Array.isArray(feedback.weaknesses)) {
+          allWeaknesses.push(...feedback.weaknesses);
+        }
+        if (feedback.issues && Array.isArray(feedback.issues)) {
+          allIssues.push(...feedback.issues);
+        }
+        if (feedback.suggestions && Array.isArray(feedback.suggestions)) {
+          allSuggestions.push(...feedback.suggestions);
+        }
+      }
+      
+      if (reasoning && typeof reasoning === "string" && reasoning.trim()) {
+        allFeedbackTexts.push(reasoning);
+      }
+      
+      if (sub.detailedFeedback && typeof sub.detailedFeedback === "object") {
+        if (sub.detailedFeedback.feedback && typeof sub.detailedFeedback.feedback === "string") {
+          allFeedbackTexts.push(sub.detailedFeedback.feedback);
+        }
+        if (sub.detailedFeedback.strengths && Array.isArray(sub.detailedFeedback.strengths)) {
+          allStrengths.push(...sub.detailedFeedback.strengths);
+        }
+        if (sub.detailedFeedback.weaknesses && Array.isArray(sub.detailedFeedback.weaknesses)) {
+          allWeaknesses.push(...sub.detailedFeedback.weaknesses);
+        }
+        if (sub.detailedFeedback.issues && Array.isArray(sub.detailedFeedback.issues)) {
+          allIssues.push(...sub.detailedFeedback.issues);
+        }
+        if (sub.detailedFeedback.suggestions && Array.isArray(sub.detailedFeedback.suggestions)) {
+          allSuggestions.push(...sub.detailedFeedback.suggestions);
+        }
+      }
+    });
+    
+    const percentage = totalMaxMarks > 0 ? ((totalScore / totalMaxMarks) * 100).toFixed(1) : "0";
+    const percentageNum = parseFloat(percentage);
+    
+    const uniqueIssues = Array.from(new Set(allIssues));
+    const uniqueStrengths = Array.from(new Set(allStrengths));
+    const uniqueWeaknesses = Array.from(new Set(allWeaknesses));
+    const uniqueSuggestions = Array.from(new Set(allSuggestions));
+    
+    const parts: string[] = [];
+    
+    let codeAssessment = "";
+    if (allFeedbackTexts.length > 0) {
+      const mainFeedback = allFeedbackTexts.find(t => t.length > 50) || allFeedbackTexts[0];
+      codeAssessment = mainFeedback;
+    } else {
+      if (percentageNum >= 80) {
+        codeAssessment = "The code demonstrates excellent understanding and implementation with strong problem-solving skills.";
+      } else if (percentageNum >= 70) {
+        codeAssessment = "The code shows good understanding and implementation with solid coding practices.";
+      } else if (percentageNum >= 50) {
+        codeAssessment = "The code demonstrates moderate understanding but requires improvements in implementation and best practices.";
+      } else {
+        codeAssessment = "The code requires significant improvements in understanding, implementation, and coding practices.";
+      }
+    }
+    parts.push(codeAssessment);
+    
+    if (uniqueIssues.length > 0) {
+      const issuesText = uniqueIssues.length === 1 
+        ? `The main issue identified is: ${uniqueIssues[0]}.`
+        : `Several issues were identified, including: ${uniqueIssues.slice(0, 3).join(", ")}${uniqueIssues.length > 3 ? `, and ${uniqueIssues.length - 3} more` : ""}.`;
+      parts.push(issuesText);
+    }
+    
+    if (uniqueStrengths.length > 0) {
+      const strengthsText = uniqueStrengths.length === 1
+        ? `A notable strength is ${uniqueStrengths[0].toLowerCase()}.`
+        : `Key strengths include: ${uniqueStrengths.slice(0, 3).join(", ")}${uniqueStrengths.length > 3 ? `, and ${uniqueStrengths.length - 3} more` : ""}.`;
+      parts.push(strengthsText);
+    }
+    
+    if (uniqueWeaknesses.length > 0) {
+      const weaknessesText = uniqueWeaknesses.length === 1
+        ? `A key weakness is ${uniqueWeaknesses[0].toLowerCase()}.`
+        : `Areas of weakness include: ${uniqueWeaknesses.slice(0, 3).join(", ")}${uniqueWeaknesses.length > 3 ? `, and ${uniqueWeaknesses.length - 3} more` : ""}.`;
+      parts.push(weaknessesText);
+    }
+    
+    if (uniqueSuggestions.length > 0) {
+      const suggestionsText = uniqueSuggestions.length === 1
+        ? `To improve, focus on: ${uniqueSuggestions[0].toLowerCase()}.`
+        : `Areas for improvement include: ${uniqueSuggestions.slice(0, 3).join(", ")}${uniqueSuggestions.length > 3 ? `, and ${uniqueSuggestions.length - 3} more` : ""}.`;
+      parts.push(suggestionsText);
+    }
+    
+    const performanceSummary = `Overall performance: ${totalScore}/${totalMaxMarks} (${percentage}%) across ${codingSubmissions.length} coding question${codingSubmissions.length > 1 ? 's' : ''}.`;
+    parts.push(performanceSummary);
+    
+    return parts.join(" ");
+  };
+
+  // CSV Export function
+  const handleExportResults = () => {
+    if (!assessment) return;
+    
+    const allCandidates = assessment.candidates || [];
+    const submissionsList = (assessment as any).submissionsList || [];
+    
+    // Create a map of submissions by email for quick lookup
+    const submissionsByEmail = new Map<string, AssessmentSubmission>();
+    submissionsList.forEach((sub: AssessmentSubmission) => {
+      const email = String((sub.candidateInfo || {}).email || "").trim().toLowerCase();
+      if (email) {
+        submissionsByEmail.set(email, sub);
+      }
+    });
+    
+    // Prepare CSV data
+    const csvRows: string[] = [];
+    
+    // CSV Headers
+    csvRows.push("Student Name,Email,Score,Percentage,Subjective Overall Feedback,Coding Overall Feedback,Pass/Fail Status");
+    
+    // Process all candidates
+    allCandidates.forEach((candidate: any) => {
+      const candidateEmail = String(candidate.email || "").trim().toLowerCase();
+      const submission = submissionsByEmail.get(candidateEmail);
+      
+      const name = candidate.name || "";
+      const email = candidate.email || "";
+      
+      let score = "0";
+      let percentage = "0";
+      let subjectiveFeedback = "";
+      let codingFeedback = "";
+      let passFailStatus = "Not Submitted";
+      
+      if (submission) {
+        // Get score and percentage
+        score = String(submission.score || 0);
+        percentage = submission.percentage ? submission.percentage.toFixed(2) : "0";
+        
+        // Get pass/fail status
+        passFailStatus = submission.passed ? "PASSED" : "FAILED";
+        
+        // Get feedback summaries
+        const submissionEntries = (submission as any).submissions || [];
+        subjectiveFeedback = getSubjectiveFeedbackSummary(submissionEntries);
+        codingFeedback = getCodingFeedbackSummary(submissionEntries);
+      }
+      
+      // Escape CSV values (handle commas, quotes, newlines)
+      const escapeCsvValue = (value: string) => {
+        if (!value) return "";
+        // If value contains comma, quote, or newline, wrap in quotes and escape quotes
+        if (value.includes(",") || value.includes('"') || value.includes("\n")) {
+          return `"${value.replace(/"/g, '""')}"`;
+        }
+        return value;
+      };
+      
+      // Build CSV row
+      csvRows.push([
+        escapeCsvValue(name),
+        escapeCsvValue(email),
+        escapeCsvValue(score),
+        escapeCsvValue(percentage),
+        escapeCsvValue(subjectiveFeedback),
+        escapeCsvValue(codingFeedback),
+        escapeCsvValue(passFailStatus)
+      ].join(","));
+    });
+    
+    // Create CSV content
+    const csvContent = csvRows.join("\n");
+    
+    // Create blob and download
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const link = document.createElement("a");
+    const url = URL.createObjectURL(blob);
+    link.setAttribute("href", url);
+    link.setAttribute("download", `assessment_results_${assessmentId}_${new Date().toISOString().split('T')[0]}.csv`);
+    link.style.visibility = "hidden";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   const handleResendInvitation = async (email: string, name: string) => {
@@ -500,27 +791,48 @@ export default function CustomMCQDetailsPage({ session }: CustomMCQDetailsPagePr
             <h2 style={{ margin: 0, color: "#1E5A3B" }}>Assessment Details</h2>
             <div style={{ display: "flex", gap: "0.75rem", alignItems: "center" }}>
               {assessment.candidates && assessment.candidates.length > 0 && (
-                <button
-                  type="button"
-                  onClick={handleSendInvitationsToAll}
-                  disabled={sendingInvitations}
-                  style={{
-                    padding: "0.5rem 1rem",
-                    backgroundColor: sendingInvitations ? "#94a3b8" : "#ffffff",
-                    color: sendingInvitations ? "#ffffff" : "#2D7A52",
-                    border: "1px solid #2D7A52",
-                    borderRadius: "0.5rem",
-                    cursor: sendingInvitations ? "not-allowed" : "pointer",
-                    fontWeight: 600,
-                    fontSize: "0.875rem",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "0.5rem",
-                    opacity: sendingInvitations ? 0.6 : 1,
-                  }}
-                >
-                  {sendingInvitations ? "Sending..." : "📧 Send Email to All"}
-                </button>
+                <>
+                  <button
+                    type="button"
+                    onClick={handleExportResults}
+                    style={{
+                      padding: "0.5rem 1rem",
+                      backgroundColor: "#ffffff",
+                      color: "#2D7A52",
+                      border: "1px solid #2D7A52",
+                      borderRadius: "0.5rem",
+                      cursor: "pointer",
+                      fontWeight: 600,
+                      fontSize: "0.875rem",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "0.5rem",
+                    }}
+                  >
+                    📥 Export Results (CSV)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSendInvitationsToAll}
+                    disabled={sendingInvitations}
+                    style={{
+                      padding: "0.5rem 1rem",
+                      backgroundColor: sendingInvitations ? "#94a3b8" : "#ffffff",
+                      color: sendingInvitations ? "#ffffff" : "#2D7A52",
+                      border: "1px solid #2D7A52",
+                      borderRadius: "0.5rem",
+                      cursor: sendingInvitations ? "not-allowed" : "pointer",
+                      fontWeight: 600,
+                      fontSize: "0.875rem",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "0.5rem",
+                      opacity: sendingInvitations ? 0.6 : 1,
+                    }}
+                  >
+                    {sendingInvitations ? "Sending..." : "📧 Send Email to All"}
+                  </button>
+                </>
               )}
               <button
                 type="button"
@@ -827,6 +1139,12 @@ export default function CustomMCQDetailsPage({ session }: CustomMCQDetailsPagePr
                     <th style={{ padding: "0.75rem 0.75rem", textAlign: "center", fontSize: "0.85rem", color: "#1E5A3B" }}>
                       Candidate Requirements
                     </th>
+                    <th style={{ padding: "0.75rem 0.75rem", textAlign: "center", fontSize: "0.85rem", color: "#1E5A3B" }}>
+                      Coding Logs
+                    </th>
+                    <th style={{ padding: "0.75rem 0.75rem", textAlign: "center", fontSize: "0.85rem", color: "#1E5A3B" }}>
+                      Overall Feedback
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
@@ -846,6 +1164,10 @@ export default function CustomMCQDetailsPage({ session }: CustomMCQDetailsPagePr
                     // Resume can be in candidateInfo or candidateRequirements
                     const candidateResume = (candidateInfo as any).resume || candidateRequirements.resume;
                     const hasResume = (candidateInfo as any).hasResume || !!candidateResume;
+                    // Check if there are coding submissions
+                    const submissionEntries = (submission as any).submissions || [];
+                    const hasCodingSubmissions = submissionEntries.some((s: any) => s.questionType === "coding" && s.codeAnswer);
+                    const isCodingLogsExpanded = expandedCodingLogsUser === userEmail && !!userEmail;
                     
                     // Debug: Log candidate requirements to console
                     if (idx === 0) {
@@ -855,7 +1177,6 @@ export default function CustomMCQDetailsPage({ session }: CustomMCQDetailsPagePr
                     }
                     
                     // Calculate attempted and not attempted questions for this submission
-                    const submissionEntries = (submission as any).submissions || [];
                     const attemptedCount = submissionEntries.length;
                     const notAttemptedCount = Math.max(0, totalQuestions - attemptedCount);
 
@@ -997,16 +1318,72 @@ export default function CustomMCQDetailsPage({ session }: CustomMCQDetailsPagePr
                               {isRequirementsExpanded ? "Hide" : "View"}
                             </button>
                           </td>
+                          <td style={{ padding: "0.75rem 0.75rem", textAlign: "center" }}>
+                            <button
+                              type="button"
+                              disabled={!hasCodingSubmissions}
+                              onClick={() => {
+                                if (!hasCodingSubmissions) return;
+                                const nextExpanded = isCodingLogsExpanded ? null : userEmail;
+                                setExpandedCodingLogsUser(nextExpanded);
+                              }}
+                              style={{
+                                padding: "0.45rem 0.75rem",
+                                borderRadius: "0.5rem",
+                                border: "1px solid #1E5A3B",
+                                backgroundColor: isCodingLogsExpanded ? "#ffffff" : "#E8FAF0",
+                                color: hasCodingSubmissions ? "#1E5A3B" : "#D1D5DB",
+                                cursor: hasCodingSubmissions ? "pointer" : "not-allowed",
+                                fontWeight: 600,
+                                fontSize: "0.8rem",
+                              }}
+                            >
+                              {isCodingLogsExpanded ? "Hide Logs" : "View Logs"}
+                            </button>
+                          </td>
+                          <td style={{ padding: "0.75rem 0.75rem", textAlign: "center" }}>
+                            {(() => {
+                              const submissionEntries = (submission as any).submissions || [];
+                              const hasSubjectiveSubmissions = submissionEntries.some((s: any) => s.questionType === "subjective" && s.feedback);
+                              const hasCodingSubmissionsForFeedback = submissionEntries.some((s: any) => s.questionType === "coding" && s.feedback && s.feedback !== "Evaluation in progress...");
+                              const hasOverallFeedback = hasSubjectiveSubmissions || hasCodingSubmissionsForFeedback;
+                              const isOverallFeedbackExpanded = expandedOverallFeedbackUser === userEmail && !!userEmail;
+                              
+                              return (
+                                <button
+                                  type="button"
+                                  disabled={!hasOverallFeedback}
+                                  onClick={() => {
+                                    if (!hasOverallFeedback) return;
+                                    const nextExpanded = isOverallFeedbackExpanded ? null : userEmail;
+                                    setExpandedOverallFeedbackUser(nextExpanded);
+                                  }}
+                                  style={{
+                                    padding: "0.45rem 0.75rem",
+                                    borderRadius: "0.5rem",
+                                    border: "1px solid #7C3AED",
+                                    backgroundColor: isOverallFeedbackExpanded ? "#ffffff" : "#F3E8FF",
+                                    color: hasOverallFeedback ? "#7C3AED" : "#D1D5DB",
+                                    cursor: hasOverallFeedback ? "pointer" : "not-allowed",
+                                    fontWeight: 600,
+                                    fontSize: "0.8rem",
+                                  }}
+                                >
+                                  {isOverallFeedbackExpanded ? "Hide Feedback" : "View Feedback"}
+                                </button>
+                              );
+                            })()}
+                          </td>
                         </tr>
 
-                        {(isProctorExpanded || isAnswerExpanded || isRequirementsExpanded) && (
+                        {(isProctorExpanded || isAnswerExpanded || isRequirementsExpanded || isCodingLogsExpanded || expandedOverallFeedbackUser === userEmail) && (
                           <tr
                             style={{
                               backgroundColor: "#F9FFFB",
                               borderTop: "1px solid #E5E7EB",
                             }}
                           >
-                            <td colSpan={7} style={{ padding: "0.75rem 1rem" }}>
+                            <td colSpan={10} style={{ padding: "0.75rem 1rem" }}>
                               <div
                                 style={{
                                   display: "flex",
@@ -1038,33 +1415,62 @@ export default function CustomMCQDetailsPage({ session }: CustomMCQDetailsPagePr
                                   )}
 
                                   {(submission.mcqTotal && submission.mcqTotal > 0) ||
-                                  (submission.subjectiveTotal && submission.subjectiveTotal > 0) ? (
+                                  (submission.subjectiveTotal && submission.subjectiveTotal > 0) ||
+                                  (submission.codingTotal && submission.codingTotal > 0) ? (
                                     <div>
-                                      <strong style={{ color: "#2D7A52" }}>MCQ:</strong>{" "}
-                                      {submission.mcqScore || 0} / {submission.mcqTotal || 0}{" "}
-                                      <span style={{ marginLeft: "0.5rem", color: "#4A9A6A" }}>
-                                        (
-                                        {submission.mcqTotal
-                                          ? (((submission.mcqScore || 0) / submission.mcqTotal) * 100).toFixed(1)
-                                          : 0}
-                                        %)
-                                      </span>
-                                      {"  |  "}
-                                      <strong style={{ color: "#2D7A52", marginLeft: "0.5rem" }}>
-                                        Subjective:
-                                      </strong>{" "}
-                                      {submission.subjectiveScore || 0} / {submission.subjectiveTotal || 0}{" "}
-                                      <span style={{ marginLeft: "0.5rem", color: "#4A9A6A" }}>
-                                        (
-                                        {submission.subjectiveTotal
-                                          ? (
-                                              ((submission.subjectiveScore || 0) /
-                                                submission.subjectiveTotal) *
-                                              100
-                                            ).toFixed(1)
-                                          : 0}
-                                        %)
-                                      </span>
+                                      {submission.mcqTotal && submission.mcqTotal > 0 && (
+                                        <>
+                                          <strong style={{ color: "#2D7A52" }}>MCQ:</strong>{" "}
+                                          {submission.mcqScore || 0} / {submission.mcqTotal || 0}{" "}
+                                          <span style={{ marginLeft: "0.5rem", color: "#4A9A6A" }}>
+                                            (
+                                            {submission.mcqTotal
+                                              ? (((submission.mcqScore || 0) / submission.mcqTotal) * 100).toFixed(1)
+                                              : 0}
+                                            %)
+                                          </span>
+                                          {"  |  "}
+                                        </>
+                                      )}
+                                      {submission.subjectiveTotal && submission.subjectiveTotal > 0 && (
+                                        <>
+                                          <strong style={{ color: "#2D7A52", marginLeft: "0.5rem" }}>
+                                            Subjective:
+                                          </strong>{" "}
+                                          {submission.subjectiveScore || 0} / {submission.subjectiveTotal || 0}{" "}
+                                          <span style={{ marginLeft: "0.5rem", color: "#4A9A6A" }}>
+                                            (
+                                            {submission.subjectiveTotal
+                                              ? (
+                                                  ((submission.subjectiveScore || 0) /
+                                                    submission.subjectiveTotal) *
+                                                  100
+                                                ).toFixed(1)
+                                              : 0}
+                                            %)
+                                          </span>
+                                          {"  |  "}
+                                        </>
+                                      )}
+                                      {submission.codingTotal && submission.codingTotal > 0 && (
+                                        <>
+                                          <strong style={{ color: "#2D7A52", marginLeft: "0.5rem" }}>
+                                            Coding:
+                                          </strong>{" "}
+                                          {submission.codingScore || 0} / {submission.codingTotal || 0}{" "}
+                                          <span style={{ marginLeft: "0.5rem", color: "#4A9A6A" }}>
+                                            (
+                                            {submission.codingTotal
+                                              ? (
+                                                  ((submission.codingScore || 0) /
+                                                    submission.codingTotal) *
+                                                  100
+                                                ).toFixed(1)
+                                              : 0}
+                                            %)
+                                          </span>
+                                        </>
+                                      )}
                                     </div>
                                   ) : null}
                                 </div>
@@ -1444,6 +1850,448 @@ export default function CustomMCQDetailsPage({ session }: CustomMCQDetailsPagePr
                                     )}
                                   </div>
                                 )}
+                                
+                                {/* Coding Logs View */}
+                                {isCodingLogsExpanded && (() => {
+                                  const submissionEntries = (submission as any).submissions || [];
+                                  const questions = assessment?.questions || [];
+                                  const codingSubmissions = submissionEntries.filter((s: any) => s.questionType === "coding" && s.codeAnswer);
+                                  
+                                  if (codingSubmissions.length === 0) {
+                                    return (
+                                      <div
+                                        style={{
+                                          padding: "0.75rem",
+                                          backgroundColor: "#ffffff",
+                                          borderRadius: "0.375rem",
+                                          border: "1px solid #e5e7eb",
+                                          color: "#64748b",
+                                          fontSize: "0.875rem",
+                                          fontStyle: "italic",
+                                        }}
+                                      >
+                                        No coding submissions found for this candidate.
+                                      </div>
+                                    );
+                                  }
+                                  
+                                  return (
+                                    <div
+                                      style={{
+                                        padding: "1rem",
+                                        backgroundColor: "#ffffff",
+                                        borderRadius: "0.5rem",
+                                        border: "1px solid #1E5A3B",
+                                      }}
+                                    >
+                                      <h4 style={{ fontSize: "1rem", fontWeight: 600, color: "#1E5A3B", marginBottom: "1rem" }}>
+                                        Coding Logs
+                                      </h4>
+                                      <div style={{ display: "grid", gap: "1rem" }}>
+                                        {codingSubmissions.map((submissionEntry: any, idx: number) => {
+                                          const question = questions.find((q: any) => (q.id || q._id) === submissionEntry.questionId);
+                                          const questionText = question?.question || "No question text";
+                                          
+                                          return (
+                                            <div
+                                              key={submissionEntry.questionId || idx}
+                                              style={{
+                                                padding: "1rem",
+                                                backgroundColor: "#f9fafb",
+                                                border: "1px solid #e5e7eb",
+                                                borderRadius: "0.5rem",
+                                              }}
+                                            >
+                                              <div style={{ marginBottom: "0.75rem" }}>
+                                                <strong style={{ color: "#1E5A3B" }}>Question {idx + 1}:</strong> {questionText}
+                                              </div>
+                                              <div style={{ marginBottom: "0.5rem", fontSize: "0.875rem", color: "#2D7A52" }}>
+                                                <strong>Score:</strong> {submissionEntry.marksAwarded || 0} / {submissionEntry.maxMarks || 0}
+                                              </div>
+                                              {submissionEntry.codeAnswer && (
+                                                <div style={{ marginBottom: "0.75rem" }}>
+                                                  <strong style={{ color: "#1E5A3B", display: "block", marginBottom: "0.5rem" }}>Submitted Code:</strong>
+                                                  <pre
+                                                    style={{
+                                                      padding: "0.75rem",
+                                                      backgroundColor: "#1e293b",
+                                                      color: "#e2e8f0",
+                                                      borderRadius: "0.375rem",
+                                                      overflow: "auto",
+                                                      fontSize: "0.875rem",
+                                                      fontFamily: "monospace",
+                                                      whiteSpace: "pre-wrap",
+                                                      wordBreak: "break-word",
+                                                    }}
+                                                  >
+                                                    {submissionEntry.codeAnswer}
+                                                  </pre>
+                                                </div>
+                                              )}
+                                              {submissionEntry.feedback && (
+                                                <div style={{ marginBottom: "0.5rem" }}>
+                                                  <strong style={{ color: "#1E5A3B", display: "block", marginBottom: "0.25rem" }}>AI Feedback:</strong>
+                                                  <div style={{ fontSize: "0.875rem", color: "#374151" }}>
+                                                    {typeof submissionEntry.feedback === "string" 
+                                                      ? submissionEntry.feedback 
+                                                      : submissionEntry.feedback?.summary || "No feedback available"}
+                                                  </div>
+                                                </div>
+                                              )}
+                                              {submissionEntry.reasoning && (
+                                                <div>
+                                                  <strong style={{ color: "#1E5A3B", display: "block", marginBottom: "0.25rem" }}>Reasoning:</strong>
+                                                  <div style={{ fontSize: "0.875rem", color: "#374151" }}>
+                                                    {submissionEntry.reasoning}
+                                                  </div>
+                                                </div>
+                                              )}
+                                            </div>
+                                          );
+                                        })}
+                                      </div>
+                                    </div>
+                                  );
+                                })()}
+                                
+                                {/* Overall Feedback View */}
+                                {expandedOverallFeedbackUser === userEmail && (() => {
+                                  const submissionEntries = (submission as any).submissions || [];
+                                  const subjectiveSubmissions = submissionEntries.filter((s: any) => s.questionType === "subjective" && s.feedback && s.feedback !== "Evaluation in progress...");
+                                  const codingSubmissions = submissionEntries.filter((s: any) => s.questionType === "coding" && s.feedback && s.feedback !== "Evaluation in progress...");
+                                  
+                                  // Aggregate overall feedback for subjective questions
+                                  const aggregateSubjectiveFeedback = () => {
+                                    if (subjectiveSubmissions.length === 0) return null;
+                                    
+                                    const allStrengths: string[] = [];
+                                    const allWeaknesses: string[] = [];
+                                    const allSuggestions: string[] = [];
+                                    let totalScore = 0;
+                                    let totalMaxMarks = 0;
+                                    
+                                    subjectiveSubmissions.forEach((sub: any) => {
+                                      totalScore += sub.marksAwarded || 0;
+                                      totalMaxMarks += sub.maxMarks || 0;
+                                      
+                                      const feedback = sub.feedback;
+                                      if (typeof feedback === "string") {
+                                        // Simple string feedback - extract key points
+                                        if (feedback.toLowerCase().includes("good") || feedback.toLowerCase().includes("well") || feedback.toLowerCase().includes("correct")) {
+                                          allStrengths.push("Demonstrated understanding in subjective responses");
+                                        }
+                                        if (feedback.toLowerCase().includes("improve") || feedback.toLowerCase().includes("lack") || feedback.toLowerCase().includes("missing")) {
+                                          allWeaknesses.push("Areas for improvement identified");
+                                        }
+                                      } else if (feedback && typeof feedback === "object") {
+                                        // Structured feedback object
+                                        if (feedback.strengths && Array.isArray(feedback.strengths)) {
+                                          allStrengths.push(...feedback.strengths);
+                                        }
+                                        if (feedback.weaknesses && Array.isArray(feedback.weaknesses)) {
+                                          allWeaknesses.push(...feedback.weaknesses);
+                                        }
+                                        if (feedback.suggestions && Array.isArray(feedback.suggestions)) {
+                                          allSuggestions.push(...feedback.suggestions);
+                                        }
+                                      }
+                                      
+                                      // Check detailedFeedback if available
+                                      if (sub.detailedFeedback && typeof sub.detailedFeedback === "object") {
+                                        if (sub.detailedFeedback.strengths && Array.isArray(sub.detailedFeedback.strengths)) {
+                                          allStrengths.push(...sub.detailedFeedback.strengths);
+                                        }
+                                        if (sub.detailedFeedback.weaknesses && Array.isArray(sub.detailedFeedback.weaknesses)) {
+                                          allWeaknesses.push(...sub.detailedFeedback.weaknesses);
+                                        }
+                                        if (sub.detailedFeedback.suggestions && Array.isArray(sub.detailedFeedback.suggestions)) {
+                                          allSuggestions.push(...sub.detailedFeedback.suggestions);
+                                        }
+                                      }
+                                    });
+                                    
+                                    const percentage = totalMaxMarks > 0 ? ((totalScore / totalMaxMarks) * 100).toFixed(1) : "0";
+                                    const uniqueStrengths = Array.from(new Set(allStrengths)).slice(0, 5);
+                                    const uniqueWeaknesses = Array.from(new Set(allWeaknesses)).slice(0, 5);
+                                    const uniqueSuggestions = Array.from(new Set(allSuggestions)).slice(0, 5);
+                                    
+                                    return {
+                                      score: totalScore,
+                                      maxMarks: totalMaxMarks,
+                                      percentage,
+                                      strengths: uniqueStrengths,
+                                      weaknesses: uniqueWeaknesses,
+                                      suggestions: uniqueSuggestions,
+                                      summary: subjectiveSubmissions.length > 0 ? `Overall performance across ${subjectiveSubmissions.length} subjective question${subjectiveSubmissions.length > 1 ? 's' : ''}: ${totalScore}/${totalMaxMarks} (${percentage}%)` : null
+                                    };
+                                  };
+                                  
+                                  // Aggregate overall feedback for coding questions
+                                  const aggregateCodingFeedback = () => {
+                                    if (codingSubmissions.length === 0) return null;
+                                    
+                                    const allFeedbackTexts: string[] = [];
+                                    const allStrengths: string[] = [];
+                                    const allWeaknesses: string[] = [];
+                                    const allIssues: string[] = [];
+                                    const allSuggestions: string[] = [];
+                                    let totalScore = 0;
+                                    let totalMaxMarks = 0;
+                                    
+                                    codingSubmissions.forEach((sub: any) => {
+                                      totalScore += sub.marksAwarded || 0;
+                                      totalMaxMarks += sub.maxMarks || 0;
+                                      
+                                      const feedback = sub.feedback;
+                                      const reasoning = sub.reasoning;
+                                      
+                                      // Collect all feedback text
+                                      if (typeof feedback === "string" && feedback.trim()) {
+                                        allFeedbackTexts.push(feedback);
+                                      } else if (feedback && typeof feedback === "object") {
+                                        // If feedback is an object, try to extract text
+                                        if (feedback.feedback && typeof feedback.feedback === "string") {
+                                          allFeedbackTexts.push(feedback.feedback);
+                                        }
+                                        if (feedback.overall_feedback && typeof feedback.overall_feedback === "string") {
+                                          allFeedbackTexts.push(feedback.overall_feedback);
+                                        }
+                                        // Extract structured data
+                                        if (feedback.strengths && Array.isArray(feedback.strengths)) {
+                                          allStrengths.push(...feedback.strengths);
+                                        }
+                                        if (feedback.weaknesses && Array.isArray(feedback.weaknesses)) {
+                                          allWeaknesses.push(...feedback.weaknesses);
+                                        }
+                                        if (feedback.issues && Array.isArray(feedback.issues)) {
+                                          allIssues.push(...feedback.issues);
+                                        }
+                                        if (feedback.suggestions && Array.isArray(feedback.suggestions)) {
+                                          allSuggestions.push(...feedback.suggestions);
+                                        }
+                                      }
+                                      
+                                      // Collect reasoning text
+                                      if (reasoning && typeof reasoning === "string" && reasoning.trim()) {
+                                        allFeedbackTexts.push(reasoning);
+                                      }
+                                      
+                                      // Check detailedFeedback if available
+                                      if (sub.detailedFeedback && typeof sub.detailedFeedback === "object") {
+                                        if (sub.detailedFeedback.feedback && typeof sub.detailedFeedback.feedback === "string") {
+                                          allFeedbackTexts.push(sub.detailedFeedback.feedback);
+                                        }
+                                        if (sub.detailedFeedback.strengths && Array.isArray(sub.detailedFeedback.strengths)) {
+                                          allStrengths.push(...sub.detailedFeedback.strengths);
+                                        }
+                                        if (sub.detailedFeedback.weaknesses && Array.isArray(sub.detailedFeedback.weaknesses)) {
+                                          allWeaknesses.push(...sub.detailedFeedback.weaknesses);
+                                        }
+                                        if (sub.detailedFeedback.issues && Array.isArray(sub.detailedFeedback.issues)) {
+                                          allIssues.push(...sub.detailedFeedback.issues);
+                                        }
+                                        if (sub.detailedFeedback.suggestions && Array.isArray(sub.detailedFeedback.suggestions)) {
+                                          allSuggestions.push(...sub.detailedFeedback.suggestions);
+                                        }
+                                      }
+                                    });
+                                    
+                                    const percentage = totalMaxMarks > 0 ? ((totalScore / totalMaxMarks) * 100).toFixed(1) : "0";
+                                    const percentageNum = parseFloat(percentage);
+                                    
+                                    // Get unique values
+                                    const uniqueIssues = Array.from(new Set(allIssues));
+                                    const uniqueStrengths = Array.from(new Set(allStrengths));
+                                    const uniqueWeaknesses = Array.from(new Set(allWeaknesses));
+                                    const uniqueSuggestions = Array.from(new Set(allSuggestions));
+                                    
+                                    // Build comprehensive feedback as a single narrative
+                                    const parts: string[] = [];
+                                    
+                                    // Start with overall code assessment
+                                    let codeAssessment = "";
+                                    if (allFeedbackTexts.length > 0) {
+                                      // Use the first substantial feedback text as the base assessment
+                                      const mainFeedback = allFeedbackTexts.find(t => t.length > 50) || allFeedbackTexts[0];
+                                      codeAssessment = mainFeedback;
+                                    } else {
+                                      // Generate assessment based on performance
+                                      if (percentageNum >= 80) {
+                                        codeAssessment = "The code demonstrates excellent understanding and implementation with strong problem-solving skills.";
+                                      } else if (percentageNum >= 70) {
+                                        codeAssessment = "The code shows good understanding and implementation with solid coding practices.";
+                                      } else if (percentageNum >= 50) {
+                                        codeAssessment = "The code demonstrates moderate understanding but requires improvements in implementation and best practices.";
+                                      } else {
+                                        codeAssessment = "The code requires significant improvements in understanding, implementation, and coding practices.";
+                                      }
+                                    }
+                                    parts.push(codeAssessment);
+                                    
+                                    // Add issues found
+                                    if (uniqueIssues.length > 0) {
+                                      const issuesText = uniqueIssues.length === 1 
+                                        ? `The main issue identified is: ${uniqueIssues[0]}.`
+                                        : `Several issues were identified, including: ${uniqueIssues.slice(0, 3).join(", ")}${uniqueIssues.length > 3 ? `, and ${uniqueIssues.length - 3} more` : ""}.`;
+                                      parts.push(issuesText);
+                                    }
+                                    
+                                    // Add strengths
+                                    if (uniqueStrengths.length > 0) {
+                                      const strengthsText = uniqueStrengths.length === 1
+                                        ? `A notable strength is ${uniqueStrengths[0].toLowerCase()}.`
+                                        : `Key strengths include: ${uniqueStrengths.slice(0, 3).join(", ")}${uniqueStrengths.length > 3 ? `, and ${uniqueStrengths.length - 3} more` : ""}.`;
+                                      parts.push(strengthsText);
+                                    }
+                                    
+                                    // Add weaknesses
+                                    if (uniqueWeaknesses.length > 0) {
+                                      const weaknessesText = uniqueWeaknesses.length === 1
+                                        ? `A key weakness is ${uniqueWeaknesses[0].toLowerCase()}.`
+                                        : `Areas of weakness include: ${uniqueWeaknesses.slice(0, 3).join(", ")}${uniqueWeaknesses.length > 3 ? `, and ${uniqueWeaknesses.length - 3} more` : ""}.`;
+                                      parts.push(weaknessesText);
+                                    }
+                                    
+                                    // Add improvement areas
+                                    if (uniqueSuggestions.length > 0) {
+                                      const suggestionsText = uniqueSuggestions.length === 1
+                                        ? `To improve, focus on: ${uniqueSuggestions[0].toLowerCase()}.`
+                                        : `Areas for improvement include: ${uniqueSuggestions.slice(0, 3).join(", ")}${uniqueSuggestions.length > 3 ? `, and ${uniqueSuggestions.length - 3} more` : ""}.`;
+                                      parts.push(suggestionsText);
+                                    }
+                                    
+                                    // Add performance summary at the end
+                                    const performanceSummary = `Overall performance: ${totalScore}/${totalMaxMarks} (${percentage}%) across ${codingSubmissions.length} coding question${codingSubmissions.length > 1 ? 's' : ''}.`;
+                                    parts.push(performanceSummary);
+                                    
+                                    // Combine all parts into a single cohesive feedback
+                                    const finalFeedback = parts.join(" ");
+                                    
+                                    return {
+                                      score: totalScore,
+                                      maxMarks: totalMaxMarks,
+                                      percentage,
+                                      comprehensiveFeedback: finalFeedback
+                                    };
+                                  };
+                                  
+                                  const subjectiveFeedback = aggregateSubjectiveFeedback();
+                                  const codingFeedback = aggregateCodingFeedback();
+                                  
+                                  if (!subjectiveFeedback && !codingFeedback) {
+                                    return (
+                                      <div
+                                        style={{
+                                          padding: "0.75rem",
+                                          backgroundColor: "#ffffff",
+                                          borderRadius: "0.375rem",
+                                          border: "1px solid #e5e7eb",
+                                          color: "#64748b",
+                                          fontSize: "0.875rem",
+                                          fontStyle: "italic",
+                                        }}
+                                      >
+                                        No overall feedback available. Feedback will be generated after AI evaluation completes.
+                                      </div>
+                                    );
+                                  }
+                                  
+                                  return (
+                                    <div
+                                      style={{
+                                        padding: "1rem",
+                                        backgroundColor: "#ffffff",
+                                        borderRadius: "0.5rem",
+                                        border: "1px solid #7C3AED",
+                                      }}
+                                    >
+                                      <h4 style={{ fontSize: "1rem", fontWeight: 600, color: "#7C3AED", marginBottom: "1rem" }}>
+                                        Overall Feedback
+                                      </h4>
+                                      <div style={{ display: "grid", gap: "1.5rem" }}>
+                                        {/* Subjective Overall Feedback */}
+                                        {subjectiveFeedback && (
+                                          <div
+                                            style={{
+                                              padding: "1rem",
+                                              backgroundColor: "#F9FAFB",
+                                              border: "1px solid #E5E7EB",
+                                              borderRadius: "0.5rem",
+                                            }}
+                                          >
+                                            <h5 style={{ fontSize: "0.9rem", fontWeight: 600, color: "#1E5A3B", marginBottom: "0.75rem" }}>
+                                              Subjective Questions Overall Feedback
+                                            </h5>
+                                            {subjectiveFeedback.summary && (
+                                              <div style={{ marginBottom: "0.75rem", fontSize: "0.875rem", color: "#374151" }}>
+                                                <strong>Performance Summary:</strong> {subjectiveFeedback.summary}
+                                              </div>
+                                            )}
+                                            {subjectiveFeedback.strengths && subjectiveFeedback.strengths.length > 0 && (
+                                              <div style={{ marginBottom: "0.75rem" }}>
+                                                <strong style={{ color: "#1E5A3B", display: "block", marginBottom: "0.5rem" }}>Strengths:</strong>
+                                                <ul style={{ margin: 0, paddingLeft: "1.25rem", fontSize: "0.875rem", color: "#374151" }}>
+                                                  {subjectiveFeedback.strengths.map((strength: string, idx: number) => (
+                                                    <li key={idx} style={{ marginBottom: "0.25rem" }}>{strength}</li>
+                                                  ))}
+                                                </ul>
+                                              </div>
+                                            )}
+                                            {subjectiveFeedback.weaknesses && subjectiveFeedback.weaknesses.length > 0 && (
+                                              <div style={{ marginBottom: "0.75rem" }}>
+                                                <strong style={{ color: "#1E5A3B", display: "block", marginBottom: "0.5rem" }}>Areas for Improvement:</strong>
+                                                <ul style={{ margin: 0, paddingLeft: "1.25rem", fontSize: "0.875rem", color: "#374151" }}>
+                                                  {subjectiveFeedback.weaknesses.map((weakness: string, idx: number) => (
+                                                    <li key={idx} style={{ marginBottom: "0.25rem" }}>{weakness}</li>
+                                                  ))}
+                                                </ul>
+                                              </div>
+                                            )}
+                                            {subjectiveFeedback.suggestions && subjectiveFeedback.suggestions.length > 0 && (
+                                              <div>
+                                                <strong style={{ color: "#1E5A3B", display: "block", marginBottom: "0.5rem" }}>Suggestions:</strong>
+                                                <ul style={{ margin: 0, paddingLeft: "1.25rem", fontSize: "0.875rem", color: "#374151" }}>
+                                                  {subjectiveFeedback.suggestions.map((suggestion: string, idx: number) => (
+                                                    <li key={idx} style={{ marginBottom: "0.25rem" }}>{suggestion}</li>
+                                                  ))}
+                                                </ul>
+                                              </div>
+                                            )}
+                                          </div>
+                                        )}
+                                        
+                                        {/* Coding Overall Feedback */}
+                                        {codingFeedback && (
+                                          <div
+                                            style={{
+                                              padding: "1rem",
+                                              backgroundColor: "#F9FAFB",
+                                              border: "1px solid #E5E7EB",
+                                              borderRadius: "0.5rem",
+                                            }}
+                                          >
+                                            <h5 style={{ fontSize: "0.9rem", fontWeight: 600, color: "#1E5A3B", marginBottom: "0.75rem" }}>
+                                              Coding Questions Overall Feedback
+                                            </h5>
+                                            {codingFeedback.comprehensiveFeedback && (
+                                              <div 
+                                                style={{ 
+                                                  fontSize: "0.875rem", 
+                                                  color: "#374151",
+                                                  lineHeight: "1.6",
+                                                  whiteSpace: "pre-wrap",
+                                                  wordBreak: "break-word"
+                                                }}
+                                              >
+                                                {codingFeedback.comprehensiveFeedback}
+                                              </div>
+                                            )}
+                                          </div>
+                                        )}
+                                      </div>
+                                    </div>
+                                  );
+                                })()}
                               </div>
                             </td>
                           </tr>
@@ -1455,6 +2303,7 @@ export default function CustomMCQDetailsPage({ session }: CustomMCQDetailsPagePr
               </table>
             </div>
           )}
+
         </div>
 
         {/* Actions */}
@@ -1847,6 +2696,20 @@ export default function CustomMCQDetailsPage({ session }: CustomMCQDetailsPagePr
             </div>
           </div>
         </div>
+      )}
+
+      {/* Send Email to All Modal */}
+      {showSendEmailModal && assessment && (
+        <EmailInvitationModal
+          isOpen={showSendEmailModal}
+          onClose={() => setShowSendEmailModal(false)}
+          candidates={(assessment.candidates || []).map((c: any) => ({ name: c.name, email: c.email }))}
+          assessmentTitle={assessment.title || "Custom MCQ Assessment"}
+          assessmentUrl={`${window.location.origin}/custom-mcq/entry/${assessmentId}?token=${(assessment as any).assessmentToken || ""}`}
+          onSend={handleSendEmailsWithTemplate}
+          invitationsSent={false}
+          hasNewCandidates={true}
+        />
       )}
 
       <style jsx>{`

@@ -27,3 +27,14 @@ export {
   type FullscreenState,
   type FullscreenCallbacks,
 } from "./fullscreen";
+
+export {
+  faceAPIService,
+} from "./FaceAPIService";
+
+export {
+  faceRecognitionService,
+  type FaceComparisonResult,
+  type FaceRecognitionConfig,
+  type FaceEmbedding,
+} from "./FaceRecognitionService";

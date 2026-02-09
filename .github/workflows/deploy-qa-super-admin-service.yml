@@ -1,0 +1,83 @@
+name: Deploy Super Admin Service to QA (Debian VM)
+
+on:
+  push:
+    branches:
+      - QA
+    paths:
+      - 'services/super-admin-service/**'
+      - '.github/workflows/deploy-qa-super-admin-service.yml'
+  pull_request:
+    types: [closed]
+    branches:
+      - QA
+    paths:
+      - 'services/super-admin-service/**'
+  workflow_dispatch:
+
+env:
+  VM_HOST: ${{ secrets.QA_VM_HOST }}
+  VM_USER: ${{ secrets.QA_VM_USER }}
+  VM_SSH_KEY: ${{ secrets.QA_VM_SSH_KEY }}
+  VM_DEPLOY_PATH: ${{ secrets.QA_VM_DEPLOY_PATH }}
+
+jobs:
+  deploy-super-admin-service-qa:
+    runs-on: ubuntu-latest
+    if: |
+      github.event_name == 'push' ||
+      (github.event_name == 'pull_request' && github.event.pull_request.merged == true) ||
+      github.event_name == 'workflow_dispatch'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: QA
+
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ env.VM_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H ${{ env.VM_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Deploy Super Admin Service to QA VM
+        run: |
+          DEPLOY_PATH="${{ env.VM_DEPLOY_PATH }}"
+          if [ -z "$DEPLOY_PATH" ]; then
+            DEPLOY_PATH="/opt/aptor"
+          fi
+          
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no ${{ env.VM_USER }}@${{ env.VM_HOST }} bash << EOF
+            set -e
+            
+            echo "🚀 Starting Super Admin Service QA deployment..."
+            
+            cd ${DEPLOY_PATH}
+            git fetch origin
+            git checkout QA
+            git pull origin QA
+            
+            echo "🔨 Rebuilding Super Admin Service..."
+            docker-compose build super-admin-service
+            
+            echo "🔄 Restarting Super Admin Service..."
+            docker-compose up -d --no-deps super-admin-service
+            
+            sleep 5
+            
+            if docker-compose ps super-admin-service | grep -q "Up"; then
+              echo "✅ Super Admin Service deployed successfully!"
+              docker-compose ps super-admin-service
+            else
+              echo "❌ Super Admin Service deployment failed!"
+              docker-compose logs super-admin-service
+              exit 1
+            fi
+          EOF
+
+      - name: Verify Deployment
+        run: |
+          echo "✅ Super Admin Service deployment completed"
+

@@ -23,7 +23,8 @@ import {
   debugLog,
   getTimestamp,
 } from "../utils";
-import { faceVerificationService } from "@/services/proctoring/faceVerification.service";
+import { faceRecognitionService } from "./FaceRecognitionService";
+import { modelService } from "./ModelService";
 // ============================================================================
 // Constants - Preserved from useFaceMesh.ts
 // ============================================================================
@@ -59,11 +60,10 @@ const NO_FACE_COOLDOWN = 2000;             // 6 seconds cooldown
 const MULTIPLE_FACE_TRIGGER_DURATION = 1000; // 1 second to trigger
 const MULTIPLE_FACE_COOLDOWN = 2000;         // 6 seconds cooldown
 
-// Face Verification (2-Tier Hybrid: BlazeFace + DeepFace ArcFace)
-const FACE_VERIFICATION_INTERVAL_MS = 3000;         // Check every 3 seconds
-const TIER1_SIMILARITY_THRESHOLD = 80;              // Tier 1: if < 80%, escalate to Tier 2
-const TIER2_SIMILARITY_THRESHOLD = 40;              // Tier 2: if < 40%, mismatch (backend uses this)
-const FACE_MISMATCH_CONSECUTIVE_REQUIRED = 2;       // 2 Tier 2 mismatches → toast faster
+// Face Verification (Client-side MobileFaceNet)
+const FACE_VERIFICATION_INTERVAL_MS = 30000;        // Check every 30 seconds
+const FACE_SIMILARITY_THRESHOLD = 70;               // 70% similarity required for match
+const FACE_MISMATCH_CONSECUTIVE_REQUIRED = 2;       // 2 consecutive mismatches required
 const FACE_MISMATCH_GRACE_PERIOD_MS = 30000;       // 30 seconds grace period
 const FACE_MISMATCH_COOLDOWN_MS = 90000;            // 90 seconds cooldown
 const MIN_FACE_CONFIDENCE = 95;                     // Minimum BlazeFace confidence (0-100)
@@ -84,6 +84,14 @@ export interface AIProctoringState {
 export interface AIProctoringCallbacks {
   onViolation: (violation: ProctoringViolation) => void;
   onStateChange: (state: Partial<AIProctoringState>) => void;
+  onWarning?: (warning: ProctoringWarning) => void;
+}
+
+export interface ProctoringWarning {
+  type: 'FACE_NOT_CLEARLY_VISIBLE';
+  message: string;
+  timestamp: number;
+  metadata?: Record<string, unknown>;
 }
 
 // BlazeFace prediction interface
@@ -208,15 +216,20 @@ export class AIProctoringService {
     snapshotData: null,
   };
 
-  // Face Verification State (2-Tier Hybrid: BlazeFace + DeepFace ArcFace)
+  // Face Verification State (Client-side MobileFaceNet)
   private referenceImage: string | null = null;
   private faceVerificationEnabled = false;
   private consecutiveMismatches = 0;
   private lastFaceVerificationCheck = 0;
   private sessionStartTime = 0;
   private faceMismatchState: 'idle' | 'detecting' | 'triggered' | 'cooldown' = 'idle';
-  private tier1Checks = 0;
-  private tier2Escalations = 0;
+
+  // Warning throttling
+  private lastFaceWarning = 0;
+  private readonly faceWarningThrottle = 10000; // 10 seconds
+
+  // Client-side face comparison state
+  private referenceEmbedding: Float32Array | null = null;
 
   // State
   private state: AIProctoringState = {
@@ -537,8 +550,6 @@ export class AIProctoringService {
     this.consecutiveMismatches = 0;
     this.lastFaceVerificationCheck = 0;
     this.faceMismatchState = 'idle';
-    this.tier1Checks = 0;
-    this.tier2Escalations = 0;
 
     // Reset all incident trackers
     this.gazeAwayIncident = {
@@ -838,7 +849,7 @@ export class AIProctoringService {
     // ========== GAZE AWAY INCIDENT STATE MACHINE ==========
     this.handleGazeAwayIncident(isGazeAway);
 
-    // ========== FACE VERIFICATION (Hybrid Backend) - every 3 seconds ==========
+    // ========== FACE VERIFICATION (Client-side MobileFaceNet) - every 30 seconds ==========
     const now = Date.now();
     if (
       this.faceVerificationEnabled &&
@@ -854,36 +865,66 @@ export class AIProctoringService {
   // ============================================================================
 
   /**
-   * Initialize face verification with reference image from sessionStorage.
+   * Initialize face verification with reference embedding from sessionStorage
    */
   private async initializeFaceVerification(): Promise<void> {
     try {
       if (typeof window === "undefined") return;
       const enabled = sessionStorage.getItem("faceVerificationEnabled");
+      const referenceEmbeddingJson = sessionStorage.getItem("faceVerificationReferenceEmbedding");
       const referenceImg = sessionStorage.getItem("faceVerificationReferenceImage");
 
-      if (enabled !== "true" || !referenceImg) {
-        debugLog("[AIProctoringService] Face verification not enabled or no reference image");
+      if (enabled !== "true" || !referenceEmbeddingJson) {
+        console.log("[AIProctoringService] Face verification not enabled or no reference embedding");
         this.faceVerificationEnabled = false;
         return;
       }
 
       this.referenceImage = referenceImg;
-      this.faceVerificationEnabled = true;
       this.sessionStartTime = Date.now();
 
-      console.log("[AIProctoringService] ✅ 2-Tier Hybrid Face Verification Initialized:", {
-        referenceImageSize: `${(referenceImg.length / 1024).toFixed(1)} KB`,
-        tier1: "Client-side quality check (BlazeFace)",
-        tier2: "Backend deep verification (DeepFace ArcFace)",
-        mode: "Escalate to Tier 2 when Tier 1 passes",
-      });
+      // Initialize FaceRecognitionService (loads MobileFaceNet model)
+      try {
+        await faceRecognitionService.initialize();
+        console.log("[AIProctoringService] ✅ FaceRecognitionService initialized");
+        
+        // Load reference embedding from sessionStorage
+        const embeddingArray = JSON.parse(referenceEmbeddingJson) as number[];
+        this.referenceEmbedding = new Float32Array(embeddingArray);
+        
+        this.faceVerificationEnabled = true;
+        
+        console.log("[AIProctoringService] ✅ Client-side Face Verification Initialized:", {
+          referenceImageSize: referenceImg ? `${(referenceImg.length / 1024).toFixed(1)} KB` : 'N/A',
+          referenceEmbedding: this.referenceEmbedding ? `Extracted ✅ (${this.referenceEmbedding.length}D)` : "Failed ❌",
+          model: "MobileFaceNet (client-side)",
+          checkInterval: "30 seconds",
+        });
+      } catch (error) {
+        console.error("[AIProctoringService] Failed to initialize FaceRecognitionService:", error);
+        this.faceVerificationEnabled = false;
+        this.referenceEmbedding = null;
+      }
     } catch (error) {
       console.error("[AIProctoringService] Failed to initialize face verification:", error);
       this.faceVerificationEnabled = false;
       this.referenceImage = null;
+      this.referenceEmbedding = null;
     }
   }
+
+  /**
+   * Create HTMLImageElement from base64 data URL
+   */
+  private async createImageFromDataUrl(dataUrl: string): Promise<HTMLImageElement> {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.onerror = reject;
+      img.src = dataUrl;
+    });
+  }
+
 
   /**
    * Assess if current frame has a good quality face for verification.
@@ -960,64 +1001,76 @@ export class AIProctoringService {
   }
 
   /**
-   * 2-Tier Face Verification: Tier 1 quality check (BlazeFace), Tier 2 backend (DeepFace ArcFace).
+   * Client-side Face Verification using MobileFaceNet
+   * Checks face every 30 seconds
    */
   private async checkFaceVerification(): Promise<void> {
-    if (!this.faceVerificationEnabled || !this.referenceImage || !this.videoElement) {
+    if (!this.faceVerificationEnabled || !this.referenceEmbedding || !this.videoElement) {
       return;
     }
 
     try {
-      // Tier 1: client-side quality check
+      // Quality check: Ensure good face is detected
       const faceQuality = await this.assessFaceQuality();
-      this.tier1Checks++;
-
+      
       if (!faceQuality.hasGoodFace) {
-        console.warn("[AIProctoringService] ⚠️ [TIER 1] Poor quality - skipping check:", {
+        console.warn("[AIProctoringService] ⚠️ Poor quality face - skipping check:", {
           reason: faceQuality.reason,
           confidence: faceQuality.confidence.toFixed(1),
-          faceSize: `${(faceQuality.faceSize * 100).toFixed(1)}%`,
+          faceSize: `${(faceQuality.faceSize * 100).toFixed(1)}%`
         });
-        // Don't reset consecutiveMismatches here — only reset when Tier 2 says match. Toast appears faster.
+        
+        // Emit warning for face too small (only if AI proctoring is enabled and throttled)
+        if (faceQuality.reason === "face_too_small" && this.session && this.callbacks) {
+          const now = Date.now();
+          if (now - this.lastFaceWarning > this.faceWarningThrottle) {
+            this.emitWarning({
+              type: 'FACE_NOT_CLEARLY_VISIBLE',
+              message: 'Please ensure your face is clearly visible in the camera',
+              timestamp: now,
+              metadata: { faceSize: `${(faceQuality.faceSize * 100).toFixed(1)}%` }
+            });
+            this.lastFaceWarning = now;
+          }
+        }
+        
+        // Reset mismatch counter for poor quality frames
+        this.consecutiveMismatches = 0;
         return;
       }
 
-      console.log("[AIProctoringService] ✅ [TIER 1] Good quality face detected:", {
+      console.log("[AIProctoringService] ✅ Good quality face detected, verifying...", {
         confidence: faceQuality.confidence.toFixed(1),
-        faceSize: `${(faceQuality.faceSize * 100).toFixed(1)}%`,
-        tier1Checks: this.tier1Checks,
+        faceSize: `${(faceQuality.faceSize * 100).toFixed(1)}%`
       });
 
+      // Extract embedding from live frame using FaceRecognitionService
       const liveFrame = await this.captureCurrentFrame();
       if (!liveFrame) {
         console.error("[AIProctoringService] Failed to capture current frame");
         return;
       }
 
-      console.log("[AIProctoringService] 📡 [TIER 2] Escalating to backend...");
-      this.tier2Escalations++;
-
-      const result = await faceVerificationService.verifyFace(
-        this.session?.assessmentId ?? "unknown",
-        this.session?.userId ?? "unknown",
-        this.referenceImage,
+      // Verify face using FaceRecognitionService
+      const result = await faceRecognitionService.verifyFace(
+        this.referenceEmbedding,
         liveFrame
       );
 
-      console.log("[AIProctoringService] 📊 [TIER 2] Backend result:", {
+      console.log("[AIProctoringService] 📊 Face verification result:", {
         match: result.match,
-        similarity: result.similarity.toFixed(2),
-        confidence: result.confidence,
-        provider: result.metadata?.provider,
-        tier1Checks: this.tier1Checks,
-        tier2Escalations: this.tier2Escalations,
-        escalationRate: `${((this.tier2Escalations / this.tier1Checks) * 100).toFixed(1)}%`,
+        similarity: result.similarity.toFixed(2) + "%",
+        distance: result.distance.toFixed(4),
+        threshold: FACE_SIMILARITY_THRESHOLD + "%",
       });
 
+      // Handle result
       const isMismatch = !result.match;
       this.handleFaceMismatch(isMismatch, result.similarity);
+
     } catch (error) {
       console.error("[AIProctoringService] Face verification failed:", error);
+      // On error, reset mismatch counter (don't penalize for service failures)
       this.consecutiveMismatches = 0;
     }
   }
@@ -1059,8 +1112,7 @@ export class AIProctoringService {
             consecutiveMismatches: this.consecutiveMismatches,
             similarity: similarity.toFixed(2),
             timeSinceStart: `${((now - this.sessionStartTime) / 1000).toFixed(0)}s`,
-            tier1Checks: this.tier1Checks,
-            tier2Escalations: this.tier2Escalations,
+            model: "MobileFaceNet (client-side)",
           }, snapshot);
 
           this.faceMismatchState = "cooldown";
@@ -1374,6 +1426,23 @@ export class AIProctoringService {
     // Also call session callback if provided
     if (this.session.onViolation) {
       this.session.onViolation(violation);
+    }
+  }
+
+  /**
+   * Emit a warning (non-violation, helpful notification for candidate)
+   * Only emitted when AI proctoring is enabled
+   */
+  private emitWarning(warning: ProctoringWarning): void {
+    if (!this.session || !this.callbacks) {
+      return;
+    }
+
+    // Only emit warning if AI proctoring is enabled (service is running)
+    // Since AIProctoringService only starts when AI proctoring is enabled,
+    // we can safely emit the warning
+    if (this.callbacks.onWarning) {
+      this.callbacks.onWarning(warning);
     }
   }
 

@@ -129,10 +129,19 @@ export const dsaService = {
   },
 
   /**
-   * Update test
+   * Update test (full update - PUT)
    */
   updateTest: async (testId: string, data: Partial<CreateDSATestDto>): Promise<ApiResponse<DSATest>> => {
     const response = await apiClient.put<ApiResponse<DSATest>>(`/api/v1/dsa/tests/${testId}`, data);
+    return response.data;
+  },
+
+  /**
+   * Patch test (partial update - PATCH)
+   * Use this for updating specific fields like invitationTemplate
+   */
+  patchTest: async (testId: string, data: Partial<CreateDSATestDto>): Promise<ApiResponse<DSATest>> => {
+    const response = await apiClient.patch<ApiResponse<DSATest>>(`/api/v1/dsa/tests/${testId}`, data);
     return response.data;
   },
 
@@ -147,8 +156,9 @@ export const dsaService = {
   /**
    * List questions
    */
-  listQuestions: async (): Promise<ApiResponse<DSAQuestion[]>> => {
-    const response = await apiClient.get<ApiResponse<DSAQuestion[]>>('/api/v1/dsa/questions');
+  listQuestions: async (lightweight: boolean = false): Promise<ApiResponse<DSAQuestion[]>> => {
+    const endpoint = lightweight ? '/api/v1/dsa/questions/lightweight' : '/api/v1/dsa/questions';
+    const response = await apiClient.get<ApiResponse<DSAQuestion[]>>(endpoint);
     return response.data;
   },
 

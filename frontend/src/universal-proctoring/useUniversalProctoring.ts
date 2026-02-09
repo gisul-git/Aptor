@@ -37,6 +37,7 @@ import {
   UniversalProctoringService,
   StartProctoringOptions,
   ProctoringCallbacks,
+  ProctoringWarning,
 } from "./UniversalProctoringService";
 import { FullscreenConfig } from "./services";
 
@@ -47,6 +48,8 @@ import { FullscreenConfig } from "./services";
 export interface UseUniversalProctoringOptions {
   /** Called when a violation occurs */
   onViolation?: (violation: ProctoringViolation) => void;
+  /** Called when a warning occurs (non-violation notification) */
+  onWarning?: (warning: ProctoringWarning) => void;
   /** Called when fullscreen is exited */
   onFullscreenExit?: () => void;
   /** Enable debug mode */
@@ -107,7 +110,7 @@ export interface StartProctoringParams {
 export function useUniversalProctoring(
   options: UseUniversalProctoringOptions = {}
 ): UseUniversalProctoringReturn {
-  const { onViolation, onFullscreenExit, debug } = options;
+  const { onViolation, onWarning, onFullscreenExit, debug } = options;
 
   // State
   const [state, setState] = useState<ProctoringState>(INITIAL_PROCTORING_STATE);
@@ -149,6 +152,7 @@ export function useUniversalProctoring(
 
       const callbacks: ProctoringCallbacks = {
         onViolation: handleViolation,
+        onWarning,
         onStateChange: handleStateChange,
         onFullscreenExit,
       };

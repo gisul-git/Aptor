@@ -151,6 +151,8 @@ export default function DashboardPage({ session: serverSession }: DashboardPageP
   });
   const [cloning, setCloning] = useState(false);
   const [uiError, setUiError] = useState<string | null>(null);
+  const [resuming, setResuming] = useState<{ show: boolean; testName: string }>({ show: false, testName: "" });
+  const [pausing, setPausing] = useState<{ show: boolean; testName: string }>({ show: false, testName: "" });
 
   useEffect(() => {
     // Close profile dropdown when clicking outside
@@ -287,12 +289,16 @@ export default function DashboardPage({ session: serverSession }: DashboardPageP
     e.stopPropagation();
     setOpenMenuId(null);
     
+    // Find the assessment to get its name and type
+    const assessment = assessments.find(a => a.id === assessmentId);
+    const assessmentType = assessment?.type || 'assessment';
+    const testName = assessment?.title || "Assessment";
+    
+    // Show pausing modal immediately
+    setPausing({ show: true, testName });
+    setUiError(null);
+    
     try {
-      setUiError(null);
-      // Find the assessment to determine its type
-      const assessment = assessments.find(a => a.id === assessmentId);
-      const assessmentType = assessment?.type || 'assessment';
-      
       // Use appropriate mutation based on type
       if (assessmentType === 'custom_mcq') {
         await pauseCustomMCQMutation.mutateAsync(assessmentId);
@@ -313,10 +319,13 @@ export default function DashboardPage({ session: serverSession }: DashboardPageP
       }
       
       // React Query will automatically refetch and update the UI
-      alert("Assessment paused — current candidates may continue; new entrants are blocked");
+      // Close the modal after successful pause
+      setPausing({ show: false, testName: "" });
     } catch (err: any) {
       console.error("Error pausing assessment:", err);
       setUiError(err.message || "Failed to pause assessment");
+      // Close the modal on error as well
+      setPausing({ show: false, testName: "" });
     }
   };
 
@@ -324,12 +333,16 @@ export default function DashboardPage({ session: serverSession }: DashboardPageP
     e.stopPropagation();
     setOpenMenuId(null);
     
+    // Find the assessment to get its name and type
+    const assessment = assessments.find(a => a.id === assessmentId);
+    const assessmentType = assessment?.type || 'assessment';
+    const testName = assessment?.title || "Assessment";
+    
+    // Show resuming modal immediately
+    setResuming({ show: true, testName });
+    setUiError(null);
+    
     try {
-      setUiError(null);
-      // Find the assessment to determine its type
-      const assessment = assessments.find(a => a.id === assessmentId);
-      const assessmentType = assessment?.type || 'assessment';
-      
       // Use appropriate mutation based on type
       if (assessmentType === 'custom_mcq') {
         await resumeCustomMCQMutation.mutateAsync(assessmentId);
@@ -350,10 +363,13 @@ export default function DashboardPage({ session: serverSession }: DashboardPageP
       }
       
       // React Query will automatically refetch and update the UI
-      alert("Assessment resumed");
+      // Close the modal after successful resume
+      setResuming({ show: false, testName: "" });
     } catch (err: any) {
       console.error("Error resuming assessment:", err);
       setUiError(err.message || "Failed to resume assessment");
+      // Close the modal on error as well
+      setResuming({ show: false, testName: "" });
     }
   };
 
@@ -371,6 +387,20 @@ export default function DashboardPage({ session: serverSession }: DashboardPageP
       const originalAssessment = assessments.find(a => a.id === assessmentId);
       const assessmentType = originalAssessment?.type || 'assessment';
       
+      // 🔍 Logging for debugging clone routing
+      console.log('🔍 [Clone] Assessment lookup:', {
+        assessmentId,
+        found: !!originalAssessment,
+        type: assessmentType,
+        assessment: originalAssessment ? {
+          id: originalAssessment.id,
+          title: originalAssessment.title,
+          type: originalAssessment.type
+        } : null,
+        totalAssessments: assessments.length,
+        assessmentIds: assessments.map(a => ({ id: a.id, type: a.type }))
+      });
+      
       const cloneData = {
         newTitle: newTitle.trim(),
         keepSchedule: false,
@@ -379,8 +409,10 @@ export default function DashboardPage({ session: serverSession }: DashboardPageP
       
       // Use appropriate mutation based on type
       if (assessmentType === 'dsa') {
+        console.log('✅ [Clone] Routing to DSA service:', { testId: assessmentId, cloneData });
         await cloneDSATestMutation.mutateAsync({ testId: assessmentId, ...cloneData });
       } else if (assessmentType === 'aiml') {
+        console.log('✅ [Clone] Routing to AIML service:', { testId: assessmentId, cloneData });
         await cloneAIMLTestMutation.mutateAsync({ testId: assessmentId, ...cloneData });
       } else if (assessmentType === 'custom_mcq') {
         await cloneCustomMCQMutation.mutateAsync({ assessmentId, ...cloneData });
@@ -393,17 +425,44 @@ export default function DashboardPage({ session: serverSession }: DashboardPageP
       } else if (assessmentType === 'devops') {
         await cloneDevOpsTestMutation.mutateAsync({ testId: assessmentId, ...cloneData });
       } else {
+        console.log('⚠️ [Clone] Falling back to AI Assessment service (type not recognized):', { assessmentId, assessmentType, cloneData });
         await cloneAssessmentMutation.mutateAsync({ assessmentId, ...cloneData });
       }
+      
+      console.log('✅ [Clone] Clone mutation completed successfully');
       
       // Close modal
       setCloneModal({ show: false, assessmentId: null, assessmentTitle: "", newTitle: "" });
       setOpenMenuId(null);
       
-      // React Query will automatically refetch and update the UI
+      // Manually refetch all assessments to ensure the cloned test appears
+      // React Query cache invalidation might not be immediate, so we force a refetch
+      console.log('🔄 [Clone] Refetching all assessment lists...');
+      await Promise.all([
+        refetchAssessments(),
+        refetchCustomMCQ(),
+        refetchDSA(),
+        refetchAIML(),
+        refetchDesign(),
+        refetchDataEngineering(),
+        refetchCloud(),
+        refetchDevOps()
+      ]);
+      
+      console.log('✅ [Clone] All assessments refetched');
       alert("Assessment cloned successfully");
     } catch (err: any) {
-      console.error("Error cloning assessment:", err);
+      // Find assessment again for error logging (in case it wasn't found earlier)
+      const errorAssessment = assessments.find(a => a.id === assessmentId);
+      console.error("❌ [Clone] Error cloning assessment:", {
+        error: err,
+        message: err.message,
+        response: err.response?.data,
+        status: err.response?.status,
+        assessmentId,
+        assessmentType: errorAssessment?.type || 'unknown',
+        found: !!errorAssessment
+      });
       setUiError(err.message || "Failed to clone assessment");
     } finally {
       setCloning(false);
@@ -735,6 +794,178 @@ export default function DashboardPage({ session: serverSession }: DashboardPageP
           />
         )}
       </div>
+
+      {/* Pausing Modal */}
+      {pausing.show && (
+        <div
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: "rgba(0, 0, 0, 0.6)",
+            backdropFilter: "blur(4px)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 2000,
+            animation: "fadeIn 0.2s ease-out",
+          }}
+        >
+          <style dangerouslySetInnerHTML={{__html: `
+            @keyframes fadeIn {
+              from {
+                opacity: 0;
+              }
+              to {
+                opacity: 1;
+              }
+            }
+            @keyframes slideUp {
+              from {
+                opacity: 0;
+                transform: translateY(20px) scale(0.95);
+              }
+              to {
+                opacity: 1;
+                transform: translateY(0) scale(1);
+              }
+            }
+            @keyframes spin {
+              to {
+                transform: rotate(360deg);
+              }
+            }
+          `}} />
+          <div
+            style={{
+              backgroundColor: "#ffffff",
+              borderRadius: "1rem",
+              padding: "2rem",
+              maxWidth: "400px",
+              width: "90%",
+              boxShadow: "0 20px 50px rgba(0, 0, 0, 0.15), 0 0 0 1px rgba(0, 0, 0, 0.05)",
+              animation: "slideUp 0.2s ease-out",
+              textAlign: "center",
+            }}
+          >
+            {/* Spinner */}
+            <div style={{
+              width: "48px",
+              height: "48px",
+              margin: "0 auto 1.5rem",
+              border: "4px solid #e5e7eb",
+              borderTopColor: "#f59e0b",
+              borderRadius: "50%",
+              animation: "spin 0.8s linear infinite",
+            }} />
+            
+            {/* Message */}
+            <h3 style={{ 
+              margin: "0 0 0.5rem", 
+              fontSize: "1.125rem", 
+              fontWeight: 600, 
+              color: "#1a1625" 
+            }}>
+              Pausing the test
+            </h3>
+            <p style={{ 
+              margin: 0, 
+              fontSize: "0.9375rem", 
+              color: "#64748b" 
+            }}>
+              {pausing.testName}
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Resuming Modal */}
+      {resuming.show && (
+        <div
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: "rgba(0, 0, 0, 0.6)",
+            backdropFilter: "blur(4px)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 2000,
+            animation: "fadeIn 0.2s ease-out",
+          }}
+        >
+          <style dangerouslySetInnerHTML={{__html: `
+            @keyframes fadeIn {
+              from {
+                opacity: 0;
+              }
+              to {
+                opacity: 1;
+              }
+            }
+            @keyframes slideUp {
+              from {
+                opacity: 0;
+                transform: translateY(20px) scale(0.95);
+              }
+              to {
+                opacity: 1;
+                transform: translateY(0) scale(1);
+              }
+            }
+            @keyframes spin {
+              to {
+                transform: rotate(360deg);
+              }
+            }
+          `}} />
+          <div
+            style={{
+              backgroundColor: "#ffffff",
+              borderRadius: "1rem",
+              padding: "2rem",
+              maxWidth: "400px",
+              width: "90%",
+              boxShadow: "0 20px 50px rgba(0, 0, 0, 0.15), 0 0 0 1px rgba(0, 0, 0, 0.05)",
+              animation: "slideUp 0.2s ease-out",
+              textAlign: "center",
+            }}
+          >
+            {/* Spinner */}
+            <div style={{
+              width: "48px",
+              height: "48px",
+              margin: "0 auto 1.5rem",
+              border: "4px solid #e5e7eb",
+              borderTopColor: "#10b981",
+              borderRadius: "50%",
+              animation: "spin 0.8s linear infinite",
+            }} />
+            
+            {/* Message */}
+            <h3 style={{ 
+              margin: "0 0 0.5rem", 
+              fontSize: "1.125rem", 
+              fontWeight: 600, 
+              color: "#1a1625" 
+            }}>
+              Resuming the test
+            </h3>
+            <p style={{ 
+              margin: 0, 
+              fontSize: "0.9375rem", 
+              color: "#64748b" 
+            }}>
+              {resuming.testName}
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Clone Confirmation Modal */}
       {cloneModal.show && (
