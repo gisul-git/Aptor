@@ -105,7 +105,7 @@ services:
       redis:
         condition: service_healthy
     environment:
-      PENPOT_FLAGS: "enable-registration enable-login-with-password disable-email-verification"
+      PENPOT_FLAGS: "enable-registration enable-login-with-password disable-email-verification disable-secure-session-cookies"
       PENPOT_DATABASE_URI: "postgresql://postgres/penpot"
       PENPOT_DATABASE_USERNAME: "penpot"
       PENPOT_DATABASE_PASSWORD: "penpot"
@@ -159,7 +159,7 @@ services:
       test: ["CMD", "true"]
 
   # ===========================
-  # YOUR DESIGN SERVICE (FIXED)
+  # YOUR DESIGN SERVICE (ENHANCED)
   # ===========================
 
   design-service:
@@ -171,13 +171,57 @@ services:
       - "3006:3006"
     volumes:
       - ./services/design-service:/app
+      - ./penpot_submissions:/tmp/penpot_submissions
     environment:
+      # Application
+      DEBUG: "true"
+      PORT: 3006
+      
+      # Database
+      MONGODB_URL: "mongodb://mongo:27017"
+      MONGODB_DB_NAME: "aptor_design"
+      
+      # JWT
+      JWT_SECRET_KEY: "${JWT_SECRET_KEY:-design-service-secret-key}"
+      JWT_ALGORITHM: "HS256"
+      JWT_EXPIRATION_HOURS: 24
+      
+      # AI Services
+      AI_PROVIDER: "${AI_PROVIDER:-openai}"
+      OPENAI_API_KEY: "${OPENAI_API_KEY:-}"
+      GEMINI_API_KEY: "${GEMINI_API_KEY:-}"
+      CLAUDE_API_KEY: "${CLAUDE_API_KEY:-}"
+      AI_MODEL: "${AI_MODEL:-gpt-4}"
+      
       # Penpot API - backend direct (Docker network)
+      PENPOT_URL: "http://localhost:9001"
       PENPOT_API_URL: "http://penpot-backend:6060"
       PENPOT_PUBLIC_URI: "http://localhost:9001"
-      # Use your Penpot admin email and password (from registration)
-      PENPOT_ADMIN_EMAIL: "${PENPOT_ADMIN_EMAIL:-admin@penpot.local}"
-      PENPOT_ADMIN_PASSWORD: "${PENPOT_ADMIN_PASSWORD:-admin123}"
+      PENPOT_ACCESS_TOKEN: "${PENPOT_ACCESS_TOKEN:-}"
+      PENPOT_ADMIN_EMAIL: "${PENPOT_ADMIN_EMAIL:-admin@example.com}"
+      PENPOT_ADMIN_PASSWORD: "${PENPOT_ADMIN_PASSWORD:-12312312}"
+      
+      # MinIO Object Storage
+      MINIO_ENDPOINT: "minio:9000"
+      MINIO_ACCESS_KEY: "minioadmin"
+      MINIO_SECRET_KEY: "minioadmin"
+      MINIO_BUCKET: "design-submissions"
+      MINIO_SECURE: "false"
+      
+      # Redis
+      REDIS_HOST: "redis"
+      REDIS_PORT: 6379
+      REDIS_DB: 0
+      
+      # Proctoring Service
+      PROCTORING_SERVICE_URL: "http://proctoring-service:3005"
+      
+      # Evaluation Configuration
+      RULE_BASED_WEIGHT: 0.6
+      AI_BASED_WEIGHT: 0.4
+      DEFAULT_TEST_DURATION_MINUTES: 60
+      DEFAULT_EVALUATION_TIMEOUT_SECONDS: 120
+      
     depends_on:
       mongo:
         condition: service_healthy
@@ -189,3 +233,9 @@ services:
         condition: service_healthy
       penpot-frontend:
         condition: service_started
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3006/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s

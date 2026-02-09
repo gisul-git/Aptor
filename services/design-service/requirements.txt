@@ -22,12 +22,29 @@ google-generativeai==0.3.0
 
 # -------- Image processing --------
 Pillow==10.1.0
+numpy<2.0.0
+opencv-python==4.10.0.84
 
 # -------- Object storage (MinIO) --------
 minio==7.2.0
 
 # -------- Redis for caching --------
 redis==5.0.1
+
+# -------- HTTP client --------
+httpx==0.25.2
+
+# -------- Transit format (for Penpot API) --------
+transit-python==0.8.302
+
+# -------- Async utilities --------
+asyncio-mqtt==0.13.0
+
+# -------- JSON handling --------
+orjson==3.9.10
+
+# -------- Logging --------
+structlog==23.2.0
 
 # -------- HTTP client --------
 aiohttp==3.9.1

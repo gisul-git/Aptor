@@ -134,6 +134,16 @@ export default withAuth(
           return true; // These routes have their own token-based auth
         }
 
+        // Design assessment test routes (for testing without auth)
+        if (pathname === "/design/test-direct" ||
+            pathname === "/design/test-simple" ||
+            pathname === "/test-design" ||
+            pathname.startsWith("/design/test-direct/") ||
+            pathname.startsWith("/design/test-simple/") ||
+            pathname.startsWith("/design-assessment")) {
+          return true; // Public test routes
+        }
+
         // Candidate-facing API routes should remain public (token validated server-side)
         if (pathname.startsWith("/api/assessment/")) {
           return true;
