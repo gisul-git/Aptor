@@ -2,8 +2,18 @@ import axios, { AxiosError, InternalAxiosRequestConfig } from "axios";
 import { getSession } from "next-auth/react";
 import { checkTokenExpiration } from "./jwt";
 
+// Determine baseURL: server-side uses internal API Gateway, client-side uses external or relative
+const getBaseURL = (): string => {
+  // Server-side: use internal API Gateway URL
+  if (typeof window === 'undefined') {
+    return process.env.API_GATEWAY_URL || 'http://api-gateway:80';
+  }
+  // Client-side: use external URL or empty for relative URLs (Next.js proxy)
+  return process.env.NEXT_PUBLIC_API_URL || '';
+};
+
 const fastApiClient = axios.create({
-  baseURL: process.env.NEXT_PUBLIC_API_URL || '', // Empty = relative URLs (use Next.js proxy)
+  baseURL: getBaseURL(),
   headers: {
     "Content-Type": "application/json",
   },
