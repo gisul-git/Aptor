@@ -93,6 +93,8 @@ interface Candidate {
   created_at?: string
   submitted_at?: string
   started_at?: string  // Added to detect started status
+  invited?: boolean  // Added for invited status detection
+  invited_at?: string  // Added for invited status detection
   status?: string // 'pending' | 'invited' | 'started' | 'completed'
 }
 
