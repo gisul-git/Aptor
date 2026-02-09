@@ -7,7 +7,7 @@ import { GetServerSideProps } from 'next'
 import { requireAuth } from '../../../../lib/auth'
 import { AdminLiveService } from '../../../../universal-proctoring/live/AdminLiveService'
 import { CandidateStreamInfo, AdminLiveState } from '../../../../universal-proctoring/live/types'
-import { ArrowLeft, Maximize2, Minimize2, RefreshCw, Users, Loader2 } from 'lucide-react'
+import { ArrowLeft, Maximize2, Minimize2, RefreshCw, Users, Loader2, Flag, X } from 'lucide-react'
 import Link from 'next/link'
 import { useAIMLCandidates } from '@/hooks/api/useAIML'
 
@@ -71,6 +71,9 @@ export default function LiveProctoringDashboard({
   const [candidates, setCandidates] = useState<CandidateData[]>([])
   const [expandedSessionId, setExpandedSessionId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [flaggingCandidate, setFlaggingCandidate] = useState<string | null>(null)
+  const [flagReason, setFlagReason] = useState('')
+  const [flagSeverity, setFlagSeverity] = useState<'low' | 'medium' | 'high'>('medium')
 
   // Refs for video elements
   const videoRefs = useRef<Map<string, HTMLVideoElement>>(new Map())
@@ -538,6 +541,13 @@ export default function LiveProctoringDashboard({
             >
               <RefreshCw className="w-5 h-5 text-white" />
             </button>
+            <button
+              onClick={() => expandedCandidate && setFlaggingCandidate(expandedCandidate.candidateId)}
+              className="p-2 hover:bg-gray-800 rounded-lg transition-colors"
+              title="Flag candidate for suspicious behavior"
+            >
+              <Flag className="w-5 h-5 text-white" />
+            </button>
           </div>
         </div>
 
@@ -659,12 +669,113 @@ export default function LiveProctoringDashboard({
                 candidate={candidate}
                 onExpand={toggleExpand}
                 onRefresh={refreshCandidate}
+                onFlag={() => setFlaggingCandidate(candidate.candidateId)}
                 videoRefs={videoRefs}
               />
             ))}
           </div>
         )}
       </div>
+
+      {/* Flag Candidate Modal */}
+      {flaggingCandidate && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl font-semibold text-gray-900">Flag Candidate</h2>
+              <button
+                onClick={() => {
+                  setFlaggingCandidate(null);
+                  setFlagReason('');
+                  setFlagSeverity('medium');
+                }}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Reason for flagging
+              </label>
+              <textarea
+                value={flagReason}
+                onChange={(e) => setFlagReason(e.target.value)}
+                placeholder="Enter reason for flagging this candidate..."
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                rows={4}
+              />
+            </div>
+
+            <div className="mb-6">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Severity
+              </label>
+              <div className="flex gap-2">
+                {(['low', 'medium', 'high'] as const).map((severity) => (
+                  <button
+                    key={severity}
+                    onClick={() => setFlagSeverity(severity)}
+                    className={`flex-1 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                      flagSeverity === severity
+                        ? severity === 'low'
+                          ? 'bg-yellow-100 text-yellow-800 border-2 border-yellow-500'
+                          : severity === 'medium'
+                          ? 'bg-orange-100 text-orange-800 border-2 border-orange-500'
+                          : 'bg-red-100 text-red-800 border-2 border-red-500'
+                        : 'bg-gray-100 text-gray-700 border-2 border-transparent hover:bg-gray-200'
+                    }`}
+                  >
+                    {severity.charAt(0).toUpperCase() + severity.slice(1)}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => {
+                  setFlaggingCandidate(null);
+                  setFlagReason('');
+                  setFlagSeverity('medium');
+                }}
+                className="flex-1 px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={async () => {
+                  if (!flagReason.trim()) {
+                    alert('Please enter a reason for flagging');
+                    return;
+                  }
+                  
+                  if (serviceRef.current) {
+                    const success = await serviceRef.current.flagCandidate(
+                      flaggingCandidate,
+                      flagReason.trim(),
+                      flagSeverity
+                    );
+                    
+                    if (success) {
+                      alert('Candidate flagged successfully');
+                      setFlaggingCandidate(null);
+                      setFlagReason('');
+                      setFlagSeverity('medium');
+                    } else {
+                      alert('Failed to flag candidate. Please try again.');
+                    }
+                  }
+                }}
+                className="flex-1 px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors"
+              >
+                Flag Candidate
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -677,10 +788,11 @@ interface CandidateTileProps {
   candidate: CandidateData
   onExpand: (sessionId: string) => void
   onRefresh: (sessionId: string) => void
+  onFlag: () => void
   videoRefs: React.MutableRefObject<Map<string, HTMLVideoElement>>
 }
 
-function CandidateTile({ candidate, onExpand, onRefresh, videoRefs }: CandidateTileProps) {
+function CandidateTile({ candidate, onExpand, onRefresh, onFlag, videoRefs }: CandidateTileProps) {
   return (
     <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
       {/* Header */}
@@ -748,13 +860,23 @@ function CandidateTile({ candidate, onExpand, onRefresh, videoRefs }: CandidateT
           <RefreshCw className="w-4 h-4" />
           Refresh
         </button>
-        <button
-          onClick={() => onExpand(candidate.sessionId)}
-          className="flex items-center gap-2 px-3 py-1.5 text-sm bg-blue-600 text-white hover:bg-blue-700 rounded transition-colors"
-        >
-          <Maximize2 className="w-4 h-4" />
-          Expand
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={onFlag}
+            className="flex items-center gap-2 px-3 py-1.5 text-sm bg-red-600 text-white hover:bg-red-700 rounded transition-colors"
+            title="Flag candidate for suspicious behavior"
+          >
+            <Flag className="w-4 h-4" />
+            Flag
+          </button>
+          <button
+            onClick={() => onExpand(candidate.sessionId)}
+            className="flex items-center gap-2 px-3 py-1.5 text-sm bg-blue-600 text-white hover:bg-blue-700 rounded transition-colors"
+          >
+            <Maximize2 className="w-4 h-4" />
+            Expand
+          </button>
+        </div>
       </div>
     </div>
   )

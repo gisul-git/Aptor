@@ -211,6 +211,8 @@ export const LIVE_PROCTORING_ENDPOINTS = {
     `${API_URL}/api/v1/proctor/live/end-session/${sessionId}`,
   /** Get Agora token for live proctoring */
   agoraToken: () => `${API_URL}/api/v1/proctor/agora/get-token`,
+  /** Log proctoring event */
+  proctoringLog: () => `${API_URL}/api/v1/proctoring/log`,
   /** WebSocket URL for candidate */
   candidateWs: (sessionId: string, candidateId: string) => {
     const wsBase = API_URL.replace("http://", "ws://").replace(

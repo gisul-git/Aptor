@@ -506,6 +506,19 @@ export default function TestTakePage() {
     }
   }, [setFullscreenLocked, incrementFullscreenExitCount, aiProctoringEnabled]);
 
+  // Handle warning callback from universal proctoring (non-violation notifications)
+  const handleUniversalWarning = useCallback((warning: any) => {
+    if (warning.type === 'FACE_NOT_CLEARLY_VISIBLE') {
+      pushViolationToast({
+        id: `warning-${warning.type}-${Date.now()}`,
+        eventType: warning.type,
+        message: warning.message,
+        timestamp: new Date(warning.timestamp).toISOString(),
+        isWarning: true, // Mark as warning (yellow styling)
+      });
+    }
+  }, []);
+
   // Handle fullscreen re-entry - unlock the screen
   const handleRequestFullscreen = useCallback(async (): Promise<boolean> => {
     console.log('[DSA Take] Requesting fullscreen re-entry...');
@@ -528,6 +541,7 @@ export default function TestTakePage() {
     isFullscreen,
   } = useUniversalProctoring({
     onViolation: handleUniversalViolation,
+    onWarning: handleUniversalWarning,
     debug: debugMode,
   });
 

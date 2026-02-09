@@ -51,12 +51,6 @@ export default withAuth(
       // If not an employee route and not blocked, allow (will be handled by auth check)
     }
     
-    // Block org_admin from accessing employee-specific routes (if they try to access directly)
-    if (userRole === 'org_admin' && pathname.startsWith('/employee/dashboard')) {
-      // Org admins should use /employee/management, not /employee/dashboard
-      return NextResponse.redirect(new URL('/employee/management', req.url));
-    }
-    
     return NextResponse.next();
   },
   {

@@ -14,10 +14,17 @@ const nextConfig = {
     // Exclude face-api and agora-rtc-sdk-ng from SSR to avoid Node.js dependencies
     if (isServer) {
       config.externals = config.externals || [];
-      config.externals.push({
-        '@vladmandic/face-api': 'commonjs @vladmandic/face-api',
-        'agora-rtc-sdk-ng': 'commonjs agora-rtc-sdk-ng',
-      });
+      // Use a function to properly externalize these modules
+      const originalExternals = config.externals;
+      config.externals = [
+        ...(Array.isArray(originalExternals) ? originalExternals : [originalExternals]),
+        ({ request }, callback) => {
+          if (request === '@vladmandic/face-api' || request === 'agora-rtc-sdk-ng') {
+            return callback(null, `commonjs ${request}`);
+          }
+          callback();
+        },
+      ];
     }
     
     return config;

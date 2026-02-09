@@ -352,6 +352,19 @@ export default function CandidateAssessmentPage() {
     return success;
   }, [requestFullscreenLock, setFullscreenLocked]);
 
+  // Handle warning callback from universal proctoring (non-violation notifications)
+  const handleUniversalWarning = useCallback((warning: any) => {
+    if (warning.type === 'FACE_NOT_CLEARLY_VISIBLE') {
+      pushViolationToast({
+        id: `warning-${warning.type}-${Date.now()}`,
+        eventType: warning.type,
+        message: warning.message,
+        timestamp: new Date(warning.timestamp).toISOString(),
+        isWarning: true, // Mark as warning (yellow styling)
+      });
+    }
+  }, []);
+
   // Universal proctoring hook - handles AI proctoring, tab switch, fullscreen
   const {
     state: proctoringState,
@@ -363,6 +376,7 @@ export default function CandidateAssessmentPage() {
     isFullscreen,
   } = useUniversalProctoring({
     onViolation: handleUniversalViolation,
+    onWarning: handleUniversalWarning,
     debug: debugMode,
   });
 

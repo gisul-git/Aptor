@@ -32,6 +32,7 @@ export interface UseAgoraLiveProctorAdminReturn {
   startMonitoring: () => Promise<void>;
   stopMonitoring: () => Promise<void>;
   refreshCandidate: (sessionId: string) => Promise<void>;
+  flagCandidate: (candidateId: string, reason: string, severity?: 'low' | 'medium' | 'high') => Promise<boolean>;
 }
 
 /**
@@ -128,6 +129,17 @@ export function useAgoraLiveProctorAdmin(
     }
   }, []);
 
+  const flagCandidate = useCallback(async (
+    candidateId: string,
+    reason: string,
+    severity: 'low' | 'medium' | 'high' = 'medium'
+  ): Promise<boolean> => {
+    if (!serviceRef.current) {
+      return false;
+    }
+    return await serviceRef.current.flagCandidate(candidateId, reason, severity);
+  }, []);
+
   // Cleanup on unmount
   useEffect(() => {
     return () => {
@@ -146,5 +158,6 @@ export function useAgoraLiveProctorAdmin(
     startMonitoring,
     stopMonitoring,
     refreshCandidate,
+    flagCandidate,
   };
 }

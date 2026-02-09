@@ -334,8 +334,8 @@ export class AdminLiveService {
 
         // Create CandidateStreamInfo
         const streamInfo = this.toCandidateStreamInfo(
-          sessionId,
-          candidateId,
+      sessionId,
+      candidateId,
           existing.webcam || null,
           existing.screen || null,
           candidateName,
@@ -477,7 +477,7 @@ export class AdminLiveService {
           // 🔥 PRODUCTION FIX: Rebuild candidateStreams from existing client's remoteUsers
           await this.rebuildCandidateStreamsFromRemoteUsers();
           
-          this.updateState({
+      this.updateState({
             candidateStreams: new Map(this.candidateStreams),
             activeSessions: Array.from(this.candidateStreams.keys()),
             isMonitoring: true,
@@ -799,8 +799,8 @@ export class AdminLiveService {
 
       // Create or update CandidateStreamInfo
       const streamInfo = this.toCandidateStreamInfo(
-        sessionId,
-        candidateId,
+      sessionId,
+      candidateId,
         existing.webcam || null,
         existing.screen || null,
         candidateName,
@@ -896,7 +896,7 @@ export class AdminLiveService {
         this.sessionIdToUid.delete(sessionId);
 
         this.updateState({
-          candidateStreams: new Map(this.candidateStreams),
+      candidateStreams: new Map(this.candidateStreams),
           activeSessions: Array.from(this.candidateStreams.keys()),
         });
 
@@ -906,14 +906,14 @@ export class AdminLiveService {
         this.remoteTracks.set(candidateId as UID, existing);
         const sessionId = candidateId;
         const streamInfo = this.toCandidateStreamInfo(
-          sessionId,
+      sessionId,
           candidateId,
           existing.webcam || null,
           existing.screen || null
         );
         this.candidateStreams.set(sessionId, streamInfo);
         this.updateState({
-          candidateStreams: new Map(this.candidateStreams),
+      candidateStreams: new Map(this.candidateStreams),
           activeSessions: Array.from(this.candidateStreams.keys()),
         });
       }
@@ -921,5 +921,108 @@ export class AdminLiveService {
 
     // Clean up UID mappings
     this.uidToSessionId.delete(uid);
+  }
+
+  /**
+   * Flag a candidate for suspicious behavior/mischief.
+   * Logs the flag event to proctoring logs.
+   */
+  async flagCandidate(
+    candidateId: string,
+    reason: string,
+    severity: 'low' | 'medium' | 'high' = 'medium'
+  ): Promise<boolean> {
+    try {
+      // Get candidate info from streams
+      const candidateInfo = this.candidateStreams.get(candidateId);
+      const candidateEmail = candidateInfo?.candidateEmail || candidateId;
+      const candidateName = candidateInfo?.candidateName;
+
+      // Capture snapshot from webcam stream if available
+      let snapshotBase64: string | null = null;
+      try {
+        const candidateInfo = this.candidateStreams.get(candidateId);
+        const webcamStream = candidateInfo?.webcamStream;
+        if (webcamStream && typeof window !== 'undefined') {
+          const videoElement = document.createElement('video');
+          videoElement.srcObject = webcamStream;
+          videoElement.play();
+          
+          await new Promise((resolve) => setTimeout(resolve, 200)); // Wait for video to load
+          
+          if (videoElement.readyState >= 2) { // HAVE_CURRENT_DATA
+            const canvas = document.createElement('canvas');
+            canvas.width = videoElement.videoWidth || 640;
+            canvas.height = videoElement.videoHeight || 480;
+            const ctx = canvas.getContext('2d');
+            if (ctx && videoElement.videoWidth > 0 && videoElement.videoHeight > 0) {
+              ctx.drawImage(videoElement, 0, 0);
+              snapshotBase64 = canvas.toDataURL('image/jpeg', 0.8).split(',')[1];
+            }
+          }
+        }
+      } catch (snapshotError) {
+        this.log('Failed to capture snapshot for flag:', snapshotError);
+        // Continue without snapshot
+      }
+
+      // Map frontend severity to backend severity enum
+      // Backend expects: "info", "warning", "critical"
+      const severityMap: Record<'low' | 'medium' | 'high', 'info' | 'warning' | 'critical'> = {
+        low: 'warning',
+        medium: 'warning',
+        high: 'critical',
+      };
+      const backendSeverity = severityMap[severity];
+
+      // Prepare log payload
+      const logPayload = {
+        assessmentId: this.config.assessmentId,
+        candidateId: candidateId,
+        candidateEmail: candidateEmail,
+        eventType: 'LIVE_PROCTORING_FLAGGED',
+        severity: backendSeverity,
+        timestamp: new Date().toISOString(),
+        meta: {
+          reason: reason,
+          candidateName: candidateName,
+          flagType: 'admin_flag',
+          severity: severity, // Keep original severity in metadata
+          ...(snapshotBase64 && {
+            evidence: {
+              type: 'image',
+              format: 'jpeg',
+              data: snapshotBase64,
+            },
+          }),
+        },
+        source: 'live-proctor',
+        snapshotRef: null,
+        recordingRef: null,
+        createdBy: null,
+      };
+
+      // Send to backend
+      const response = await fetch(LIVE_PROCTORING_ENDPOINTS.proctoringLog(), {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(logPayload),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        this.log(`Failed to log flag event: ${response.status} ${errorText}`);
+        return false;
+      }
+
+      this.log(`✅ Candidate ${candidateId} flagged: ${reason}`);
+      return true;
+    } catch (error) {
+      this.log(`Error flagging candidate ${candidateId}:`, error);
+      return false;
+    }
   }
 }
