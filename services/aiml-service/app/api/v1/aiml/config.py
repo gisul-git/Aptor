@@ -1,6 +1,6 @@
 """
 AIML Module Configuration
-Uses environment variables from .env file via Pydantic Settings 
+Uses environment variables from .env file via Pydantic Settings
 """
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from functools import lru_cache
