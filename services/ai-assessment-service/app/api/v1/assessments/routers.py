@@ -3921,6 +3921,58 @@ async def get_all_questions(
     # Convert candidateResponses to serializable format (handles ObjectIds and datetimes)
     serialized_candidate_responses = convert_object_ids(assessment.get("candidateResponses", {}))
     
+    # Calculate status for each candidate based on candidateResponses
+    candidates = assessment.get("candidates", [])
+    candidate_responses = assessment.get("candidateResponses", {})
+    if not isinstance(candidate_responses, dict):
+        candidate_responses = {}
+    
+    # Update candidates with calculated status
+    candidates_with_status = []
+    for candidate in candidates:
+        candidate_email = candidate.get("email", "").strip().lower()
+        candidate_name = candidate.get("name", "").strip().lower()
+        
+        # Create candidate key (same format as start-session endpoint)
+        candidate_key = f"{candidate_email}_{candidate_name}"
+        
+        # Get candidate response if exists
+        candidate_response = candidate_responses.get(candidate_key, {})
+        if not isinstance(candidate_response, dict):
+            candidate_response = {}
+        
+        # Determine status based on response
+        # Priority: completed > started > invited > pending
+        candidate_status = candidate.get("status", "pending")
+        
+        # Check if candidate has submitted
+        submitted_at = candidate_response.get("submittedAt") or candidate_response.get("answers", {}).get("submittedAt")
+        if submitted_at:
+            candidate_status = "completed"
+        else:
+            # Check if candidate has started
+            started_at = candidate_response.get("startedAt")
+            if started_at:
+                candidate_status = "started"
+            else:
+                # Check if candidate was invited
+                if candidate.get("invited") or candidate.get("invitedAt"):
+                    candidate_status = "invited"
+                else:
+                    candidate_status = "pending"
+        
+        # Create candidate copy with updated status
+        candidate_with_status = candidate.copy()
+        candidate_with_status["status"] = candidate_status
+        
+        # Also include startedAt and completedAt if available
+        if started_at:
+            candidate_with_status["startedAt"] = started_at
+        if submitted_at:
+            candidate_with_status["completedAt"] = submitted_at
+        
+        candidates_with_status.append(candidate_with_status)
+    
     data = {
         "assessment": {
             "id": str(assessment.get("_id")),
@@ -3945,7 +3997,7 @@ async def get_all_questions(
             "passPercentage": assessment.get("passPercentage"),
             "questionTypeTimes": assessment.get("questionTypeTimes"),
             "enablePerSectionTimers": assessment.get("enablePerSectionTimers"),
-            "candidates": assessment.get("candidates"),
+            "candidates": candidates_with_status,  # Use candidates with calculated status
             "candidateResponses": serialized_candidate_responses,
             "assessmentUrl": assessment.get("assessmentUrl"),
             "accessMode": assessment.get("accessMode"),
@@ -5304,6 +5356,58 @@ async def get_all_questions(
     # Convert candidateResponses to serializable format (handles ObjectIds and datetimes)
     serialized_candidate_responses = convert_object_ids(assessment.get("candidateResponses", {}))
     
+    # Calculate status for each candidate based on candidateResponses
+    candidates = assessment.get("candidates", [])
+    candidate_responses = assessment.get("candidateResponses", {})
+    if not isinstance(candidate_responses, dict):
+        candidate_responses = {}
+    
+    # Update candidates with calculated status
+    candidates_with_status = []
+    for candidate in candidates:
+        candidate_email = candidate.get("email", "").strip().lower()
+        candidate_name = candidate.get("name", "").strip().lower()
+        
+        # Create candidate key (same format as start-session endpoint)
+        candidate_key = f"{candidate_email}_{candidate_name}"
+        
+        # Get candidate response if exists
+        candidate_response = candidate_responses.get(candidate_key, {})
+        if not isinstance(candidate_response, dict):
+            candidate_response = {}
+        
+        # Determine status based on response
+        # Priority: completed > started > invited > pending
+        candidate_status = candidate.get("status", "pending")
+        
+        # Check if candidate has submitted
+        submitted_at = candidate_response.get("submittedAt") or candidate_response.get("answers", {}).get("submittedAt")
+        if submitted_at:
+            candidate_status = "completed"
+        else:
+            # Check if candidate has started
+            started_at = candidate_response.get("startedAt")
+            if started_at:
+                candidate_status = "started"
+            else:
+                # Check if candidate was invited
+                if candidate.get("invited") or candidate.get("invitedAt"):
+                    candidate_status = "invited"
+                else:
+                    candidate_status = "pending"
+        
+        # Create candidate copy with updated status
+        candidate_with_status = candidate.copy()
+        candidate_with_status["status"] = candidate_status
+        
+        # Also include startedAt and completedAt if available
+        if started_at:
+            candidate_with_status["startedAt"] = started_at
+        if submitted_at:
+            candidate_with_status["completedAt"] = submitted_at
+        
+        candidates_with_status.append(candidate_with_status)
+    
     data = {
         "assessment": {
             "id": str(assessment.get("_id")),
@@ -5328,7 +5432,7 @@ async def get_all_questions(
             "passPercentage": assessment.get("passPercentage"),
             "questionTypeTimes": assessment.get("questionTypeTimes"),
             "enablePerSectionTimers": assessment.get("enablePerSectionTimers"),
-            "candidates": assessment.get("candidates"),
+            "candidates": candidates_with_status,  # Use candidates with calculated status
             "candidateResponses": serialized_candidate_responses,
             "assessmentUrl": assessment.get("assessmentUrl"),
             "accessMode": assessment.get("accessMode"),
