@@ -36,9 +36,9 @@ services:
     environment:
       - NODE_ENV=production
       - NEXT_TELEMETRY_DISABLED=1
-      - NEXTAUTH_URL=${NEXTAUTH_URL:-http://localhost:3000}
+      - NEXTAUTH_URL=${NEXTAUTH_URL:-https://qa.aaptor.com}
       - NEXTAUTH_SECRET=${NEXTAUTH_SECRET}
-      - NEXT_PUBLIC_API_URL=http://api-gateway:80
+      - NEXT_PUBLIC_API_URL=https://qa.aaptor.com
       - API_GATEWAY_URL=http://api-gateway:80
       - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
       - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
@@ -68,7 +68,7 @@ services:
       - DSA_SERVICE_URL=http://dsa-service:3004
       - PROCTORING_SERVICE_URL=http://proctoring-service:3005
       - SUPER_ADMIN_SERVICE_URL=http://super-admin-service:3006
-      - CORS_ORIGINS=${CORS_ORIGINS:-http://103.99.36.70:3000,http://frontend:3000,http://localhost:3000,http://localhost:3001}
+      - CORS_ORIGINS=${CORS_ORIGINS:-https://qa.aaptor.com,http://frontend:3000,http://localhost:3000,http://localhost:3001}
       - EMPLOYEE_SERVICE_URL=${EMPLOYEE_SERVICE_URL:-http://employee-service:4005}
     depends_on:
       - auth-service
@@ -93,7 +93,7 @@ services:
       - JWT_REFRESH_EXP_DAYS=30
       - JWT_RSA_PRIVATE_KEY_PATH=${JWT_RSA_PRIVATE_KEY_PATH}
       - JWT_RSA_PUBLIC_KEY_PATH=${JWT_RSA_PUBLIC_KEY_PATH}
-      - CORS_ORIGINS=${CORS_ORIGINS:-http://103.99.36.70:3000,http://localhost:3000,http://frontend:3000}
+      - CORS_ORIGINS=${CORS_ORIGINS:-https://qa.aaptor.com,http://localhost:3000,http://frontend:3000}
       - EMAIL_PROVIDER=${EMAIL_PROVIDER:-sendgrid}
       - SENDGRID_API_KEY=${SENDGRID_API_KEY}
       - SENDGRID_FROM_EMAIL=${SENDGRID_FROM_EMAIL}
@@ -127,7 +127,7 @@ services:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - GEMINI_API_KEY=${GEMINI_API_KEY}
       - GEMINI_MODEL_SUMMARY=${GEMINI_MODEL_SUMMARY:-gemini-pro}
-      - CORS_ORIGINS=${CORS_ORIGINS:-http://103.99.36.70:3000,http://localhost:3000,http://frontend:3000}
+      - CORS_ORIGINS=${CORS_ORIGINS:-https://qa.aaptor.com,http://localhost:3000,http://frontend:3000}
       - AIML_SERVICE_URL=${AIML_SERVICE_URL:-http://aiml-service:3003}
       - DSA_SERVICE_URL=${DSA_SERVICE_URL:-http://dsa-service:3004}
       - AWS_ACCESS_KEY=${AWS_ACCESS_KEY}
@@ -156,7 +156,7 @@ services:
       - MONGO_URI=${MONGO_URI}
       - MONGO_DB=custom_mcq_db
       - REDIS_URL=redis://redis:6379/0
-      - CORS_ORIGINS=${CORS_ORIGINS:-http://103.99.36.70:3000,http://localhost:3000,http://frontend:3000}
+      - CORS_ORIGINS=${CORS_ORIGINS:-https://qa.aaptor.com,http://localhost:3000,http://frontend:3000}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - EMAIL_PROVIDER=${EMAIL_PROVIDER:-sendgrid}
       - SENDGRID_API_KEY=${SENDGRID_API_KEY}
@@ -181,7 +181,7 @@ services:
       - MONGO_URI=${MONGO_URI}
       - MONGO_DB=aiml_db
       - REDIS_URL=redis://redis:6379/0
-      - CORS_ORIGINS=${CORS_ORIGINS:-http://103.99.36.70:3000,http://localhost:3000,http://frontend:3000}
+      - CORS_ORIGINS=${CORS_ORIGINS:-https://qa.aaptor.com,http://localhost:3000,http://frontend:3000}
       - EMAIL_PROVIDER=${EMAIL_PROVIDER:-sendgrid}
       - SENDGRID_API_KEY=${SENDGRID_API_KEY}
       - SENDGRID_FROM_EMAIL=${SENDGRID_FROM_EMAIL}
@@ -219,7 +219,7 @@ services:
       - CUSTOM_PYTHON_ENGINE_URL=${CUSTOM_PYTHON_ENGINE_URL:-http://localhost:9000}
       - USE_CUSTOM_ENGINE=${USE_CUSTOM_ENGINE:-true}
       - SQL_ENGINE_URL=${SQL_ENGINE_URL}
-      - CORS_ORIGINS=${CORS_ORIGINS:-http://103.99.36.70:3000,http://localhost:3000,http://frontend:3000}
+      - CORS_ORIGINS=${CORS_ORIGINS:-https://qa.aaptor.com,http://localhost:3000,http://frontend:3000}
       - EMAIL_PROVIDER=${EMAIL_PROVIDER:-sendgrid}
       - SENDGRID_API_KEY=${SENDGRID_API_KEY}
       - SENDGRID_FROM_EMAIL=${SENDGRID_FROM_EMAIL}
@@ -242,7 +242,7 @@ services:
       - MONGO_URI=${MONGO_URI}
       - MONGO_DB=proctoring_db
       - REDIS_URL=redis://redis:6379/1
-      - CORS_ORIGINS=${CORS_ORIGINS:-http://103.99.36.70:3000,http://localhost:3000,http://frontend:3000}
+      - CORS_ORIGINS=${CORS_ORIGINS:-https://qa.aaptor.com,http://localhost:3000,http://frontend:3000}
       - AWS_ACCESS_KEY=${AWS_ACCESS_KEY}
       - AWS_SECRET_KEY=${AWS_SECRET_KEY}
       - AWS_REGION=${AWS_REGION}
@@ -270,7 +270,7 @@ services:
       - JWT_REFRESH_EXP_DAYS=30
       - JWT_RSA_PRIVATE_KEY_PATH=${JWT_RSA_PRIVATE_KEY_PATH}
       - JWT_RSA_PUBLIC_KEY_PATH=${JWT_RSA_PUBLIC_KEY_PATH}
-      - CORS_ORIGINS=${CORS_ORIGINS:-http://103.99.36.70:3000,http://localhost:3000,http://frontend:3000}
+      - CORS_ORIGINS=${CORS_ORIGINS:-https://qa.aaptor.com,http://localhost:3000,http://frontend:3000}
       - DEBUG=${DEBUG:-false}
     networks:
       - microservices-network
@@ -291,7 +291,7 @@ services:
       - ORGANIZATION_MONGO_DB=organization_db
       - JWT_SECRET=${JWT_SECRET}
       - JWT_ALGORITHM=HS256
-      - CORS_ORIGINS=${CORS_ORIGINS:-http://103.99.36.70:3000,http://localhost:3000,http://frontend:3000}
+      - CORS_ORIGINS=${CORS_ORIGINS:-https://qa.aaptor.com,http://localhost:3000,http://frontend:3000}
       - NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL:-http://localhost:3000}
       - EMAIL_PROVIDER=${EMAIL_PROVIDER:-sendgrid}
       - SENDGRID_API_KEY=${SENDGRID_API_KEY}
