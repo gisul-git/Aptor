@@ -1,0 +1,27 @@
+version: "3.9"
+
+services:
+  nsjail-runtime:
+    build:
+      context: ./nsjail_execution_engine
+      dockerfile: Dockerfile
+    image: nsjail-executor
+    container_name: nsjail-runtime
+    privileged: true
+    stdin_open: true
+    tty: true
+    restart: unless-stopped
+
+  execution-api:
+    build:
+      context: ./execution_api
+      dockerfile: Dockerfile.api
+    container_name: execution-api
+    ports:
+      - "8000:8000"
+    depends_on:
+      - nsjail-runtime
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      NSJAIL_CONTAINER_NAME: nsjail-runtime
