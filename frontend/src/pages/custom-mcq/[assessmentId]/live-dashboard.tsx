@@ -11,6 +11,13 @@ import { ArrowLeft, Maximize2, Minimize2, RefreshCw, Users, Loader2 } from 'luci
 import Link from 'next/link'
 // React Query hooks
 import { useCustomMCQAssessment } from '@/hooks/api/useCustomMCQ'
+import dynamic from 'next/dynamic'
+
+// Dynamically import FixedSizeGrid (react-window requires browser APIs)
+const FixedSizeGrid = dynamic(
+  () => import('react-window').then((mod) => (mod as any).FixedSizeGrid),
+  { ssr: false }
+) as any
 
 // Server-side auth check
 export const getServerSideProps: GetServerSideProps = requireAuth
@@ -53,10 +60,6 @@ export default function LiveProctoringDashboard({
   // Service instance
   const serviceRef = useRef<AdminLiveService | null>(null)
   const sessionIdRef = useRef(0)
-  
-  // Production-level: Track async operation state to prevent premature cleanup
-  const isInitializingRef = useRef(false) // Track if async init is in progress
-  const connectionEstablishedRef = useRef(false) // Track if connection was successfully established
 
   // State
   const [isMonitoring, setIsMonitoring] = useState(false)
@@ -165,163 +168,75 @@ export default function LiveProctoringDashboard({
     // Generate unique session ID for this mount
     const currentSessionId = ++sessionIdRef.current;
     let service: AdminLiveService | null = null;
-    const connectionCreatedByThisMountRef = { current: false }; // Track if THIS mount created the connection
-    
-    // Production-level: Mark async operation as in progress
-    isInitializingRef.current = true;
-    connectionEstablishedRef.current = false;
 
     const initMonitoring = async () => {
       try {
         // Check if this session is still valid
         if (currentSessionId !== sessionIdRef.current) {
           console.log('[Live Dashboard] Session outdated, aborting');
-          isInitializingRef.current = false;
           return;
         }
 
         setIsLoading(true);
         
-        // Cleanup old service if exists
-        if (serviceRef.current) {
-          console.log('[Live Dashboard] Cleaning up existing service...');
-          await serviceRef.current.stopMonitoring().catch(() => {});
-          serviceRef.current = null;
-        }
-
-        // Check again before creating service
-        if (currentSessionId !== sessionIdRef.current) {
-          console.log('[Live Dashboard] Session outdated before service creation');
-          isInitializingRef.current = false;
-          return;
-        }
-
         service = new AdminLiveService({
           assessmentId,
-          adminId: adminId,
-          debugMode: true,
+          adminId,
         });
 
         // Check again before async operation
         if (currentSessionId !== sessionIdRef.current) {
-          // Don't call stopMonitoring - service was never started
-          isInitializingRef.current = false;
+          await service.stopMonitoring();
           return;
         }
 
-        serviceRef.current = service;
-
-        // Start monitoring
-        const monitoringResult = await service.startMonitoring({
+        const result = await service.startMonitoring({
           onStateChange: (state: Partial<AdminLiveState>) => {
-            if (currentSessionId !== sessionIdRef.current) return;
-            console.log('[Live Dashboard] State changed:', state);
-
-            if (state.isMonitoring !== undefined) {
-              setIsMonitoring(state.isMonitoring);
-            }
-
-            if (state.isLoading !== undefined) {
-              setIsLoading(state.isLoading);
-            }
-
-            if (state.candidateStreams) {
-              updateCandidates(state.candidateStreams);
+            if (currentSessionId === sessionIdRef.current) {
+              if (state.isMonitoring !== undefined) {
+                setIsMonitoring(state.isMonitoring);
+              }
+              if (state.isLoading !== undefined) {
+                setIsLoading(state.isLoading);
+              }
+              if (state.candidateStreams) {
+                updateCandidates(state.candidateStreams);
+              }
             }
           },
-          onCandidateConnected: (sessionId: string, candidateId: string) => {
+          onError: (error) => {
             if (currentSessionId === sessionIdRef.current) {
-              console.log(`[Live Dashboard] ✅ Candidate connected: ${sessionId}`);
-            }
-          },
-          onCandidateDisconnected: (sessionId: string) => {
-            if (currentSessionId === sessionIdRef.current) {
-              console.log(`[Live Dashboard] ⚠️ Candidate disconnected: ${sessionId}`);
-            }
-          },
-          onError: (error: string) => {
-            if (currentSessionId === sessionIdRef.current) {
-              console.error(`[Live Dashboard] ❌ Error: ${error}`);
+              console.error('[Live Dashboard] Error:', error);
               setError(error);
               setIsLoading(false);
             }
           },
         });
 
-        // Check if session was invalidated during async operation
-        if (currentSessionId !== sessionIdRef.current) {
-          console.log('[Live Dashboard] Session invalidated during startMonitoring');
-          // Don't call stopMonitoring - connection was reused by newer mount
-          isInitializingRef.current = false;
-          connectionEstablishedRef.current = false;
-          return;
-        }
-
-        // Production-level: Track if THIS mount created the connection
-        connectionCreatedByThisMountRef.current = monitoringResult.success && !monitoringResult.connectionReused;
-
         // Final check before setting state
-        if (currentSessionId === sessionIdRef.current && monitoringResult.success) {
+        if (currentSessionId === sessionIdRef.current && result.success) {
+          serviceRef.current = service;
           setIsMonitoring(true);
           setIsLoading(false);
-          console.log(`[Live Dashboard] ✅ Monitoring started (connection ${connectionCreatedByThisMountRef.current ? 'created' : 'reused'})`);
-          connectionEstablishedRef.current = true;
+          console.log('[Live Dashboard] ✅ Monitoring started');
         } else {
-          // Don't call stopMonitoring - connection was reused or failed
-          connectionEstablishedRef.current = false;
+          await service.stopMonitoring();
         }
       } catch (error) {
         if (currentSessionId === sessionIdRef.current) {
           console.error('[Live Dashboard] Failed to start:', error);
-          setError(error instanceof Error ? error.message : 'Failed to start monitoring');
           setIsLoading(false);
         }
-        connectionEstablishedRef.current = false;
-      } finally {
-        // Production-level: Always mark async as complete when done
-        isInitializingRef.current = false;
       }
     };
 
     initMonitoring();
 
     return () => {
-      console.log(`[Live Dashboard] Cleanup: invalidating session ${currentSessionId}`);
-      
-      // Production-level: Check if async operation is still in progress
-      const isAsyncInProgress = isInitializingRef.current;
-      const isLatestSession = currentSessionId === sessionIdRef.current;
-      const serviceWasReplaced = service && serviceRef.current !== service;
-      const connectionCreatedByThisMount = connectionCreatedByThisMountRef.current;
-      
-      // Production-level: Only stop monitoring if ALL conditions are met:
-      const shouldStopMonitoring = 
-        !isAsyncInProgress && // ✅ Async completed
-        isLatestSession && // ✅ Latest session
-        connectionCreatedByThisMount && // ✅ This mount created the connection (not reused)
-        !serviceWasReplaced && // ✅ Not replaced
-        connectionEstablishedRef.current; // ✅ Successfully established
-      
-      if (shouldStopMonitoring) {
-        console.log(`[Live Dashboard] 🛑 Stopping monitoring (session ${currentSessionId} created connection)`);
-        if (service) {
-          service.stopMonitoring().catch(console.error);
-          serviceRef.current = null;
-        }
-        connectionEstablishedRef.current = false;
-      } else {
-        const reasons = [];
-        if (isAsyncInProgress) reasons.push('async still in progress');
-        if (!isLatestSession) reasons.push('session is stale');
-        if (!connectionCreatedByThisMount) reasons.push('connection was reused (not created by this mount)');
-        if (serviceWasReplaced) reasons.push('service was replaced');
-        if (!connectionEstablishedRef.current) reasons.push('connection not established');
-        
-        console.log(`[Live Dashboard] ⏭️ Skipping cleanup - ${reasons.join(', ') || 'unknown reason'}`);
+      console.log('[Live Dashboard] Cleanup: invalidating session', currentSessionId);
+      if (service) {
+        service.stopMonitoring().catch(console.error);
       }
-      
-      // Always increment session ID to invalidate any ongoing operations
-      sessionIdRef.current++;
     };
   }, [isOpen, assessmentId, adminId, updateCandidates]);
 
@@ -625,17 +540,48 @@ export default function LiveProctoringDashboard({
             </p>
           </div>
         ) : (
-          <div className={`grid ${getGridClass()} gap-6`}>
-            {candidates.map((candidate) => (
-              <CandidateTile
-                key={candidate.sessionId}
-                candidate={candidate}
-                onExpand={toggleExpand}
-                onRefresh={refreshCandidate}
-                videoRefs={videoRefs}
-              />
-            ))}
-          </div>
+          (() => {
+            const candidatesArray = Array.from(candidates).map((candidate) => ({
+              id: candidate.sessionId,
+              ...candidate
+            }));
+
+            const CARD_WIDTH = 320;
+            const CARD_HEIGHT = 280;
+            const containerWidth = typeof window !== 'undefined' ? window.innerWidth - 100 : 1200;
+            const COLUMNS = Math.floor(containerWidth / CARD_WIDTH);
+            const rowCount = Math.ceil(candidatesArray.length / COLUMNS);
+
+            return (
+              <FixedSizeGrid
+                columnCount={COLUMNS}
+                columnWidth={CARD_WIDTH}
+                height={800}
+                rowCount={rowCount}
+                rowHeight={CARD_HEIGHT}
+                width={containerWidth}
+                className="candidate-grid"
+              >
+                {({ columnIndex, rowIndex, style }: { columnIndex: number; rowIndex: number; style: React.CSSProperties }) => {
+                  const index = rowIndex * COLUMNS + columnIndex;
+                  if (index >= candidatesArray.length) return null;
+                  
+                  const candidate = candidatesArray[index];
+                  
+                  return (
+                    <div style={style} key={candidate.id}>
+                      <CandidateTile
+                        candidate={candidate}
+                        onExpand={toggleExpand}
+                        onRefresh={refreshCandidate}
+                        videoRefs={videoRefs}
+                      />
+                    </div>
+                  );
+                }}
+              </FixedSizeGrid>
+            );
+          })()
         )}
       </div>
     </div>

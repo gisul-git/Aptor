@@ -34,8 +34,26 @@ class FaceAPIService {
 
     this.ensureBrowser();
 
+    // Suppress TensorFlow.js warnings before importing face-api
+    // face-api internally uses TensorFlow.js and will trigger kernel warnings
+    try {
+      const tfModule = await import("@tensorflow/tfjs");
+      const tf = tfModule.default || tfModule;
+      if (tf && typeof (tf as any).setLogLevel === 'function') {
+        (tf as any).setLogLevel('error'); // Suppress warnings from face-api's TensorFlow.js usage
+      }
+    } catch (tfError) {
+      // Ignore if TensorFlow.js is not available
+    }
+
     // Dynamic import to avoid SSR issues
     const faceapiModule = await import('@vladmandic/face-api');
+    
+    // Suppress face-api's internal TensorFlow.js warnings if possible
+    if (faceapiModule.default && typeof (faceapiModule.default as any).setLogLevel === 'function') {
+      (faceapiModule.default as any).setLogLevel(0); // face-api uses 0 for minimal logging
+    }
+    
     this.faceapi = faceapiModule;
     return this.faceapi;
   }
@@ -46,6 +64,22 @@ class FaceAPIService {
     if (this.modelsLoaded) return;
     if (this.loadingPromise) return this.loadingPromise;
     
+    // CRITICAL: Check if models are already loaded via ModelService (pre-loaded during precheck)
+    try {
+      const { modelService } = await import('./ModelService');
+      if (modelService.isFaceApiModelsLoaded()) {
+        console.log('[FaceAPIService] ✅ face-api models already pre-loaded via ModelService - reusing');
+        // Get the face-api instance from ModelService
+        const faceapi = await modelService.getFaceApi();
+        this.faceapi = faceapi;
+        this.modelsLoaded = true;
+        return;
+      }
+    } catch (error) {
+      console.warn('[FaceAPIService] ModelService check failed, loading independently:', error);
+    }
+    
+    // If not pre-loaded, load models now
     this.loadingPromise = this._loadModels();
     return this.loadingPromise;
   }

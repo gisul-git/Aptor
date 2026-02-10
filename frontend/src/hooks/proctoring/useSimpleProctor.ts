@@ -61,7 +61,14 @@ async function initializeFaceDetection(): Promise<boolean> {
 
   try {
     isModelLoading = true;
-    const tf = await import('@tensorflow/tfjs');
+    const tfModule = await import('@tensorflow/tfjs');
+    const tf = tfModule.default || tfModule;
+    
+    // Suppress TensorFlow.js kernel registration warnings
+    if (tf && typeof (tf as any).setLogLevel === 'function') {
+      (tf as any).setLogLevel('error'); // Only show errors, suppress warnings
+    }
+    
     await tf.ready();
     
     try {
