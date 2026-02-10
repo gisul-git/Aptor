@@ -121,7 +121,12 @@ export default function DesignAdminDashboard() {
       console.log('🔍 Fetching questions from:', `${API_URL}/questions?limit=200`);
       const res = await fetch(`${API_URL}/questions?limit=200`);
       console.log('📡 Response status:', res.status);
-      const data = await res.json();
+      console.log('📡 Response headers:', res.headers.get('content-type'));
+      
+      const text = await res.text();
+      console.log('📄 Raw response text (first 200 chars):', text.substring(0, 200));
+      
+      const data = JSON.parse(text);
       console.log('📊 Data received:', data);
       console.log('📊 Data type:', typeof data, 'Is array:', Array.isArray(data));
       
