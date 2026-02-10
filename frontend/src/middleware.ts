@@ -82,6 +82,13 @@ export default withAuth(
           return true;
         }
         
+        // Skip auth for static HTML test files
+        if (pathname === '/test-workspace.html' || 
+            pathname === '/find-extensions.html' ||
+            pathname === '/test-extension-detection.js') {
+          return true;
+        }
+        
         // Public routes that don't require authentication
         const publicRoutes = [
           "/",
@@ -134,13 +141,16 @@ export default withAuth(
           return true; // These routes have their own token-based auth
         }
 
-        // Design assessment test routes (for testing without auth)
+        // Design assessment routes (for testing without auth)
         if (pathname === "/design/test-direct" ||
             pathname === "/design/test-simple" ||
             pathname === "/test-design" ||
             pathname.startsWith("/design/test-direct/") ||
             pathname.startsWith("/design/test-simple/") ||
-            pathname.startsWith("/design-assessment")) {
+            pathname.startsWith("/design-assessment") ||
+            pathname.startsWith("/design/start/") ||
+            pathname.startsWith("/design/assessment/") ||
+            pathname.startsWith("/design/results/")) {
           return true; // Public test routes
         }
 
@@ -257,8 +267,9 @@ export const config = {
      * - _next/data (static generation data files)
      * - favicon.ico (favicon file)
      * - public files (public folder)
+     * - *.html (static HTML files like test-workspace.html)
      */
-    "/((?!api/auth|api/assessment|api/proctor|api/config|api/v1/candidate|mediapipe|_next/static|_next/image|_next/data|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|js|wasm|data|binarypb)$).*)",
+    "/((?!api/auth|api/assessment|api/proctor|api/config|api/v1/candidate|mediapipe|_next/static|_next/image|_next/data|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|js|wasm|data|binarypb|html)$).*)",
   ],
 };
 

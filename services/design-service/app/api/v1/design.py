@@ -48,6 +48,25 @@ class SubmitDesignRequest(BaseModel):
     session_id: str
     user_id: str
     question_id: str
+    file_id: Optional[str] = None
+    time_taken: Optional[int] = None
+    events: Optional[List[Dict[str, Any]]] = []
+
+
+class ScreenshotRequest(BaseModel):
+    session_id: str
+    timestamp: str
+    image_data: str
+
+
+class EventRequest(BaseModel):
+    session_id: str
+    type: str
+    timestamp: str
+    x: Optional[int] = None
+    y: Optional[int] = None
+    target: Optional[str] = None
+    idle_seconds: Optional[int] = None
 
 
 class EvaluationResponse(BaseModel):
@@ -241,7 +260,6 @@ async def end_workspace_session(session_id: str):
 @router.post("/submit", response_model=Dict[str, Any])
 async def submit_design(
     request: SubmitDesignRequest,
-    screenshot: UploadFile = File(...),
     background_tasks: BackgroundTasks = BackgroundTasks()
 ):
     """Submit design for evaluation"""
@@ -254,15 +272,9 @@ async def submit_design(
         if not session:
             raise HTTPException(status_code=404, detail="Session not found")
         
-        # Save screenshot
-        screenshot_path = f"/tmp/screenshots/{request.session_id}_{datetime.utcnow().timestamp()}.png"
-        with open(screenshot_path, "wb") as f:
-            content = await screenshot.read()
-            f.write(content)
-        
         # Export design data from Penpot
         design_data = await penpot_service.export_design_data(
-            file_id=session.session_token  # This would be the actual file ID
+            file_id=session.file_id
         )
         
         # Create submission record
@@ -270,17 +282,42 @@ async def submit_design(
             session_id=request.session_id,
             user_id=request.user_id,
             question_id=request.question_id,
-            screenshot_url=screenshot_path,
-            design_file_url=f"/tmp/designs/{request.session_id}.json"
+            screenshot_url=f"penpot://{session.file_id}",  # Reference to Penpot file
+            design_file_url=f"penpot://{session.file_id}"
         )
         
         submission_id = await design_repository.create_submission(submission)
+        
+        # Save events if provided
+        if request.events and len(request.events) > 0:
+            try:
+                db = design_repository.db
+                events_docs = []
+                for event in request.events:
+                    events_docs.append({
+                        "session_id": request.session_id,
+                        "type": event.get("type"),
+                        "timestamp": event.get("timestamp"),
+                        "x": event.get("x"),
+                        "y": event.get("y"),
+                        "target": event.get("target"),
+                        "idle_seconds": event.get("idle_seconds"),
+                        "created_at": datetime.utcnow()
+                    })
+                
+                if events_docs:
+                    await db.events.insert_many(events_docs)
+                    logger.info(f"🎯 Saved {len(events_docs)} events for session {request.session_id}")
+            except Exception as e:
+                logger.warning(f"Could not save events: {e}")
+        
+        # End the session
+        await design_repository.end_session(request.session_id)
         
         # Start background evaluation
         background_tasks.add_task(
             evaluate_submission_background,
             submission_id,
-            screenshot_path,
             design_data,
             request.question_id
         )
@@ -288,19 +325,27 @@ async def submit_design(
         return {
             "submission_id": submission_id,
             "message": "Design submitted successfully",
-            "evaluation_status": "processing"
+            "evaluation_status": "processing",
+            "file_id": session.file_id
         }
         
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Failed to submit design: {e}")
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+from app.core.evaluation_engine import DesignEvaluationEngine
+
+# Initialize evaluation engine
+evaluation_engine = DesignEvaluationEngine()
 
 
 async def evaluate_submission_background(
     submission_id: str,
-    screenshot_path: str,
     design_data: Dict[str, Any],
     question_id: str
 ):
@@ -310,20 +355,65 @@ async def evaluate_submission_background(
         question = await design_repository.get_question(question_id)
         question_data = question.model_dump() if question else {}
         
-        # Simplified evaluation (evaluation engine temporarily disabled)
-        rule_score = 75.0  # Placeholder
-        ai_score = 75.0    # Placeholder
-        final_score = 75.0  # Placeholder
+        # Extract metrics from design data
+        metrics = design_data.get("metrics", {})
         
-        feedback = {
-            "rule_based": {"note": "Evaluation engine being updated"},
-            "ai_based": {"note": "Evaluation engine being updated"},
-            "overall_score": final_score,
-            "breakdown": {
-                "rule_based_score": rule_score,
-                "ai_based_score": ai_score
-            }
-        }
+        # Get submission to find session_id
+        submission = await design_repository.get_submission(submission_id)
+        session_id = submission.session_id if submission else None
+        
+        # Get latest screenshot for AI evaluation
+        screenshot_base64 = None
+        events_data = None
+        if session_id:
+            try:
+                db = design_repository.db
+                
+                # Get latest screenshot
+                latest_screenshot = await db.screenshots.find_one(
+                    {"session_id": session_id},
+                    sort=[("created_at", -1)]
+                )
+                if latest_screenshot:
+                    screenshot_base64 = latest_screenshot.get("image_data")
+                    logger.info("📸 Found screenshot for AI evaluation")
+                
+                # Get all events for interaction analysis
+                events_cursor = db.events.find({"session_id": session_id})
+                events_list = await events_cursor.to_list(length=None)
+                
+                if events_list:
+                    # Calculate event statistics
+                    total_clicks = sum(1 for e in events_list if e.get("type") == "click")
+                    total_undo = sum(1 for e in events_list if e.get("type") == "undo")
+                    total_redo = sum(1 for e in events_list if e.get("type") == "redo")
+                    total_idle = sum(e.get("idle_seconds", 0) for e in events_list if e.get("type") == "idle")
+                    
+                    events_data = {
+                        "total_events": len(events_list),
+                        "total_clicks": total_clicks,
+                        "total_undo": total_undo,
+                        "total_redo": total_redo,
+                        "total_idle_seconds": total_idle,
+                        "events": events_list
+                    }
+                    logger.info(f"🎯 Found {len(events_list)} events for evaluation")
+                    
+            except Exception as e:
+                logger.warning(f"Could not fetch screenshot/events: {e}")
+        
+        # Run comprehensive evaluation using the evaluation engine
+        evaluation_result = await evaluation_engine.evaluate(
+            design_data=design_data,
+            question_data=question_data,
+            events_data=events_data,  # Pass events for interaction quality
+            screenshot_base64=screenshot_base64  # Pass screenshot for AI
+        )
+        
+        rule_score = evaluation_result["rule_based_score"]
+        ai_score = evaluation_result["ai_based_score"]
+        final_score = evaluation_result["final_score"]
+        feedback = evaluation_result["feedback"]
         
         # Update submission with scores
         await design_repository.update_submission_scores(
@@ -334,10 +424,204 @@ async def evaluate_submission_background(
             feedback=feedback
         )
         
-        logger.info(f"Completed evaluation for submission {submission_id}")
+        logger.info(f"✅ Completed evaluation for submission {submission_id}: {final_score}/100")
         
     except Exception as e:
         logger.error(f"Background evaluation failed: {e}")
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
+
+
+@router.post("/screenshot")
+async def save_screenshot(request: ScreenshotRequest):
+    """Save screenshot for evaluation (not proctoring)"""
+    try:
+        if design_repository.db is None:
+            await design_repository.initialize()
+        
+        db = design_repository.db
+        
+        # Calculate file size
+        if request.image_data.startswith('data:image'):
+            base64_data = request.image_data.split(',')[1]
+            file_size = len(base64_data) * 3 / 4
+        else:
+            file_size = len(request.image_data) * 3 / 4
+        
+        # Save screenshot
+        screenshot_doc = {
+            "session_id": request.session_id,
+            "timestamp": request.timestamp,
+            "image_data": request.image_data,
+            "file_size": int(file_size),
+            "created_at": datetime.utcnow()
+        }
+        
+        result = await db.screenshots.insert_one(screenshot_doc)
+        
+        logger.info(f"📸 Screenshot saved for evaluation: {result.inserted_id}")
+        
+        return {
+            "id": str(result.inserted_id),
+            "message": "Screenshot saved for evaluation"
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to save screenshot: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/event")
+async def save_event(request: EventRequest):
+    """Save user interaction event for evaluation"""
+    try:
+        if design_repository.db is None:
+            await design_repository.initialize()
+        
+        db = design_repository.db
+        
+        # Save event
+        event_doc = {
+            "session_id": request.session_id,
+            "type": request.type,
+            "timestamp": request.timestamp,
+            "x": request.x,
+            "y": request.y,
+            "target": request.target,
+            "idle_seconds": request.idle_seconds,
+            "created_at": datetime.utcnow()
+        }
+        
+        result = await db.events.insert_one(event_doc)
+        
+        logger.info(f"🎯 Event saved: {request.type} for session {request.session_id}")
+        
+        return {
+            "id": str(result.inserted_id),
+            "message": "Event saved"
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to save event: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/sessions/list")
+async def list_sessions():
+    """Get list of all sessions with screenshot and event counts"""
+    try:
+        if design_repository.db is None:
+            await design_repository.initialize()
+        
+        db = design_repository.db
+        
+        # Get unique session IDs from screenshots
+        screenshot_sessions = await db.screenshots.aggregate([
+            {"$group": {"_id": "$session_id", "count": {"$sum": 1}}}
+        ]).to_list(length=None)
+        
+        # Get unique session IDs from events
+        event_sessions = await db.events.aggregate([
+            {"$group": {"_id": "$session_id", "count": {"$sum": 1}}}
+        ]).to_list(length=None)
+        
+        # Combine sessions
+        sessions_dict = {}
+        for s in screenshot_sessions:
+            sessions_dict[s["_id"]] = {
+                "session_id": s["_id"],
+                "screenshot_count": s["count"],
+                "event_count": 0
+            }
+        
+        for e in event_sessions:
+            if e["_id"] in sessions_dict:
+                sessions_dict[e["_id"]]["event_count"] = e["count"]
+            else:
+                sessions_dict[e["_id"]] = {
+                    "session_id": e["_id"],
+                    "screenshot_count": 0,
+                    "event_count": e["count"]
+                }
+        
+        sessions = list(sessions_dict.values())
+        
+        logger.info(f"📋 Found {len(sessions)} sessions")
+        
+        return {"sessions": sessions}
+        
+    except Exception as e:
+        logger.error(f"Failed to list sessions: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/sessions/{session_id}/screenshots")
+async def get_session_screenshots(session_id: str):
+    """Get all screenshots for a session"""
+    try:
+        if design_repository.db is None:
+            await design_repository.initialize()
+        
+        db = design_repository.db
+        
+        screenshots = await db.screenshots.find(
+            {"session_id": session_id}
+        ).sort("created_at", 1).to_list(length=None)
+        
+        # Convert ObjectId to string
+        for screenshot in screenshots:
+            screenshot["_id"] = str(screenshot["_id"])
+        
+        logger.info(f"📸 Retrieved {len(screenshots)} screenshots for session {session_id}")
+        
+        return {"screenshots": screenshots}
+        
+    except Exception as e:
+        logger.error(f"Failed to get screenshots: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/sessions/{session_id}/events")
+async def get_session_events(session_id: str):
+    """Get all events for a session"""
+    try:
+        if design_repository.db is None:
+            await design_repository.initialize()
+        
+        db = design_repository.db
+        
+        events = await db.events.find(
+            {"session_id": session_id}
+        ).sort("timestamp", 1).to_list(length=None)
+        
+        # Convert ObjectId to string
+        for event in events:
+            event["_id"] = str(event["_id"])
+        
+        # Calculate statistics
+        total_clicks = sum(1 for e in events if e.get("type") == "click")
+        total_undo = sum(1 for e in events if e.get("type") == "undo")
+        total_redo = sum(1 for e in events if e.get("type") == "redo")
+        total_idle_seconds = sum(e.get("idle_seconds", 0) for e in events if e.get("type") == "idle")
+        
+        stats = {
+            "total_events": len(events),
+            "total_clicks": total_clicks,
+            "total_undo": total_undo,
+            "total_redo": total_redo,
+            "total_idle_seconds": total_idle_seconds
+        }
+        
+        logger.info(f"🎯 Retrieved {len(events)} events for session {session_id}")
+        
+        return {
+            "events": events,
+            "stats": stats
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to get events: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/submissions/{submission_id}/evaluation", response_model=EvaluationResponse)

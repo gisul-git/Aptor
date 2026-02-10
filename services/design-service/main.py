@@ -70,11 +70,19 @@ app.add_middleware(
         "http://localhost:3001",   # Next.js frontend (alt port)
         "http://localhost:3002",   # Next.js frontend (alt port)
         "http://localhost:3003",   # Next.js frontend (alt port)
+        "http://localhost:3004",   # Next.js frontend (alt port)
+        "http://localhost:3005",   # Next.js frontend (alt port)
+        "http://localhost:3006",   # Next.js frontend (alt port)
+        "http://localhost:3007",   # Next.js frontend (alt port)
         "http://localhost:9001",   # Penpot
         "http://127.0.0.1:3000",
         "http://127.0.0.1:3001",
         "http://127.0.0.1:3002",
         "http://127.0.0.1:3003",
+        "http://127.0.0.1:3004",
+        "http://127.0.0.1:3005",
+        "http://127.0.0.1:3006",
+        "http://127.0.0.1:3007",
         "http://127.0.0.1:9001",
     ],
     allow_credentials=True,

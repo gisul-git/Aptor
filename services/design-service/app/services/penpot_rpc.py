@@ -293,6 +293,75 @@ class PenpotRPCService:
             "status": "active",
             "message": "Workspace is active"
         }
+    
+    async def export_design_data(self, file_id: str) -> Dict[str, Any]:
+        """
+        Export complete design file data for evaluation
+        
+        Args:
+            file_id: Penpot file ID
+            
+        Returns:
+            Complete file data including pages, shapes, colors, etc.
+        """
+        try:
+            from datetime import datetime
+            logger.info(f"Exporting design data for file: {file_id}")
+            
+            # Get file data using Transit format
+            file_data = await self.get_file_data(file_id)
+            
+            if not file_data:
+                logger.warning(f"No data found for file: {file_id}")
+                return {}
+            
+            logger.debug(f"File data keys: {list(file_data.keys()) if isinstance(file_data, dict) else 'not a dict'}")
+            logger.debug(f"File data type: {type(file_data)}")
+            
+            # Extract relevant design metrics
+            design_metrics = {
+                "file_id": file_id,
+                "exported_at": datetime.utcnow().isoformat(),
+                "pages": [],
+                "total_shapes": 0,
+                "colors_used": [],
+                "fonts_used": [],
+                "components_used": []
+            }
+            
+            # Parse pages and shapes - Penpot stores data in 'data' key
+            data = file_data.get("data", {}) if isinstance(file_data, dict) else {}
+            pages_by_id = data.get("pages-index", {}) if isinstance(data, dict) else {}
+            
+            logger.debug(f"Pages index keys: {list(pages_by_id.keys()) if isinstance(pages_by_id, dict) else 'not a dict'}")
+            
+            # Count pages
+            design_metrics["page_count"] = len(pages_by_id) if isinstance(pages_by_id, dict) else 0
+            
+            # Count shapes across all pages
+            total_shapes = 0
+            for page_id, page_data in (pages_by_id.items() if isinstance(pages_by_id, dict) else []):
+                if isinstance(page_data, dict):
+                    objects = page_data.get("objects", {})
+                    if isinstance(objects, dict):
+                        # Each object in objects dict is a shape
+                        total_shapes += len(objects)
+                        logger.debug(f"Page {page_id}: {len(objects)} objects")
+            
+            design_metrics["total_shapes"] = total_shapes
+            
+            logger.info(f"✅ Exported design data: {design_metrics['total_shapes']} shapes, {design_metrics['page_count']} pages")
+            
+            return {
+                "file_data": file_data,
+                "metrics": design_metrics
+            }
+            
+        except Exception as e:
+            logger.error(f"Failed to export design data: {e}")
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
+            return {}
 
 
 # Singleton instance

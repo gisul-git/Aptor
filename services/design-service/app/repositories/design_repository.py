@@ -120,17 +120,25 @@ class DesignRepository:
         """Create a new Penpot session"""
         try:
             session_dict = session.model_dump(exclude={"id"})
-            result = await self.db.penpot_sessions.insert_one(session_dict)
-            logger.info(f"Created Penpot session: {result.inserted_id}")
+            # Also store session_id field for easier querying
+            session_dict["session_id"] = session.session_token
+            
+            logger.info(f"Attempting to save session to design_sessions collection")
+            logger.info(f"Session data: user_id={session.user_id}, session_token={session.session_token}")
+            
+            result = await self.db.design_sessions.insert_one(session_dict)
+            logger.info(f"✅ Created design session: {result.inserted_id}")
             return str(result.inserted_id)
         except Exception as e:
-            logger.error(f"Failed to create session: {e}")
+            logger.error(f"❌ Failed to create session: {e}")
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
             raise
     
     async def get_session(self, session_id: str) -> Optional[PenpotSessionModel]:
         """Get Penpot session by ID"""
         try:
-            session_data = await self.db.penpot_sessions.find_one(
+            session_data = await self.db.design_sessions.find_one(
                 {"_id": ObjectId(session_id)}
             )
             if session_data:
@@ -144,7 +152,7 @@ class DesignRepository:
     async def get_session_by_token(self, session_token: str) -> Optional[PenpotSessionModel]:
         """Get Penpot session by token"""
         try:
-            session_data = await self.db.penpot_sessions.find_one(
+            session_data = await self.db.design_sessions.find_one(
                 {"session_token": session_token}
             )
             if session_data:
@@ -166,7 +174,7 @@ class DesignRepository:
             if active_only:
                 filter_dict["ended_at"] = None
             
-            cursor = self.db.penpot_sessions.find(filter_dict)
+            cursor = self.db.design_sessions.find(filter_dict)
             sessions = []
             
             async for session_data in cursor:
@@ -181,7 +189,7 @@ class DesignRepository:
     async def end_session(self, session_id: str) -> bool:
         """End Penpot session"""
         try:
-            result = await self.db.penpot_sessions.update_one(
+            result = await self.db.design_sessions.update_one(
                 {"_id": ObjectId(session_id)},
                 {"$set": {"ended_at": datetime.utcnow()}}
             )
