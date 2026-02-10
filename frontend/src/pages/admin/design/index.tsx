@@ -118,35 +118,19 @@ export default function DesignAdminDashboard() {
   const loadQuestions = async () => {
     setLoading(true);
     try {
-      console.log('🔍 Fetching questions from:', `${API_URL}/questions?limit=200`);
-      const res = await fetch(`${API_URL}/questions?limit=200`);
+      console.log('🔍 Fetching questions from:', `${API_URL}/questions?limit=100`);
+      const res = await fetch(`${API_URL}/questions?limit=100`);
       console.log('📡 Response status:', res.status);
-      console.log('📡 Response headers:', res.headers.get('content-type'));
       
-      const text = await res.text();
-      console.log('📄 Raw response text (first 200 chars):', text.substring(0, 200));
-      
-      const data = JSON.parse(text);
-      console.log('📊 Data received:', data);
-      console.log('📊 Data type:', typeof data, 'Is array:', Array.isArray(data));
-      
-      // Handle both array and object responses
-      let questionsArray = [];
-      if (Array.isArray(data)) {
-        questionsArray = data;
-      } else if (data && typeof data === 'object') {
-        // Check if data has a questions property
-        if (Array.isArray(data.questions)) {
-          questionsArray = data.questions;
-        } else if (Array.isArray(data.data)) {
-          questionsArray = data.data;
-        } else {
-          // If it's an object with properties, it might be a single question
-          // or the response format is different
-          console.warn('⚠️ Unexpected data format:', data);
-        }
+      if (!res.ok) {
+        throw new Error(`HTTP error! status: ${res.status}`);
       }
       
+      const data = await res.json();
+      console.log('📊 Data received, is array:', Array.isArray(data), 'length:', data.length);
+      
+      // Ensure data is an array
+      const questionsArray = Array.isArray(data) ? data : [];
       console.log('✅ Questions array length:', questionsArray.length);
       setQuestions(questionsArray);
       setFilteredQuestions(questionsArray);
