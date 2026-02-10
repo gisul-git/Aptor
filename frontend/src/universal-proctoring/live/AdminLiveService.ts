@@ -497,7 +497,7 @@ export class AdminLiveService {
             throw new Error("Failed to load Agora SDK");
           }
 
-          this.client = AgoraRTC.createClient({ mode: "rtc", codec: "vp8" });
+          this.client = AgoraRTC.createClient({ mode: "live", codec: "vp8" });
           this.setupClientCallbacks();
 
           this.log("Joining Agora channel...");
@@ -507,6 +507,7 @@ export class AdminLiveService {
             tokenData.token,
             tokenData.uid
           );
+          await this.client.setClientRole("audience");
           this.log("✅ Joined Agora channel");
 
           // Store as global active connection
