@@ -1,4 +1,5 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
 
 /* Tailwind CSS directives - these are valid and processed by Tailwind */
 /* @tailwind directives are processed by PostCSS/Tailwind during build */
@@ -62,6 +63,7 @@ body {
   line-height: 1.7; /* Improved readability for body text */
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  font-family: 'Inter', "Inter Fallback";
 }
 
 /* Typography Scale - Mint Cream Theme */

@@ -27,7 +27,8 @@ module.exports = {
         beige: '#F5F1E8', // Warm Beige - Natural, earthy grounding
       },
       fontFamily: {
-        sans: ['Inter', 'sans-serif'],
+      
+        sans: ['Inter', '"Inter Fallback"', 'sans-serif']
       },
       boxShadow: {
         'mint-sm': '0 2px 12px rgba(201, 244, 212, 0.2)',
