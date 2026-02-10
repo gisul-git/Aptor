@@ -697,6 +697,97 @@ async def get_user_performance(user_id: str):
 
 
 # Health and Status
+@router.get("/admin/submissions")
+async def get_all_submissions():
+    """Get all submissions for admin panel"""
+    try:
+        if design_repository.db is None:
+            await design_repository.initialize()
+        
+        db = design_repository.db
+        
+        # Get all submissions with scores
+        submissions = await db.design_submissions.find(
+            {},
+            {
+                "_id": 1,
+                "session_id": 1,
+                "user_id": 1,
+                "question_id": 1,
+                "final_score": 1,
+                "rule_based_score": 1,
+                "ai_based_score": 1,
+                "submitted_at": 1
+            }
+        ).sort("submitted_at", -1).to_list(length=None)
+        
+        # Convert ObjectId to string
+        for submission in submissions:
+            submission["_id"] = str(submission["_id"])
+        
+        logger.info(f"📊 Retrieved {len(submissions)} submissions for admin")
+        
+        return {"submissions": submissions, "total": len(submissions)}
+        
+    except Exception as e:
+        logger.error(f"Failed to get submissions: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/admin/stats")
+async def get_admin_stats():
+    """Get overall statistics for admin dashboard"""
+    try:
+        if design_repository.db is None:
+            await design_repository.initialize()
+        
+        db = design_repository.db
+        
+        # Count questions
+        questions_count = await db.design_questions.count_documents({})
+        
+        # Count sessions
+        sessions_count = await db.design_sessions.count_documents({})
+        
+        # Count submissions
+        submissions_count = await db.design_submissions.count_documents({})
+        
+        # Calculate average score
+        pipeline = [
+            {
+                "$group": {
+                    "_id": None,
+                    "avg_score": {"$avg": "$final_score"},
+                    "max_score": {"$max": "$final_score"},
+                    "min_score": {"$min": "$final_score"}
+                }
+            }
+        ]
+        
+        score_stats = await db.design_submissions.aggregate(pipeline).to_list(1)
+        
+        avg_score = score_stats[0]["avg_score"] if score_stats else 0
+        max_score = score_stats[0]["max_score"] if score_stats else 0
+        min_score = score_stats[0]["min_score"] if score_stats else 0
+        
+        # Calculate completion rate
+        completion_rate = (submissions_count / sessions_count * 100) if sessions_count > 0 else 0
+        
+        return {
+            "total_questions": questions_count,
+            "total_sessions": sessions_count,
+            "total_submissions": submissions_count,
+            "average_score": round(avg_score, 1),
+            "max_score": round(max_score, 1),
+            "min_score": round(min_score, 1),
+            "completion_rate": round(completion_rate, 1)
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to get admin stats: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/health")
 async def health_check():
     """Service health check"""
