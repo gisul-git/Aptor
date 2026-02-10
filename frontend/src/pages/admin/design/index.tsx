@@ -120,10 +120,14 @@ export default function DesignAdminDashboard() {
     try {
       const res = await fetch(`${API_URL}/questions?limit=200`);
       const data = await res.json();
-      setQuestions(data);
-      setFilteredQuestions(data);
+      // Ensure data is an array
+      const questionsArray = Array.isArray(data) ? data : [];
+      setQuestions(questionsArray);
+      setFilteredQuestions(questionsArray);
     } catch (err) {
       console.error('Failed to load questions:', err);
+      setQuestions([]);
+      setFilteredQuestions([]);
     }
     setLoading(false);
   };
@@ -135,12 +139,14 @@ export default function DesignAdminDashboard() {
       const res = await fetch(`${API_URL}/admin/submissions`);
       const data = await res.json();
       
-      if (data.submissions) {
-        setCandidates(data.submissions);
-        setFilteredCandidates(data.submissions);
-      }
+      // Ensure submissions is an array
+      const submissionsArray = Array.isArray(data.submissions) ? data.submissions : [];
+      setCandidates(submissionsArray);
+      setFilteredCandidates(submissionsArray);
     } catch (err) {
       console.error('Failed to load candidates:', err);
+      setCandidates([]);
+      setFilteredCandidates([]);
     }
     setLoading(false);
   };
@@ -579,6 +585,9 @@ function AnalyticsTab({ analytics, loading }: any) {
 
 // Test Links Tab Component
 function TestLinksTab({ questions, onCopyLink }: any) {
+  // Ensure questions is an array
+  const questionsArray = Array.isArray(questions) ? questions : [];
+  
   return (
     <div>
       <div className="bg-white rounded-lg shadow-sm overflow-hidden">
@@ -587,32 +596,40 @@ function TestLinksTab({ questions, onCopyLink }: any) {
           <p className="text-sm text-gray-500 mt-1">Copy and share these links with candidates</p>
         </div>
         
-        <div className="divide-y divide-gray-200">
-          {questions.map((q: any) => (
-            <div key={q._id} className="p-6 hover:bg-gray-50">
-              <div className="flex items-start justify-between gap-4">
-                <div className="flex-1">
-                  <h4 className="font-medium text-gray-900">{q.title}</h4>
-                  <p className="text-sm text-gray-500 mt-1">
-                    {q.role.replace('_', ' ')} • {q.difficulty} • {q.task_type.replace('_', ' ')}
-                  </p>
-                  <div className="mt-3 p-3 bg-gray-50 rounded border border-gray-200">
-                    <code className="text-sm text-gray-700">
-                      http://localhost:3001/design/assessment/{q._id || q.id}
-                    </code>
+        {questionsArray.length === 0 ? (
+          <div className="p-12 text-center">
+            <div className="text-4xl mb-4">🔗</div>
+            <p className="text-gray-500">No questions available</p>
+            <p className="text-sm text-gray-400 mt-2">Generate questions first to get test links</p>
+          </div>
+        ) : (
+          <div className="divide-y divide-gray-200">
+            {questionsArray.map((q: any) => (
+              <div key={q._id} className="p-6 hover:bg-gray-50">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex-1">
+                    <h4 className="font-medium text-gray-900">{q.title}</h4>
+                    <p className="text-sm text-gray-500 mt-1">
+                      {q.role.replace('_', ' ')} • {q.difficulty} • {q.task_type.replace('_', ' ')}
+                    </p>
+                    <div className="mt-3 p-3 bg-gray-50 rounded border border-gray-200">
+                      <code className="text-sm text-gray-700">
+                        http://localhost:3001/design/assessment/{q._id || q.id}
+                      </code>
+                    </div>
                   </div>
+                  
+                  <button
+                    onClick={() => onCopyLink(q._id || q.id)}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium whitespace-nowrap"
+                  >
+                    📋 Copy Link
+                  </button>
                 </div>
-                
-                <button
-                  onClick={() => onCopyLink(q._id || q.id)}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium whitespace-nowrap"
-                >
-                  📋 Copy Link
-                </button>
               </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
