@@ -115,7 +115,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         errorMessage = "Signup failed";
       }
     } else if (error?.response?.data?.detail && Array.isArray(error.response.data.detail)) {
-      // Extract the first error message from the validation errors arrayy
+      // Extract the first error message from the validation errors arrayy 
       const firstError = error.response.data.detail[0];
       errorMessage = firstError?.msg || firstError?.message || "Validation error";
     } else if (error?.response?.data?.message) {
