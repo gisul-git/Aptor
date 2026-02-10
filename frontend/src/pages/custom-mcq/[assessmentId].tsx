@@ -1161,9 +1161,6 @@ export default function CustomMCQDetailsPage({ session }: CustomMCQDetailsPagePr
                     const hasAnswerLogs = (submission as any).answerLogs && Object.keys((submission as any).answerLogs).length > 0;
                     const candidateRequirements = (submission as any).candidateRequirements || {};
                     const hasRequirements = candidateRequirements && Object.keys(candidateRequirements).length > 0;
-                    // Resume can be in candidateInfo or candidateRequirements
-                    const candidateResume = (candidateInfo as any).resume || candidateRequirements.resume;
-                    const hasResume = (candidateInfo as any).hasResume || !!candidateResume;
                     // Check if there are coding submissions
                     const submissionEntries = (submission as any).submissions || [];
                     const hasCodingSubmissions = submissionEntries.some((s: any) => s.questionType === "coding" && s.codeAnswer);
@@ -1174,6 +1171,7 @@ export default function CustomMCQDetailsPage({ session }: CustomMCQDetailsPagePr
                       console.log("Submission data:", submission);
                       console.log("Candidate requirements:", candidateRequirements);
                       console.log("Has requirements:", hasRequirements);
+                      console.log("Candidate info:", candidateInfo);
                     }
                     
                     // Calculate attempted and not attempted questions for this submission
@@ -1665,7 +1663,7 @@ export default function CustomMCQDetailsPage({ session }: CustomMCQDetailsPagePr
                                     >
                                       Candidate Requirements
                                     </div>
-                                    {hasRequirements || candidateInfo.name || candidateInfo.email || hasResume ? (
+                                    {hasRequirements || candidateInfo.name || candidateInfo.email ? (
                                       <div
                                         style={{
                                           display: "grid",
@@ -1707,7 +1705,7 @@ export default function CustomMCQDetailsPage({ session }: CustomMCQDetailsPagePr
                                             </div>
                                           </div>
                                         )}
-                                        {candidateRequirements.phone && (
+                                        {(candidateRequirements.phone || (candidateInfo as any).phone) && (
                                           <div
                                             style={{
                                               padding: "0.625rem",
@@ -1720,11 +1718,11 @@ export default function CustomMCQDetailsPage({ session }: CustomMCQDetailsPagePr
                                               Phone
                                             </div>
                                             <div style={{ fontSize: "0.875rem", color: "#1e293b", fontWeight: 500 }}>
-                                              {candidateRequirements.phone}
+                                              {candidateRequirements.phone || (candidateInfo as any).phone}
                                             </div>
                                           </div>
                                         )}
-                                        {candidateRequirements.linkedIn && (
+                                        {(candidateRequirements.linkedIn || (candidateInfo as any).linkedIn) && (
                                           <div
                                             style={{
                                               padding: "0.625rem",
@@ -1738,7 +1736,7 @@ export default function CustomMCQDetailsPage({ session }: CustomMCQDetailsPagePr
                                             </div>
                                             <div style={{ fontSize: "0.875rem", color: "#1e293b" }}>
                                               <a
-                                                href={candidateRequirements.linkedIn}
+                                                href={candidateRequirements.linkedIn || (candidateInfo as any).linkedIn}
                                                 target="_blank"
                                                 rel="noopener noreferrer"
                                                 style={{
@@ -1747,12 +1745,12 @@ export default function CustomMCQDetailsPage({ session }: CustomMCQDetailsPagePr
                                                   wordBreak: "break-all",
                                                 }}
                                               >
-                                                {candidateRequirements.linkedIn}
+                                                {candidateRequirements.linkedIn || (candidateInfo as any).linkedIn}
                                               </a>
                                             </div>
                                           </div>
                                         )}
-                                        {candidateRequirements.github && (
+                                        {(candidateRequirements.github || (candidateInfo as any).github) && (
                                           <div
                                             style={{
                                               padding: "0.625rem",
@@ -1766,7 +1764,7 @@ export default function CustomMCQDetailsPage({ session }: CustomMCQDetailsPagePr
                                             </div>
                                             <div style={{ fontSize: "0.875rem", color: "#1e293b" }}>
                                               <a
-                                                href={candidateRequirements.github}
+                                                href={candidateRequirements.github || (candidateInfo as any).github}
                                                 target="_blank"
                                                 rel="noopener noreferrer"
                                                 style={{
@@ -1775,60 +1773,8 @@ export default function CustomMCQDetailsPage({ session }: CustomMCQDetailsPagePr
                                                   wordBreak: "break-all",
                                                 }}
                                               >
-                                                {candidateRequirements.github}
+                                                {candidateRequirements.github || (candidateInfo as any).github}
                                               </a>
-                                            </div>
-                                          </div>
-                                        )}
-                                        {hasResume && candidateResume && (
-                                          <div
-                                            style={{
-                                              padding: "0.625rem",
-                                              backgroundColor: "#ffffff",
-                                              borderRadius: "0.375rem",
-                                              border: "1px solid #e5e7eb",
-                                            }}
-                                          >
-                                            <div style={{ fontSize: "0.75rem", color: "#64748b", marginBottom: "0.25rem" }}>
-                                              Resume
-                                            </div>
-                                            <div style={{ fontSize: "0.875rem", color: "#1e293b" }}>
-                                              <button
-                                                type="button"
-                                                onClick={() => {
-                                                  if (candidateResume) {
-                                                    // Handle both base64 data URLs and plain base64
-                                                    let dataUrl = candidateResume;
-                                                    if (!dataUrl.startsWith('data:')) {
-                                                      dataUrl = `data:application/pdf;base64,${candidateResume}`;
-                                                    }
-                                                    const link = document.createElement('a');
-                                                    link.href = dataUrl;
-                                                    link.download = `${candidateInfo.name || candidateInfo.email || 'resume'}_resume.pdf`;
-                                                    document.body.appendChild(link);
-                                                    link.click();
-                                                    document.body.removeChild(link);
-                                                  }
-                                                }}
-                                                style={{
-                                                  color: "#6953a3",
-                                                  textDecoration: "none",
-                                                  background: "none",
-                                                  border: "none",
-                                                  cursor: "pointer",
-                                                  padding: 0,
-                                                  fontSize: "0.875rem",
-                                                  fontWeight: 500,
-                                                }}
-                                                onMouseEnter={(e) => {
-                                                  e.currentTarget.style.textDecoration = "underline";
-                                                }}
-                                                onMouseLeave={(e) => {
-                                                  e.currentTarget.style.textDecoration = "none";
-                                                }}
-                                              >
-                                                View/Download Resume
-                                              </button>
                                             </div>
                                           </div>
                                         )}
