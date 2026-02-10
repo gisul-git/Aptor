@@ -154,6 +154,16 @@ export default withAuth(
           return true; // Public test routes
         }
 
+        // Design admin panel (temporary - for demo, should add auth later)
+        if (pathname.startsWith("/admin/design")) {
+          return true; // Admin panel - TODO: Add proper authentication
+        }
+
+        // Design admin API routes
+        if (pathname.startsWith("/api/admin/design")) {
+          return true; // Admin API routes
+        }
+
         // Candidate-facing API routes should remain public (token validated server-side)
         if (pathname.startsWith("/api/assessment/")) {
           return true;
