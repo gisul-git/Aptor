@@ -1,5 +1,5 @@
 """
-DSA Service - Microservice for Data Structures and Algorithms assessments 
+DSA Service - Microservice for Data Structures and Algorithms assessments
 """
 from contextlib import asynccontextmanager
 import logging
