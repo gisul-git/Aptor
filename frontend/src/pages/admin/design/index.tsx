@@ -90,6 +90,15 @@ export default function DesignAdminDashboard() {
       difficultyFilter
     });
     
+    // Debug: show first question's actual values
+    if (questions.length > 0) {
+      console.log('📋 Sample question data:', {
+        role: questions[0].role,
+        difficulty: questions[0].difficulty,
+        title: questions[0].title
+      });
+    }
+    
     let filtered = questions;
     
     if (questionSearch) {
@@ -99,11 +108,23 @@ export default function DesignAdminDashboard() {
     }
     
     if (roleFilter !== 'all') {
-      filtered = filtered.filter(q => q.role === roleFilter);
+      console.log(`🔍 Filtering by role: "${roleFilter}"`);
+      const beforeCount = filtered.length;
+      filtered = filtered.filter(q => {
+        console.log(`  Comparing: q.role="${q.role}" === roleFilter="${roleFilter}" = ${q.role === roleFilter}`);
+        return q.role === roleFilter;
+      });
+      console.log(`  Role filter: ${beforeCount} → ${filtered.length} questions`);
     }
     
     if (difficultyFilter !== 'all') {
-      filtered = filtered.filter(q => q.difficulty === difficultyFilter);
+      console.log(`🔍 Filtering by difficulty: "${difficultyFilter}"`);
+      const beforeCount = filtered.length;
+      filtered = filtered.filter(q => {
+        console.log(`  Comparing: q.difficulty="${q.difficulty}" === difficultyFilter="${difficultyFilter}" = ${q.difficulty === difficultyFilter}`);
+        return q.difficulty === difficultyFilter;
+      });
+      console.log(`  Difficulty filter: ${beforeCount} → ${filtered.length} questions`);
     }
     
     console.log('✅ Filtered questions:', filtered.length);
@@ -203,19 +224,24 @@ export default function DesignAdminDashboard() {
       if (res.ok) {
         const newQuestion = await res.json();
         console.log('✅ Question generated:', newQuestion);
+        console.log('📋 Generated question details:', {
+          role: newQuestion.role,
+          difficulty: newQuestion.difficulty,
+          task_type: newQuestion.task_type
+        });
         
-        // Close modal first
+        // Close modal
         setShowGenerateModal(false);
-        
-        // Reset filters to show all questions
-        setRoleFilter('all');
-        setDifficultyFilter('all');
-        setQuestionSearch('');
         
         // Show success message
         alert('✅ Question generated successfully!');
         
-        // Reload questions to show the new one
+        // Reset filters to "all" to show all questions including the new one
+        setRoleFilter('all');
+        setDifficultyFilter('all');
+        setQuestionSearch('');
+        
+        // Reload questions
         await loadQuestions();
       } else {
         const errorData = await res.json();
