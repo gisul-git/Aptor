@@ -30,6 +30,9 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      args:
+        - NEXT_PUBLIC_AIML_AGENT_URL=${NEXT_PUBLIC_AIML_AGENT_URL}
+        - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-https://qa.aaptor.com}
     container_name: gisul-frontend
     ports:
       - "3000:3000"
