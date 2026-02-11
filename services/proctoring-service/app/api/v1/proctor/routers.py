@@ -24,6 +24,7 @@ from .schemas import (
     LiveProctoringSessionData,
 )
 from .websocket_manager import connection_manager
+from .agora_service import generate_agora_token
 from ....utils.responses import success_response
 from ....utils.mongo import to_object_id
 
@@ -685,6 +686,94 @@ async def get_all_live_proctoring_sessions(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to fetch sessions: {str(exc)}"
         ) from exc
+
+
+@router.post("/agora/get-token")
+async def get_agora_token(
+    payload: Dict[str, Any],
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """
+    Generate Agora token for live proctoring.
+
+    Request body:
+        { "assessmentId": str, "candidateId"?: str, "adminId"?: str, "role": "candidate" | "admin" }
+
+    Returns: { "status": "ok", "token", "appId", "channel", "uid", "expiresAt", "candidateName"?, "candidateEmail"? }
+    """
+    try:
+        from bson import ObjectId
+        
+        assessment_id = payload.get("assessmentId")
+        candidate_id = payload.get("candidateId")
+        admin_id = payload.get("adminId")
+        role = payload.get("role", "candidate")
+
+        if not assessment_id:
+            raise HTTPException(status_code=400, detail="assessmentId is required")
+
+        candidate_name = None
+        candidate_email = None
+        
+        if role == "candidate":
+            if not candidate_id:
+                raise HTTPException(status_code=400, detail="candidateId required for candidate role")
+            user_id = candidate_id
+            
+            logger.info(f"[Agora Token] 🔍 [DEBUG] Fetching candidate info for candidateId: {candidate_id}")
+            logger.info(f"[Agora Token] 🔍 [DEBUG] Is ObjectId valid: {ObjectId.is_valid(candidate_id) if candidate_id else False}")
+            
+            # Fetch candidate info from users collection
+            # Try ObjectId first, then email if ObjectId validation fails
+            try:
+                user_doc = None
+                if ObjectId.is_valid(candidate_id):
+                    # Try as ObjectId
+                    logger.info(f"[Agora Token] 🔍 [DEBUG] Trying ObjectId lookup: {candidate_id}")
+                    user_doc = await db.users.find_one({"_id": ObjectId(candidate_id)})
+                else:
+                    # Try as email (candidateId might be an email address)
+                    logger.info(f"[Agora Token] 🔍 [DEBUG] Trying email lookup: {candidate_id}")
+                    user_doc = await db.users.find_one({"email": candidate_id})
+                
+                if user_doc:
+                    candidate_name = user_doc.get("name") or user_doc.get("fullName")
+                    candidate_email = user_doc.get("email")
+                    logger.info(f"[Agora Token] ✅ Found candidate info: {candidate_name} ({candidate_email})")
+                    logger.info(f"[Agora Token] 🔍 [DEBUG] User doc keys: {list(user_doc.keys())}")
+                else:
+                    logger.warning(f"[Agora Token] ⚠️ Candidate not found in users collection: {candidate_id}")
+            except Exception as e:
+                logger.warning(f"[Agora Token] ❌ Could not fetch candidate info: {e}")
+                import traceback
+                logger.warning(f"[Agora Token] 🔍 [DEBUG] Traceback: {traceback.format_exc()}")
+        else:
+            if not admin_id:
+                raise HTTPException(status_code=400, detail="adminId required for admin role")
+            user_id = f"admin-{admin_id}"
+
+        channel_name = assessment_id
+        uid = user_id
+        agora_role = "publisher" if role == "candidate" else "subscriber"
+        token_data = generate_agora_token(channel_name, uid, agora_role)
+        
+        # Include candidate info in response (only for candidate role)
+        response = {"status": "ok", **token_data}
+        if role == "candidate":
+            logger.info(f"[Agora Token] 🔍 [DEBUG] Preparing response - candidate_name: {candidate_name}, candidate_email: {candidate_email}")
+            if candidate_name:
+                response["candidateName"] = candidate_name
+            if candidate_email:
+                response["candidateEmail"] = candidate_email
+            logger.info(f"[Agora Token] 🔍 [DEBUG] Response will include: candidateName={response.get('candidateName', 'MISSING')}, candidateEmail={response.get('candidateEmail', 'MISSING')}")
+            
+        return response
+    except ValueError as ve:
+        raise HTTPException(status_code=500, detail=str(ve))
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Failed to generate Agora token: {str(exc)}")
 
 
 @router.websocket("/ws/live/candidate/{session_id}")

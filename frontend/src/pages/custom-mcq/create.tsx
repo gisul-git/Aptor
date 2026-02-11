@@ -105,7 +105,6 @@ export default function CreateCustomMCQPage({ session }: CreateCustomMCQPageProp
               proctoringSettings: (assessment as any).proctoringSettings || undefined,
               enablePerSectionTimers: (assessment as any).enablePerSectionTimers || false,
               sectionTimers: (assessment as any).sectionTimers || undefined,
-              showResultToCandidate: (assessment as any).showResultToCandidate !== undefined ? (assessment as any).showResultToCandidate : true,
             } as any);
             
             // Set current station from backend or default to 1
@@ -417,7 +416,6 @@ export default function CreateCustomMCQPage({ session }: CreateCustomMCQPageProp
         startTime: assessmentData.startTime,
         endTime: assessmentData.endTime,
         duration: finalDuration,
-        showResultToCandidate: (assessmentData as any).showResultToCandidate !== false, // Default to true if not specified
         passPercentage: assessmentData.passPercentage || 50,
         enablePerSectionTimers: (assessmentData as any).enablePerSectionTimers || false,
         sectionTimers: (assessmentData as any).sectionTimers || undefined,

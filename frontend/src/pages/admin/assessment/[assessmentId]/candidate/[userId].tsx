@@ -8,7 +8,7 @@ import ProctorSummaryCard from "../../../../../components/admin/ProctorSummaryCa
 import ProctorLogsReview from "../../../../../components/admin/ProctorLogsReview";
 import { useProctorPolling, EVENT_TYPE_LABELS, type ProctorLog } from "@/hooks/proctoring/useProctorPolling";
 import { useAssessment, useCandidateResults, useAnswerLogs } from "@/hooks/api/useAssessments";
-
+// admin No
 interface CandidateData {
   email: string;
   name: string;

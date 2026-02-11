@@ -53,8 +53,13 @@ export const useAIMLTest = (testId: string | undefined) => {
           return apiResponse.data;
         }
         // Check if response itself is an AIMLTest (has required properties)
+        // Backend returns question_ids, not questions array
         const testData = response as unknown as AIMLTest;
-        if ('id' in testData && 'title' in testData && 'questions' in testData) {
+        if ('id' in testData && 'title' in testData) {
+          // If questions array doesn't exist, create empty array from question_ids
+          if (!('questions' in testData) && 'question_ids' in testData) {
+            (testData as any).questions = (testData as any).question_ids || [];
+          }
           return testData;
         }
       }
@@ -66,12 +71,12 @@ export const useAIMLTest = (testId: string | undefined) => {
   });
 };
 
-export const useAIMLQuestions = () => {
+export const useAIMLQuestions = (lightweight: boolean = false) => {
   return useQuery({
-    queryKey: QUERY_KEYS.questions,
+    queryKey: [...QUERY_KEYS.questions, lightweight ? 'lightweight' : 'full'],
     queryFn: async () => {
       try {
-        const response = await aimlService.listQuestions();
+        const response = await aimlService.listQuestions(lightweight);
         // Backend returns direct array, not wrapped in ApiResponse
         // Check if response is already an array (direct response)
         if (Array.isArray(response)) {
@@ -287,16 +292,21 @@ export const useAIMLCandidates = (testId: string | undefined) => {
         const response = await aimlService.getCandidates(testId);
         console.log('[useAIMLCandidates] 📥 Service response:', {
           response,
+          responseType: typeof response,
+          isArray: Array.isArray(response),
           hasData: !!response?.data,
           dataType: typeof response?.data,
-          isArray: Array.isArray(response?.data),
-          dataLength: Array.isArray(response?.data) ? response.data.length : 'N/A',
+          isDataArray: Array.isArray(response?.data),
+          dataLength: Array.isArray(response) ? response.length : (Array.isArray(response?.data) ? response.data.length : 'N/A'),
           fullResponse: response
         })
         
         // Handle both wrapped and unwrapped responses
         let candidates = null
-        if (response && typeof response === 'object') {
+        if (Array.isArray(response)) {
+          // Response is already an array (direct from backend)
+          candidates = response
+        } else if (response && typeof response === 'object') {
           if ('data' in response && response.data !== undefined) {
             candidates = response.data
           } else {
@@ -307,7 +317,16 @@ export const useAIMLCandidates = (testId: string | undefined) => {
         const result = Array.isArray(candidates) ? candidates : (candidates ? [candidates] : [])
         console.log('[useAIMLCandidates] ✅ Returning candidates:', {
           count: result.length,
-          result
+          result: result.map((c: any) => ({
+            user_id: c.user_id,
+            name: c.name,
+            email: c.email,
+            status: c.status, // Include status in log
+            has_submitted: c.has_submitted,
+            submitted_at: c.submitted_at,
+            invited: c.invited
+          })),
+          fullResult: result // Log full objects to debug
         })
         return result
       } catch (error: any) {

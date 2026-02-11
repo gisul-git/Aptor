@@ -7,9 +7,19 @@ import { GetServerSideProps } from 'next'
 import { requireAuth } from '../../../../lib/auth'
 import { AdminLiveService } from '../../../../universal-proctoring/live/AdminLiveService'
 import { CandidateStreamInfo, AdminLiveState } from '../../../../universal-proctoring/live/types'
-import { ArrowLeft, Maximize2, Minimize2, RefreshCw, Users, Loader2 } from 'lucide-react'
+import { ArrowLeft, Maximize2, Minimize2, RefreshCw, Users, Loader2, Flag, X } from 'lucide-react'
 import Link from 'next/link'
 import { useAIMLCandidates } from '@/hooks/api/useAIML'
+import dynamic from 'next/dynamic'
+
+// Dynamically import FixedSizeGrid (react-window requires browser APIs)
+const FixedSizeGrid = dynamic(
+  () => import('react-window').then((mod) => (mod as any).FixedSizeGrid),
+  { 
+    ssr: false,
+    loading: () => <div className="text-center py-8">Loading grid...</div>
+  }
+) as any
 
 // Server-side auth check
 export const getServerSideProps: GetServerSideProps = requireAuth
@@ -59,6 +69,7 @@ export default function LiveProctoringDashboard({
 
   // Service instance
   const serviceRef = useRef<AdminLiveService | null>(null)
+  const sessionIdRef = useRef(0)
 
   // State
   const [isMonitoring, setIsMonitoring] = useState(false)
@@ -66,6 +77,9 @@ export default function LiveProctoringDashboard({
   const [candidates, setCandidates] = useState<CandidateData[]>([])
   const [expandedSessionId, setExpandedSessionId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [flaggingCandidate, setFlaggingCandidate] = useState<string | null>(null)
+  const [flagReason, setFlagReason] = useState('')
+  const [flagSeverity, setFlagSeverity] = useState<'low' | 'medium' | 'high'>('medium')
 
   // Refs for video elements
   const videoRefs = useRef<Map<string, HTMLVideoElement>>(new Map())
@@ -75,18 +89,19 @@ export default function LiveProctoringDashboard({
     // Group sessions by candidateId and deduplicate
     const sessionsByCandidate: Record<string, CandidateData[]> = {};
     streamMap.forEach((info, sessionId) => {
-      // Map candidateId to assessmentCandidates
-      let resolvedName = undefined;
-      let resolvedEmail = undefined;
-      if (assessmentCandidates && assessmentCandidates.length > 0) {
+      // Prioritize candidate name/email from backend (info.candidateName/Email)
+      // Fallback to assessmentCandidates lookup if not available
+      let resolvedName = info.candidateName;
+      let resolvedEmail = info.candidateEmail;
+      
+      // Fallback to assessmentCandidates lookup if backend didn't provide name
+      if (!resolvedName && assessmentCandidates && assessmentCandidates.length > 0) {
         const found = assessmentCandidates.find((c) => c.email === info.candidateId || c.id === info.candidateId);
         if (found) {
           resolvedName = found.name || undefined;
-          resolvedEmail = found.email || undefined;
+          resolvedEmail = resolvedEmail || found.email || undefined;
         }
       }
-      if (!resolvedName) resolvedName = undefined;
-      if (!resolvedEmail) resolvedEmail = undefined;
 
       const candidateData: CandidateData = {
         sessionId: info.sessionId,
@@ -158,85 +173,85 @@ export default function LiveProctoringDashboard({
     // NOTE: Stream attachment is now handled by useEffect below, not here
   }, [assessmentCandidates])
 
-  // Initialize service
+  // Initialize service and start/stop monitoring (combined to prevent UID_CONFLICT in React Strict Mode)
   useEffect(() => {
-    if (!assessmentId || typeof assessmentId !== 'string' || !adminId) {
-      return;
-    }
+    if (!isOpen) return;
+    if (!assessmentId || typeof assessmentId !== 'string' || !adminId) return;
 
-    console.log('[Live Dashboard] Initializing AdminLiveService...')
+    // Generate unique session ID for this mount
+    const currentSessionId = ++sessionIdRef.current;
+    let service: AdminLiveService | null = null;
 
-    const service = new AdminLiveService({
-      assessmentId,
-      adminId: adminId,
-      debugMode: true,
-    })
+    const initMonitoring = async () => {
+      try {
+        // Check if this session is still valid
+        if (currentSessionId !== sessionIdRef.current) {
+          console.log('[Live Dashboard] Session outdated, aborting');
+          return;
+        }
 
-    serviceRef.current = service
+        setIsLoading(true);
+        
+        service = new AdminLiveService({
+          assessmentId,
+          adminId,
+        });
 
-    // Cleanup on unmount
-    return () => {
-      console.log('[Live Dashboard] Cleanup: stopping monitoring')
-      if (serviceRef.current) {
-        serviceRef.current.stopMonitoring()
+        // Check again before async operation
+        if (currentSessionId !== sessionIdRef.current) {
+          await service.stopMonitoring();
+          return;
+        }
+
+        const result = await service.startMonitoring({
+          onStateChange: (state: Partial<AdminLiveState>) => {
+            if (currentSessionId === sessionIdRef.current) {
+              if (state.isMonitoring !== undefined) {
+                setIsMonitoring(state.isMonitoring);
+              }
+              if (state.isLoading !== undefined) {
+                setIsLoading(state.isLoading);
+              }
+              if (state.candidateStreams) {
+                updateCandidates(state.candidateStreams);
+              }
+            }
+          },
+          onError: (error) => {
+            if (currentSessionId === sessionIdRef.current) {
+              console.error('[Live Dashboard] Error:', error);
+              setError(error);
+              setIsLoading(false);
+            }
+          },
+        });
+
+        // Final check before setting state
+        if (currentSessionId === sessionIdRef.current && result.success) {
+          serviceRef.current = service;
+          setIsMonitoring(true);
+          setIsLoading(false);
+          console.log('[Live Dashboard] ✅ Monitoring started');
+        } else {
+          await service.stopMonitoring();
+        }
+      } catch (error) {
+        if (currentSessionId === sessionIdRef.current) {
+          console.error('[Live Dashboard] Failed to start:', error);
+          setIsLoading(false);
+        }
       }
-    }
-  }, [assessmentId, adminId])
+    };
 
-  // Start/stop monitoring based on isOpen prop
-  useEffect(() => {
-    if (!serviceRef.current || !assessmentId || typeof assessmentId !== 'string') {
-      return;
-    }
+    initMonitoring();
 
-    const service = serviceRef.current;
-
-    if (isOpen) {
-      // Start monitoring when modal is opened
-      console.log('[Live Dashboard] Modal opened - starting monitoring...')
-      service.startMonitoring({
-        onStateChange: (state: Partial<AdminLiveState>) => {
-          console.log('[Live Dashboard] State changed:', state)
-
-          if (state.isMonitoring !== undefined) {
-            setIsMonitoring(state.isMonitoring)
-          }
-
-          if (state.isLoading !== undefined) {
-            setIsLoading(state.isLoading)
-          }
-
-          if (state.candidateStreams) {
-            updateCandidates(state.candidateStreams)
-          }
-        },
-        onCandidateConnected: (sessionId: string, candidateId: string) => {
-          console.log(`[Live Dashboard] ✅ Candidate connected: ${sessionId}`)
-        },
-        onCandidateDisconnected: (sessionId: string) => {
-          console.log(`[Live Dashboard] ⚠️ Candidate disconnected: ${sessionId}`)
-        },
-        onError: (error: string) => {
-          console.error(`[Live Dashboard] ❌ Error: ${error}`)
-          setError(error)
-        },
-      })
-    } else {
-      // Stop monitoring when modal is closed
-      console.log('[Live Dashboard] Modal closed - stopping monitoring...')
-      service.stopMonitoring()
-      setIsMonitoring(false)
-      setCandidates([])
-    }
-
-    // Cleanup: stop monitoring when component unmounts or isOpen becomes false
     return () => {
-      if (!isOpen && serviceRef.current) {
-        console.log('[Live Dashboard] Cleanup: stopping monitoring')
-        serviceRef.current.stopMonitoring()
+      console.log('[Live Dashboard] Cleanup: invalidating session', currentSessionId);
+      if (service) {
+        service.stopMonitoring().catch(console.error);
       }
-    }
-  }, [isOpen, assessmentId, updateCandidates]) // Re-run when isOpen or assessmentId changes
+    };
+  }, [isOpen, assessmentId, adminId, updateCandidates]);
 
   // Refresh specific candidate connection
   const refreshCandidate = useCallback((sessionId: string) => {
@@ -424,6 +439,13 @@ export default function LiveProctoringDashboard({
             >
               <RefreshCw className="w-5 h-5 text-white" />
             </button>
+            <button
+              onClick={() => expandedCandidate && setFlaggingCandidate(expandedCandidate.candidateId)}
+              className="p-2 hover:bg-gray-800 rounded-lg transition-colors"
+              title="Flag candidate for suspicious behavior"
+            >
+              <Flag className="w-5 h-5 text-white" />
+            </button>
           </div>
         </div>
 
@@ -489,7 +511,6 @@ export default function LiveProctoringDashboard({
             )}
             <div>
               <h1 className="text-xl font-semibold text-gray-900">Live Proctoring Dashboard</h1>
-              <p className="text-sm text-gray-600">AIML Test: {assessmentId}</p>
             </div>
           </div>
           <div className="flex items-center gap-3">
@@ -539,19 +560,184 @@ export default function LiveProctoringDashboard({
             </p>
           </div>
         ) : (
-          <div className={`grid ${getGridClass()} gap-6`}>
-            {candidates.map((candidate) => (
-              <CandidateTile
-                key={candidate.sessionId}
-                candidate={candidate}
-                onExpand={toggleExpand}
-                onRefresh={refreshCandidate}
-                videoRefs={videoRefs}
-              />
-            ))}
-          </div>
+          (() => {
+            const candidatesArray = Array.from(candidates).map((candidate) => ({
+              id: candidate.sessionId,
+              ...candidate
+            }));
+
+            console.log('[Live Dashboard] Rendering candidates:', {
+              candidatesCount: candidates.length,
+              candidatesArrayLength: candidatesArray.length,
+              candidates: candidatesArray.map(c => ({
+                id: c.id,
+                sessionId: c.sessionId,
+                candidateId: c.candidateId,
+                name: c.candidateName,
+                email: c.candidateEmail,
+                hasWebcam: !!c.webcamStream,
+                hasScreen: !!c.screenStream,
+                status: c.status
+              }))
+            });
+
+            const CARD_WIDTH = 320;
+            const CARD_HEIGHT = 280;
+            const containerWidth = typeof window !== 'undefined' ? window.innerWidth - 100 : 1200;
+            const COLUMNS = Math.max(1, Math.floor(containerWidth / CARD_WIDTH));
+            const rowCount = Math.max(1, Math.ceil(candidatesArray.length / COLUMNS));
+
+            // Fallback to regular grid if FixedSizeGrid isn't ready or for small lists
+            if (candidatesArray.length <= 4) {
+              return (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {candidatesArray.map((candidate) => (
+                    <CandidateTile
+                      key={candidate.id}
+                      candidate={candidate}
+                      onExpand={toggleExpand}
+                      onRefresh={refreshCandidate}
+                      onFlag={() => setFlaggingCandidate(candidate.candidateId)}
+                      videoRefs={videoRefs}
+                    />
+                  ))}
+                </div>
+              );
+            }
+
+            return (
+              <FixedSizeGrid
+                columnCount={COLUMNS}
+                columnWidth={CARD_WIDTH}
+                height={800}
+                rowCount={rowCount}
+                rowHeight={CARD_HEIGHT}
+                width={containerWidth}
+                className="candidate-grid"
+              >
+                {({ columnIndex, rowIndex, style }: { columnIndex: number; rowIndex: number; style: React.CSSProperties }) => {
+                  const index = rowIndex * COLUMNS + columnIndex;
+                  if (index >= candidatesArray.length) return null;
+                  
+                  const candidate = candidatesArray[index];
+                  
+                  return (
+                    <div style={style} key={candidate.id}>
+                      <CandidateTile
+                        candidate={candidate}
+                        onExpand={toggleExpand}
+                        onRefresh={refreshCandidate}
+                        onFlag={() => setFlaggingCandidate(candidate.candidateId)}
+                        videoRefs={videoRefs}
+                      />
+                    </div>
+                  );
+                }}
+              </FixedSizeGrid>
+            );
+          })()
         )}
       </div>
+
+      {/* Flag Candidate Modal */}
+      {flaggingCandidate && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl font-semibold text-gray-900">Flag Candidate</h2>
+              <button
+                onClick={() => {
+                  setFlaggingCandidate(null);
+                  setFlagReason('');
+                  setFlagSeverity('medium');
+                }}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Reason for flagging
+              </label>
+              <textarea
+                value={flagReason}
+                onChange={(e) => setFlagReason(e.target.value)}
+                placeholder="Enter reason for flagging this candidate..."
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                rows={4}
+              />
+            </div>
+
+            <div className="mb-6">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Severity
+              </label>
+              <div className="flex gap-2">
+                {(['low', 'medium', 'high'] as const).map((severity) => (
+                  <button
+                    key={severity}
+                    onClick={() => setFlagSeverity(severity)}
+                    className={`flex-1 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                      flagSeverity === severity
+                        ? severity === 'low'
+                          ? 'bg-yellow-100 text-yellow-800 border-2 border-yellow-500'
+                          : severity === 'medium'
+                          ? 'bg-orange-100 text-orange-800 border-2 border-orange-500'
+                          : 'bg-red-100 text-red-800 border-2 border-red-500'
+                        : 'bg-gray-100 text-gray-700 border-2 border-transparent hover:bg-gray-200'
+                    }`}
+                  >
+                    {severity.charAt(0).toUpperCase() + severity.slice(1)}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => {
+                  setFlaggingCandidate(null);
+                  setFlagReason('');
+                  setFlagSeverity('medium');
+                }}
+                className="flex-1 px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={async () => {
+                  if (!flagReason.trim()) {
+                    alert('Please enter a reason for flagging');
+                    return;
+                  }
+                  
+                  if (serviceRef.current) {
+                    const success = await serviceRef.current.flagCandidate(
+                      flaggingCandidate,
+                      flagReason.trim(),
+                      flagSeverity
+                    );
+                    
+                    if (success) {
+                      alert('Candidate flagged successfully');
+                      setFlaggingCandidate(null);
+                      setFlagReason('');
+                      setFlagSeverity('medium');
+                    } else {
+                      alert('Failed to flag candidate. Please try again.');
+                    }
+                  }
+                }}
+                className="flex-1 px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors"
+              >
+                Flag Candidate
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -564,10 +750,11 @@ interface CandidateTileProps {
   candidate: CandidateData
   onExpand: (sessionId: string) => void
   onRefresh: (sessionId: string) => void
+  onFlag: () => void
   videoRefs: React.MutableRefObject<Map<string, HTMLVideoElement>>
 }
 
-function CandidateTile({ candidate, onExpand, onRefresh, videoRefs }: CandidateTileProps) {
+function CandidateTile({ candidate, onExpand, onRefresh, onFlag, videoRefs }: CandidateTileProps) {
   return (
     <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
       {/* Header */}
@@ -576,7 +763,9 @@ function CandidateTile({ candidate, onExpand, onRefresh, videoRefs }: CandidateT
           <p className="font-medium text-gray-900 truncate">
             {candidate.candidateName || candidate.candidateEmail || 'Unknown Candidate'}
           </p>
-          <p className="text-xs text-gray-500 truncate">{candidate.candidateId}</p>
+          {candidate.candidateEmail && candidate.candidateEmail !== candidate.candidateName && (
+            <p className="text-xs text-gray-500 truncate">{candidate.candidateEmail}</p>
+          )}
         </div>
         <div className="flex items-center gap-2">
           <div
@@ -633,13 +822,23 @@ function CandidateTile({ candidate, onExpand, onRefresh, videoRefs }: CandidateT
           <RefreshCw className="w-4 h-4" />
           Refresh
         </button>
-        <button
-          onClick={() => onExpand(candidate.sessionId)}
-          className="flex items-center gap-2 px-3 py-1.5 text-sm bg-blue-600 text-white hover:bg-blue-700 rounded transition-colors"
-        >
-          <Maximize2 className="w-4 h-4" />
-          Expand
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={onFlag}
+            className="flex items-center gap-2 px-3 py-1.5 text-sm bg-red-600 text-white hover:bg-red-700 rounded transition-colors"
+            title="Flag candidate for suspicious behavior"
+          >
+            <Flag className="w-4 h-4" />
+            Flag
+          </button>
+          <button
+            onClick={() => onExpand(candidate.sessionId)}
+            className="flex items-center gap-2 px-3 py-1.5 text-sm bg-blue-600 text-white hover:bg-blue-700 rounded transition-colors"
+          >
+            <Maximize2 className="w-4 h-4" />
+            Expand
+          </button>
+        </div>
       </div>
     </div>
   )

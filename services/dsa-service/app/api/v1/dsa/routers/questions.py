@@ -12,6 +12,74 @@ from app.core.dependencies import get_current_user, require_editor
 logger = logging.getLogger("backend")
 router = APIRouter(prefix="/api/v1/dsa/questions", tags=["dsa"])
 
+@router.get("/lightweight", response_model=List[dict])
+async def get_questions_lightweight(
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
+    """
+    Get lightweight questions list for edit pages (id, title, difficulty, question_type only).
+    Optimized with field projection and caching.
+    """
+    from app.utils.cache import get_cached_questions, set_cached_questions
+    
+    db = get_database()
+    user_id = current_user.get("id") or current_user.get("_id")
+    if not user_id:
+        raise HTTPException(status_code=400, detail="Invalid user ID")
+    user_id = str(user_id).strip()
+    
+    # Try cache first
+    cached_questions = await get_cached_questions(user_id, 0, 1000)
+    if cached_questions:
+        return cached_questions
+    
+    query = {
+        "$and": [
+            {"created_by": {"$exists": True}},
+            {"created_by": {"$ne": None}},
+            {"created_by": {"$ne": ""}},
+            {"created_by": user_id},
+            {
+                "$or": [
+                    {"module_type": {"$exists": False}},
+                    {"module_type": None},
+                    {"module_type": "dsa"}
+                ]
+            }
+        ]
+    }
+    
+    # Use field projection to only fetch needed fields
+    # CRITICAL: Must include created_by for security filtering
+    projection = {
+        "_id": 1,
+        "title": 1,
+        "difficulty": 1,
+        "question_type": 1,
+        "is_published": 1,
+        "created_by": 1,  # CRITICAL: Needed for security filtering
+        "created_at": 1
+    }
+    
+    questions_cursor = db.questions.find(query, projection)
+    questions = await questions_cursor.sort("created_at", -1).to_list(length=1000)
+    
+    result = []
+    for q in questions:
+        result.append({
+            "id": str(q["_id"]),
+            "title": q.get("title", ""),
+            "difficulty": q.get("difficulty", ""),
+            "question_type": q.get("question_type"),
+            "is_published": q.get("is_published", False),
+            "created_at": q.get("created_at").isoformat() if isinstance(q.get("created_at"), datetime) else q.get("created_at")
+        })
+    
+    # Cache the result
+    await set_cached_questions(user_id, result, 0, 1000)
+    
+    return result
+
 # =====================================================================================
 # DSA Coding Validation Helpers (do NOT apply to SQL questions)
 # =====================================================================================
@@ -355,9 +423,40 @@ async def get_questions(
     logger.info(f"[get_questions] User ID type: {type(user_id).__name__}, normalized: '{user_id_normalized}'")
     
     logger.info(f"[get_questions] MongoDB query: {query}")
+    logger.info(f"[get_questions] User ID: {user_id_normalized}, type: {type(user_id_normalized).__name__}")
+    
+    # Diagnostic: Check total questions in database for this user (without module_type filter)
+    total_for_user = await db.questions.count_documents({"created_by": user_id_normalized})
+    logger.info(f"[get_questions] Total questions for user {user_id_normalized}: {total_for_user}")
+    
+    # Diagnostic: Check questions by module_type
+    dsa_count = await db.questions.count_documents({"created_by": user_id_normalized, "module_type": "dsa"})
+    no_module_count = await db.questions.count_documents({
+        "created_by": user_id_normalized,
+        "$or": [{"module_type": {"$exists": False}}, {"module_type": None}]
+    })
+    logger.info(f"[get_questions] Questions breakdown - DSA: {dsa_count}, No module_type: {no_module_count}")
+    
+    # Use field projection to reduce data transfer (exclude large fields)
+    # CRITICAL: Must include created_by for security filtering
+    projection = {
+        "_id": 1,
+        "title": 1,
+        "description": 1,
+        "difficulty": 1,
+        "languages": 1,
+        "is_published": 1,
+        "question_type": 1,
+        "sql_category": 1,
+        "function_signature": 1,
+        "created_by": 1,  # CRITICAL: Needed for security filtering
+        "created_at": 1,
+        "updated_at": 1
+        # Excluded: starter_code, public_testcases, hidden_testcases (too large)
+    }
     
     # Sort by created_at descending to show newest first
-    questions_cursor = db.questions.find(query)
+    questions_cursor = db.questions.find(query, projection)
     questions = await questions_cursor.sort("created_at", -1).skip(skip).limit(limit).to_list(length=limit)
     
     logger.info(f"[get_questions] Found {len(questions)} questions in database for user_id: {user_id}")
@@ -412,9 +511,6 @@ async def get_questions(
             "description": q.get("description", ""),
             "difficulty": q.get("difficulty", ""),
             "languages": q.get("languages", []),
-            "starter_code": q.get("starter_code", {}),
-            "public_testcases": q.get("public_testcases", []),
-            "hidden_testcases": q.get("hidden_testcases", []),
             "is_published": q.get("is_published", False),
         }
         if "function_signature" in q and q.get("function_signature"):
@@ -429,6 +525,12 @@ async def get_questions(
         if "updated_at" in q:
             question_dict["updated_at"] = q["updated_at"].isoformat() if isinstance(q.get("updated_at"), datetime) else q.get("updated_at")
         result.append(question_dict)
+    
+    # Cache the result (only if no filters applied)
+    if published_only is None:
+        from app.utils.cache import set_cached_questions
+        await set_cached_questions(user_id, result, skip, limit)
+    
     return result
 
 @router.get("/{question_id}", response_model=dict)

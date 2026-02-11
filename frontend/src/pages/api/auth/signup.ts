@@ -30,7 +30,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       password,
     };
     
-    // Add optional fields if provided
+    // Add optional fields if providedd
     if (organization) {
       payload.organization = organization;
     }
@@ -115,11 +115,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         errorMessage = "Signup failed";
       }
     } else if (error?.response?.data?.detail && Array.isArray(error.response.data.detail)) {
-      // Extract the first error message from the validation errors array
+      // Extract the first error message from the validation errors arrayy 
       const firstError = error.response.data.detail[0];
       errorMessage = firstError?.msg || firstError?.message || "Validation error";
     } else if (error?.response?.data?.message) {
-      // Ensure message is a string
+      // Ensure message is a strings
       errorMessage = typeof error.response.data.message === 'string' 
         ? error.response.data.message 
         : JSON.stringify(error.response.data.message);

@@ -217,10 +217,13 @@ export const customMCQService = {
     percentage: number;
     passed: boolean;
     gradingStatus?: string;
+    aiEvaluationStatus?: "pending" | "evaluating" | "completed" | "error";
     mcqScore?: number;
     mcqTotal?: number;
     subjectiveScore?: number;
     subjectiveTotal?: number;
+    codingScore?: number;
+    codingTotal?: number;
     showResultToCandidate?: boolean;
   }>> => {
     const response = await apiClient.post<ApiResponse<{
@@ -229,10 +232,13 @@ export const customMCQService = {
       percentage: number;
       passed: boolean;
       gradingStatus?: string;
+      aiEvaluationStatus?: "pending" | "evaluating" | "completed" | "error";
       mcqScore?: number;
       mcqTotal?: number;
       subjectiveScore?: number;
       subjectiveTotal?: number;
+      codingScore?: number;
+      codingTotal?: number;
       showResultToCandidate?: boolean;
     }>>('/api/v1/custom-mcq/submit', {
       ...data,

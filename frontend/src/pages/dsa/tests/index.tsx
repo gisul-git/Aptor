@@ -7,6 +7,7 @@ import { Button } from '../../../components/dsa/ui/button'
 import { Clock, Eye, EyeOff, Users, Mail, Edit, Upload, List } from 'lucide-react'
 import Link from 'next/link'
 import { useDSATests, useAddDSACandidate, useBulkAddDSACandidates, useUpdateDSATest } from '@/hooks/api/useDSA'
+import { useQueryClient } from '@tanstack/react-query'
 import apiClient from '@/services/api/client'
 // Helper function to format dates
 // The backend sends UTC datetimes, so we need to ensure proper UTC->local conversion
@@ -68,6 +69,7 @@ export default function TestsListPage() {
   // Use React Query hook for fetching tests
   const { data: testsData, isLoading: loading, error, refetch: refetchTests } = useDSATests()
   const [tests, setTests] = useState<Test[]>([])
+  const queryClient = useQueryClient()
   
   // Mutations
   const addCandidateMutation = useAddDSACandidate()
@@ -142,8 +144,10 @@ export default function TestsListPage() {
         is_published: newStatus,
       })
 
-      // React Query will automatically refetch and update the UI
-      refetchTests()
+      // Invalidate and refetch tests to update the UI immediately
+      await queryClient.invalidateQueries({ queryKey: ['dsa', 'tests'] })
+      await refetchTests()
+      
       alert(`Test ${newStatus ? 'published' : 'unpublished'} successfully!`)
     } catch (error: any) {
       console.error('Publish error:', error)

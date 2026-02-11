@@ -1,12 +1,13 @@
 /**
  * Global Model Service (Singleton)
  *
- * Loads and caches AI models (BlazeFace + FaceMesh) for reuse across components.
- * Face verification is done on the backend (DeepFace ArcFace); no client-side face recognition model.
+ * Loads and caches AI models (BlazeFace + FaceMesh + face-api) for reuse across components.
+ * Face verification uses 2-tier: client-side face-api comparison + backend DeepFace ArcFace.
  */
 
 import type * as blazeface from "@tensorflow-models/blazeface";
 import type { FaceMesh } from "@mediapipe/face_mesh";
+// face-api is imported dynamically to avoid SSR issues
 
 interface ModelServiceState {
   blazefaceModel: blazeface.BlazeFaceModel | null;
@@ -32,6 +33,7 @@ class ModelService {
 
   private blazeFaceLoadPromise: Promise<blazeface.BlazeFaceModel | null> | null = null;
   private faceMeshLoadPromise: Promise<FaceMesh | null> | null = null;
+  private faceApiLoaded = false;
 
   private constructor() {
     // Private constructor for singleton
@@ -67,7 +69,16 @@ class ModelService {
         console.log("[ModelService] Loading BlazeFace model...");
 
         // Initialize TensorFlow.js
-        const tf = await import("@tensorflow/tfjs");
+        const tfModule = await import("@tensorflow/tfjs");
+        const tf = tfModule.default || tfModule;
+        
+        // Suppress TensorFlow.js kernel registration warnings
+        // These warnings occur when multiple libraries initialize TensorFlow.js
+        // They're harmless but clutter the console
+        if (tf && typeof (tf as any).setLogLevel === 'function') {
+          (tf as any).setLogLevel('error'); // Only show errors, suppress warnings
+        }
+        
         await tf.ready();
 
         // Set backend (prefer WebGL)
@@ -167,21 +178,100 @@ class ModelService {
   }
 
   /**
-   * Load all models in parallel (BlazeFace + FaceMesh only; face verification is backend DeepFace ArcFace)
+   * Load face-api models for client-side face recognition
+   * Uses SSD MobileNet v1 + FaceLandmark68Net + FaceRecognitionNet
+   * Dynamically imported to avoid SSR issues
+   * Matches FaceAPIService model selection for consistency
+   */
+  async loadFaceApi(): Promise<void> {
+    if (this.faceApiLoaded) {
+      console.log("[ModelService] face-api models already loaded");
+      return;
+    }
+
+    // Only load in browser (not during SSR)
+    if (typeof window === "undefined") {
+      console.warn("[ModelService] Cannot load face-api during SSR");
+      return;
+    }
+
+    try {
+      console.log("[ModelService] Loading face-api models...");
+      
+      // Suppress TensorFlow.js warnings before importing face-api
+      // face-api internally uses TensorFlow.js and will trigger kernel warnings
+      try {
+        const tfModule = await import("@tensorflow/tfjs");
+        const tf = tfModule.default || tfModule;
+        if (tf && typeof (tf as any).setLogLevel === 'function') {
+          (tf as any).setLogLevel('error'); // Suppress warnings from face-api's TensorFlow.js usage
+        }
+      } catch (tfError) {
+        // Ignore if TensorFlow.js is not available
+      }
+      
+      // Dynamic import to avoid SSR issues
+      const faceapi = await import("@vladmandic/face-api");
+      
+      // Suppress face-api's internal TensorFlow.js warnings if possible
+      if (faceapi.default && typeof (faceapi.default as any).setLogLevel === 'function') {
+        (faceapi.default as any).setLogLevel(0); // face-api uses 0 for minimal logging
+      }
+      
+      // Use CDN for models (no need to download locally)
+      const MODEL_URL = "https://vladmandic.github.io/face-api/model";
+      
+      // Load required models for face recognition
+      // Use SSD MobileNet v1 (same as FaceAPIService) for better accuracy
+      await Promise.all([
+        faceapi.nets.ssdMobilenetv1.loadFromUri(MODEL_URL),
+        faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
+        faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL),
+      ]);
+      
+      // Store the face-api instance for later use
+      (this as any)._faceApiInstance = faceapi;
+      
+      this.faceApiLoaded = true;
+      console.log("[ModelService] ✅ face-api models loaded successfully");
+    } catch (error) {
+      console.error("[ModelService] ❌ Failed to load face-api models:", error);
+      this.faceApiLoaded = false;
+      throw error;
+    }
+  }
+
+  /**
+   * Load all models in parallel (BlazeFace + FaceMesh + face-api)
+   * Pre-loads all models needed for identity verification and proctoring
    */
   async loadAllModels(): Promise<{
     blazeface: blazeface.BlazeFaceModel | null;
     faceMesh: FaceMesh | null;
+    faceApi: boolean;
   }> {
-    console.log("[ModelService] Loading all models in parallel (BlazeFace + FaceMesh)...");
+    console.log("[ModelService] Loading all models in parallel (BlazeFace + FaceMesh + face-api)...");
+    
+    // Load BlazeFace and FaceMesh in parallel
     const [blazefaceModel, faceMesh] = await Promise.all([
       this.loadBlazeFace(),
       this.loadFaceMesh(),
     ]);
 
+    // Load face-api models in parallel (non-blocking - don't fail if it fails)
+    let faceApiLoaded = false;
+    try {
+      await this.loadFaceApi();
+      faceApiLoaded = true;
+    } catch (error) {
+      console.warn("[ModelService] face-api loading failed (non-critical, will load on-demand):", error);
+      // Don't throw - face-api can load later if needed
+    }
+
     return {
       blazeface: blazefaceModel,
       faceMesh,
+      faceApi: faceApiLoaded,
     };
   }
 
@@ -214,10 +304,39 @@ class ModelService {
   }
 
   /**
+   * Check if face-api is loaded
+   */
+  get isFaceApiLoaded(): boolean {
+    return this.faceApiLoaded;
+  }
+
+  /**
+   * Get face-api instance (dynamically imported)
+   */
+  async getFaceApi() {
+    if (typeof window === "undefined") {
+      throw new Error("face-api is only available in the browser");
+    }
+    
+    if (!this.faceApiLoaded) {
+      await this.loadFaceApi();
+    }
+    
+    return (this as any)._faceApiInstance || await import("@vladmandic/face-api");
+  }
+
+  /**
    * Check if all models are loaded
    */
   areAllModelsLoaded(): boolean {
     return this.state.isBlazeFaceLoaded && this.state.isFaceMeshLoaded;
+  }
+
+  /**
+   * Check if face-api models are loaded
+   */
+  isFaceApiModelsLoaded(): boolean {
+    return this.faceApiLoaded;
   }
 
   /**

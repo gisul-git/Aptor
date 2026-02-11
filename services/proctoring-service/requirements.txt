@@ -12,3 +12,4 @@ deepface==0.0.93
 tf-keras==2.18.0
 opencv-python-headless==4.8.1.78
 numpy>=1.24.0
+agora-token-builder>=1.0.0

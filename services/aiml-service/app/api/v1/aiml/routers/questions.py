@@ -12,6 +12,86 @@ from fastapi import Body
 logger = logging.getLogger("backend")
 router = APIRouter(prefix="/api/v1/aiml/questions", tags=["aiml"])
 
+@router.get("/lightweight", response_model=List[dict])
+async def get_questions_lightweight(
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
+    """
+    Get lightweight questions list for edit pages (id, title, difficulty, library only).
+    Optimized with field projection and caching.
+    """
+    from app.utils.cache import get_cached_questions, set_cached_questions
+    
+    db = get_database()
+    user_id = current_user.get("id") or current_user.get("_id")
+    if not user_id:
+        raise HTTPException(status_code=400, detail="Invalid user ID")
+    user_id = str(user_id).strip()
+    
+    # Try cache first (with lightweight flag)
+    cached_questions = await get_cached_questions(user_id, 0, 1000, lightweight=True)
+    if cached_questions:
+        logger.info(f"✅ [get_questions_lightweight] Cache HIT for user {user_id}")
+        return cached_questions
+    
+    query = {
+        "$and": [
+            {"created_by": {"$exists": True}},
+            {"created_by": {"$ne": None}},
+            {"created_by": {"$ne": ""}},
+            {"created_by": user_id},
+            {
+                "$or": [
+                    {"module_type": "aiml"},  # Explicitly marked AIML questions
+                    # Legacy questions: if module_type is missing/null and has library field (AIML-specific), include it
+                    {
+                        "$and": [
+                            {
+                                "$or": [
+                                    {"module_type": {"$exists": False}},
+                                    {"module_type": None}
+                                ]
+                            },
+                            {"library": {"$exists": True}}  # AIML questions have library field
+                        ]
+                    }
+                ]
+            }
+        ]
+    }
+    
+    # Use field projection to only fetch needed fields
+    # CRITICAL: Must include created_by for security filtering
+    projection = {
+        "_id": 1,
+        "title": 1,
+        "difficulty": 1,
+        "library": 1,
+        "is_published": 1,
+        "created_by": 1,  # CRITICAL: Needed for security filtering
+        "created_at": 1
+    }
+    
+    questions_cursor = db.questions.find(query, projection)
+    questions = await questions_cursor.sort("created_at", -1).to_list(length=1000)
+    
+    result = []
+    for q in questions:
+        result.append({
+            "id": str(q["_id"]),
+            "title": q.get("title", ""),
+            "difficulty": q.get("difficulty", ""),
+            "library": q.get("library", "numpy"),
+            "is_published": q.get("is_published", False),
+            "created_at": q.get("created_at").isoformat() if isinstance(q.get("created_at"), datetime) else q.get("created_at")
+        })
+    
+    # Cache the result (with lightweight flag)
+    await set_cached_questions(user_id, result, 0, 1000, lightweight=True)
+    logger.info(f"✅ [get_questions_lightweight] Fetched {len(result)} questions for user {user_id}")
+    
+    return result
+
 @router.get("/", response_model=List[dict])
 async def get_questions(
     skip: int = 0, 
@@ -24,12 +104,15 @@ async def get_questions(
     """
     Get questions list for the current user (requires authentication)
     Only returns questions created by the current user
+    Optimized with Redis caching and field projection.
     - published_only=True: Only return published questions
     - published_only=False: Only return unpublished questions
     - published_only=None: Return all questions created by the user
     - library: Filter by specific library
     - ai_generated: Filter by AI-generated status
     """
+    from app.utils.cache import get_cached_questions, set_cached_questions
+    
     db = get_database()
     user_id = current_user.get("id") or current_user.get("_id")
     if not user_id:
@@ -38,6 +121,12 @@ async def get_questions(
     user_id = str(user_id).strip()
     
     logger.info(f"[get_questions] Fetching AIML questions for user_id: '{user_id}'")
+    
+    # Try cache first (only if no filters applied)
+    if published_only is None and library is None and ai_generated is None:
+        cached_questions = await get_cached_questions(user_id, skip, limit)
+        if cached_questions:
+            return cached_questions
     
     user_id_normalized = str(user_id).strip()
     
@@ -50,7 +139,24 @@ async def get_questions(
     ]
     
     # Filter to only get AIML questions (isolate from DSA questions)
-    base_conditions.append({"module_type": "aiml"})
+    # Also handle legacy questions that might not have module_type set
+    base_conditions.append({
+        "$or": [
+            {"module_type": "aiml"},  # Explicitly marked AIML questions
+            # Legacy questions: if module_type is missing/null and has library field (AIML-specific), include it
+            {
+                "$and": [
+                    {
+                        "$or": [
+                            {"module_type": {"$exists": False}},
+                            {"module_type": None}
+                        ]
+                    },
+                    {"library": {"$exists": True}}  # AIML questions have library field
+                ]
+            }
+        ]
+    })
     
     # Filter by published status if specified
     if published_only is not None:
@@ -67,9 +173,46 @@ async def get_questions(
     query = {"$and": base_conditions}
     
     logger.info(f"[get_questions] MongoDB query: {query}")
+    logger.info(f"[get_questions] User ID: {user_id_normalized}, type: {type(user_id_normalized).__name__}")
+    
+    # Diagnostic: Check total questions in database for this user (without module_type filter)
+    total_for_user = await db.questions.count_documents({"created_by": user_id_normalized})
+    logger.info(f"[get_questions] Total questions for user {user_id_normalized}: {total_for_user}")
+    
+    # Diagnostic: Check questions by module_type
+    aiml_count = await db.questions.count_documents({"created_by": user_id_normalized, "module_type": "aiml"})
+    no_module_count = await db.questions.count_documents({
+        "created_by": user_id_normalized,
+        "$or": [{"module_type": {"$exists": False}}, {"module_type": None}]
+    })
+    logger.info(f"[get_questions] Questions breakdown - AIML: {aiml_count}, No module_type: {no_module_count}")
+    
+    # Use field projection to reduce data transfer (exclude large fields)
+    # CRITICAL: Must include created_by for security filtering
+    projection = {
+        "_id": 1,
+        "title": 1,
+        "description": 1,
+        "difficulty": 1,
+        "languages": 1,
+        "is_published": 1,
+        "library": 1,
+        "requires_dataset": 1,
+        "ai_generated": 1,
+        "dataset_path": 1,
+        "tasks": 1,
+        "question_type": 1,
+        "execution_environment": 1,
+        "assessment_metadata": 1,
+        "function_signature": 1,
+        "created_by": 1,  # CRITICAL: Needed for security filtering
+        "created_at": 1,
+        "updated_at": 1
+        # Excluded: starter_code, public_testcases, hidden_testcases, dataset (too large)
+    }
     
     # Sort by created_at descending to show newest first
-    questions_cursor = db.questions.find(query)
+    questions_cursor = db.questions.find(query, projection)
     questions = await questions_cursor.sort("created_at", -1).skip(skip).limit(limit).to_list(length=limit)
     
     logger.info(f"[get_questions] Found {len(questions)} questions in database for user_id: {user_id}")
@@ -78,12 +221,21 @@ async def get_questions(
     filtered_questions = []
     for q in questions:
         q_created_by = q.get("created_by")
+        q_id = str(q.get("_id", ""))
+        q_title = q.get("title", "Unknown")
+        
         if q_created_by is None or q_created_by == "":
+            logger.warning(f"[get_questions] Question {q_id} ({q_title}) has no created_by field - filtering out")
             continue
-        if str(q_created_by).strip() != user_id_normalized:
+        
+        q_created_by_str = str(q_created_by).strip()
+        if q_created_by_str != user_id_normalized:
+            logger.warning(f"[get_questions] Question {q_id} ({q_title}) created_by mismatch: '{q_created_by_str}' != '{user_id_normalized}' - filtering out")
             continue
+        
         filtered_questions.append(q)
     
+    logger.info(f"[get_questions] After security filter: {len(filtered_questions)} questions remain (filtered out {len(questions) - len(filtered_questions)})")
     questions = filtered_questions
     
     result = []
@@ -94,9 +246,6 @@ async def get_questions(
             "description": q.get("description", ""),
             "difficulty": q.get("difficulty", ""),
             "languages": q.get("languages", []),
-            "starter_code": q.get("starter_code", {}),
-            "public_testcases": q.get("public_testcases", []),
-            "hidden_testcases": q.get("hidden_testcases", []),
             "is_published": q.get("is_published", False),
             "library": q.get("library", "numpy"),
             "requires_dataset": q.get("requires_dataset", False),
@@ -107,7 +256,6 @@ async def get_questions(
             "question_type": q.get("question_type"),
             "execution_environment": q.get("execution_environment"),
             "assessment_metadata": q.get("assessment_metadata"),
-            "dataset": q.get("dataset"),
         }
         if "function_signature" in q and q.get("function_signature"):
             question_dict["function_signature"] = q["function_signature"]
@@ -116,6 +264,12 @@ async def get_questions(
         if "updated_at" in q:
             question_dict["updated_at"] = q["updated_at"].isoformat() if isinstance(q.get("updated_at"), datetime) else q.get("updated_at")
         result.append(question_dict)
+    
+    # Cache the result (only if no filters applied)
+    if published_only is None and library is None and ai_generated is None:
+        from app.utils.cache import set_cached_questions
+        await set_cached_questions(user_id, result, skip, limit)
+    
     return result
 
 # Dataset routes must be defined BEFORE the generic /{question_id} route

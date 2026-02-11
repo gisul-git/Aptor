@@ -12,6 +12,7 @@ from typing import List, Dict, Any, Optional
 from app.config.settings import get_settings
 from app.db.mongo import connect_to_mongo, close_mongo_connection
 from app.api.v1.aiml.database import connect_to_aiml_mongo, close_aiml_mongo_connection
+from app.utils.cache import init_redis_cache
 from app.api.v1.aiml.routers import questions as aiml_questions, tests as aiml_tests, assessment as aiml_assessment, run as aiml_run, evaluate as aiml_evaluate
 from app.exceptions.handlers import (
     validation_exception_handler,
@@ -41,7 +42,33 @@ async def lifespan(app: FastAPI):
     await connect_to_aiml_mongo()
     logger.info("✅ AIML service connected to MongoDB (AIML module)")
     
+    # Initialize Redis connection
+    settings = get_settings()
+    redis_client = None
+    try:
+        import redis.asyncio as redis
+        redis_client = redis.from_url(
+            settings.redis_url,
+            encoding="utf-8",
+            decode_responses=False  # We'll handle encoding manually
+        )
+        await redis_client.ping()
+        init_redis_cache(redis_client)
+        logger.info("✅ AIML service connected to Redis")
+        app.state.redis = redis_client
+    except Exception as e:
+        logger.warning(f"⚠️ Redis connection failed: {e}. Continuing without cache.")
+        app.state.redis = None
+    
     yield
+    
+    # Close Redis connection
+    if redis_client:
+        try:
+            await redis_client.close()
+            logger.info("✅ AIML service disconnected from Redis")
+        except Exception as e:
+            logger.warning(f"Error closing Redis connection: {e}")
     
     # Cleanup: close both connections
     await close_aiml_mongo_connection()
@@ -103,10 +130,12 @@ from app.api.v1.aiml.models.test import TestCreate, AddCandidateRequest
 
 @app.get("/api/v1/aiml/tests", response_model=List[dict], include_in_schema=False)
 async def get_aiml_tests_no_slash(
+    page: int = Query(1, ge=1),
+    limit: int = Query(100, ge=1, le=100),
     current_user: Dict[str, Any] = Depends(get_current_user)
 ):
     """Handle /api/v1/aiml/tests (without trailing slash) by calling the same handler"""
-    return await get_aiml_tests_handler(current_user)
+    return await get_aiml_tests_handler(page=page, limit=limit, current_user=current_user)
 
 @app.post("/api/v1/aiml/tests", response_model=dict, include_in_schema=False)
 async def create_aiml_test_no_slash(

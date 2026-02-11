@@ -1,6 +1,20 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useRouter } from "next/router";
-import { CustomMCQAssessment, MCQQuestion, SubjectiveQuestion, Question } from "../../../types/custom-mcq";
+import dynamic from "next/dynamic";
+import { CustomMCQAssessment, MCQQuestion, SubjectiveQuestion, CodingQuestion, Question } from "../../../types/custom-mcq";
+
+// Lazy load Monaco Editor
+const MonacoEditor = dynamic(() => import("@monaco-editor/react"), {
+  ssr: false,
+  loading: () => (
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "400px", backgroundColor: "#1e1e1e", color: "#fff" }}>
+      <div style={{ textAlign: "center" }}>
+        <div style={{ width: "40px", height: "40px", border: "4px solid #3b82f6", borderTop: "4px solid transparent", borderRadius: "50%", animation: "spin 1s linear infinite", margin: "0 auto 1rem" }} />
+        <p>Loading code editor...</p>
+      </div>
+    </div>
+  ),
+});
 import { useUniversalProctoring, CandidateLiveService, resolveUserIdForProctoring, type ProctoringViolation } from "@/universal-proctoring";
 import WebcamPreview from "../../../components/WebcamPreview";
 import { ViolationToast, pushViolationToast } from "@/components/ViolationToast";
@@ -18,7 +32,7 @@ export default function CustomMCQTakePage() {
   // React Query hooks
   const [candidateEmail, setCandidateEmail] = useState<string>("");
   const [candidateName, setCandidateName] = useState<string>("");
-  const { data: assessmentData, refetch: refetchAssessment } = useCustomMCQAssessmentForTaking(
+  const { data: assessmentData, isLoading: isLoadingAssessment, error: assessmentError, refetch: refetchAssessment } = useCustomMCQAssessmentForTaking(
     assessmentId,
     token,
     candidateEmail || undefined,
@@ -30,19 +44,125 @@ export default function CustomMCQTakePage() {
   
   const [assessment, setAssessment] = useState<CustomMCQAssessment | null>(null);
   
-  // Update assessment from React Query data
+  // Update assessment from React Query data and handle initialization
   useEffect(() => {
     if (assessmentData) {
       setAssessment(assessmentData);
+      setError(null); // Clear any previous errors
+      
+      // Only process assessment data if we have candidate info (after verification)
+      if (candidateEmail && candidateName) {
+        // Apply runtime camera toggle based on admin proctoring setting:
+        // Only explicit true enables camera/model; missing/false => OFF (per PROCTORING_AI_TOGGLE_NOTES.md)
+        const aiEnabled = (assessmentData as any)?.proctoringSettings?.aiProctoringEnabled === true;
+        setCameraProctorEnabled(aiEnabled);
+        // Set Live Proctoring enabled state
+        const liveEnabled = (assessmentData as any)?.proctoringSettings?.liveProctoringEnabled === true;
+        setProctoringEnabled(liveEnabled);
+
+        // NEW IMPLEMENTATION: Use accessControl from backend
+        const accessControl = assessmentData.accessControl;
+        const schedule = assessmentData.schedule || {};
+        const startTimeStr = schedule.startTime || assessmentData.startTime;
+        
+        if (accessControl) {
+          if (!accessControl.canAccess) {
+            // Cannot access - show error message
+            setError(accessControl.errorMessage || "You cannot access this assessment at this time.");
+            setWaitingForStart(false);
+            setExamStarted(false);
+            setTimeRemaining(null);
+            return;
+          }
+          
+          if (accessControl.waitingForStart) {
+            // Can access but waiting for start (strict mode - pre-check phase)
+            if (startTimeStr) {
+              const startTime = new Date(startTimeStr);
+              setWaitingForStart(true);
+              setStartTime(startTime);
+              setExamStarted(false);
+              setTimeRemaining(null);
+              setError(null); // Clear error, show waiting message in UI
+            }
+            return;
+          }
+          
+          if (accessControl.examStarted) {
+            // Exam has started (both strict and flexible mode now auto-start)
+            setWaitingForStart(false);
+            setExamStarted(true);
+            
+            // Initialize per-section timers if enabled
+            const enablePerSectionTimers = (assessmentData as any).enablePerSectionTimers || false;
+            const sectionTimersConfig = (assessmentData as any).sectionTimers || {};
+            
+            if (enablePerSectionTimers && sectionTimersConfig) {
+              // Convert minutes to seconds for timers
+              const mcqSeconds = (sectionTimersConfig.MCQ || 20) * 60;
+              const subjectiveSeconds = (sectionTimersConfig.Subjective || 30) * 60;
+              const codingSeconds = (sectionTimersConfig.Coding || 0) * 60;
+              const totalDurationSeconds = mcqSeconds + subjectiveSeconds + codingSeconds;
+              
+              setSectionTimers({ MCQ: mcqSeconds, Subjective: subjectiveSeconds, Coding: codingSeconds });
+              // Set global timer to total duration (sum of section timers)
+              setTimeRemaining(totalDurationSeconds);
+            } else {
+              // Use regular duration timer
+              const schedule = assessmentData.schedule || {};
+              const duration = schedule.duration || assessmentData.duration;
+              if (duration) {
+                setTimeRemaining(duration * 60); // Convert minutes to seconds
+              } else {
+                setTimeRemaining(accessControl.timeRemaining || null);
+              }
+            }
+            
+            setStartedAt(new Date());
+            setError(null);
+          } else if (accessControl.canStart) {
+            // Can start - this shouldn't happen now as flexible mode auto-starts
+            // But keep as fallback
+            setWaitingForStart(false);
+            setExamStarted(true);
+            
+            // Initialize per-section timers if enabled
+            const enablePerSectionTimers = (assessmentData as any).enablePerSectionTimers || false;
+            const sectionTimersConfig = (assessmentData as any).sectionTimers || {};
+            
+            if (enablePerSectionTimers && sectionTimersConfig) {
+              // Convert minutes to seconds for timers
+              const mcqSeconds = (sectionTimersConfig.MCQ || 20) * 60;
+              const subjectiveSeconds = (sectionTimersConfig.Subjective || 30) * 60;
+              const codingSeconds = (sectionTimersConfig.Coding || 0) * 60;
+              const totalDurationSeconds = mcqSeconds + subjectiveSeconds + codingSeconds;
+              
+              setSectionTimers({ MCQ: mcqSeconds, Subjective: subjectiveSeconds, Coding: codingSeconds });
+              // Set global timer to total duration (sum of section timers)
+              setTimeRemaining(totalDurationSeconds);
+            } else {
+              setTimeRemaining(accessControl.timeRemaining || null);
+            }
+            
+            setStartedAt(new Date());
+            setError(null);
+          }
+        }
+      }
+    } else if (assessmentError && candidateEmail && candidateName) {
+      // Only show error if we have candidate info (after verification attempt)
+      setError(assessmentError.message || "Failed to load assessment data");
     }
-  }, [assessmentData]);
+  }, [assessmentData, assessmentError, candidateEmail, candidateName]);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [answers, setAnswers] = useState<Record<string, string[]>>({}); // For MCQ answers
   const [textAnswers, setTextAnswers] = useState<Record<string, string>>({}); // For subjective answers
+  const [codeAnswers, setCodeAnswers] = useState<Record<string, string>>({}); // For coding answers
   
   // Use refs to always access the latest state values in callbacks
   const answersRef = useRef<Record<string, string[]>>({});
   const textAnswersRef = useRef<Record<string, string>>({});
+  const codeAnswersRef = useRef<Record<string, string>>({});
   
   // Track previous answers to detect changes for logging
   const previousTextAnswersRef = useRef<Record<string, string>>({});
@@ -56,10 +176,15 @@ export default function CustomMCQTakePage() {
     textAnswersRef.current = textAnswers;
   }, [textAnswers]);
   
+  useEffect(() => {
+    codeAnswersRef.current = codeAnswers;
+  }, [codeAnswers]);
+  
   // Sequential flow: MCQ first, then Subjective
-  const [assessmentPhase, setAssessmentPhase] = useState<"mcq" | "subjective">("mcq");
-  const assessmentPhaseRef = useRef<"mcq" | "subjective">("mcq");
+  const [assessmentPhase, setAssessmentPhase] = useState<"mcq" | "subjective" | "coding">("mcq");
+  const assessmentPhaseRef = useRef<"mcq" | "subjective" | "coding">("mcq");
   const [mcqSubmitted, setMcqSubmitted] = useState(false);
+  const [codingSubmitted, setCodingSubmitted] = useState(false);
   
   // Keep ref in sync with state
   useEffect(() => {
@@ -69,8 +194,8 @@ export default function CustomMCQTakePage() {
   const [timeRemaining, setTimeRemaining] = useState<number | null>(null);
   
   // Per-section timer state
-  const [sectionTimers, setSectionTimers] = useState<{ MCQ: number; Subjective: number }>({ MCQ: 0, Subjective: 0 }); // in seconds
-  const [lockedSections, setLockedSections] = useState<Set<"mcq" | "subjective">>(new Set());
+  const [sectionTimers, setSectionTimers] = useState<{ MCQ: number; Subjective: number; Coding: number }>({ MCQ: 0, Subjective: 0, Coding: 0 }); // in seconds
+  const [lockedSections, setLockedSections] = useState<Set<"mcq" | "subjective" | "coding">>(new Set());
   const sectionTimerIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -83,6 +208,7 @@ export default function CustomMCQTakePage() {
   const [proctoringEnabled, setProctoringEnabled] = useState(false);
   const [liveProctorScreenStream, setLiveProctorScreenStream] = useState<MediaStream | null>(null);
   const [showMCQLockWarning, setShowMCQLockWarning] = useState(false);
+  const [showCodingLockWarning, setShowCodingLockWarning] = useState(false);
   const [pendingNavigationIndex, setPendingNavigationIndex] = useState<number | null>(null);
   const [debugMode, setDebugMode] = useState(false);
 
@@ -93,6 +219,7 @@ export default function CustomMCQTakePage() {
   const startSessionCalledRef = useRef(false); // Guard: prevent multiple start-session calls
   const candidateWsRef = useRef<WebSocket | null>(null); // Store candidate WebSocket to pass to service
   const candidateSessionIdRef = useRef<string | null>(null); // Store sessionId to pass to service
+  const lastProcessedRef = useRef<{ assessmentId: string; token: string } | null>(null); // Track last processed assessmentId/token to prevent redundant calls
 
   const getViolationMessage = (eventType: string): string => {
     const messages: Record<string, string> = {
@@ -461,23 +588,38 @@ export default function CustomMCQTakePage() {
     const loadAssessment = async () => {
       if (!assessmentId || !token) return;
 
+      const assessmentIdStr = String(assessmentId);
+      const tokenStr = String(token);
+
+      // Guard: Check if we've already processed this exact assessmentId/token combination
+      const lastProcessed = lastProcessedRef.current;
+      if (lastProcessed && 
+          lastProcessed.assessmentId === assessmentIdStr && 
+          lastProcessed.token === tokenStr) {
+        console.log('[Custom MCQ Take] Already processed this assessmentId/token combination, skipping');
+        return;
+      }
+
+      // Mark as processing immediately to prevent race conditions
+      lastProcessedRef.current = { assessmentId: assessmentIdStr, token: tokenStr };
+
       try {
         // Enforce unified gate completion (deep-link safety)
-        const id = String(assessmentId);
+        const id = assessmentIdStr;
         const precheckCompleted = sessionStorage.getItem(`precheckCompleted_${id}`);
         const instructionsAcknowledged = sessionStorage.getItem(`instructionsAcknowledged_${id}`);
         const candidateRequirementsCompleted = sessionStorage.getItem(`candidateRequirementsCompleted_${id}`);
         const identityVerificationCompleted = sessionStorage.getItem(`identityVerificationCompleted_${id}`);
 
         if (!precheckCompleted || !instructionsAcknowledged || !candidateRequirementsCompleted || !identityVerificationCompleted) {
-          router.replace(`/precheck/${id}/${encodeURIComponent(String(token))}`);
+          router.replace(`/precheck/${id}/${encodeURIComponent(tokenStr)}`);
           return;
         }
 
         // Load candidate info from sessionStorage
-        const stored = sessionStorage.getItem(`custom_mcq_${assessmentId}`);
+        const stored = sessionStorage.getItem(`custom_mcq_${assessmentIdStr}`);
         if (!stored) {
-          router.push(`/custom-mcq/entry/${assessmentId}?token=${token}`);
+          router.push(`/custom-mcq/entry/${assessmentIdStr}?token=${tokenStr}`);
           return;
         }
 
@@ -490,129 +632,31 @@ export default function CustomMCQTakePage() {
 
         // Verify access
         await verifyCandidateMutation.mutateAsync({
-          assessmentId: assessmentId as string,
-          token: token as string,
+          assessmentId: assessmentIdStr,
+          token: tokenStr,
           email: info.email,
           name: info.name,
         });
 
         // Set candidate info for React Query hook
+        // This will trigger the useCustomMCQAssessmentForTaking hook to fetch assessment data
         setCandidateEmail(info.email);
         setCandidateName(info.name);
         
         // Assessment will be loaded via useCustomMCQAssessmentForTaking hook
-
-        if (!assessmentData) {
-          setError("Assessment data not available");
-          setLoading(false);
-          return;
-        }
-
-        // Apply runtime camera toggle based on admin proctoring setting:
-        // Only explicit true enables camera/model; missing/false => OFF (per PROCTORING_AI_TOGGLE_NOTES.md)
-        const aiEnabled = (assessmentData as any)?.proctoringSettings?.aiProctoringEnabled === true;
-        setCameraProctorEnabled(aiEnabled);
-        // Set Live Proctoring enabled state
-        const liveEnabled = (assessmentData as any)?.proctoringSettings?.liveProctoringEnabled === true;
-        setProctoringEnabled(liveEnabled);
-
-        // NEW IMPLEMENTATION: Use accessControl from backend
-        const accessControl = assessmentData.accessControl;
-        const schedule = assessmentData.schedule || {};
-        const startTimeStr = schedule.startTime || assessmentData.startTime;
-        
-        if (accessControl) {
-          if (!accessControl.canAccess) {
-            // Cannot access - show error message
-            setError(accessControl.errorMessage || "You cannot access this assessment at this time.");
-            setWaitingForStart(false);
-            setExamStarted(false);
-            setTimeRemaining(null);
-            return;
-          }
-          
-          if (accessControl.waitingForStart) {
-            // Can access but waiting for start (strict mode - pre-check phase)
-            if (startTimeStr) {
-              const startTime = new Date(startTimeStr);
-              setWaitingForStart(true);
-              setStartTime(startTime);
-              setExamStarted(false);
-              setTimeRemaining(null);
-              setError(null); // Clear error, show waiting message in UI
-            }
-            return;
-          }
-          
-          if (accessControl.examStarted) {
-            // Exam has started (both strict and flexible mode now auto-start)
-            setWaitingForStart(false);
-            setExamStarted(true);
-            
-            // Initialize per-section timers if enabled
-            const enablePerSectionTimers = (assessmentData as any).enablePerSectionTimers || false;
-            const sectionTimersConfig = (assessmentData as any).sectionTimers || {};
-            
-            if (enablePerSectionTimers && sectionTimersConfig) {
-              // Convert minutes to seconds for timers
-              const mcqSeconds = (sectionTimersConfig.MCQ || 20) * 60;
-              const subjectiveSeconds = (sectionTimersConfig.Subjective || 30) * 60;
-              const totalDurationSeconds = mcqSeconds + subjectiveSeconds;
-              
-              setSectionTimers({
-                MCQ: mcqSeconds,
-                Subjective: subjectiveSeconds,
-              });
-              // Set global timer to total duration (sum of section timers)
-              setTimeRemaining(totalDurationSeconds);
-            } else {
-              setTimeRemaining(accessControl.timeRemaining || null);
-            }
-            
-            setStartedAt(new Date());
-            setError(null);
-          } else if (accessControl.canStart) {
-            // Can start - this shouldn't happen now as flexible mode auto-starts
-            // But keep as fallback
-            setWaitingForStart(false);
-            setExamStarted(true);
-            
-            // Initialize per-section timers if enabled
-            const enablePerSectionTimers = (assessmentData as any).enablePerSectionTimers || false;
-            const sectionTimersConfig = (assessmentData as any).sectionTimers || {};
-            
-            if (enablePerSectionTimers && sectionTimersConfig) {
-              // Convert minutes to seconds for timers
-              const mcqSeconds = (sectionTimersConfig.MCQ || 20) * 60;
-              const subjectiveSeconds = (sectionTimersConfig.Subjective || 30) * 60;
-              const totalDurationSeconds = mcqSeconds + subjectiveSeconds;
-              
-              setSectionTimers({
-                MCQ: mcqSeconds,
-                Subjective: subjectiveSeconds,
-              });
-              // Set global timer to total duration (sum of section timers)
-              setTimeRemaining(totalDurationSeconds);
-            } else {
-              setTimeRemaining(accessControl.timeRemaining || null);
-            }
-            
-            setStartedAt(new Date());
-            setError(null);
-          }
-        } else {
-          // Fallback if accessControl not available (shouldn't happen)
-          setError("Assessment access information is not available.");
-        }
+        // The hook will automatically refetch when email/name are set
+        // All assessment data processing is handled in the useEffect that watches assessmentData
+        setLoading(false);
       } catch (err: any) {
+        // Reset tracking on error to allow retry for the same assessmentId/token
+        lastProcessedRef.current = null;
         setError(err.message || "Failed to load assessment");
-      } finally {
         setLoading(false);
       }
     };
 
     loadAssessment();
-  }, [assessmentId, token, router]);
+  }, [assessmentId, token, router]); // Removed verifyCandidateMutation from dependencies - mutations are stable
 
   // Auto-transition when exam time arrives (strict mode only - for pre-check to exam start)
   useEffect(() => {
@@ -647,11 +691,13 @@ export default function CustomMCQTakePage() {
               // Convert minutes to seconds for timers
               const mcqSeconds = (sectionTimersConfig.MCQ || 20) * 60;
               const subjectiveSeconds = (sectionTimersConfig.Subjective || 30) * 60;
-              const totalDurationSeconds = mcqSeconds + subjectiveSeconds;
+              const codingSeconds = (sectionTimersConfig.Coding || 0) * 60;
+              const totalDurationSeconds = mcqSeconds + subjectiveSeconds + codingSeconds;
               
               setSectionTimers({
                 MCQ: mcqSeconds,
                 Subjective: subjectiveSeconds,
+                Coding: codingSeconds,
               });
               // Set global timer to total duration (sum of section timers)
               setTimeRemaining(totalDurationSeconds);
@@ -830,15 +876,15 @@ export default function CustomMCQTakePage() {
       // Get latest values from refs to avoid closure issues
       const currentAnswers = answersRef.current;
       const currentTextAnswers = textAnswersRef.current;
+      const currentCodeAnswers = codeAnswersRef.current;
       
-      // Combine MCQ and subjective answers
-      const submissions: Array<{ questionId: string; selectedAnswers?: string[]; textAnswer?: string }> = [];
+      // Combine MCQ, subjective, and coding answers
+      const submissions: Array<{ questionId: string; selectedAnswers?: string[]; textAnswer?: string; codeAnswer?: string }> = [];
       
       // Debug: Log current state before building submissions
       console.log("Pre-submission state:", {
         answersKeys: Object.keys(currentAnswers),
         textAnswersKeys: Object.keys(currentTextAnswers),
-        textAnswersValues: Object.entries(currentTextAnswers).map(([id, text]) => ({ id, textLength: text?.length || 0, textPreview: text?.substring(0, 50) || "" })),
         assessmentQuestions: assessment.questions?.map(q => ({ id: q.id, type: q.questionType || ("options" in q ? "mcq" : "subjective") }))
       });
       
@@ -848,6 +894,16 @@ export default function CustomMCQTakePage() {
           submissions.push({
             questionId,
             selectedAnswers,
+          });
+        }
+      }
+      
+      // Add coding submissions
+      for (const [questionId, codeAnswer] of Object.entries(currentCodeAnswers)) {
+        if (codeAnswer && codeAnswer.trim()) {
+          submissions.push({
+            questionId,
+            codeAnswer,
           });
         }
       }
@@ -896,8 +952,7 @@ export default function CustomMCQTakePage() {
         totalSubmissions: submissions.length,
         mcqSubmissions: submissions.filter(s => s.selectedAnswers).length,
         subjectiveSubmissions: submissions.filter(s => s.textAnswer).length,
-        submissions: submissions,
-        subjectiveQuestionIds: subjectiveQuestionIds
+        codingSubmissions: submissions.filter(s => s.codeAnswer).length
       });
 
       // Collect candidate requirements from sessionStorage
@@ -943,13 +998,23 @@ export default function CustomMCQTakePage() {
         alert("Failed to submit assessment: No response data");
         return;
       }
+      
+      // Check if AI evaluation is in progress
+      const aiEvaluationStatus = resultData.aiEvaluationStatus || "completed";
+      const gradingStatus = resultData.gradingStatus || "completed";
+      const isEvaluating = aiEvaluationStatus === "evaluating" || gradingStatus === "grading";
+      
       const mcqScore = resultData.mcqScore ?? 0;
       const mcqTotal = resultData.mcqTotal ?? 0;
       const subjectiveScore = resultData.subjectiveScore ?? 0;
       const subjectiveTotal = resultData.subjectiveTotal ?? 0;
-      const showResult = resultData.showResultToCandidate !== false; // Default to true if not specified
+      const codingScore = resultData.codingScore ?? 0;
+      const codingTotal = resultData.codingTotal ?? 0;
+      
+      // Redirect to results page - candidates only see submission confirmation (no results displayed)
+      // AI evaluation continues in the background
       router.push(
-        `/custom-mcq/result/${assessmentId}?score=${resultData.score}&total=${resultData.totalMarks}&percentage=${resultData.percentage}&passed=${resultData.passed}&token=${token}&gradingStatus=${resultData.gradingStatus || "completed"}&mcqScore=${mcqScore}&mcqTotal=${mcqTotal}&subjectiveScore=${subjectiveScore}&subjectiveTotal=${subjectiveTotal}&showResult=${showResult}`
+        `/custom-mcq/result/${assessmentId}?token=${token}&gradingStatus=${gradingStatus}&isEvaluating=${isEvaluating}`
       );
     } catch (err: any) {
       setError(err.message || "Failed to submit assessment");
@@ -1009,7 +1074,7 @@ export default function CustomMCQTakePage() {
     }
 
     // Determine current section based on assessmentPhase
-    const currentSection = assessmentPhase === "mcq" ? "MCQ" : "Subjective";
+    const currentSection = assessmentPhase === "mcq" ? "MCQ" : assessmentPhase === "coding" ? "Coding" : "Subjective";
     
     // Check if current section is already locked
     const isLocked = lockedSections.has(assessmentPhase);
@@ -1033,7 +1098,7 @@ export default function CustomMCQTakePage() {
       setSectionTimers((prev) => {
         // Get the current phase from ref to avoid stale closure
         const currentPhase = assessmentPhaseRef.current;
-        const currentSectionKey = currentPhase === "mcq" ? "MCQ" : "Subjective";
+        const currentSectionKey = currentPhase === "mcq" ? "MCQ" : currentPhase === "coding" ? "Coding" : "Subjective";
         const currentTimer = prev[currentSectionKey];
         
         if (!currentTimer || currentTimer <= 1) {
@@ -1128,13 +1193,21 @@ export default function CustomMCQTakePage() {
     };
   }, []);
 
-  // Sort questions: MCQ first, then Subjective (for initialization)
+  // Sort questions: MCQ first, then Coding, then Subjective (for initialization)
   const sortedQuestionsForInit = useMemo(() => {
     if (!assessment || !assessment.questions || assessment.questions.length === 0) return [];
     const questions = assessment.questions || [];
     const getQuestionTypeOrder = (q: Question) => {
-      const qType = q.questionType || (("options" in q && "correctAn" in q) ? "mcq" : "subjective");
-      return qType === "mcq" ? 0 : 1; // 0 for MCQ (comes first), 1 for Subjective
+      // Explicitly check for questionType first
+      if (q.questionType === "mcq" || q.questionType === "coding" || q.questionType === "subjective") {
+        const qType = q.questionType;
+        if (qType === "mcq") return 0;
+        if (qType === "coding") return 1;
+        return 2; // Subjective
+      }
+      // Fallback: infer from structure
+      const qType = (("options" in q && "correctAn" in q) ? "mcq" : "subjective");
+      return qType === "mcq" ? 0 : 2;
     };
     return [...questions].sort((a, b) => getQuestionTypeOrder(a) - getQuestionTypeOrder(b));
   }, [assessment?.questions]);
@@ -1145,16 +1218,30 @@ export default function CustomMCQTakePage() {
     
     const questions = sortedQuestionsForInit;
     const hasMCQ = questions.some(q => q.questionType === "mcq" || ("options" in q && "correctAn" in q));
-    const hasSubjective = questions.some(q => q.questionType === "subjective" || !("options" in q && "correctAn" in q));
+    const hasSubjective = questions.some(q => q.questionType === "subjective" && !("options" in q && "correctAn" in q));
+    const hasCoding = questions.some(q => {
+      const qType = q.questionType;
+      const section = q.section?.toLowerCase() || "";
+      return qType === "coding" || qType?.toLowerCase() === "coding" ||
+        (section === "coding" && !("options" in q && "correctAn" in q));
+    });
     
-    // Check if MCQ was already locked (from session storage)
+    // Check if sections were already locked (from session storage)
     const mcqSubmittedKey = `mcqSubmitted_${assessmentId}`;
+    const codingSubmittedKey = `codingSubmitted_${assessmentId}`;
     const savedMcqSubmitted = sessionStorage.getItem(mcqSubmittedKey) === "true";
+    const savedCodingSubmitted = sessionStorage.getItem(codingSubmittedKey) === "true";
     
     if (savedMcqSubmitted) {
-      // MCQ was locked - restore state but allow navigation to all questions
       setMcqSubmitted(true);
-      setAssessmentPhase("mcq"); // Keep phase as "mcq" to allow navigation
+    }
+    if (savedCodingSubmitted) {
+      setCodingSubmitted(true);
+    }
+    
+    if (savedMcqSubmitted || savedCodingSubmitted) {
+      // Section was locked - restore state but allow navigation to all questions
+      setAssessmentPhase("mcq"); // Keep phase to allow navigation
       // Start at first question (user can navigate freely)
       setCurrentQuestionIndex(0);
     } else if (hasMCQ) {
@@ -1163,12 +1250,23 @@ export default function CustomMCQTakePage() {
       setMcqSubmitted(false);
       // Go to first MCQ question (should be index 0 after sorting)
       setCurrentQuestionIndex(0);
+    } else if (hasCoding) {
+      // Only coding questions, start with coding
+      setAssessmentPhase("coding");
+      setCodingSubmitted(false);
+      setCurrentQuestionIndex(0);
+    } else if (hasCoding) {
+      // Only coding questions, start with coding
+      setAssessmentPhase("coding");
+      setCodingSubmitted(false);
+      setCurrentQuestionIndex(0);
     } else if (hasSubjective) {
       // Only subjective questions, start with subjective
       setAssessmentPhase("subjective");
       setCurrentQuestionIndex(0);
     }
   }, [assessment, sortedQuestionsForInit, assessmentId]);
+
 
   // Note: Auto-lock is now handled by checkAndLockMCQBeforeNavigation function
   // which shows confirmation popup before locking when navigating from MCQ to Subjective
@@ -1291,10 +1389,24 @@ export default function CustomMCQTakePage() {
   // Use sorted questions (already sorted before conditional returns)
   const questions = sortedQuestionsForInit;
   
-  // Check if we have both types
+  // Check if we have different types
   const hasMCQ = questions.some(q => q.questionType === "mcq" || ("options" in q && "correctAn" in q));
-  const hasSubjective = questions.some(q => q.questionType === "subjective" || !("options" in q && "correctAn" in q));
-  const hasBothTypes = hasMCQ && hasSubjective;
+  const hasSubjective = questions.some(q => q.questionType === "subjective" && !("options" in q && "correctAn" in q));
+  // Check for coding questions - try multiple variations including section name fallback
+  const hasCoding = questions.some(q => {
+    const qType = q.questionType;
+    const section = q.section?.toLowerCase() || "";
+    // Check by questionType first
+    if (qType === "coding" || qType?.toLowerCase() === "coding") {
+      return true;
+    }
+    // Fallback: check by section name
+    if (section === "coding" && !("options" in q && "correctAn" in q)) {
+      return true;
+    }
+    return false;
+  });
+  const hasBothTypes = (hasMCQ && hasSubjective) || (hasMCQ && hasCoding) || (hasSubjective && hasCoding);
   
   // Show all questions - allow navigation between MCQ and Subjective freely
   // After MCQ is "submitted" (locked), users can still navigate to view MCQ but can't edit
@@ -1302,8 +1414,16 @@ export default function CustomMCQTakePage() {
   const actualIndex = currentQuestionIndex;
   
   const isMCQ = currentQuestion && (currentQuestion.questionType === "mcq" || ("options" in currentQuestion && "correctAn" in currentQuestion));
+  // Check for coding - try questionType first, then fallback to section name
+  const isCoding = currentQuestion && (
+    currentQuestion.questionType === "coding" || 
+    currentQuestion.questionType?.toLowerCase() === "coding" ||
+    (currentQuestion.section?.toLowerCase() === "coding" && !("options" in currentQuestion && "correctAn" in currentQuestion))
+  );
+  const isSubjective = currentQuestion && currentQuestion.questionType === "subjective" && !("options" in currentQuestion && "correctAn" in currentQuestion);
   const currentAnswers = isMCQ ? (answers[currentQuestion?.id || ""] || []) : [];
-  const currentTextAnswer = !isMCQ ? (textAnswers[currentQuestion?.id || ""] || "") : "";
+  const currentTextAnswer = isSubjective ? (textAnswers[currentQuestion?.id || ""] || "") : "";
+  const currentCodeAnswer = isCoding ? (codeAnswers[currentQuestion?.id || ""] || "") : "";
   
   // Handle MCQ section submission - just lock MCQ section, don't change phase or navigate
   // This prevents fullscreen exit and allows free navigation between sections
@@ -1317,26 +1437,59 @@ export default function CustomMCQTakePage() {
     sessionStorage.setItem(`mcqSubmitted_${assessmentId}`, "true");
   };
 
-  // Helper function to check if navigating from MCQ to Subjective and show warning
-  const checkAndShowMCQLockWarning = (targetIndex: number): boolean => {
-    if (mcqSubmitted || !hasMCQ) return true; // Already locked or no MCQ, allow navigation
-    
+  // Helper function to check if navigating between sections and show warning
+  const checkAndShowSectionLockWarning = (targetIndex: number): boolean => {
     const currentQ = questions[currentQuestionIndex] || questions[0];
     const targetQ = questions[targetIndex];
     
     if (!currentQ || !targetQ) return true;
     
     const isCurrentMCQ = currentQ.questionType === "mcq" || ("options" in currentQ && "correctAn" in currentQ);
-    const isTargetSubjective = !(targetQ.questionType === "mcq" || ("options" in targetQ && "correctAn" in targetQ));
+    const isCurrentCoding = currentQ.questionType === "coding" || 
+      currentQ.questionType?.toLowerCase() === "coding" ||
+      (currentQ.section?.toLowerCase() === "coding" && !("options" in currentQ && "correctAn" in currentQ));
+    const isCurrentSubjective = currentQ.questionType === "subjective" && !("options" in currentQ && "correctAn" in currentQ);
     
-    // If navigating from MCQ to Subjective, show warning on page
-    if (isCurrentMCQ && isTargetSubjective) {
+    const isTargetMCQ = targetQ.questionType === "mcq" || ("options" in targetQ && "correctAn" in targetQ);
+    const isTargetCoding = targetQ.questionType === "coding" || 
+      targetQ.questionType?.toLowerCase() === "coding" ||
+      (targetQ.section?.toLowerCase() === "coding" && !("options" in targetQ && "correctAn" in targetQ));
+    const isTargetSubjective = targetQ.questionType === "subjective" && !("options" in targetQ && "correctAn" in targetQ);
+    
+    // If navigating from MCQ to Subjective/Coding, show warning
+    if (isCurrentMCQ && !mcqSubmitted && (isTargetSubjective || isTargetCoding)) {
       setPendingNavigationIndex(targetIndex);
       setShowMCQLockWarning(true);
       return false; // Don't navigate yet, wait for user confirmation
     }
     
-    return true; // Allow navigation (not MCQ to Subjective transition)
+    // If navigating from Coding to MCQ/Subjective, show warning
+    if (isCurrentCoding && !codingSubmitted && (isTargetMCQ || isTargetSubjective)) {
+      setPendingNavigationIndex(targetIndex);
+      setShowCodingLockWarning(true);
+      return false; // Don't navigate yet, wait for user confirmation
+    }
+    
+    // If navigating from Subjective to MCQ/Coding, show warning (if MCQ/Coding not already locked)
+    if (isCurrentSubjective && (isTargetMCQ && !mcqSubmitted || isTargetCoding && !codingSubmitted)) {
+      // For now, allow navigation from subjective without warning
+      // You can add subjective lock if needed
+      return true;
+    }
+    
+    // If navigating TO Coding from MCQ/Subjective, show warning
+    if (isTargetCoding && !codingSubmitted && (isCurrentMCQ && !mcqSubmitted || isCurrentSubjective)) {
+      if (isCurrentMCQ && !mcqSubmitted) {
+        setPendingNavigationIndex(targetIndex);
+        setShowMCQLockWarning(true);
+        return false;
+      }
+      if (isCurrentSubjective) {
+        return true;
+      }
+    }
+    
+    return true; // Allow navigation
   };
 
   // Handle confirming MCQ lock and navigation
@@ -1350,9 +1503,21 @@ export default function CustomMCQTakePage() {
     }
   };
 
-  // Handle canceling MCQ lock warning
-  const handleCancelMCQLock = () => {
+  // Handle confirming Coding lock and navigation
+  const handleConfirmCodingLock = () => {
+    if (pendingNavigationIndex !== null) {
+      setCodingSubmitted(true);
+      sessionStorage.setItem(`codingSubmitted_${assessmentId}`, "true");
+      setCurrentQuestionIndex(pendingNavigationIndex);
+      setShowCodingLockWarning(false);
+      setPendingNavigationIndex(null);
+    }
+  };
+
+  // Handle canceling section lock warning
+  const handleCancelSectionLock = () => {
     setShowMCQLockWarning(false);
+    setShowCodingLockWarning(false);
     setPendingNavigationIndex(null);
   };
 
@@ -1399,7 +1564,7 @@ export default function CustomMCQTakePage() {
           >
             <div style={{ marginBottom: "1.5rem" }}>
               <h2 style={{ color: "#ef4444", marginBottom: "1rem", fontSize: "1.5rem" }}>
-                ⚠️ Warning: Moving to Subjective Questions
+                ⚠️ Warning: Moving to {questions[pendingNavigationIndex || 0]?.questionType === "coding" ? "Coding" : "Subjective"} Questions
               </h2>
               <p style={{ color: "#1E5A3B", fontSize: "1rem", lineHeight: "1.6" }}>
                 The MCQ section will be locked once you proceed. You will not be able to change your MCQ answers after this.
@@ -1408,7 +1573,7 @@ export default function CustomMCQTakePage() {
             <div style={{ display: "flex", gap: "1rem", justifyContent: "flex-end" }}>
               <button
                 type="button"
-                onClick={handleCancelMCQLock}
+                onClick={handleCancelSectionLock}
                 style={{
                   padding: "0.75rem 1.5rem",
                   backgroundColor: "#ffffff",
@@ -1441,9 +1606,81 @@ export default function CustomMCQTakePage() {
         </div>
       )}
       
+      {/* Coding Lock Warning Banner */}
+      {showCodingLockWarning && (
+        <div
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: "rgba(0, 0, 0, 0.5)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 10000,
+            padding: "2rem",
+          }}
+        >
+          <div
+            style={{
+              backgroundColor: "#ffffff",
+              borderRadius: "0.75rem",
+              padding: "2rem",
+              maxWidth: "500px",
+              width: "100%",
+              border: "2px solid #ef4444",
+              boxShadow: "0 10px 25px rgba(0, 0, 0, 0.2)",
+            }}
+          >
+            <div style={{ marginBottom: "1.5rem" }}>
+              <h2 style={{ color: "#ef4444", marginBottom: "1rem", fontSize: "1.5rem" }}>
+                ⚠️ Warning: Moving to {questions[pendingNavigationIndex || 0]?.questionType === "mcq" ? "MCQ" : "Subjective"} Questions
+              </h2>
+              <p style={{ color: "#1E5A3B", fontSize: "1rem", lineHeight: "1.6" }}>
+                The Coding section will be locked once you proceed. You will not be able to change your coding answers after this.
+              </p>
+            </div>
+            <div style={{ display: "flex", gap: "1rem", justifyContent: "flex-end" }}>
+              <button
+                type="button"
+                onClick={handleCancelSectionLock}
+                style={{
+                  padding: "0.75rem 1.5rem",
+                  backgroundColor: "#ffffff",
+                  border: "2px solid #A8E8BC",
+                  borderRadius: "0.5rem",
+                  color: "#1E5A3B",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmCodingLock}
+                style={{
+                  padding: "0.75rem 1.5rem",
+                  backgroundColor: "#ef4444",
+                  border: "none",
+                  borderRadius: "0.5rem",
+                  color: "#ffffff",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
+                Continue
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      
       <div style={{ maxWidth: "1000px", margin: "0 auto", display: "flex", gap: "2rem" }}>
-        {/* Phase Indicator (Left Panel) - Only show if both types exist */}
-        {hasBothTypes && examStarted && (
+        {/* Phase Indicator (Left Panel) - Show if multiple question types exist or if exam started */}
+        {(hasBothTypes || hasCoding || hasMCQ || hasSubjective) && examStarted && (
           <div style={{ width: "200px", flexShrink: 0 }}>
             <div
               style={{
@@ -1479,13 +1716,35 @@ export default function CustomMCQTakePage() {
                     )}
                   </div>
                 )}
+                {hasCoding && (
+                  <div
+                    style={{
+                      padding: "0.75rem",
+                      border: isCoding ? "2px solid #2D7A52" : codingSubmitted ? "1px solid #10b981" : "1px solid #A8E8BC",
+                      borderRadius: "0.5rem",
+                      backgroundColor: isCoding ? "#C9F4D4" : codingSubmitted ? "#dcfce7" : "#ffffff",
+                      color: "#1E5A3B",
+                      fontWeight: isCoding ? 600 : 400,
+                      textAlign: "left",
+                      opacity: codingSubmitted && !isCoding ? 0.7 : 1,
+                    }}
+                  >
+                    <div>Coding</div>
+                    {codingSubmitted && (
+                      <div style={{ fontSize: "0.75rem", color: "#10b981", marginTop: "0.25rem" }}>✓ Completed</div>
+                    )}
+                    {isCoding && (
+                      <div style={{ fontSize: "0.75rem", color: "#2D7A52", marginTop: "0.25rem" }}>Current</div>
+                    )}
+                  </div>
+                )}
                 {hasSubjective && (
                   <div
                     style={{
                       padding: "0.75rem",
-                      border: !isMCQ ? "2px solid #2D7A52" : "1px solid #A8E8BC",
+                      border: isSubjective ? "2px solid #2D7A52" : "1px solid #A8E8BC",
                       borderRadius: "0.5rem",
-                      backgroundColor: !isMCQ ? "#C9F4D4" : "#ffffff",
+                      backgroundColor: isSubjective ? "#C9F4D4" : "#ffffff",
                       color: "#1E5A3B",
                       fontWeight: !isMCQ ? 600 : 400,
                       textAlign: "left",
@@ -1531,7 +1790,7 @@ export default function CustomMCQTakePage() {
               
               if (enablePerSectionTimers && examStarted) {
                 // Show both per-section timer and global duration timer
-                const currentSection = assessmentPhase === "mcq" ? "MCQ" : "Subjective";
+                const currentSection = assessmentPhase === "mcq" ? "MCQ" : assessmentPhase === "coding" ? "Coding" : "Subjective";
                 const currentTimer = sectionTimers[currentSection] || 0;
                 const isLocked = lockedSections.has(assessmentPhase);
                 
@@ -1668,6 +1927,8 @@ export default function CustomMCQTakePage() {
               <span style={{ color: "#2D7A52", fontWeight: 600 }}>
                 {isMCQ 
                   ? `MCQ Question ${actualIndex + 1} of ${questions.length}`
+                  : isCoding
+                  ? `Coding Question ${actualIndex + 1} of ${questions.length}`
                   : `Subjective Question ${actualIndex + 1} of ${questions.length}`
                 }
               </span>
@@ -1680,6 +1941,19 @@ export default function CustomMCQTakePage() {
                 {currentQuestion.marks || 1} marks
               </span>
               {mcqSubmitted && isMCQ && (
+                <span style={{ 
+                  marginLeft: "1rem",
+                  padding: "0.25rem 0.5rem", 
+                  backgroundColor: "#fee2e2", 
+                  color: "#991b1b",
+                  borderRadius: "0.25rem",
+                  fontSize: "0.875rem",
+                  fontWeight: 600
+                }}>
+                  Locked
+                </span>
+              )}
+              {codingSubmitted && isCoding && (
                 <span style={{ 
                   marginLeft: "1rem",
                   padding: "0.25rem 0.5rem", 
@@ -1736,6 +2010,43 @@ export default function CustomMCQTakePage() {
                   );
                 })}
               </div>
+            ) : isCoding ? (
+              <div>
+                <label style={{ display: "block", marginBottom: "0.5rem", fontWeight: 600, color: "#1E5A3B" }}>
+                  Your Code
+                </label>
+                <div style={{ border: "1px solid #A8E8BC", borderRadius: "0.5rem", overflow: "hidden" }}>
+                  <MonacoEditor
+                    height="500px"
+                    language="python"
+                    value={currentCodeAnswer}
+                    onChange={(value) => {
+                      if (codingSubmitted && isCoding) return;
+                      const newCode = value || "";
+                      setCodeAnswers(prev => ({ ...prev, [currentQuestion.id!]: newCode }));
+                      codeAnswersRef.current = { ...codeAnswersRef.current, [currentQuestion.id!]: newCode };
+                    }}
+                    theme="vs-dark"
+                    options={{
+                      minimap: { enabled: false },
+                      fontSize: 14,
+                      wordWrap: "on",
+                      lineNumbers: "on",
+                      roundedSelection: false,
+                      scrollBeyondLastLine: false,
+                      readOnly: codingSubmitted && isCoding,
+                      cursorStyle: "line",
+                      automaticLayout: true,
+                      tabSize: 2,
+                      insertSpaces: true,
+                      suggestOnTriggerCharacters: true,
+                      quickSuggestions: true,
+                      fontFamily: "'Fira Code', 'Consolas', 'Monaco', 'Courier New', monospace",
+                      fontLigatures: true,
+                    }}
+                  />
+                </div>
+              </div>
             ) : (
               <div>
                 <label style={{ display: "block", marginBottom: "0.5rem", fontWeight: 600, color: "#1E5A3B" }}>
@@ -1779,7 +2090,7 @@ export default function CustomMCQTakePage() {
             type="button"
             onClick={async () => {
               // Save answer log for current subjective question before navigating
-              if (currentQuestion && !isMCQ && currentQuestion.id) {
+              if (currentQuestion && !isMCQ && !isCoding && currentQuestion.id) {
                 const currentAnswer = textAnswersRef.current[currentQuestion.id] || "";
                 if (currentAnswer.trim()) {
                   await saveAnswerLog(currentQuestion.id, currentAnswer);
@@ -1789,7 +2100,9 @@ export default function CustomMCQTakePage() {
               // Navigate to previous question (any type)
               const prevIndex = actualIndex - 1;
               if (prevIndex >= 0) {
-                setCurrentQuestionIndex(prevIndex);
+                if (checkAndShowSectionLockWarning(prevIndex)) {
+                  setCurrentQuestionIndex(prevIndex);
+                }
               }
             }}
             disabled={actualIndex === 0}
@@ -1806,11 +2119,17 @@ export default function CustomMCQTakePage() {
           <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", justifyContent: "center" }}>
             {questions.map((q, idx) => {
               const isQMCQ = q.questionType === "mcq" || ("options" in q && "correctAn" in q);
+              const isQCoding = q.questionType === "coding" || 
+                q.questionType?.toLowerCase() === "coding" ||
+                (q.section?.toLowerCase() === "coding" && !("options" in q && "correctAn" in q));
+              const isQSubjective = q.questionType === "subjective" && !("options" in q && "correctAn" in q);
               const hasAnswer = isQMCQ 
                 ? (answers[q.id || ""]?.length > 0)
+                : isQCoding
+                ? (codeAnswers[q.id || ""]?.trim().length > 0)
                 : (textAnswers[q.id || ""]?.trim().length > 0);
               const isCurrent = idx === actualIndex;
-              const isLocked = mcqSubmitted && isQMCQ;
+              const isLocked = (mcqSubmitted && isQMCQ) || (codingSubmitted && isQCoding);
               
               return (
                 <button
@@ -1818,15 +2137,14 @@ export default function CustomMCQTakePage() {
                   type="button"
                   onClick={async () => {
                     // Save answer log for current subjective question before navigating
-                    if (currentQuestion && !isMCQ && currentQuestion.id) {
+                    if (currentQuestion && !isMCQ && !isCoding && currentQuestion.id) {
                       const currentAnswer = textAnswersRef.current[currentQuestion.id] || "";
                       if (currentAnswer.trim()) {
                         await saveAnswerLog(currentQuestion.id, currentAnswer);
                       }
                     }
                     
-                    // Check if navigating from MCQ to Subjective and show warning
-                    if (!checkAndShowMCQLockWarning(idx)) {
+                    if (!checkAndShowSectionLockWarning(idx)) {
                       return; // Warning shown, wait for user confirmation
                     }
                     
@@ -1854,26 +2172,26 @@ export default function CustomMCQTakePage() {
           {actualIndex < questions.length - 1 ? (
             <button
               type="button"
-              onClick={async () => {
-                // Save answer log for current subjective question before navigating
-                if (currentQuestion && !isMCQ && currentQuestion.id) {
-                  const currentAnswer = textAnswersRef.current[currentQuestion.id] || "";
-                  if (currentAnswer.trim()) {
-                    await saveAnswerLog(currentQuestion.id, currentAnswer);
-                  }
-                }
-                
-                // Navigate to next question (any type)
-                const nextIndex = actualIndex + 1;
-                if (nextIndex < questions.length) {
-                  // Check if navigating from MCQ to Subjective and show warning
-                  if (!checkAndShowMCQLockWarning(nextIndex)) {
-                    return; // Warning shown, wait for user confirmation
-                  }
-                  
-                  setCurrentQuestionIndex(nextIndex);
-                }
-              }}
+                  onClick={async () => {
+                    // Save answer log for current subjective question before navigating
+                    if (currentQuestion && !isMCQ && !isCoding && currentQuestion.id) {
+                      const currentAnswer = textAnswersRef.current[currentQuestion.id] || "";
+                      if (currentAnswer.trim()) {
+                        await saveAnswerLog(currentQuestion.id, currentAnswer);
+                      }
+                    }
+                    
+                    // Navigate to next question (any type)
+                    const nextIndex = actualIndex + 1;
+                    if (nextIndex < questions.length) {
+                      // Check if navigating from MCQ to Subjective and show warning
+                      if (!checkAndShowSectionLockWarning(nextIndex)) {
+                        return; // Warning shown, wait for user confirmation
+                      }
+                      
+                      setCurrentQuestionIndex(nextIndex);
+                    }
+                  }}
               className="btn-primary"
               style={{ padding: "0.75rem 1.5rem" }}
             >

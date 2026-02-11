@@ -13,7 +13,8 @@ class Settings(BaseSettings):
     jwt_secret: str = "change-me"  # Not used directly, but needed for shared utilities
     jwt_algorithm: str = "HS256"
     cors_origins: str = "http://localhost:3000,https://gisul-ai-assessment.vercel.app"
-    redis_url: str = "redis://localhost:6379/0"
+    # Redis configuration (read from .env file)
+    redis_url: str = "redis://localhost:6379/0"  # Default fallback, override with REDIS_URL in .env
     # OpenAI
     openai_api_key: str | None = None
     # Gemini

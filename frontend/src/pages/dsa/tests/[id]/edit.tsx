@@ -61,10 +61,10 @@ export default function EditDSACompetencyPage() {
   const { id } = router.query;
   const testId = typeof id === "string" ? id : null;
 
-  // Use React Query hooks
+  // Use React Query hooks - use lightweight questions for edit page
   const testIdStr = testId || undefined;
   const { data: testData, isLoading: loadingTest, error: testError } = useDSATest(testIdStr);
-  const { data: questionsData, isLoading: loadingQuestions } = useDSAQuestions();
+  const { data: questionsData, isLoading: loadingQuestions } = useDSAQuestions(true); // lightweight=true
   const updateTestMutation = useUpdateDSATest();
   
   const questions = questionsData || [];
@@ -364,11 +364,14 @@ export default function EditDSACompetencyPage() {
     }
   };
 
-  if (loadingTest) {
+  // Show loading state while fetching test or questions data
+  if (loadingTest || loadingQuestions || !testData) {
     return (
       <div className="min-h-screen bg-background">
         <div className="container mx-auto px-4 py-8">
-          <div className="text-center">Loading...</div>
+          <div className="text-center">
+            {loadingTest ? "Loading test data..." : loadingQuestions ? "Loading questions..." : "Loading..."}
+          </div>
         </div>
       </div>
     );

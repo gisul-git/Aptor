@@ -11,7 +11,7 @@ import apiClient from '@/services/api/client'
 import { ArrowLeft, Lightbulb, CheckCircle2, TrendingUp, AlertTriangle, Eye, Clock, Video, Loader2, Download } from 'lucide-react'
 import ProctorLogsReview from '../../../../components/admin/ProctorLogsReview'
 import { LiveProctoringDashboard } from '../../../../components/proctor'
-import { useDSATest, useDSACandidates, useDSACandidateAnalytics, useAddDSACandidate, useRemoveDSACandidate, useSendDSAInvitation, useSendDSAInvitationsToAll, useDSACandidateResume, useSendDSAFeedback, useBulkAddDSACandidates, useUpdateDSATest, type CandidateAnalytics, type QuestionAnalytics } from '@/hooks/api/useDSA'
+import { useDSATest, useDSACandidates, useDSACandidateAnalytics, useAddDSACandidate, useRemoveDSACandidate, useSendDSAInvitation, useSendDSAInvitationsToAll, useDSACandidateResume, useSendDSAFeedback, useBulkAddDSACandidates, useUpdateDSATest, usePatchDSATest, type CandidateAnalytics, type QuestionAnalytics } from '@/hooks/api/useDSA'
 import { useEmployees, type Employee } from '@/hooks/api/useEmployees'
 import { isSQLQuestion } from '@/hooks/api/useSQL'
 import SQLAnalyticsView from '@/components/dsa/analytics/SQLAnalyticsView'
@@ -94,6 +94,7 @@ export default function AnalyticsPage() {
   const sendFeedbackMutation = useSendDSAFeedback()
   const bulkAddCandidatesMutation = useBulkAddDSACandidates()
   const updateTestMutation = useUpdateDSATest()
+  const patchTestMutation = usePatchDSATest()
   
   const [candidates, setCandidates] = useState<Candidate[]>([])
   const [selectedCandidate, setSelectedCandidate] = useState<string | null>(null)
@@ -113,9 +114,10 @@ export default function AnalyticsPage() {
   const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null) 
   const [selectedEmployees, setSelectedEmployees] = useState<Employee[]>([]) 
 
+  // Fetch all employees (not just first page) when modal is open
   const { data: employeesData, isLoading: employeesLoading } = useEmployees({
     page: 1,
-    limit: 20,
+    limit: 100, // Increased limit to show more employees
     search: employeeSearch || undefined,
   })
   
@@ -124,11 +126,16 @@ export default function AnalyticsPage() {
       setTestInfo(testInfoData)
       const testData = testInfoData as any
       if (testData.invitationTemplate) {
-        setEmailTemplate(testData.invitationTemplate)
+        // Ensure subject field exists for backward compatibility
+        setEmailTemplate({
+          ...testData.invitationTemplate,
+          subject: testData.invitationTemplate.subject || "DSA Test Invitation"
+        })
       } else {
         setEmailTemplate({
           logoUrl: "",
           companyName: "",
+          subject: "DSA Test Invitation",
           message: "You have been invited to take a DSA test. Please click the link below to start.",
           footer: "",
           sentBy: "AI Assessment Platform"
@@ -156,12 +163,15 @@ export default function AnalyticsPage() {
   const [emailTemplate, setEmailTemplate] = useState({
     logoUrl: "",
     companyName: "",
+    subject: "DSA Test Invitation",
     message: "You have been invited to take a DSA test. Please click the link below to start.",
     footer: "",
     sentBy: "AI Assessment Platform"
   })
   const [savingTemplate, setSavingTemplate] = useState(false)
   const [sendingInvitations, setSendingInvitations] = useState(false)
+  const [isEmailTemplateForSending, setIsEmailTemplateForSending] = useState(false) // Track if modal is opened for sending emails
+  const [resendCandidateEmail, setResendCandidateEmail] = useState<string | null>(null) // Track which candidate email to resend to
   const [sendingFeedback, setSendingFeedback] = useState<string | null>(null)
   const [showLiveProctoring, setShowLiveProctoring] = useState(false)
   const [isLiveProctoringCooldown, setIsLiveProctoringCooldown] = useState(false)
@@ -447,13 +457,19 @@ export default function AnalyticsPage() {
   const handleAddCandidate = async () => {
     if (!testId || typeof testId !== 'string') return
     
-    // Support both single and multi-select
-    const employeesToAdd = selectedEmployees.length > 0 ? selectedEmployees : (selectedEmployee ? [selectedEmployee] : [])
+    // IMPORTANT: Only use selectedEmployees array - ensure we only add explicitly selected employees
+    // Create a copy to avoid any reference issues
+    const employeesToAdd = selectedEmployees.length > 0 ? [...selectedEmployees] : []
     
     if (employeesToAdd.length === 0) {
       setEmailError("Please select at least one employee from your organization.")
       return
     }
+    
+    // Log for debugging - can be removed in production
+    console.log(`[handleAddCandidate] Adding ${employeesToAdd.length} selected employee(s):`, 
+      employeesToAdd.map(e => ({ name: e.name, email: e.email, aaptorId: e.aaptorId }))
+    )
     
     setEmailError(null)
     setAddingCandidate(true)
@@ -520,7 +536,12 @@ export default function AnalyticsPage() {
     }
   }
   
-  const handleEmployeeToggle = (emp: Employee) => {
+  const handleEmployeeToggle = (emp: Employee, event?: React.MouseEvent | React.ChangeEvent) => {
+    // Prevent event propagation to avoid double-triggering
+    if (event) {
+      event.stopPropagation()
+    }
+    
     setSelectedEmployees(prev => {
       const isSelected = prev.some(e => e.aaptorId === emp.aaptorId)
       if (isSelected) {
@@ -541,13 +562,37 @@ export default function AnalyticsPage() {
   const handleResendInvitation = async (email: string) => {
     if (!testId || typeof testId !== 'string') return
     
-    try {
-      await sendInvitationMutation.mutateAsync({ testId: testId!, email })
-      alert("Invitation sent successfully!")
-      await refetchCandidates()
-    } catch (err: any) {
-      alert(err.response?.data?.detail || err.response?.data?.message || "Failed to resend invitation")
+    // Find the candidate to get their name
+    const candidate = candidates.find(c => c.email === email)
+    const candidateName = candidate?.name || "Candidate"
+    
+    // Use existing template if available, otherwise use default
+    if (testInfo?.invitationTemplate) {
+      // Pre-fill with saved template
+      setEmailTemplate({
+        logoUrl: testInfo.invitationTemplate.logoUrl || "",
+        companyName: testInfo.invitationTemplate.companyName || "",
+        subject: testInfo.invitationTemplate.subject || "DSA Test Invitation",
+        message: testInfo.invitationTemplate.message || "You have been invited to take a DSA test. Please click the link below to start.",
+        footer: testInfo.invitationTemplate.footer || "",
+        sentBy: testInfo.invitationTemplate.sentBy || "AI Assessment Platform"
+      })
+    } else {
+      // Reset template to default if no saved template exists
+      setEmailTemplate({
+        logoUrl: "",
+        companyName: "",
+        subject: "DSA Test Invitation",
+        message: "You have been invited to take a DSA test. Please click the link below to start.",
+        footer: "",
+        sentBy: "AI Assessment Platform"
+      })
     }
+    
+    // Set the candidate email for single resend
+    setResendCandidateEmail(email)
+    setIsEmailTemplateForSending(true)
+    setShowEmailTemplateModal(true)
   }
 
   const handleRemoveCandidate = async (userId: string) => {
@@ -582,8 +627,8 @@ export default function AnalyticsPage() {
     
     setSavingTemplate(true)
     try {
-      // Update test with email template
-      await updateTestMutation.mutateAsync({
+      // Update test with email template using PATCH (partial update)
+      await patchTestMutation.mutateAsync({
         testId,
         data: {
           invitationTemplate: emailTemplate
@@ -597,6 +642,8 @@ export default function AnalyticsPage() {
       }))
       
       setShowEmailTemplateModal(false)
+      setIsEmailTemplateForSending(false)
+      setResendCandidateEmail(null)
       alert("Email template saved successfully!")
     } catch (err: any) {
       alert(err.response?.data?.detail || err.response?.data?.message || "Failed to save email template")
@@ -613,37 +660,161 @@ export default function AnalyticsPage() {
       return
     }
     
-    if (!confirm(`Send invitation emails to all ${candidates.length} candidates?`)) {
+    // Use existing template if available, otherwise use default
+    if (testInfo?.invitationTemplate) {
+      // Pre-fill with saved template
+      setEmailTemplate({
+        logoUrl: testInfo.invitationTemplate.logoUrl || "",
+        companyName: testInfo.invitationTemplate.companyName || "",
+        subject: testInfo.invitationTemplate.subject || "DSA Test Invitation",
+        message: testInfo.invitationTemplate.message || "You have been invited to take a DSA test. Please click the link below to start.",
+        footer: testInfo.invitationTemplate.footer || "",
+        sentBy: testInfo.invitationTemplate.sentBy || "AI Assessment Platform"
+      })
+    } else {
+      // Reset template to default if no saved template exists
+      setEmailTemplate({
+        logoUrl: "",
+        companyName: "",
+        subject: "DSA Test Invitation",
+        message: "You have been invited to take a DSA test. Please click the link below to start.",
+        footer: "",
+        sentBy: "AI Assessment Platform"
+      })
+    }
+    
+    // Clear any previous single resend state
+    setResendCandidateEmail(null)
+    
+    // Open email template modal for customization before sending
+    setIsEmailTemplateForSending(true)
+    setShowEmailTemplateModal(true)
+  }
+
+  const handleSendEmailsWithTemplate = async () => {
+    if (!testId || typeof testId !== 'string') return
+    
+    if (!emailTemplate.message.trim()) {
+      alert("Please enter an email message.")
       return
     }
     
-    setSendingInvitations(true)
-    try {
-      const response = await sendInvitationsToAllMutation.mutateAsync(testId!)
+    if (!emailTemplate.subject?.trim()) {
+      alert("Please enter an email subject.")
+      return
+    }
+    
+    // Check if this is a single resend or bulk send
+    const isSingleResend = resendCandidateEmail !== null
+    
+    if (isSingleResend) {
+      // Single candidate resend
+      if (!resendCandidateEmail) {
+        alert("No candidate email specified.")
+        return
+      }
       
-      if (response.data) {
-        const successCount = response.data.success_count || 0
-        const failedCount = response.data.failed_count || 0
+      // First, save the template to the test (so it's used for sending)
+      setSavingTemplate(true)
+      try {
+        // Update test with email template using PATCH (partial update)
+        await patchTestMutation.mutateAsync({
+          testId,
+          data: {
+            invitationTemplate: emailTemplate
+          } as any
+        })
         
-        // Refresh candidates list to show updated statuses
+        // Update local test info
+        setTestInfo((prev: any) => ({
+          ...prev,
+          invitationTemplate: emailTemplate
+        }))
+        
+        // Close the modal
+        setShowEmailTemplateModal(false)
+        setIsEmailTemplateForSending(false)
+        
+        // Send invitation to single candidate
+        setSendingInvitations(true)
+        await sendInvitationMutation.mutateAsync({ 
+          testId: testId!, 
+          email: resendCandidateEmail 
+        })
+        
+        // Refresh candidates list to show updated status
         await refetchCandidates()
         
-        if (failedCount === 0) {
-          alert(`Successfully sent invitation emails to all ${successCount} candidates!`)
-        } else {
-          alert(
-            `Invitation emails sent:\n` +
-            `✓ Success: ${successCount}\n` +
-            `✗ Failed: ${failedCount}\n\n` +
-            `Check the console for details.`
-          )
-          console.error("Failed emails:", response.data.failed)
-        }
+        const candidate = candidates.find(c => c.email === resendCandidateEmail)
+        const candidateName = candidate?.name || resendCandidateEmail
+        alert(`Successfully sent invitation email to ${candidateName}!`)
+        
+        // Reset resend candidate email (already done above, but ensure it's reset)
+        setResendCandidateEmail(null)
+      } catch (err: any) {
+        alert(err.response?.data?.detail || err.response?.data?.message || "Failed to send invitation email")
+      } finally {
+        setSavingTemplate(false)
+        setSendingInvitations(false)
       }
-    } catch (err: any) {
-      alert(err.response?.data?.detail || err.response?.data?.message || "Failed to send invitation emails")
-    } finally {
-      setSendingInvitations(false)
+    } else {
+      // Bulk send to all candidates
+      if (candidates.length === 0) {
+        alert("No candidates to send invitations to.")
+        return
+      }
+      
+      // First, save the template to the test (so it's used for sending)
+      setSavingTemplate(true)
+      try {
+        // Update test with email template using PATCH (partial update)
+        await patchTestMutation.mutateAsync({
+          testId,
+          data: {
+            invitationTemplate: emailTemplate
+          } as any
+        })
+        
+        // Update local test info
+        setTestInfo((prev: any) => ({
+          ...prev,
+          invitationTemplate: emailTemplate
+        }))
+        
+        // Close the modal
+        setShowEmailTemplateModal(false)
+        setIsEmailTemplateForSending(false)
+        setResendCandidateEmail(null)
+        
+        // Now send invitations to all candidates
+        setSendingInvitations(true)
+        const response = await sendInvitationsToAllMutation.mutateAsync(testId!)
+        
+        if (response.data) {
+          const successCount = response.data.success_count || 0
+          const failedCount = response.data.failed_count || 0
+          
+          // Refresh candidates list to show updated statuses
+          await refetchCandidates()
+          
+          if (failedCount === 0) {
+            alert(`Successfully sent invitation emails to all ${successCount} candidates!`)
+          } else {
+            alert(
+              `Invitation emails sent:\n` +
+              `✓ Success: ${successCount}\n` +
+              `✗ Failed: ${failedCount}\n\n` +
+              `Check the console for details.`
+            )
+            console.error("Failed emails:", response.data.failed)
+          }
+        }
+      } catch (err: any) {
+        alert(err.response?.data?.detail || err.response?.data?.message || "Failed to send invitation emails")
+      } finally {
+        setSavingTemplate(false)
+        setSendingInvitations(false)
+      }
     }
   }
 
@@ -2207,53 +2378,97 @@ export default function AnalyticsPage() {
                 )}
                 {!employeesLoading && (!employeesData?.employees || employeesData.employees.length === 0) && (
                   <p style={{ fontSize: "0.875rem", color: "#64748b", padding: "0.5rem" }}>
-                    No employees found. Try a different search.
+                    {employeeSearch ? "No employees found matching your search. Try a different search term." : "No employees found in your organization. Add employees in the Employee Management page first."}
                   </p>
                 )}
                 {!employeesLoading && employeesData?.employees && employeesData.employees.length > 0 && (
-                  <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
-                    {employeesData.employees.map((emp) => {
-                      const isSelected = selectedEmployees.some(e => e.aaptorId === emp.aaptorId)
-                      return (
-                        <li
-                          key={emp.aaptorId}
-                          onClick={() => handleEmployeeToggle(emp)}
-                          style={{
-                            padding: "0.5rem 0.75rem",
-                            marginBottom: "0.25rem",
-                            borderRadius: "0.375rem",
-                            cursor: "pointer",
-                            backgroundColor: isSelected ? "#dcfce7" : "transparent",
-                            border: isSelected ? "1px solid #22c55e" : "1px solid transparent",
-                            display: "flex",
-                            alignItems: "center",
-                            gap: "0.75rem",
-                          }}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={isSelected}
-                            onChange={() => handleEmployeeToggle(emp)}
-                            onClick={(e) => e.stopPropagation()}
+                  <>
+                    <div style={{ 
+                      fontSize: "0.75rem", 
+                      color: "#64748b", 
+                      padding: "0.5rem 0.75rem", 
+                      marginBottom: "0.5rem",
+                      backgroundColor: "#f1f5f9",
+                      borderRadius: "0.375rem",
+                      border: "1px solid #e2e8f0"
+                    }}>
+                      💡 <strong>Tip:</strong> Select employees from your organization below. They will only be added as candidates when you click "Add Candidate" button.
+                    </div>
+                    <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
+                      {employeesData.employees.map((emp) => {
+                        // Check if employee is already a candidate
+                        const isAlreadyCandidate = candidates.some(c => 
+                          c.email?.toLowerCase() === emp.email?.toLowerCase() || 
+                          c.user_id === emp.aaptorId
+                        )
+                        const isSelected = selectedEmployees.some(e => e.aaptorId === emp.aaptorId)
+                        return (
+                          <li
+                            key={emp.aaptorId}
                             style={{
-                              width: "1.125rem",
-                              height: "1.125rem",
-                              cursor: "pointer",
-                              accentColor: "#22c55e",
+                              padding: "0.5rem 0.75rem",
+                              marginBottom: "0.25rem",
+                              borderRadius: "0.375rem",
+                              cursor: isAlreadyCandidate ? "not-allowed" : "default",
+                              backgroundColor: isAlreadyCandidate 
+                                ? "#f1f5f9" 
+                                : isSelected 
+                                  ? "#dcfce7" 
+                                  : "transparent",
+                              border: isAlreadyCandidate
+                                ? "1px solid #cbd5e1"
+                                : isSelected 
+                                  ? "1px solid #22c55e" 
+                                  : "1px solid transparent",
+                              display: "flex",
+                              alignItems: "center",
+                              gap: "0.75rem",
+                              opacity: isAlreadyCandidate ? 0.6 : 1,
                             }}
-                          />
-                          <div style={{ flex: 1 }}>
-                            <div style={{ fontSize: "0.9rem", fontWeight: 600, color: "#0f172a" }}>
-                              {emp.name || emp.email}
+                            title={isAlreadyCandidate ? "This employee is already added as a candidate" : "Select checkbox to add this employee"}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              disabled={isAlreadyCandidate}
+                              onChange={(e) => {
+                                if (!isAlreadyCandidate) {
+                                  handleEmployeeToggle(emp, e)
+                                }
+                              }}
+                              onClick={(e) => e.stopPropagation()}
+                              style={{
+                                width: "1.125rem",
+                                height: "1.125rem",
+                                cursor: isAlreadyCandidate ? "not-allowed" : "pointer",
+                                accentColor: "#22c55e",
+                              }}
+                            />
+                            <div style={{ flex: 1 }}>
+                              <div style={{ fontSize: "0.9rem", fontWeight: 600, color: "#0f172a", display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                                {emp.name || emp.email}
+                                {isAlreadyCandidate && (
+                                  <span style={{ 
+                                    fontSize: "0.7rem", 
+                                    padding: "0.125rem 0.375rem", 
+                                    backgroundColor: "#e2e8f0", 
+                                    color: "#475569",
+                                    borderRadius: "0.25rem",
+                                    fontWeight: 500
+                                  }}>
+                                    Already Added
+                                  </span>
+                                )}
+                              </div>
+                              <div style={{ fontSize: "0.8rem", color: "#64748b" }}>
+                                {emp.email} &nbsp;•&nbsp; Aaptor ID: {emp.aaptorId}
+                              </div>
                             </div>
-                            <div style={{ fontSize: "0.8rem", color: "#64748b" }}>
-                              {emp.email} &nbsp;•&nbsp; Aaptor ID: {emp.aaptorId}
-                            </div>
-                          </div>
-                        </li>
-                      )
-                    })}
-                  </ul>
+                          </li>
+                        )
+                      })}
+                    </ul>
+                  </>
                 )}
               </div>
 
@@ -2297,7 +2512,7 @@ export default function AnalyticsPage() {
                   type="button"
                   className="btn-primary"
                   onClick={handleAddCandidate}
-                  disabled={addingCandidate || (selectedEmployees.length === 0 && !selectedEmployee)}
+                  disabled={addingCandidate || selectedEmployees.length === 0}
                   style={{ marginTop: 0 }}
                 >
                   {addingCandidate 
@@ -2327,8 +2542,10 @@ export default function AnalyticsPage() {
           zIndex: 1000,
         }}
         onClick={() => {
-          if (!savingTemplate) {
+          if (!savingTemplate && !sendingInvitations) {
             setShowEmailTemplateModal(false)
+            setIsEmailTemplateForSending(false)
+            setResendCandidateEmail(null)
           }
         }}
         >
@@ -2345,8 +2562,34 @@ export default function AnalyticsPage() {
           onClick={(e) => e.stopPropagation()}
           >
             <h2 style={{ fontSize: "1.5rem", fontWeight: 600, marginBottom: "1.5rem", color: "#2D7A52" }}>
-              Edit Email Template
+              {isEmailTemplateForSending 
+                ? (resendCandidateEmail 
+                    ? "Customize Email Template & Resend Invitation" 
+                    : "Customize Email Template & Send to All")
+                : "Edit Email Template"}
             </h2>
+            {isEmailTemplateForSending && (
+              <div style={{
+                padding: "0.75rem",
+                backgroundColor: resendCandidateEmail ? "#fef3c7" : "#f0fdf4",
+                border: `1px solid ${resendCandidateEmail ? "#f59e0b" : "#22c55e"}`,
+                borderRadius: "0.5rem",
+                marginBottom: "1rem",
+                fontSize: "0.875rem",
+                color: resendCandidateEmail ? "#92400e" : "#166534"
+              }}>
+                {resendCandidateEmail ? (
+                  <>
+                    💡 <strong>Customize your email template below, then click "Send Email" to resend invitation to this candidate.</strong>
+                    <div style={{ marginTop: "0.5rem", fontSize: "0.8125rem" }}>
+                      <strong>Recipient:</strong> {candidates.find(c => c.email === resendCandidateEmail)?.name || resendCandidateEmail} ({resendCandidateEmail})
+                    </div>
+                  </>
+                ) : (
+                  <>💡 <strong>Customize your email template below, then click "Send Emails" to send to all {candidates.length} candidate(s).</strong></>
+                )}
+              </div>
+            )}
             
             <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
               <div>
@@ -2371,13 +2614,13 @@ export default function AnalyticsPage() {
               
               <div>
                 <label style={{ display: "block", marginBottom: "0.5rem", fontWeight: 600, color: "#1e293b" }}>
-                  Company Name (optional)
+                  Email Subject <span style={{ color: "#ef4444" }}>*</span>
                 </label>
                 <input
                   type="text"
-                  value={emailTemplate.companyName}
-                  onChange={(e) => setEmailTemplate({ ...emailTemplate, companyName: e.target.value })}
-                  placeholder="Your Company Name"
+                  value={emailTemplate.subject || ""}
+                  onChange={(e) => setEmailTemplate({ ...emailTemplate, subject: e.target.value })}
+                  placeholder="DSA Test Invitation"
                   style={{
                     width: "100%",
                     padding: "0.75rem",
@@ -2385,8 +2628,11 @@ export default function AnalyticsPage() {
                     borderRadius: "0.5rem",
                     fontSize: "1rem",
                   }}
-                  disabled={savingTemplate}
+                  disabled={savingTemplate || sendingInvitations}
                 />
+                <p style={{ fontSize: "0.75rem", color: "#64748b", marginTop: "0.25rem" }}>
+                  Available placeholders: {"{{candidate_name}}"}, {"{{candidate_email}}"}
+                </p>
               </div>
               
               <div>
@@ -2406,10 +2652,10 @@ export default function AnalyticsPage() {
                     fontSize: "1rem",
                     fontFamily: "inherit",
                   }}
-                  disabled={savingTemplate}
+                  disabled={savingTemplate || sendingInvitations}
                 />
                 <p style={{ fontSize: "0.75rem", color: "#64748b", marginTop: "0.25rem" }}>
-                  Available placeholders: {"{{candidate_name}}"}, {"{{candidate_email}}"}, {"{{exam_url}}"}, {"{{company_name}}"}
+                  Available placeholders: {"{{candidate_name}}"}, {"{{candidate_email}}"}, {"{{exam_url}}"}
                 </p>
               </div>
               
@@ -2430,7 +2676,7 @@ export default function AnalyticsPage() {
                     fontSize: "1rem",
                     fontFamily: "inherit",
                   }}
-                  disabled={savingTemplate}
+                  disabled={savingTemplate || sendingInvitations}
                 />
               </div>
               
@@ -2450,7 +2696,7 @@ export default function AnalyticsPage() {
                     borderRadius: "0.5rem",
                     fontSize: "1rem",
                   }}
-                  disabled={savingTemplate}
+                  disabled={savingTemplate || sendingInvitations}
                 />
               </div>
               
@@ -2460,25 +2706,56 @@ export default function AnalyticsPage() {
                   className="btn-secondary"
                   onClick={() => {
                     setShowEmailTemplateModal(false)
+                    setIsEmailTemplateForSending(false)
+                    setResendCandidateEmail(null)
                     // Reset to saved template
                     if (testInfo?.invitationTemplate) {
                       setEmailTemplate(testInfo.invitationTemplate)
+                    } else {
+                      setEmailTemplate({
+                        logoUrl: "",
+                        companyName: "",
+                        subject: "DSA Test Invitation",
+                        message: "You have been invited to take a DSA test. Please click the link below to start.",
+                        footer: "",
+                        sentBy: "AI Assessment Platform"
+                      })
                     }
                   }}
-                  disabled={savingTemplate}
+                  disabled={savingTemplate || sendingInvitations}
                   style={{ marginTop: 0 }}
                 >
                   Cancel
                 </button>
-                <button
-                  type="button"
-                  className="btn-primary"
-                  onClick={handleSaveEmailTemplate}
-                  disabled={savingTemplate || !emailTemplate.message.trim()}
-                  style={{ marginTop: 0 }}
-                >
-                  {savingTemplate ? "Saving..." : "Save Template"}
-                </button>
+                {isEmailTemplateForSending ? (
+                  <button
+                    type="button"
+                    className="btn-primary"
+                    onClick={handleSendEmailsWithTemplate}
+                    disabled={savingTemplate || sendingInvitations || !emailTemplate.message.trim() || !emailTemplate.subject?.trim()}
+                    style={{ marginTop: 0 }}
+                  >
+                    {savingTemplate || sendingInvitations 
+                      ? (savingTemplate 
+                          ? "Saving Template..." 
+                          : (resendCandidateEmail 
+                              ? "Sending..." 
+                              : `Sending to ${candidates.length} candidate(s)...`)) 
+                      : (resendCandidateEmail 
+                          ? "Send Email" 
+                          : `Send Emails to ${candidates.length} Candidate(s)`)}
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className="btn-primary"
+                    onClick={handleSaveEmailTemplate}
+                    disabled={savingTemplate || !emailTemplate.message.trim() || !emailTemplate.subject?.trim()}
+                    style={{ marginTop: 0 }}
+                  >
+                    {savingTemplate ? "Saving..." : "Save Template"}
+                  </button>
+                )}
               </div>
             </div>
           </div>

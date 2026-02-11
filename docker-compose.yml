@@ -1,241 +1,336 @@
-version: "3.8"
+version: '3.8'
+
+services:
+  # MongoDB - Commented out, using MongoDB Atlas instead
+  # mongo:
+  #   image: mongo:7.0
+  #   container_name: gisul-mongo
+  #   ports:
+  #     - "27017:27017"
+  #   volumes:
+  #     - mongo_data:/data/db
+  #   environment:
+  #     - MONGO_INITDB_DATABASE=ai_assessment
+  #   networks:
+  #     - microservices-network
+
+  # Redis
+  redis:
+    image: redis:7-alpine
+    container_name: gisul-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - microservices-network
+
+  # Frontend
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: gisul-frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - NEXT_TELEMETRY_DISABLED=1
+      - NEXTAUTH_URL=${NEXTAUTH_URL:-https://qa.aaptor.com}
+      - NEXTAUTH_SECRET=${NEXTAUTH_SECRET}
+      - NEXT_PUBLIC_API_URL=https://qa.aaptor.com
+      - API_GATEWAY_URL=http://api-gateway:80
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
+      - AZURE_AD_CLIENT_ID=${AZURE_AD_CLIENT_ID}
+      - AZURE_AD_CLIENT_SECRET=${AZURE_AD_CLIENT_SECRET}
+      - AZURE_AD_TENANT_ID=${AZURE_AD_TENANT_ID:-common}
+    depends_on:
+      - api-gateway
+    networks:
+      - microservices-network
+    restart: unless-stopped
+
+  # API Gateway
+  api-gateway:
+    build:
+      context: ./services/api-gateway
+      dockerfile: Dockerfile
+    container_name: gisul-api-gateway
+    ports:
+      - "80:80"
+    environment:
+      - PORT=80
+      - AUTH_SERVICE_URL=http://auth-service:4000
+      - AI_ASSESSMENT_SERVICE_URL=http://ai-assessment-service:3001
+      - CUSTOM_MCQ_SERVICE_URL=http://custom-mcq-service:3002
+      - AIML_SERVICE_URL=http://aiml-service:3003
+      - DSA_SERVICE_URL=http://dsa-service:3004
+      - PROCTORING_SERVICE_URL=http://proctoring-service:3005
+      - SUPER_ADMIN_SERVICE_URL=http://super-admin-service:3006
+      - CORS_ORIGINS=${CORS_ORIGINS:-https://qa.aaptor.com,http://frontend:3000,http://localhost:3000,http://localhost:3001}
+      - EMPLOYEE_SERVICE_URL=${EMPLOYEE_SERVICE_URL:-http://employee-service:4005}
+    depends_on:
+      - auth-service
+    networks:
+      - microservices-network
+    restart: unless-stopped
+
+  # Auth Service
+  auth-service:
+    build:
+      context: ./services/auth-service
+      dockerfile: Dockerfile
+    container_name: gisul-auth-service
+    ports:
+      - "4000:4000"
+    environment:
+      - MONGO_URI=${MONGO_URI}
+      - MONGO_DB=auth_db
+      - JWT_SECRET=${JWT_SECRET}
+      - JWT_ALGORITHM=HS256
+      - JWT_EXP_MINUTES=60
+      - JWT_REFRESH_EXP_DAYS=30
+      - JWT_RSA_PRIVATE_KEY_PATH=${JWT_RSA_PRIVATE_KEY_PATH}
+      - JWT_RSA_PUBLIC_KEY_PATH=${JWT_RSA_PUBLIC_KEY_PATH}
+      - CORS_ORIGINS=${CORS_ORIGINS:-https://qa.aaptor.com,http://localhost:3000,http://frontend:3000}
+      - EMAIL_PROVIDER=${EMAIL_PROVIDER:-sendgrid}
+      - SENDGRID_API_KEY=${SENDGRID_API_KEY}
+      - SENDGRID_FROM_EMAIL=${SENDGRID_FROM_EMAIL}
+      - SENDGRID_FROM_NAME=${SENDGRID_FROM_NAME:-AI Assessment Platform}
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
+      - REDIS_URL=redis://redis:6379/0
+      - AWS_ACCESS_KEY=${AWS_ACCESS_KEY}
+      - AWS_SECRET_KEY=${AWS_SECRET_KEY}
+      - AWS_REGION=${AWS_REGION}
+      - AWS_EMAIL_SOURCE=${AWS_EMAIL_SOURCE}
+      - AZURE_COMM_CONNECTION_STRING=${AZURE_COMM_CONNECTION_STRING}
+      - AZURE_COMM_SENDER_ADDRESS=${AZURE_COMM_SENDER_ADDRESS}
+    depends_on:
+      - redis
+    networks:
+      - microservices-network
+    restart: unless-stopped
+
+  # AI Assessment Service
+  ai-assessment-service:
+    build:
+      context: ./services/ai-assessment-service
+      dockerfile: Dockerfile
+    container_name: gisul-ai-assessment-service
+    ports:
+      - "3001:3001"
+    environment:
+      - MONGO_URI=${MONGO_URI}
+      - MONGO_DB=ai_assessment_db
+      - REDIS_URL=redis://redis:6379/0
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - GEMINI_MODEL_SUMMARY=${GEMINI_MODEL_SUMMARY:-gemini-pro}
+      - CORS_ORIGINS=${CORS_ORIGINS:-https://qa.aaptor.com,http://localhost:3000,http://frontend:3000}
+      - AIML_SERVICE_URL=${AIML_SERVICE_URL:-http://aiml-service:3003}
+      - DSA_SERVICE_URL=${DSA_SERVICE_URL:-http://dsa-service:3004}
+      - AWS_ACCESS_KEY=${AWS_ACCESS_KEY}
+      - AWS_SECRET_KEY=${AWS_SECRET_KEY}
+      - AWS_REGION=${AWS_REGION}
+      - EMAIL_PROVIDER=${EMAIL_PROVIDER:-sendgrid}
+      - SENDGRID_API_KEY=${SENDGRID_API_KEY}
+      - SENDGRID_FROM_EMAIL=${SENDGRID_FROM_EMAIL}
+      - DEBUG=${DEBUG:-false}
+    depends_on:
+      - redis
+    networks:
+      - microservices-network
+    restart: unless-stopped
+    # Note: Service routes need to be copied from backend/app/api/v1/assessments/*
+
+  # Custom MCQ Service
+  custom-mcq-service:
+    build:
+      context: ./services/custom-mcq-service
+      dockerfile: Dockerfile
+    container_name: gisul-custom-mcq-service
+    ports:
+      - "3002:3002"
+    environment:
+      - MONGO_URI=${MONGO_URI}
+      - MONGO_DB=custom_mcq_db
+      - REDIS_URL=redis://redis:6379/0
+      - CORS_ORIGINS=${CORS_ORIGINS:-https://qa.aaptor.com,http://localhost:3000,http://frontend:3000}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - EMAIL_PROVIDER=${EMAIL_PROVIDER:-sendgrid}
+      - SENDGRID_API_KEY=${SENDGRID_API_KEY}
+      - SENDGRID_FROM_EMAIL=${SENDGRID_FROM_EMAIL}
+      - SENDGRID_FROM_NAME=${SENDGRID_FROM_NAME:-AI Assessment Platform}
+    depends_on:
+      - redis
+    networks:
+      - microservices-network
+    restart: unless-stopped
+
+  # AIML Service
+  aiml-service:
+    build:
+      context: ./services/aiml-service
+      dockerfile: Dockerfile
+    container_name: gisul-aiml-service
+    ports:
+      - "3003:3003"
+    environment:
+      - MONGO_URI=${MONGO_URI}
+      - MONGO_DB=aiml_db
+      - REDIS_URL=redis://redis:6379/0
+      - CORS_ORIGINS=${CORS_ORIGINS:-https://qa.aaptor.com,http://localhost:3000,http://frontend:3000}
+      - EMAIL_PROVIDER=${EMAIL_PROVIDER:-sendgrid}
+      - SENDGRID_API_KEY=${SENDGRID_API_KEY}
+      - SENDGRID_FROM_EMAIL=${SENDGRID_FROM_EMAIL}
+      - SENDGRID_FROM_NAME=${SENDGRID_FROM_NAME:-AI Assessment Platform}
+      - AWS_ACCESS_KEY=${AWS_ACCESS_KEY}
+      - AWS_SECRET_KEY=${AWS_SECRET_KEY}
+      - AWS_REGION=${AWS_REGION}
+      - AWS_EMAIL_SOURCE=${AWS_EMAIL_SOURCE}
+      - AZURE_COMM_CONNECTION_STRING=${AZURE_COMM_CONNECTION_STRING}
+      - AZURE_COMM_SENDER_ADDRESS=${AZURE_COMM_SENDER_ADDRESS}
+      - AIML_AGENT_SERVICE_URL=${AIML_AGENT_SERVICE_URL:-http://aiml-agent-service:8889}
+    depends_on:
+      - redis
+      - aiml-agent-service
+    networks:
+      - microservices-network
+    restart: unless-stopped
+
+  # AIML Agent Service
+  aiml-agent-service:
+    build:
+      context: ./services/aiml-agent-service
+      dockerfile: Dockerfile
+    container_name: gisul-aiml-agent-service
+    ports:
+      - "8889:8889"
+    volumes:
+      - aiml_agent_uploads:/app/agent/uploads
+    environment:
+      - PYTHONPATH=/app
+    networks:
+      - microservices-network
+    restart: unless-stopped
+
+  # DSA Service
+  dsa-service:
+    build:
+      context: ./services/dsa-service
+      dockerfile: Dockerfile
+    container_name: gisul-dsa-service
+    ports:
+      - "3004:3004"
+    environment:
+      - MONGO_URI=${MONGO_URI}
+      - MONGO_DB=dsa_db
+      - REDIS_URL=redis://redis:6379/0
+      - JUDGE0_URL=${JUDGE0_URL}
+      - JUDGE0_API_KEY=${JUDGE0_API_KEY}
+      - JUDGE0_TIMEOUT=${JUDGE0_TIMEOUT:-60}
+      - JUDGE0_POLL_INTERVAL=${JUDGE0_POLL_INTERVAL:-1.5}
+      - JUDGE0_MAX_POLLS=${JUDGE0_MAX_POLLS:-20}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - CUSTOM_PYTHON_ENGINE_URL=${CUSTOM_PYTHON_ENGINE_URL:-http://localhost:9000}
+      - USE_CUSTOM_ENGINE=${USE_CUSTOM_ENGINE:-true}
+      - SQL_ENGINE_URL=${SQL_ENGINE_URL}
+      - CORS_ORIGINS=${CORS_ORIGINS:-https://qa.aaptor.com,http://localhost:3000,http://frontend:3000}
+      - EMAIL_PROVIDER=${EMAIL_PROVIDER:-sendgrid}
+      - SENDGRID_API_KEY=${SENDGRID_API_KEY}
+      - SENDGRID_FROM_EMAIL=${SENDGRID_FROM_EMAIL}
+      - SENDGRID_FROM_NAME=${SENDGRID_FROM_NAME:-AI Assessment Platform}
+    depends_on:
+      - redis
+    networks:
+      - microservices-network
+    restart: unless-stopped
+
+  # Proctoring Service
+  proctoring-service:
+    build:
+      context: ./services/proctoring-service
+      dockerfile: Dockerfile
+    container_name: gisul-proctoring-service
+    ports:
+      - "3005:3005"
+    environment:
+      - MONGO_URI=${MONGO_URI}
+      - MONGO_DB=proctoring_db
+      - REDIS_URL=redis://redis:6379/1
+      - CORS_ORIGINS=${CORS_ORIGINS:-https://qa.aaptor.com,http://localhost:3000,http://frontend:3000}
+      - AWS_ACCESS_KEY=${AWS_ACCESS_KEY}
+      - AWS_SECRET_KEY=${AWS_SECRET_KEY}
+      - AWS_REGION=${AWS_REGION}
+      - AWS_S3_BUCKET=${AWS_S3_BUCKET}
+    depends_on:
+      - redis
+    networks:
+      - microservices-network
+    restart: unless-stopped
+
+  # Super Admin Service
+  super-admin-service:
+    build:
+      context: ./services/super-admin-service
+      dockerfile: Dockerfile
+    container_name: gisul-super-admin-service
+    ports:
+      - "3006:3006"
+    environment:
+      - MONGO_URI=${MONGO_URI}
+      - MONGO_DB=auth_db
+      - JWT_SECRET=${JWT_SECRET}
+      - JWT_ALGORITHM=HS256
+      - JWT_EXP_MINUTES=60
+      - JWT_REFRESH_EXP_DAYS=30
+      - JWT_RSA_PRIVATE_KEY_PATH=${JWT_RSA_PRIVATE_KEY_PATH}
+      - JWT_RSA_PUBLIC_KEY_PATH=${JWT_RSA_PUBLIC_KEY_PATH}
+      - CORS_ORIGINS=${CORS_ORIGINS:-https://qa.aaptor.com,http://localhost:3000,http://frontend:3000}
+      - DEBUG=${DEBUG:-false}
+    networks:
+      - microservices-network
+    restart: unless-stopped
+
+  # Employee Service
+  employee-service:
+    build:
+      context: ./services/employee-service
+      dockerfile: Dockerfile
+    container_name: gisul-employee-service
+    ports:
+      - "4005:4005"
+    environment:
+      - MONGO_URI=${MONGO_URI}
+      - MONGO_DB=employee_db
+      - ORG_ADMINS_DB=org_admins_db
+      - ORGANIZATION_MONGO_DB=organization_db
+      - JWT_SECRET=${JWT_SECRET}
+      - JWT_ALGORITHM=HS256
+      - CORS_ORIGINS=${CORS_ORIGINS:-https://qa.aaptor.com,http://localhost:3000,http://frontend:3000}
+      - NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL:-http://localhost:3000}
+      - EMAIL_PROVIDER=${EMAIL_PROVIDER:-sendgrid}
+      - SENDGRID_API_KEY=${SENDGRID_API_KEY}
+      - SENDGRID_FROM_EMAIL=${SENDGRID_FROM_EMAIL}
+      - SENDGRID_FROM_NAME=${SENDGRID_FROM_NAME:-AI Assessment Platform}
+      - AWS_ACCESS_KEY=${AWS_ACCESS_KEY}
+      - AWS_SECRET_KEY=${AWS_SECRET_KEY}
+      - AWS_REGION=${AWS_REGION}
+      - AWS_EMAIL_SOURCE=${AWS_EMAIL_SOURCE}
+      - AZURE_COMM_CONNECTION_STRING=${AZURE_COMM_CONNECTION_STRING}
+      - AZURE_COMM_SENDER_ADDRESS=${AZURE_COMM_SENDER_ADDRESS}
+      - DEBUG=${DEBUG:-false}
+    networks:
+      - microservices-network
+    restart: unless-stopped
+
+volumes:
+  # mongo_data:  # Not needed when using Atlas
+  redis_data:
+  aiml_agent_uploads:
 
 networks:
   microservices-network:
     driver: bridge
 
-volumes:
-  mongo_data:
-  postgres_data:
-  redis_data:
-  minio_data:
-  penpot_assets_data:
-
-services:
-
-  # ===========================
-  # INFRASTRUCTURE SERVICES
-  # ===========================
-
-  mongo:
-    image: mongo:7.0
-    restart: always
-    networks:
-      - microservices-network
-    ports:
-      - "27017:27017"
-    volumes:
-      - mongo_data:/data/db
-    environment:
-      MONGO_INITDB_DATABASE: ai_assessment
-    healthcheck:
-      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-  postgres:
-    image: postgres:15
-    restart: always
-    networks:
-      - microservices-network
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    environment:
-      POSTGRES_INITDB_ARGS: "--data-checksums"
-      POSTGRES_DB: penpot
-      POSTGRES_USER: penpot
-      POSTGRES_PASSWORD: penpot
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U penpot"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-  redis:
-    image: redis:7-alpine
-    restart: always
-    networks:
-      - microservices-network
-    ports:
-      - "6379:6379"
-    volumes:
-      - redis_data:/data
-    command: redis-server --appendonly yes
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-  minio:
-    image: minio/minio:latest
-    restart: always
-    networks:
-      - microservices-network
-    ports:
-      - "9000:9000"
-      - "9090:9090"
-    volumes:
-      - minio_data:/data
-    environment:
-      MINIO_ROOT_USER: minioadmin
-      MINIO_ROOT_PASSWORD: minioadmin
-    command: server /data --console-address ":9090"
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
-      interval: 30s
-      timeout: 20s
-      retries: 3
-
-  # ===========================
-  # PENPOT SERVICES
-  # ===========================
-
-  penpot-backend:
-    image: penpotapp/backend:latest
-    restart: always
-    networks:
-      - microservices-network
-    volumes:
-      - penpot_assets_data:/opt/data/assets
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    environment:
-      PENPOT_FLAGS: "enable-registration enable-login-with-password disable-email-verification disable-secure-session-cookies"
-      PENPOT_DATABASE_URI: "postgresql://postgres/penpot"
-      PENPOT_DATABASE_USERNAME: "penpot"
-      PENPOT_DATABASE_PASSWORD: "penpot"
-      PENPOT_REDIS_URI: "redis://redis/0"
-      PENPOT_ASSETS_STORAGE_BACKEND: "assets-fs"
-      PENPOT_STORAGE_ASSETS_FS_DIRECTORY: "/opt/data/assets"
-      PENPOT_TELEMETRY_ENABLED: "false"
-      PENPOT_PUBLIC_URI: "http://localhost:9001"
-      PENPOT_SECRET_KEY: "super-secret-penpot-key"
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:6060/readyz"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
-
-  penpot-exporter:
-    image: penpotapp/exporter:latest
-    restart: always
-    networks:
-      - microservices-network
-    depends_on:
-      redis:
-        condition: service_healthy
-    environment:
-      PENPOT_PUBLIC_URI: "http://localhost:9001"
-      PENPOT_REDIS_URI: "redis://redis/0"
-      PENPOT_SECRET_KEY: "super-secret-penpot-key"
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:6061/readyz"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
-
-  penpot-frontend:
-    image: penpotapp/frontend:latest
-    restart: always
-    networks:
-      - microservices-network
-    depends_on:
-      penpot-backend:
-        condition: service_healthy
-      penpot-exporter:
-        condition: service_started
-    environment:
-      PENPOT_FLAGS: "enable-registration enable-login-with-password"
-    ports:
-      - "9001:8080"
-    healthcheck:
-      test: ["CMD", "true"]
-
-  # ===========================
-  # YOUR DESIGN SERVICE (ENHANCED)
-  # ===========================
-
-  design-service:
-    build: ./services/design-service
-    restart: always
-    networks:
-      - microservices-network
-    ports:
-      - "3006:3006"
-    volumes:
-      - ./services/design-service:/app
-      - ./penpot_submissions:/tmp/penpot_submissions
-    environment:
-      # Application
-      DEBUG: "true"
-      PORT: 3006
-      
-      # Database
-      MONGODB_URL: "mongodb://mongo:27017"
-      MONGODB_DB_NAME: "aptor_design"
-      
-      # JWT
-      JWT_SECRET_KEY: "${JWT_SECRET_KEY:-design-service-secret-key}"
-      JWT_ALGORITHM: "HS256"
-      JWT_EXPIRATION_HOURS: 24
-      
-      # AI Services
-      AI_PROVIDER: "${AI_PROVIDER:-openai}"
-      OPENAI_API_KEY: "${OPENAI_API_KEY:-}"
-      GEMINI_API_KEY: "${GEMINI_API_KEY:-}"
-      CLAUDE_API_KEY: "${CLAUDE_API_KEY:-}"
-      AI_MODEL: "${AI_MODEL:-gpt-4}"
-      
-      # Penpot API - backend direct (Docker network)
-      PENPOT_URL: "http://localhost:9001"
-      PENPOT_API_URL: "http://penpot-backend:6060"
-      PENPOT_PUBLIC_URI: "http://localhost:9001"
-      PENPOT_ACCESS_TOKEN: "${PENPOT_ACCESS_TOKEN:-}"
-      PENPOT_ADMIN_EMAIL: "${PENPOT_ADMIN_EMAIL:-admin@example.com}"
-      PENPOT_ADMIN_PASSWORD: "${PENPOT_ADMIN_PASSWORD:-12312312}"
-      
-      # MinIO Object Storage
-      MINIO_ENDPOINT: "minio:9000"
-      MINIO_ACCESS_KEY: "minioadmin"
-      MINIO_SECRET_KEY: "minioadmin"
-      MINIO_BUCKET: "design-submissions"
-      MINIO_SECURE: "false"
-      
-      # Redis
-      REDIS_HOST: "redis"
-      REDIS_PORT: 6379
-      REDIS_DB: 0
-      
-      # Proctoring Service
-      PROCTORING_SERVICE_URL: "http://proctoring-service:3005"
-      
-      # Evaluation Configuration
-      RULE_BASED_WEIGHT: 0.6
-      AI_BASED_WEIGHT: 0.4
-      DEFAULT_TEST_DURATION_MINUTES: 60
-      DEFAULT_EVALUATION_TIMEOUT_SECONDS: 120
-      
-    depends_on:
-      mongo:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-      minio:
-        condition: service_healthy
-      penpot-backend:
-        condition: service_healthy
-      penpot-frontend:
-        condition: service_started
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3006/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 30s

@@ -150,9 +150,6 @@ export default function AIMLTestTakePage() {
   const thumbVideoRef = useRef<HTMLVideoElement>(null)
   const liveProctoringServiceRef = useRef<CandidateLiveService | null>(null)
   const liveProctoringStartedRef = useRef(false)
-  const startSessionCalledRef = useRef(false) // Guard: prevent multiple start-session calls
-  const candidateWsRef = useRef<WebSocket | null>(null) // Store candidate WebSocket to pass to service
-  const candidateSessionIdRef = useRef<string | null>(null) // Store sessionId to pass to service
 
   const getViolationMessage = (eventType: string): string => {
     const messages: Record<string, string> = {
@@ -201,6 +198,19 @@ export default function AIMLTestTakePage() {
     }
   }, [setFullscreenLocked, incrementFullscreenExitCount, cameraProctorEnabled])
 
+  // Handle warning callback from universal proctoring (non-violation notifications)
+  const handleUniversalWarning = useCallback((warning: any) => {
+    if (warning.type === 'FACE_NOT_CLEARLY_VISIBLE') {
+      pushViolationToast({
+        id: `warning-${warning.type}-${Date.now()}`,
+        eventType: warning.type,
+        message: warning.message,
+        timestamp: new Date(warning.timestamp).toISOString(),
+        isWarning: true, // Mark as warning (yellow styling)
+      });
+    }
+  }, [])
+
   // Handle fullscreen re-entry - unlock the screen
   const handleRequestFullscreen = useCallback(async (): Promise<boolean> => {
     console.log('[AIML Take] Requesting fullscreen re-entry...');
@@ -233,6 +243,7 @@ export default function AIMLTestTakePage() {
     isFullscreen,
   } = useUniversalProctoring({
     onViolation: handleUniversalViolation,
+    onWarning: handleUniversalWarning,
     debug: debugMode,
   })
 
@@ -326,9 +337,14 @@ export default function AIMLTestTakePage() {
           assessmentId: localAssessmentIdStr,
         },
         videoElement: cameraProctorEnabled ? thumbVideoRef.current : null,
-      }).then((success) => {
+      }).then(async (success) => {
         if (success) {
           console.log('[AIML Take] ✅ Universal Proctoring started')
+          
+          // Start Agora Live Proctoring immediately after AI proctoring starts
+          if (liveProctoringEnabled && !liveProctoringStartedRef.current) {
+            await startLiveProctoring();
+          }
         } else {
           console.error('[AIML Take] ❌ Failed to start Universal Proctoring')
         }
@@ -336,8 +352,8 @@ export default function AIMLTestTakePage() {
     }
   }, [questions.length, isProctoringRunning, submitted, testId, candidateEmail, userId, cameraProctorEnabled, liveProctoringEnabled, startUniversalProctoring, isAdminPreview])
 
-  // ✅ PHASE 2.4: Lazy start function (called only when admin connects)
-  const startLiveProctoring = useCallback((sessionId: string, ws: WebSocket) => {
+  // Start Agora Live Proctoring when exam starts
+  const startLiveProctoring = useCallback(async () => {
     if (liveProctoringStartedRef.current) {
       console.log('[AIML Take] Live Proctoring already started')
       return
@@ -349,7 +365,12 @@ export default function AIMLTestTakePage() {
       email: candidateEmail,
     })
 
-    console.log('[AIML Take] 🚀 Admin connected! Starting WebRTC...')
+    if (!localAssessmentIdStr || !localCandidateIdStr) {
+      console.error('[AIML Take] Missing assessmentId or candidateId for live proctoring')
+      return
+    }
+
+    console.log('[AIML Take] 🚀 Starting Agora Live Proctoring...')
     liveProctoringStartedRef.current = true
 
     // Extract raw candidateId for live proctoring (remove email: or public: prefix)
@@ -361,173 +382,57 @@ export default function AIMLTestTakePage() {
       rawCandidateId = localCandidateIdStr.replace('public:', '');
     }
 
-    const liveService = new CandidateLiveService({
-      assessmentId: localAssessmentIdStr,
-      candidateId: rawCandidateId, // Use raw email/token for live proctoring
-      debugMode: debugMode,
-    })
+    try {
+      const liveService = new CandidateLiveService({
+        assessmentId: localAssessmentIdStr,
+        candidateId: rawCandidateId,
+        debugMode: debugMode,
+      })
 
-    const existingWebcamStream = thumbVideoRef.current?.srcObject as MediaStream | null
+      // Wait for webcam stream to be available (from AI proctoring)
+      const existingWebcamStream = thumbVideoRef.current?.srcObject as MediaStream | null
+      
+      // If webcam not ready yet, wait a bit
+      let webcamStream = existingWebcamStream;
+      if (!webcamStream || !webcamStream.active) {
+        console.log('[AIML Take] ⏳ Waiting for webcam stream...')
+        let retries = 0;
+        while (retries < 20 && (!webcamStream || !webcamStream.active)) {
+          await new Promise(resolve => setTimeout(resolve, 500));
+          webcamStream = thumbVideoRef.current?.srcObject as MediaStream | null;
+          retries++;
+        }
+      }
 
-    liveService.start(
-      {
-        onStateChange: (state) => {
-          console.log('[AIML Take] Live proctoring state:', state)
+      const success = await liveService.start(
+        {
+          onStateChange: (state) => {
+            console.log('[AIML Take] Live proctoring state:', state)
+          },
+          onError: (error) => {
+            console.error('[AIML Take] Live Proctoring error:', error)
+          },
         },
-        onError: (error) => {
-          console.error('[AIML Take] Live Proctoring error:', error)
-        },
-      },
-      liveProctorScreenStream,
-      existingWebcamStream,
-      sessionId, // Pass existing sessionId
-      ws // Pass existing WebSocket
-    ).then((success) => {
+        liveProctorScreenStream || null,
+        webcamStream || null,
+        null, // sessionId - not needed for Agora
+        null  // WebSocket - not needed for Agora
+      )
+
       if (success) {
-        console.log('[AIML Take] ✅ Live Proctoring WebRTC connected')
+        console.log('[AIML Take] ✅ Live Proctoring (Agora) started successfully')
         liveProctoringServiceRef.current = liveService
       } else {
         console.error('[AIML Take] ❌ Failed to start Live Proctoring')
         liveProctoringStartedRef.current = false
       }
-    })
+    } catch (error) {
+      console.error('[AIML Take] ❌ Error starting Live Proctoring:', error)
+      liveProctoringStartedRef.current = false
+    }
   }, [testId, userId, candidateEmail, debugMode, liveProctorScreenStream])
 
-  // ✅ PHASE 2: Lazy WebRTC - Register session and wait for admin signal
-  useEffect(() => {
-    const localAssessmentIdStr = String(testId || '')
-    const localCandidateIdStr = resolveUserIdForProctoring(null, {
-      urlParam: userId as string,
-      email: candidateEmail,
-    })
-    // Use the extracted state variable (matching DSA pattern)
-
-    // Debug: Log all conditions to identify which one is failing
-    console.log('[AIML Take] Live Proctoring registration check:', {
-      liveProctoringEnabled,
-      hasScreenStream: !!liveProctorScreenStream,
-      questionsCount: questions.length,
-      submitted,
-      hasAssessmentId: !!localAssessmentIdStr,
-      hasCandidateId: !!localCandidateIdStr,
-      assessmentId: localAssessmentIdStr,
-      candidateId: localCandidateIdStr,
-    })
-
-    // Check all conditions - match DSA pattern (register as soon as page loads, not wait for exam start)
-    if (!liveProctoringEnabled || !liveProctorScreenStream || questions.length === 0 || submitted || !localAssessmentIdStr || !localCandidateIdStr) {
-      console.log('[AIML Take] ⏸️ Live Proctoring registration skipped - conditions not met')
-      return
-    }
-
-    // Guard: Ensure start-session is called only once per candidate per test
-    if (startSessionCalledRef.current) {
-      console.log('[AIML Take] ⏭️ start-session already called, skipping to prevent duplicate sessions')
-      return
-    }
-
-    // Mark as called immediately to prevent race conditions
-    startSessionCalledRef.current = true
-
-    // Register live session (backend sets status to "candidate_initiated")
-    console.log('[AIML Take] 📝 Registering Live Proctoring session...')
-    
-    // Phase 2.2: Register session with backend
-    // Extract raw candidateId for live proctoring (remove email: or public: prefix)
-    // Live proctoring backend expects raw email or token, not formatted userId
-    let rawCandidateId = localCandidateIdStr;
-    if (localCandidateIdStr.startsWith('email:')) {
-      rawCandidateId = localCandidateIdStr.replace('email:', '');
-    } else if (localCandidateIdStr.startsWith('public:')) {
-      rawCandidateId = localCandidateIdStr.replace('public:', '');
-    }
-
-    fetch('/api/v1/proctor/live/start-session', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        assessmentId: localAssessmentIdStr,
-        candidateId: rawCandidateId, // Use raw email/token for live proctoring
-      }),
-    })
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.success && data.data?.sessionId) {
-          const sessionId = data.data.sessionId;
-          candidateSessionIdRef.current = sessionId;
-          console.log(`[AIML Take] ✅ Session registered: ${sessionId}`);
-
-          // Phase 2.3: Connect WebSocket and listen for ADMIN_CONNECTED
-          // CRITICAL FIX: Use backend URL instead of frontend URL
-          // Use rawCandidateId (without email: or public: prefix) for WebSocket URL
-          const { LIVE_PROCTORING_ENDPOINTS } = require("@/universal-proctoring/live/types");
-          const wsUrl = LIVE_PROCTORING_ENDPOINTS.candidateWs(sessionId, rawCandidateId);
-          console.log('[AIML Take] Candidate WS connecting to backend...', wsUrl);
-          const ws = new WebSocket(wsUrl);
-          candidateWsRef.current = ws;
-
-          ws.onopen = () => {
-            console.log('[AIML Take] ✅ WebSocket connected, waiting for admin...');
-            
-            // CRITICAL FIX: Wait for camera stream to be available before starting WebRTC
-            // The camera is initialized by useUniversalProctoring, so we need to wait for it
-            let retryCount = 0;
-            const maxRetries = 20; // 10 seconds max wait (20 * 500ms)
-            
-            const checkCameraAndStart = () => {
-              const webcamStream = thumbVideoRef.current?.srcObject as MediaStream | null;
-              if (webcamStream && webcamStream.active) {
-                console.log('[AIML Take] ✅ Camera stream available - ready for admin connection');
-                // Don't start WebRTC here - wait for ADMIN_CONNECTED signal
-              } else if (retryCount < maxRetries) {
-                retryCount++;
-                console.log(`[AIML Take] ⏳ Waiting for camera stream... (attempt ${retryCount}/${maxRetries})`);
-                setTimeout(checkCameraAndStart, 500);
-              } else {
-                console.warn('[AIML Take] ⚠️ Camera stream not available after 10 seconds - will proceed anyway');
-              }
-            };
-            
-            // Start checking immediately
-            checkCameraAndStart();
-          };
-
-          ws.onmessage = (event) => {
-            const message = JSON.parse(event.data);
-            if (message.type === 'ADMIN_CONNECTED') {
-              console.log('[AIML Take] 🚀 ADMIN_CONNECTED signal received!');
-              startLiveProctoring(sessionId, ws);
-            }
-          };
-
-          ws.onerror = (error) => {
-            console.error('[AIML Take] WebSocket error:', error);
-          };
-
-          ws.onclose = () => {
-            console.log('[AIML Take] WebSocket closed');
-            candidateWsRef.current = null;
-          };
-        }
-      })
-      .catch((error) => {
-        console.error('[AIML Take] Failed to register Live Proctoring session:', error);
-      });
-    
-    console.log('[AIML Take] ⏸️ Live Proctoring ready, waiting for admin to connect...')
-
-    // Cleanup WebSocket on unmount or when exam ends
-    return () => {
-      if (candidateWsRef.current) {
-        candidateWsRef.current.close();
-        candidateWsRef.current = null;
-      }
-      // Reset ref when exam ends to allow re-registration if needed
-      if (submitted) {
-        startSessionCalledRef.current = false;
-      }
-    };
-  }, [liveProctoringEnabled, liveProctorScreenStream, questions.length, submitted, testId, candidateEmail, userId, startLiveProctoring])
+  // Note: Old WebSocket-based lazy approach removed - now using immediate Agora start
 
   // Stop proctoring when test is submitted
   useEffect(() => {

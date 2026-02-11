@@ -62,6 +62,7 @@ export {
   useProctorPolling,
   useSimpleProctor,
   useMultiLiveProctorAdmin,
+  useAgoraLiveProctorAdmin,
 } from './proctoring';
 
 // Other Hooks (keep for backward compatibility)
