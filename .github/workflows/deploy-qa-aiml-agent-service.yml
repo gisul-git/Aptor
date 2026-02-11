@@ -60,19 +60,19 @@ jobs:
             git pull origin QA
             
             echo "🔨 Rebuilding AIML Agent Service..."
-            docker-compose build aiml-agent-service
+            docker compose build aiml-agent-service
             
             echo "🔄 Restarting AIML Agent Service..."
-            docker-compose up -d --no-deps aiml-agent-service
+            docker compose up -d --no-deps aiml-agent-service
             
             sleep 5
             
-            if docker-compose ps aiml-agent-service | grep -q "Up"; then
+            if docker compose ps aiml-agent-service | grep -q "Up"; then
               echo "✅ AIML Agent Service deployed successfully!"
-              docker-compose ps aiml-agent-service
+              docker compose ps aiml-agent-service
             else
               echo "❌ AIML Agent Service deployment failed!"
-              docker-compose logs aiml-agent-service
+              docker compose logs aiml-agent-service
               exit 1
             fi
           EOF
