@@ -12,7 +12,7 @@ require('dotenv').config();
 const app = express();
 const PORT = process.env.PORT || 80;
 
-// Service URLs from environment variables
+// Service URLs from environment variabless
 const SERVICES = {
   auth: process.env.AUTH_SERVICE_URL || 'http://localhost:4000',
   aiAssessment: process.env.AI_ASSESSMENT_SERVICE_URL || 'http://localhost:3001',
