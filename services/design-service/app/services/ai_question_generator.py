@@ -225,75 +225,160 @@ Generate the question now."""
         topic: str,
         created_by: str
     ) -> DesignQuestionModel:
-        """Generate question based on custom topic"""
+        """Generate question based on custom topic with role-specific variations"""
         
         # Create role-specific, task-specific descriptions
         role_name = role.value.replace('_', ' ').title()
         task_name = task_type.value.replace('_', ' ')
         
-        # Build specific description based on task type and topic
-        task_descriptions = {
-            TaskType.LANDING_PAGE: f"Design a landing page for a {topic} that effectively communicates value proposition, engages visitors, and drives conversions. Focus on visual hierarchy, compelling copy placement, clear call-to-actions, and responsive layout that works across devices.",
-            TaskType.MOBILE_APP: f"Design a mobile application interface for a {topic} that provides intuitive navigation, clear information architecture, and seamless user experience. Consider mobile-specific patterns, touch interactions, screen sizes, and platform guidelines (iOS/Android).",
-            TaskType.DASHBOARD: f"Design a data dashboard for a {topic} that presents complex information in a clear, scannable format. Focus on data visualization, widget organization, filtering capabilities, and helping users make informed decisions quickly.",
-            TaskType.COMPONENT: f"Design a reusable UI component for a {topic} that maintains consistency, follows design system principles, and works across different contexts. Consider component states, accessibility, responsiveness, and integration with larger design systems."
-        }
+        # Build ROLE-SPECIFIC descriptions for each task type and topic
+        # Each role gets a completely different question focus
+        
+        if role == DesignRole.UI_DESIGNER:
+            # UI Designer: Focus on visual design, interface aesthetics, pixel-perfect execution
+            task_descriptions = {
+                TaskType.LANDING_PAGE: f"You are tasked with creating a visually stunning landing page for a {topic}. Your focus should be on creating a pixel-perfect interface with exceptional visual hierarchy, beautiful typography, harmonious color schemes, and precise spacing. The design should showcase your mastery of visual design principles, grid systems, and modern UI trends while ensuring the interface is aesthetically pleasing and professionally polished.",
+                TaskType.MOBILE_APP: f"Design a mobile app interface for a {topic} with emphasis on visual excellence and interface aesthetics. Focus on creating beautiful, modern UI screens with perfect alignment, consistent spacing, elegant typography, and a cohesive color palette. Pay attention to visual details like shadows, borders, icons, and micro-interactions that make the interface feel polished and premium.",
+                TaskType.DASHBOARD: f"Create a visually appealing dashboard interface for a {topic} that demonstrates your UI design skills. Focus on creating a clean, modern layout with well-organized data cards, beautiful charts and graphs, consistent visual styling, and perfect pixel alignment. Emphasize visual hierarchy through typography, color, and spacing to make complex data look simple and elegant.",
+                TaskType.COMPONENT: f"Design a reusable UI component library for a {topic} that showcases your attention to visual detail. Create components with multiple states (default, hover, active, disabled), consistent styling, perfect alignment, and scalable design tokens. Focus on visual consistency, aesthetic appeal, and creating a cohesive design language."
+            }
+        
+        elif role == DesignRole.UX_DESIGNER:
+            # UX Designer: Focus on user flows, research, usability, problem-solving
+            task_descriptions = {
+                TaskType.LANDING_PAGE: f"Design a user-centered landing page experience for a {topic} based on user research and behavioral insights. Your task is to create an intuitive information architecture that guides users through the content, reduces cognitive load, and optimizes conversion paths. Focus on user psychology, content hierarchy, accessibility, and creating clear user journeys from landing to conversion.",
+                TaskType.MOBILE_APP: f"Create a comprehensive user experience design for a {topic} mobile application. Focus on user research, persona development, user journey mapping, and designing intuitive user flows. Your design should solve real user problems, minimize friction, handle edge cases gracefully, and provide clear feedback at every step. Emphasize usability testing insights and accessibility compliance.",
+                TaskType.DASHBOARD: f"Design a user-friendly dashboard experience for a {topic} that helps users accomplish their goals efficiently. Focus on information architecture, task analysis, and creating intuitive navigation patterns. Your design should prioritize user needs, reduce cognitive load through smart data organization, provide contextual help, and ensure users can find and understand information quickly.",
+                TaskType.COMPONENT: f"Design an accessible and user-friendly component system for a {topic}. Focus on usability patterns, accessibility compliance (WCAG), keyboard navigation, screen reader support, and creating components that work for diverse user needs. Emphasize user testing insights, interaction patterns, and ensuring components are intuitive for all users."
+            }
+        
+        elif role == DesignRole.PRODUCT_DESIGNER:
+            # Product Designer: Focus on business goals, strategy, end-to-end experience
+            task_descriptions = {
+                TaskType.LANDING_PAGE: f"Design a strategic landing page for a {topic} that aligns business objectives with user needs. Your task is to create an end-to-end experience that drives key business metrics (conversions, sign-ups, engagement) while solving user problems. Consider market positioning, competitive analysis, value proposition communication, and creating a landing experience that supports product-market fit and business growth.",
+                TaskType.MOBILE_APP: f"Lead the product design for a {topic} mobile application from concept to execution. Your responsibility is to balance business goals, user needs, and technical constraints while designing the complete product experience. Focus on defining product strategy, creating user personas, mapping customer journeys, designing core features, and ensuring the product delivers business value while delighting users.",
+                TaskType.DASHBOARD: f"Design a strategic dashboard product for a {topic} that drives business outcomes and user success. Your task is to understand business KPIs, user goals, and technical capabilities, then design a dashboard that helps users make better decisions while supporting business objectives. Consider monetization opportunities, engagement strategies, and creating a product that scales with user needs.",
+                TaskType.COMPONENT: f"Design a scalable component system for a {topic} product that supports business growth and team efficiency. Focus on creating a design system that enables rapid product development, maintains brand consistency across platforms, and scales with the product roadmap. Consider technical implementation, team collaboration, documentation, and ensuring components support business objectives."
+            }
+        
+        else:  # DesignRole.VISUAL_DESIGNER
+            # Visual Designer: Focus on branding, visual storytelling, creative expression
+            task_descriptions = {
+                TaskType.LANDING_PAGE: f"Create a visually compelling landing page for a {topic} that tells a brand story through visual design. Your focus should be on creating a unique visual identity, using creative imagery, establishing brand personality through color and typography, and crafting a memorable visual experience. Emphasize visual storytelling, emotional design, and creating a distinctive aesthetic that sets the brand apart.",
+                TaskType.MOBILE_APP: f"Design a visually distinctive mobile app for a {topic} that expresses brand personality and creates emotional connections. Focus on creating a unique visual language, custom illustrations or graphics, memorable iconography, and a cohesive brand experience. Your design should showcase creative expression, visual innovation, and establish a strong brand identity through visual design.",
+                TaskType.DASHBOARD: f"Create a branded dashboard experience for a {topic} that combines data visualization with visual storytelling. Focus on designing custom charts and graphs, creating a unique visual style, using color and typography to express brand personality, and making data beautiful and engaging. Emphasize creative data visualization, brand consistency, and visual innovation.",
+                TaskType.COMPONENT: f"Design a branded component library for a {topic} that establishes a unique visual identity. Create components with distinctive visual styling, custom iconography, brand-specific color palettes, and unique visual treatments. Focus on visual consistency, brand expression, and creating components that feel uniquely ownable and memorable."
+            }
         
         description = task_descriptions.get(
             task_type,
             f"Design a {task_name} for a {topic} that demonstrates professional design skills, user-centered thinking, and attention to detail. Create a solution that balances aesthetics with functionality."
         )
         
-        # Add role-specific focus
-        role_focus = {
-            DesignRole.UI_DESIGNER: " Pay special attention to visual design, typography, color theory, spacing, and pixel-perfect execution.",
-            DesignRole.UX_DESIGNER: " Focus on user flows, information architecture, usability, accessibility, and solving user problems effectively.",
-            DesignRole.PRODUCT_DESIGNER: " Consider business goals, user needs, technical constraints, and end-to-end product experience.",
-            DesignRole.VISUAL_DESIGNER: " Emphasize visual storytelling, brand consistency, creative expression, and aesthetic excellence."
-        }
-        
-        full_description = description + role_focus.get(role, "")
-        
-        # Generate topic-specific constraints
-        constraints = [
-            "Follow modern design principles and best practices",
-            f"Ensure the design aligns with {topic} industry standards and user expectations",
-            "Maintain accessibility compliance (WCAG 2.1 AA)",
-            "Use consistent visual language and design system thinking"
-        ]
+        # Generate ROLE-SPECIFIC constraints
+        if role == DesignRole.UI_DESIGNER:
+            constraints = [
+                "Create pixel-perfect designs with precise alignment and spacing",
+                "Use a cohesive color palette with proper contrast ratios (WCAG AA)",
+                "Demonstrate mastery of typography hierarchy and readability",
+                "Ensure consistent visual styling across all elements",
+                f"Follow {topic} industry visual design standards"
+            ]
+        elif role == DesignRole.UX_DESIGNER:
+            constraints = [
+                "Create user flows and journey maps to support your design decisions",
+                "Ensure accessibility compliance (WCAG 2.1 AA) for all users",
+                "Design for edge cases, error states, and loading states",
+                "Minimize cognitive load and optimize task completion",
+                f"Address real user problems in the {topic} domain"
+            ]
+        elif role == DesignRole.PRODUCT_DESIGNER:
+            constraints = [
+                "Define clear business goals and success metrics",
+                "Create user personas based on target audience research",
+                "Balance business objectives with user needs",
+                "Consider technical feasibility and implementation constraints",
+                f"Align design with {topic} market positioning and competitive landscape"
+            ]
+        else:  # VISUAL_DESIGNER
+            constraints = [
+                "Establish a unique and memorable visual identity",
+                "Create custom visual elements (illustrations, icons, graphics)",
+                "Use color and typography to express brand personality",
+                "Ensure visual consistency and brand coherence",
+                f"Differentiate from competitors in the {topic} space"
+            ]
         
         # Add difficulty-specific constraints
         if difficulty == DifficultyLevel.ADVANCED:
             constraints.extend([
                 "Design for multiple user personas and use cases",
-                "Consider edge cases and error states",
-                "Demonstrate strategic thinking and business alignment"
+                "Demonstrate strategic thinking and comprehensive planning"
             ])
         elif difficulty == DifficultyLevel.INTERMEDIATE:
             constraints.extend([
-                "Ensure responsive design for target platform",
-                "Include interactive states and micro-interactions"
+                "Include interactive states and transitions",
+                "Ensure responsive design for target platform"
             ])
         else:  # BEGINNER
-            constraints.extend([
-                "Focus on core functionality and clear user flows",
-                "Maintain visual hierarchy and readability"
-            ])
+            constraints.append("Focus on core functionality and clear execution")
         
-        # Deliverables
-        deliverables = [
-            "High-fidelity design screens",
-            "Design specifications and annotations",
-            "Brief design rationale"
-        ]
+        # ROLE-SPECIFIC Deliverables
+        if role == DesignRole.UI_DESIGNER:
+            deliverables = [
+                "High-fidelity UI screens with pixel-perfect execution",
+                "Design specifications (spacing, colors, typography)",
+                "Component style guide or design tokens"
+            ]
+        elif role == DesignRole.UX_DESIGNER:
+            deliverables = [
+                "User flow diagrams and journey maps",
+                "Low-to-mid fidelity wireframes for key screens",
+                "UX rationale document explaining design decisions"
+            ]
+        elif role == DesignRole.PRODUCT_DESIGNER:
+            deliverables = [
+                "User personas and problem statements",
+                "Complete product flow diagrams",
+                "High-fidelity screens for core features",
+                "Product strategy document with business alignment"
+            ]
+        else:  # VISUAL_DESIGNER
+            deliverables = [
+                "High-fidelity visual designs with unique brand identity",
+                "Custom visual assets (illustrations, icons, graphics)",
+                "Brand style guide (colors, typography, visual language)"
+            ]
         
-        # Evaluation criteria
-        evaluation_criteria = [
-            "Visual design quality",
-            "User experience and usability",
-            "Technical feasibility",
-            "Design thinking and creativity"
-        ]
+        # ROLE-SPECIFIC Evaluation criteria
+        if role == DesignRole.UI_DESIGNER:
+            evaluation_criteria = [
+                "Visual design quality and aesthetic appeal",
+                "Pixel-perfect execution and attention to detail",
+                "Typography and color usage",
+                "Consistency and visual hierarchy"
+            ]
+        elif role == DesignRole.UX_DESIGNER:
+            evaluation_criteria = [
+                "User flow logic and completeness",
+                "Usability and accessibility",
+                "Problem-solving approach",
+                "Edge case handling and error prevention"
+            ]
+        elif role == DesignRole.PRODUCT_DESIGNER:
+            evaluation_criteria = [
+                "Strategic thinking and business alignment",
+                "User research and persona accuracy",
+                "End-to-end product experience",
+                "Balance of business goals and user needs"
+            ]
+        else:  # VISUAL_DESIGNER
+            evaluation_criteria = [
+                "Visual creativity and innovation",
+                "Brand identity and personality",
+                "Visual storytelling effectiveness",
+                "Unique and memorable aesthetic"
+            ]
         
         # Time mapping
         time_mapping = {
@@ -307,7 +392,7 @@ Generate the question now."""
             difficulty=difficulty,
             task_type=task_type,
             title=f"{topic} {task_name.title()} - {role_name} Challenge",
-            description=full_description,
+            description=description,
             constraints=constraints,
             deliverables=deliverables,
             evaluation_criteria=evaluation_criteria,
