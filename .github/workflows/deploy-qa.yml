@@ -63,17 +63,34 @@ jobs:
               echo "⚠️  Warning: .env file not found. Please ensure environment variables are set."
             fi
             
-            # Stop existing containers (with timeout and force removal)
-            echo "🛑 Stopping existing containers..."
-            docker compose down --timeout 30 --remove-orphans || true
+            # Preserve aiml-agent-service - ensure it stays running
+            echo "🔒 Preserving aiml-agent-service..."
+            AIML_AGENT_RUNNING=false
+            if docker compose ps aiml-agent-service 2>/dev/null | grep -q "Up"; then
+              AIML_AGENT_RUNNING=true
+              echo "✅ aiml-agent-service is running, will preserve it"
+            fi
             
-            # Force stop any remaining containers from this project
-            echo "🛑 Force stopping any remaining containers..."
-            docker compose ps -q | xargs -r docker stop -t 10 || true
-            docker compose ps -q | xargs -r docker rm -f || true
+            # Stop existing containers (excluding aiml-agent-service)
+            echo "🛑 Stopping existing containers (excluding aiml-agent-service)..."
+            for service in $(docker compose ps --services 2>/dev/null); do
+              if [ "$service" != "aiml-agent-service" ]; then
+                echo "  Stopping $service..."
+                docker compose stop "$service" || true
+              fi
+            done
             
-            # Remove any orphaned containers with our naming pattern
-            docker ps -a --filter "name=gisul-" --format "{{.ID}}" | xargs -r docker rm -f || true
+            # Remove stopped containers (excluding aiml-agent-service)
+            echo "🧹 Removing stopped containers (excluding aiml-agent-service)..."
+            for service in $(docker compose ps -a --services 2>/dev/null); do
+              if [ "$service" != "aiml-agent-service" ]; then
+                echo "  Removing $service..."
+                docker compose rm -f "$service" || true
+              fi
+            done
+            
+            # Remove any orphaned containers with our naming pattern (excluding aiml-agent-service)
+            docker ps -a --filter "name=gisul-" --format "{{.Names}} {{.ID}}" | grep -v "aiml-agent-service" | awk '{print $2}' | xargs -r docker rm -f || true
             
             # Cleanup old images
             echo "🧹 Cleaning up old Docker images..."
@@ -85,6 +102,12 @@ jobs:
             
             echo "🚀 Starting services..."
             docker compose up -d
+            
+            # Ensure aiml-agent-service is running if it was running before
+            if [ "$AIML_AGENT_RUNNING" = "true" ]; then
+              echo "🔄 Ensuring aiml-agent-service is still running..."
+              docker compose up -d aiml-agent-service || true
+            fi
             
             # Wait for services
             echo "⏳ Waiting for services to be ready..."
