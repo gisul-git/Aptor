@@ -83,6 +83,13 @@ export default function DesignAdminDashboard() {
   
   // Filter questions
   useEffect(() => {
+    console.log('🔍 Filtering questions:', {
+      totalQuestions: questions.length,
+      questionSearch,
+      roleFilter,
+      difficultyFilter
+    });
+    
     let filtered = questions;
     
     if (questionSearch) {
@@ -99,6 +106,7 @@ export default function DesignAdminDashboard() {
       filtered = filtered.filter(q => q.difficulty === difficultyFilter);
     }
     
+    console.log('✅ Filtered questions:', filtered.length);
     setFilteredQuestions(filtered);
   }, [questions, questionSearch, roleFilter, difficultyFilter]);
   
