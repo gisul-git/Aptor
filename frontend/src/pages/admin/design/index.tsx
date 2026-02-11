@@ -203,8 +203,18 @@ export default function DesignAdminDashboard() {
       if (res.ok) {
         const newQuestion = await res.json();
         console.log('✅ Question generated:', newQuestion);
-        alert('✅ Question generated successfully!');
+        
+        // Close modal first
         setShowGenerateModal(false);
+        
+        // Reset filters to show all questions
+        setRoleFilter('all');
+        setDifficultyFilter('all');
+        setQuestionSearch('');
+        
+        // Show success message
+        alert('✅ Question generated successfully!');
+        
         // Reload questions to show the new one
         await loadQuestions();
       } else {
