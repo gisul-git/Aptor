@@ -79,7 +79,7 @@ services:
       - microservices-network
     restart: unless-stopped
 
-  # Auth Service
+  # Auth Services
   auth-service:
     build:
       context: ./services/auth-service
