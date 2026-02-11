@@ -98,7 +98,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     
     const statusCode = error?.response?.status || 500;
     
-    // Extract readable error message from validation errorss
+    // Extract readable error message from validation errors
     let errorMessage: string;
     
     // Check if error.message is already corrupted (contains [object Object])
