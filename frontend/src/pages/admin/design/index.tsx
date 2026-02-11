@@ -193,15 +193,20 @@ export default function DesignAdminDashboard() {
       });
       
       if (res.ok) {
+        const newQuestion = await res.json();
+        console.log('✅ Question generated:', newQuestion);
         alert('✅ Question generated successfully!');
         setShowGenerateModal(false);
-        loadQuestions();
+        // Reload questions to show the new one
+        await loadQuestions();
       } else {
-        alert('❌ Failed to generate question');
+        const errorData = await res.json();
+        console.error('❌ Generation failed:', errorData);
+        alert('❌ Failed to generate question: ' + (errorData.detail || 'Unknown error'));
       }
     } catch (err) {
       console.error('Failed to generate question:', err);
-      alert('❌ Error generating question');
+      alert('❌ Error generating question: ' + err.message);
     }
     setLoading(false);
   };
