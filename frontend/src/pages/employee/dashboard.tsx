@@ -1,7 +1,7 @@
 import React from 'react';
-
-// Import Modular Components
+import { Target, CheckCircle, Clock, Award } from 'lucide-react';
 import DashboardHeader, { EmployeeData } from '../../components/employee-dashboard/ui/DashboardHeader';
+import MetricCard from '../../components/employee-dashboard/ui/MetricCard'; 
 import SkillDistribution, { SkillData } from '../../components/employee-dashboard/ui/SkillDistribution';
 import RecentActivity, { ActivityItem } from '../../components/employee-dashboard/ui/RecentActivity';
 import UpcomingAssessments, { AssessmentItem } from '../../components/employee-dashboard/ui/UpcomingAssessments';
@@ -15,7 +15,50 @@ const CURRENT_EMPLOYEE: EmployeeData = {
   department: "Engineering"
 };
 
-// --- Dummy Data ---
+// --- Dummy Data for Metrics ---
+const DUMMY_METRICS = [
+  {
+    label: "Average Score",
+    value: "86%",
+    icon: <Target size={24} />,
+    iconColor: "#15803d", // green-700
+    iconBg: "#dcfce7",    // green-100
+    badgeText: "+5.2% vs last month",
+    badgeColor: "#166534", // green-800
+    badgeBg: "#f0fdf4",    // green-50
+  },
+  {
+    label: "Assessments Passed",
+    value: "12",
+    icon: <CheckCircle size={24} />,
+    iconColor: "#0369a1", // sky-700
+    iconBg: "#e0f2fe",    // sky-100
+    badgeText: "+12.5% vs last month",
+    badgeColor: "#075985", // sky-800
+    badgeBg: "#f0f9ff",    // sky-50
+  },
+  {
+    label: "Learning Hours",
+    value: "34h",
+    icon: <Clock size={24} />,
+    iconColor: "#b91c1c", // red-700
+    iconBg: "#fee2e2",    // red-100
+    badgeText: "-2.4% vs last month",
+    badgeColor: "#991b1b", // red-800
+    badgeBg: "#fef2f2",    // red-50
+  },
+  {
+    label: "Certifications",
+    value: "4",
+    icon: <Award size={24} />,
+    iconColor: "#7e22ce", // purple-700
+    iconBg: "#f3e8ff",    // purple-100
+    badgeText: "Top 5% percentile",
+    badgeColor: "#6b21a8", // purple-800
+    badgeBg: "#faf5ff",    // purple-50
+  },
+];
+
 const DUMMY_SKILLS: SkillData[] = [
   { category: 'General', score: 82 },
   { category: 'DSA', score: 75 },
@@ -58,9 +101,9 @@ const DUMMY_PATHS: LearningPathItem[] = [
 const Dashboard = () => {
   return (
     <div style={{ 
-      padding: "2rem 3rem", // Increased horizontal padding
-      width: "100%",        // Force full width usage
-      maxWidth: "2400px",   // Increased from 1800px to avoid "compact" feel
+      padding: "2rem 3rem",
+      width: "100%",
+      maxWidth: "2400px",
       margin: "0 auto", 
       backgroundColor: "#F8FAFC", 
       minHeight: "100vh",
@@ -72,10 +115,30 @@ const Dashboard = () => {
 
       <div style={{ display: "flex", flexDirection: "column", gap: "3rem" }}>
         
+        {/* --- METRICS ROW (Using MetricCard) --- */}
+        <div style={{ 
+          display: "grid", 
+          gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", 
+          gap: "2rem" 
+        }}>
+          {DUMMY_METRICS.map((metric, index) => (
+            <MetricCard 
+              key={index}
+              icon={metric.icon}
+              iconColor={metric.iconColor}
+              iconBg={metric.iconBg}
+              value={metric.value}
+              label={metric.label}
+              badgeText={metric.badgeText}
+              badgeColor={metric.badgeColor}
+              badgeBg={metric.badgeBg}
+            />
+          ))}
+        </div>
+
         {/* --- MAIN GRID --- */}
         <div style={{ 
             display: "grid", 
-            // WIDER RATIO: 2.2 parts left, 1 part right (Previously 1.8fr 1fr)
             gridTemplateColumns: "2.2fr 1fr", 
             gap: "3rem",
             alignItems: "start"
