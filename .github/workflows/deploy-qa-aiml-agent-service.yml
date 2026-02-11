@@ -1,4 +1,4 @@
-name: Deploy AIML Agent Service to QA (Debian VM)
+name: Deploy AIML Agent Service to QA (Debian VMa)
 
 on:
   push:
