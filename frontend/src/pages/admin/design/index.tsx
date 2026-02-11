@@ -256,7 +256,9 @@ export default function DesignAdminDashboard() {
   };
   
   const copyTestLink = (questionId: string) => {
-    const link = `http://localhost:3001/design/assessment/${questionId}`;
+    // Use current window location to get the correct port
+    const baseUrl = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3001';
+    const link = `${baseUrl}/design/assessment/${questionId}`;
     navigator.clipboard.writeText(link);
     alert('✅ Test link copied to clipboard!');
   };
@@ -647,6 +649,9 @@ function TestLinksTab({ questions, onCopyLink }: any) {
   // Ensure questions is an array
   const questionsArray = Array.isArray(questions) ? questions : [];
   
+  // Get current base URL
+  const baseUrl = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3001';
+  
   return (
     <div>
       <div className="bg-white rounded-lg shadow-sm overflow-hidden">
@@ -673,7 +678,7 @@ function TestLinksTab({ questions, onCopyLink }: any) {
                     </p>
                     <div className="mt-3 p-3 bg-gray-50 rounded border border-gray-200">
                       <code className="text-sm text-gray-700">
-                        http://localhost:3001/design/assessment/{q._id || q.id}
+                        {baseUrl}/design/assessment/{q._id || q.id}
                       </code>
                     </div>
                   </div>

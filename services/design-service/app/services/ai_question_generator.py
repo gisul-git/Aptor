@@ -57,7 +57,7 @@ class AIQuestionGenerator:
         except Exception as e:
             logger.error(f"AI question generation failed: {e}")
             # Fallback to template-based generation
-            return self._generate_fallback_question(role, difficulty, task_type, created_by)
+            return self._generate_fallback_question(role, difficulty, task_type, topic, created_by)
     
     def _build_generation_prompt(
         self,
@@ -215,16 +215,120 @@ Generate the question now."""
             
         except Exception as e:
             logger.error(f"Failed to parse AI response: {e}")
-            return self._generate_fallback_question(role, difficulty, task_type, created_by)
+            return self._generate_fallback_question(role, difficulty, task_type, topic, created_by)
+    
+    def _generate_topic_based_question(
+        self,
+        role: DesignRole,
+        difficulty: DifficultyLevel,
+        task_type: TaskType,
+        topic: str,
+        created_by: str
+    ) -> DesignQuestionModel:
+        """Generate question based on custom topic"""
+        
+        # Create role-specific, task-specific descriptions
+        role_name = role.value.replace('_', ' ').title()
+        task_name = task_type.value.replace('_', ' ')
+        
+        # Build specific description based on task type and topic
+        task_descriptions = {
+            TaskType.LANDING_PAGE: f"Design a landing page for a {topic} that effectively communicates value proposition, engages visitors, and drives conversions. Focus on visual hierarchy, compelling copy placement, clear call-to-actions, and responsive layout that works across devices.",
+            TaskType.MOBILE_APP: f"Design a mobile application interface for a {topic} that provides intuitive navigation, clear information architecture, and seamless user experience. Consider mobile-specific patterns, touch interactions, screen sizes, and platform guidelines (iOS/Android).",
+            TaskType.DASHBOARD: f"Design a data dashboard for a {topic} that presents complex information in a clear, scannable format. Focus on data visualization, widget organization, filtering capabilities, and helping users make informed decisions quickly.",
+            TaskType.COMPONENT: f"Design a reusable UI component for a {topic} that maintains consistency, follows design system principles, and works across different contexts. Consider component states, accessibility, responsiveness, and integration with larger design systems."
+        }
+        
+        description = task_descriptions.get(
+            task_type,
+            f"Design a {task_name} for a {topic} that demonstrates professional design skills, user-centered thinking, and attention to detail. Create a solution that balances aesthetics with functionality."
+        )
+        
+        # Add role-specific focus
+        role_focus = {
+            DesignRole.UI_DESIGNER: " Pay special attention to visual design, typography, color theory, spacing, and pixel-perfect execution.",
+            DesignRole.UX_DESIGNER: " Focus on user flows, information architecture, usability, accessibility, and solving user problems effectively.",
+            DesignRole.PRODUCT_DESIGNER: " Consider business goals, user needs, technical constraints, and end-to-end product experience.",
+            DesignRole.VISUAL_DESIGNER: " Emphasize visual storytelling, brand consistency, creative expression, and aesthetic excellence."
+        }
+        
+        full_description = description + role_focus.get(role, "")
+        
+        # Generate topic-specific constraints
+        constraints = [
+            "Follow modern design principles and best practices",
+            f"Ensure the design aligns with {topic} industry standards and user expectations",
+            "Maintain accessibility compliance (WCAG 2.1 AA)",
+            "Use consistent visual language and design system thinking"
+        ]
+        
+        # Add difficulty-specific constraints
+        if difficulty == DifficultyLevel.ADVANCED:
+            constraints.extend([
+                "Design for multiple user personas and use cases",
+                "Consider edge cases and error states",
+                "Demonstrate strategic thinking and business alignment"
+            ])
+        elif difficulty == DifficultyLevel.INTERMEDIATE:
+            constraints.extend([
+                "Ensure responsive design for target platform",
+                "Include interactive states and micro-interactions"
+            ])
+        else:  # BEGINNER
+            constraints.extend([
+                "Focus on core functionality and clear user flows",
+                "Maintain visual hierarchy and readability"
+            ])
+        
+        # Deliverables
+        deliverables = [
+            "High-fidelity design screens",
+            "Design specifications and annotations",
+            "Brief design rationale"
+        ]
+        
+        # Evaluation criteria
+        evaluation_criteria = [
+            "Visual design quality",
+            "User experience and usability",
+            "Technical feasibility",
+            "Design thinking and creativity"
+        ]
+        
+        # Time mapping
+        time_mapping = {
+            DifficultyLevel.BEGINNER: 45,
+            DifficultyLevel.INTERMEDIATE: 60,
+            DifficultyLevel.ADVANCED: 90
+        }
+        
+        return DesignQuestionModel(
+            role=role,
+            difficulty=difficulty,
+            task_type=task_type,
+            title=f"{topic} {task_name.title()} - {role_name} Challenge",
+            description=full_description,
+            constraints=constraints,
+            deliverables=deliverables,
+            evaluation_criteria=evaluation_criteria,
+            time_limit_minutes=time_mapping[difficulty],
+            created_by=created_by
+        )
     
     def _generate_fallback_question(
         self,
         role: DesignRole,
         difficulty: DifficultyLevel,
         task_type: TaskType,
+        topic: str,
         created_by: str
     ) -> DesignQuestionModel:
         """Generate fallback question when AI fails - using high-quality templates"""
+        
+        # If custom topic is provided, skip hardcoded templates and generate topic-specific question
+        if topic:
+            logger.info(f"Custom topic '{topic}' provided, generating topic-specific question")
+            return self._generate_topic_based_question(role, difficulty, task_type, topic, created_by)
         
         templates = {
             # UI Designer - Easy - Landing Page
@@ -343,11 +447,75 @@ Generate the question now."""
                 if template:
                     break
         
-        # Final fallback - generic template
+        # Final fallback - generate specific description based on role, task type, and topic
         if not template:
+            # Create role-specific, task-specific descriptions
+            role_name = role.value.replace('_', ' ').title()
+            task_name = task_type.value.replace('_', ' ')
+            
+            # Use topic if provided, otherwise generate generic topic based on task type
+            if not topic:
+                topic_defaults = {
+                    TaskType.LANDING_PAGE: "SaaS Product",
+                    TaskType.MOBILE_APP: "Productivity App",
+                    TaskType.DASHBOARD: "Analytics Platform",
+                    TaskType.COMPONENT: "Design System"
+                }
+                topic = topic_defaults.get(task_type, "Digital Product")
+            
+            # Build specific description based on task type and topic
+            task_descriptions = {
+                TaskType.LANDING_PAGE: f"Design a landing page for a {topic} that effectively communicates value proposition, engages visitors, and drives conversions. Focus on visual hierarchy, compelling copy placement, clear call-to-actions, and responsive layout that works across devices.",
+                TaskType.MOBILE_APP: f"Design a mobile application interface for a {topic} that provides intuitive navigation, clear information architecture, and seamless user experience. Consider mobile-specific patterns, touch interactions, screen sizes, and platform guidelines (iOS/Android).",
+                TaskType.DASHBOARD: f"Design a data dashboard for a {topic} that presents complex information in a clear, scannable format. Focus on data visualization, widget organization, filtering capabilities, and helping users make informed decisions quickly.",
+                TaskType.COMPONENT: f"Design a reusable UI component for a {topic} that maintains consistency, follows design system principles, and works across different contexts. Consider component states, accessibility, responsiveness, and integration with larger design systems."
+            }
+            
+            description = task_descriptions.get(
+                task_type,
+                f"Design a {task_name} for a {topic} that demonstrates professional design skills, user-centered thinking, and attention to detail. Create a solution that balances aesthetics with functionality."
+            )
+            
+            # Add role-specific focus
+            role_focus = {
+                DesignRole.UI_DESIGNER: " Pay special attention to visual design, typography, color theory, spacing, and pixel-perfect execution.",
+                DesignRole.UX_DESIGNER: " Focus on user flows, information architecture, usability, accessibility, and solving user problems effectively.",
+                DesignRole.PRODUCT_DESIGNER: " Consider business goals, user needs, technical constraints, and end-to-end product experience.",
+                DesignRole.VISUAL_DESIGNER: " Emphasize visual storytelling, brand consistency, creative expression, and aesthetic excellence."
+            }
+            
+            full_description = description + role_focus.get(role, "")
+            
+            # Generate topic-specific constraints
+            constraints = [
+                "Follow modern design principles and best practices",
+                f"Ensure the design aligns with {topic} industry standards and user expectations",
+                "Maintain accessibility compliance (WCAG 2.1 AA)",
+                "Use consistent visual language and design system thinking"
+            ]
+            
+            # Add difficulty-specific constraints
+            if difficulty == DifficultyLevel.ADVANCED:
+                constraints.extend([
+                    "Design for multiple user personas and use cases",
+                    "Consider edge cases and error states",
+                    "Demonstrate strategic thinking and business alignment"
+                ])
+            elif difficulty == DifficultyLevel.INTERMEDIATE:
+                constraints.extend([
+                    "Ensure responsive design for target platform",
+                    "Include interactive states and micro-interactions"
+                ])
+            else:  # BEGINNER
+                constraints.extend([
+                    "Focus on core functionality and clear user flows",
+                    "Maintain visual hierarchy and readability"
+                ])
+            
             template = {
-                "title": f"{role.value.replace('_', ' ').title()} {task_type.value.replace('_', ' ').title()} Challenge",
-                "description": f"Design a {task_type.value.replace('_', ' ')} for a {difficulty.value} level assessment. Create a professional, user-centered design that demonstrates your skills in {role.value.replace('_', ' ')}.",
+                "title": f"{topic} {task_name.title()} - {role_name} Challenge",
+                "description": full_description,
+                "constraints": constraints,
                 "constraints": [
                     "Follow modern design principles and best practices",
                     "Ensure responsive design for target platform",
