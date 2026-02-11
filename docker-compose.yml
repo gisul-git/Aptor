@@ -176,7 +176,6 @@ services:
     container_name: gisul-aiml-service
     ports:
       - "3003:3003"
-      - "8889:8889"  # WebSocket agent port
     environment:
       - MONGO_URI=${MONGO_URI}
       - MONGO_DB=aiml_db
@@ -192,8 +191,26 @@ services:
       - AWS_EMAIL_SOURCE=${AWS_EMAIL_SOURCE}
       - AZURE_COMM_CONNECTION_STRING=${AZURE_COMM_CONNECTION_STRING}
       - AZURE_COMM_SENDER_ADDRESS=${AZURE_COMM_SENDER_ADDRESS}
+      - AIML_AGENT_SERVICE_URL=${AIML_AGENT_SERVICE_URL:-http://aiml-agent-service:8889}
     depends_on:
       - redis
+      - aiml-agent-service
+    networks:
+      - microservices-network
+    restart: unless-stopped
+
+  # AIML Agent Service
+  aiml-agent-service:
+    build:
+      context: ./services/aiml-agent-service
+      dockerfile: Dockerfile
+    container_name: gisul-aiml-agent-service
+    ports:
+      - "8889:8889"
+    volumes:
+      - aiml_agent_uploads:/app/agent/uploads
+    environment:
+      - PYTHONPATH=/app
     networks:
       - microservices-network
     restart: unless-stopped
@@ -311,6 +328,7 @@ services:
 volumes:
   # mongo_data:  # Not needed when using Atlas
   redis_data:
+  aiml_agent_uploads:
 
 networks:
   microservices-network:
