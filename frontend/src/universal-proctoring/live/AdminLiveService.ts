@@ -1,19 +1,86 @@
 // ============================================================================
-// Universal Proctoring System - Admin Live Proctoring Service
+// Universal Proctoring System - Admin Live Proctoring Service (Agora)
 // ============================================================================
 //
-// This service handles the ADMIN side of live proctoring:
-// - Connects WebSocket to receive session updates
-// - Gets list of active candidate sessions
-// - Creates peer connections to view candidate streams
-// - Handles reconnection when admin reopens dashboard
-//
-// CRITICAL DESIGN DECISIONS (from existing implementation):
-// - Admin ALWAYS creates NEW peer connection (never reuse old ones)
-// - When admin closes dashboard, only local cleanup (don't end candidate sessions)
-// - When admin reopens dashboard, creates new connections to ongoing streams
+// This service handles the ADMIN side of live proctoring using Agora RTC:
+// - Gets Agora token from backend
+// - Joins Agora channel
+// - Subscribes to remote user streams (candidates)
+// - Maps remote tracks to CandidateStreamInfo
 //
 // ============================================================================
+
+// Global singleton to prevent React Strict Mode duplicate connections
+const GLOBAL_AGORA_CONNECTIONS = new Map<string, {
+  client: any;
+  adminId: string;
+  timestamp: number;
+  isActive: boolean;
+}>();
+
+// Track pending connections to prevent race conditions
+const PENDING_CONNECTIONS = new Map<string, Promise<boolean>>();
+
+// Global map to store candidate info (name/email) by candidateId
+// Populated when candidates request tokens, used by admin to display names
+const CANDIDATE_INFO_MAP = new Map<string, {
+  candidateName?: string;
+  candidateEmail?: string;
+  timestamp: number;
+}>();
+
+// Initialize global map on window if not exists (for CandidateLiveService to access)
+if (typeof window !== 'undefined') {
+  (window as any).__CANDIDATE_INFO_MAP = CANDIDATE_INFO_MAP;
+  
+  // Sync from window if CandidateLiveService already populated it
+  const syncFromWindow = () => {
+    const windowMap = (window as any).__CANDIDATE_INFO_MAP;
+    if (windowMap && windowMap instanceof Map) {
+      for (const [key, value] of Array.from(windowMap.entries())) {
+        if (!CANDIDATE_INFO_MAP.has(key)) {
+          CANDIDATE_INFO_MAP.set(key, value as any);
+        }
+      }
+    }
+  };
+  
+  // Sync periodically
+  setInterval(syncFromWindow, 1000);
+  
+  // Cleanup old candidate info every 5 minutes
+  setInterval(() => {
+    const now = Date.now();
+    for (const [candidateId, info] of Array.from(CANDIDATE_INFO_MAP.entries())) {
+      if (now - info.timestamp > 300000) { // 5 minutes
+        CANDIDATE_INFO_MAP.delete(candidateId);
+        if ((window as any).__CANDIDATE_INFO_MAP) {
+          (window as any).__CANDIDATE_INFO_MAP.delete(candidateId);
+        }
+      }
+    }
+  }, 60000); // Check every minute
+}
+
+// Cleanup old connections every 10 seconds
+if (typeof window !== 'undefined') {
+  setInterval(() => {
+    const now = Date.now();
+    for (const [channelId, conn] of Array.from(GLOBAL_AGORA_CONNECTIONS.entries())) {
+      if (!conn.isActive && now - conn.timestamp > 10000) {
+        console.log(`[Admin] 🗑️ Cleaning up stale connection for ${channelId}`);
+        GLOBAL_AGORA_CONNECTIONS.delete(channelId);
+        PENDING_CONNECTIONS.delete(channelId); // Also clean up pending
+      }
+    }
+  }, 10000);
+}
+
+import type {
+  IRemoteVideoTrack,
+  IAgoraRTCClient,
+  UID,
+} from "agora-rtc-sdk-ng";
 
 import {
   AdminLiveProctoringConfig,
@@ -23,54 +90,37 @@ import {
   DEFAULT_ADMIN_LIVE_CONFIG,
   INITIAL_ADMIN_LIVE_STATE,
   LIVE_PROCTORING_ENDPOINTS,
-  WEBRTC_CONFIG,
   LiveConnectionState,
 } from "./types";
 import {
   liveLog,
   setLiveDebugMode,
-  createWebSocketConnection,
-  sendWebSocketMessage,
-  createPeerConnection,
-  detectStreamType,
-  parseIceCandidate,
-  formatIceCandidate,
 } from "./utils";
+
+type AgoraModule = typeof import("agora-rtc-sdk-ng");
 
 // ============================================================================
 // Admin Live Proctoring Service
 // ============================================================================
 
 /**
- * Admin Live Proctoring Service.
+ * Admin Live Proctoring Service (Agora-based).
  *
- * Manages the admin's side of live proctoring (CCTV-style monitoring):
- * - Connects to signaling server via WebSocket
- * - Receives list of active candidate sessions
- * - Creates peer connections to view candidate webcam/screen streams
- *
- * Admin can:
- * - Start monitoring (connects WebSocket, gets active sessions)
- * - Stop monitoring (closes all connections, but does NOT end candidate sessions)
- * - Refresh a specific candidate connection
+ * Manages the admin's side of live proctoring using Agora RTC SDK.
  */
 export class AdminLiveService {
-  private config: AdminLiveProctoringConfig;
+  private config: AdminLiveProctoringConfig & { debugMode?: boolean };
   private callbacks: AdminLiveCallbacks | null = null;
 
-  // WebSocket
-  private ws: WebSocket | null = null;
-
-  // Peer connections (one per candidate session)
-  private peerConnections: Map<string, RTCPeerConnection> = new Map();
+  // Agora
+  private agoraModule: AgoraModule | null = null;
+  private client: IAgoraRTCClient | null = null;
 
   // Stream tracking
   private candidateStreams: Map<string, CandidateStreamInfo> = new Map();
-  private receivedVideoTracks: Map<string, Set<string>> = new Map();
-
-  // Session tracking
-  private connectingSessions: Set<string> = new Set();
-  private candidateIdMap: Map<string, string> = new Map(); // sessionId -> candidateId
+  private remoteTracks: Map<UID, { webcam?: IRemoteVideoTrack; screen?: IRemoteVideoTrack }> = new Map();
+  private uidToSessionId: Map<UID, string> = new Map();
+  private sessionIdToUid: Map<string, UID> = new Map();
 
   // Guards
   private isStarting: boolean = false;
@@ -80,7 +130,7 @@ export class AdminLiveService {
 
   constructor(
     config: Pick<AdminLiveProctoringConfig, "assessmentId" | "adminId"> &
-      Partial<AdminLiveProctoringConfig>
+      Partial<AdminLiveProctoringConfig> & { debugMode?: boolean }
   ) {
     this.config = {
       ...DEFAULT_ADMIN_LIVE_CONFIG,
@@ -93,28 +143,264 @@ export class AdminLiveService {
   }
 
   // ============================================================================
+  // Private Helpers
+  // ============================================================================
+
+  private log(msg: string, data?: unknown): void {
+    liveLog("[AdminLiveService]", msg, data);
+  }
+
+  private async getAgora(): Promise<AgoraModule | null> {
+    if (typeof window === "undefined") {
+      return null;
+    }
+
+    if (this.agoraModule) {
+      return this.agoraModule;
+    }
+
+    try {
+      this.agoraModule = await import("agora-rtc-sdk-ng");
+      if (this.config.debugMode && this.agoraModule.default) {
+        this.agoraModule.default.setLogLevel(0); // DEBUG
+      }
+      return this.agoraModule;
+    } catch (error) {
+      this.log("Failed to load Agora SDK", error);
+      return null;
+    }
+  }
+
+  private updateState(updates: Partial<AdminLiveState>): void {
+    this.state = { ...this.state, ...updates };
+    this.callbacks?.onStateChange(updates);
+  }
+
+  /**
+   * Rebuild candidateStreams from existing client's remoteUsers.
+   * Used when reusing a connection to restore candidate state.
+   * 
+   * Production-level: Handles multiple video tracks per user (webcam + screen).
+   */
+  private async rebuildCandidateStreamsFromRemoteUsers(): Promise<void> {
+    if (!this.client) {
+      return;
+    }
+
+    this.log("🔄 Rebuilding candidate streams from existing remote users...");
+
+    // Clear existing mappings
+    this.remoteTracks.clear();
+    this.candidateStreams.clear();
+    this.uidToSessionId.clear();
+    this.sessionIdToUid.clear();
+
+    // Group remoteUsers by UID (in case same user has multiple tracks)
+    const usersByUid = new Map<UID, typeof this.client.remoteUsers>();
+    for (const remoteUser of this.client.remoteUsers) {
+      const uid = remoteUser.uid;
+      if (!usersByUid.has(uid)) {
+        usersByUid.set(uid, []);
+      }
+      usersByUid.get(uid)!.push(remoteUser);
+    }
+
+    // Rebuild from grouped remoteUsers
+    // Group by candidateId (strip -screen suffix) to combine webcam and screen tracks
+    const tracksByCandidate = new Map<string, { webcam?: IRemoteVideoTrack; screen?: IRemoteVideoTrack }>();
+
+    for (const [uid, remoteUsers] of Array.from(usersByUid.entries())) {
+      const uidString = uid.toString();
+      const isScreenTrack = uidString.endsWith("-screen");
+      const candidateId = isScreenTrack ? uidString.replace(/-screen$/, "") : uidString;
+
+      // Get or create tracks for this candidate
+      let existing = tracksByCandidate.get(candidateId);
+      if (!existing) {
+        existing = {};
+        tracksByCandidate.set(candidateId, existing);
+      }
+
+      // Process all video tracks for this user
+      for (const remoteUser of remoteUsers) {
+        const videoTrack = remoteUser.videoTrack as IRemoteVideoTrack | undefined;
+        if (!videoTrack) {
+          continue;
+        }
+
+        this.log(`Rebuilt: Track from user ${uid}: ${isScreenTrack ? "SCREEN" : "WEBCAM"} (candidateId: ${candidateId})`);
+
+        // Store track in correct slot
+        if (isScreenTrack) {
+          if (existing.screen === videoTrack) {
+            this.log(`Rebuilt: Candidate ${candidateId} screen track already stored, skipping duplicate`);
+            continue;
+          }
+          if (existing.screen) {
+            existing.screen.stop();
+          }
+          existing.screen = videoTrack;
+          this.log(`Rebuilt: Candidate ${candidateId} screen track`);
+        } else {
+          if (existing.webcam === videoTrack) {
+            this.log(`Rebuilt: Candidate ${candidateId} webcam track already stored, skipping duplicate`);
+            continue;
+          }
+          if (existing.webcam) {
+            existing.webcam.stop();
+          }
+          existing.webcam = videoTrack;
+          this.log(`Rebuilt: Candidate ${candidateId} webcam track`);
+        }
+      }
+
+      // Map UIDs to candidateId
+      this.uidToSessionId.set(uid, candidateId);
+      this.sessionIdToUid.set(candidateId, uid);
+    }
+
+    // Store tracks by candidateId and create stream info
+    for (const [candidateId, existing] of Array.from(tracksByCandidate.entries())) {
+      if (existing.webcam || existing.screen) {
+        this.remoteTracks.set(candidateId as UID, existing);
+
+        // Use candidateId as sessionId
+        const sessionId = candidateId;
+
+        // Look up candidate info - try multiple sources
+        let candidateName: string | undefined;
+        let candidateEmail: string | undefined;
+        
+        // 1. Check window map (same tab only)
+        if (typeof window !== 'undefined') {
+          const windowMap = (window as any).__CANDIDATE_INFO_MAP;
+          if (windowMap && windowMap instanceof Map) {
+            const windowInfo = windowMap.get(candidateId);
+            if (windowInfo) {
+              candidateName = windowInfo.candidateName;
+              candidateEmail = windowInfo.candidateEmail;
+            }
+          }
+        }
+        
+        // 2. Check local map
+        const localInfo = CANDIDATE_INFO_MAP.get(candidateId);
+        if (localInfo) {
+          candidateName = candidateName || localInfo.candidateName;
+          candidateEmail = candidateEmail || localInfo.candidateEmail;
+        }
+        
+        // 3. Fetch from backend if not found (works across tabs/windows)
+        if (!candidateName && !candidateEmail) {
+          try {
+            const tokenResponse = await fetch(LIVE_PROCTORING_ENDPOINTS.agoraToken(), {
+              method: "POST",
+              credentials: "include",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                assessmentId: this.config.assessmentId,
+                candidateId: candidateId,
+                role: "candidate",
+              }),
+            });
+            
+            if (tokenResponse.ok) {
+              const tokenData = await tokenResponse.json();
+              if (tokenData.candidateName || tokenData.candidateEmail) {
+                candidateName = tokenData.candidateName;
+                candidateEmail = tokenData.candidateEmail;
+                
+                // Store in maps for future use
+                CANDIDATE_INFO_MAP.set(candidateId, {
+                  candidateName,
+                  candidateEmail,
+                  timestamp: Date.now(),
+                });
+                if (typeof window !== 'undefined') {
+                  const windowMap = (window as any).__CANDIDATE_INFO_MAP || new Map();
+                  windowMap.set(candidateId, { candidateName, candidateEmail, timestamp: Date.now() });
+                  (window as any).__CANDIDATE_INFO_MAP = windowMap;
+                }
+                
+                this.log(`✅ Fetched candidate info from backend: ${candidateName || candidateEmail || 'none'}`);
+              }
+            }
+          } catch (error) {
+            // Silently fail - fallback to existing lookup
+          }
+        }
+
+        // Create CandidateStreamInfo
+        const streamInfo = this.toCandidateStreamInfo(
+      sessionId,
+      candidateId,
+          existing.webcam || null,
+          existing.screen || null,
+          candidateName,
+          candidateEmail
+        );
+
+        this.candidateStreams.set(sessionId, streamInfo);
+      }
+    }
+
+    this.log(`✅ Rebuilt ${this.candidateStreams.size} candidate stream(s) from ${usersByUid.size} remote user(s)`);
+  }
+
+  private toCandidateStreamInfo(
+    sessionId: string,
+    candidateId: string,
+    webcamTrack: IRemoteVideoTrack | null,
+    screenTrack: IRemoteVideoTrack | null,
+    candidateName?: string,
+    candidateEmail?: string
+  ): CandidateStreamInfo {
+    const webcamStream = webcamTrack ? new MediaStream([webcamTrack.getMediaStreamTrack()]) : null;
+    const screenStream = screenTrack ? new MediaStream([screenTrack.getMediaStreamTrack()]) : null;
+
+    return {
+      sessionId,
+      candidateId,
+      candidateName,
+      candidateEmail,
+      status: webcamStream || screenStream ? "connected" : "disconnected",
+      webcamStream,
+      screenStream,
+      error: null,
+    };
+  }
+
+  // ============================================================================
   // Public API
   // ============================================================================
 
   /**
    * Start monitoring active candidates.
    *
-   * This will:
-   * 1. Connect WebSocket to signaling server
-   * 2. Receive list of active candidate sessions
-   * 3. Create peer connections to view each candidate's streams
-   *
    * @param callbacks - Callbacks for state changes and events
    */
-  async startMonitoring(callbacks: AdminLiveCallbacks): Promise<boolean> {
+  async startMonitoring(callbacks: AdminLiveCallbacks): Promise<{ success: boolean; connectionReused: boolean }> {
     if (this.isStarting) {
       this.log("Already starting monitoring");
-      return false;
+      return { success: false, connectionReused: false };
     }
 
     if (this.state.isMonitoring) {
       this.log("Already monitoring");
-      return true;
+      return { success: true, connectionReused: false };
+    }
+
+    // CRITICAL: Cleanup any existing client before starting
+    if (this.client) {
+      this.log("Cleaning up existing client before starting...");
+      try {
+        await this.client.leave().catch(() => {});
+        this.client = null;
+      } catch (e) {
+        this.log("Error cleaning up existing client", e);
+      }
     }
 
     this.isStarting = true;
@@ -122,38 +408,140 @@ export class AdminLiveService {
     this.updateState({ isLoading: true });
 
     try {
-      this.log("✅ Starting admin monitoring...");
+      this.log("✅ Starting admin monitoring (Agora)...");
 
-      // Connect WebSocket
-      const wsUrl = LIVE_PROCTORING_ENDPOINTS.adminWs(this.config.assessmentId);
-      this.log("Connecting WebSocket", wsUrl);
+      // 1. Get Agora token FIRST (before any SDK loading or client creation)
+      this.log("Requesting Agora token...");
+      const tokenResponse = await fetch(LIVE_PROCTORING_ENDPOINTS.agoraToken(), {
+        method: "POST",
+        credentials: "include",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          assessmentId: this.config.assessmentId,
+          adminId: this.config.adminId,
+          role: "admin",
+        }),
+      });
 
-      this.ws = await createWebSocketConnection(wsUrl, 10000);
-      this.log("✅ WebSocket connected");
+      if (!tokenResponse.ok) {
+        throw new Error(`Failed to get Agora token: ${tokenResponse.statusText}`);
+      }
 
-      // Setup message handler
-      this.ws.onmessage = this.handleWebSocketMessage.bind(this);
+      const tokenData = await tokenResponse.json();
+      if (tokenData.status !== "ok") {
+        throw new Error("Invalid token response");
+      }
 
-      this.ws.onclose = () => {
-        this.log("⚠️ Admin WebSocket closed");
-        // Don't cleanup - admin may want to reconnect
-      };
+      this.log("✅ Agora token received");
 
-      this.ws.onerror = (err) => {
-        this.log("❌ Admin WebSocket error", err);
-      };
+      // 2. ✅ CHECK FOR EXISTING OR PENDING CONNECTION
+      const existingConnection = GLOBAL_AGORA_CONNECTIONS.get(this.config.assessmentId);
+      if (existingConnection?.adminId === this.config.adminId && existingConnection?.isActive) {
+        const age = Date.now() - existingConnection.timestamp;
+        this.log(`⚠️ Connection already exists (age: ${age}ms), reusing...`);
+        
+        this.client = existingConnection.client;
+        this.setupClientCallbacks();
+        
+        // 🔥 PRODUCTION FIX: Rebuild candidateStreams from existing client's remoteUsers
+        await this.rebuildCandidateStreamsFromRemoteUsers();
+        
+        this.updateState({
+          candidateStreams: new Map(this.candidateStreams),
+          activeSessions: Array.from(this.candidateStreams.keys()),
+          isMonitoring: true,
+          isLoading: false,
+        });
+        
+        this.log("✅ Reusing existing Agora connection with restored candidate streams");
+        return { success: true, connectionReused: true };
+      }
 
-      this.updateState({ isMonitoring: true });
-      this.log("✅ Admin monitoring started");
+      // 3. Check if another mount is already creating a connection
+      const pendingConnection = PENDING_CONNECTIONS.get(this.config.assessmentId);
+      if (pendingConnection) {
+        this.log("⏳ Another connection is being created, waiting...");
+        
+        // Wait for the pending connection to complete
+        await pendingConnection;
+        
+        // After waiting, check if connection now exists
+        const nowExisting = GLOBAL_AGORA_CONNECTIONS.get(this.config.assessmentId);
+        if (nowExisting?.isActive) {
+          this.log("✅ Pending connection completed, reusing...");
+          this.client = nowExisting.client;
+          this.setupClientCallbacks();
+          
+          // 🔥 PRODUCTION FIX: Rebuild candidateStreams from existing client's remoteUsers
+          await this.rebuildCandidateStreamsFromRemoteUsers();
+          
+      this.updateState({
+            candidateStreams: new Map(this.candidateStreams),
+            activeSessions: Array.from(this.candidateStreams.keys()),
+            isMonitoring: true,
+            isLoading: false,
+          });
+          
+          return { success: true, connectionReused: true };
+        }
+      }
 
-      return true;
+      // 4. Mark this connection as pending
+      const connectionPromise = (async () => {
+        try {
+          this.log("🆕 Creating new Agora connection...");
+          const AgoraRTC = (await this.getAgora())?.default;
+          if (!AgoraRTC) {
+            throw new Error("Failed to load Agora SDK");
+          }
+
+          this.client = AgoraRTC.createClient({ mode: "live", codec: "vp8" });
+          this.setupClientCallbacks();
+
+          this.log("Joining Agora channel...");
+          await this.client.join(
+            tokenData.appId,
+            tokenData.channel,
+            tokenData.token,
+            tokenData.uid
+          );
+          await this.client.setClientRole("audience");
+          this.log("✅ Joined Agora channel");
+
+          // Store as global active connection
+          GLOBAL_AGORA_CONNECTIONS.set(this.config.assessmentId, {
+            client: this.client,
+            adminId: this.config.adminId,
+            timestamp: Date.now(),
+            isActive: true,
+          });
+          this.log("✅ Stored as global connection");
+
+          return true;
+        } finally {
+          // Remove from pending when done
+          PENDING_CONNECTIONS.delete(this.config.assessmentId);
+        }
+      })();
+
+      // Store the promise so other mounts can wait
+      PENDING_CONNECTIONS.set(this.config.assessmentId, connectionPromise);
+
+      // Wait for our connection to complete
+      await connectionPromise;
+
+      this.updateState({ isMonitoring: true, isLoading: false });
+      this.log("✅ Admin monitoring started (Agora)");
+
+      return { success: true, connectionReused: false };
     } catch (error) {
-      const msg =
-        error instanceof Error ? error.message : "Failed to start monitoring";
+      const msg = error instanceof Error ? error.message : "Failed to start monitoring";
       this.log(`❌ Error: ${msg}`);
+      this.updateState({ isLoading: false });
       this.callbacks?.onError?.(msg);
-      this.cleanup();
-      return false;
+      return { success: false, connectionReused: false };
     } finally {
       this.isStarting = false;
     }
@@ -161,37 +549,51 @@ export class AdminLiveService {
 
   /**
    * Stop monitoring.
-   *
-   * IMPORTANT: This only closes local connections.
-   * Candidate sessions continue running - admin can reconnect later.
    */
-  stopMonitoring(): void {
+  async stopMonitoring(): Promise<void> {
     this.log("✅ Stopping admin monitoring...");
-    this.cleanup();
+
+    // Cleanup remote tracks
+    this.remoteTracks.forEach((tracks) => {
+      tracks.webcam?.stop();
+      tracks.screen?.stop();
+    });
+    this.remoteTracks.clear();
+
+    // Leave Agora channel and cleanup client
+    if (this.client) {
+      try {
+        // Remove all event listeners before leaving
+        this.client.removeAllListeners();
+        await this.client.leave();
+        
+        // Mark connection as inactive (will be cleaned up by interval)
+        const conn = GLOBAL_AGORA_CONNECTIONS.get(this.config.assessmentId);
+        if (conn) {
+          conn.isActive = false;
+          conn.timestamp = Date.now();
+          this.log("🔒 Marked connection as inactive");
+        }
+      } catch (error) {
+        this.log("Error leaving channel", error);
+      }
+      this.client = null;
+    }
+
+    // Clear mappings
+    this.uidToSessionId.clear();
+    this.sessionIdToUid.clear();
+    this.candidateStreams.clear();
+
+    // Reset state flags
+    this.isStarting = false;
+    this.updateState({
+      isMonitoring: false,
+      candidateStreams: new Map(),
+      activeSessions: [],
+    });
+
     this.log("✅ Admin monitoring stopped");
-  }
-
-  /**
-   * Refresh connection to a specific candidate.
-   * Use this if the stream is not showing or connection failed.
-   *
-   * @param sessionId - Session ID to refresh
-   */
-  async refreshCandidate(sessionId: string): Promise<void> {
-    this.log(`Refreshing connection to ${sessionId}`);
-
-    // Close existing connection
-    this.closePeerConnection(sessionId);
-
-    // Get candidateId from map
-    const candidateId = this.candidateIdMap.get(sessionId) || sessionId;
-
-    // Reconnect
-    await this.connectToCandidate({
-      sessionId,
-      candidateId,
-      status: "candidate_initiated",
-    }, true);
   }
 
   /**
@@ -205,537 +607,423 @@ export class AdminLiveService {
   }
 
   /**
-   * Get streams for a specific candidate.
+   * Refresh candidate connection (no-op for Agora, kept for compatibility).
    */
-  getCandidateStreams(sessionId: string): CandidateStreamInfo | undefined {
-    return this.candidateStreams.get(sessionId);
-  }
-
-  /**
-   * Get all active session IDs.
-   */
-  getActiveSessions(): string[] {
-    return [...this.state.activeSessions];
-  }
-
-  /**
-   * Check if monitoring is active.
-   */
-  isMonitoring(): boolean {
-    return this.state.isMonitoring;
+  async refreshCandidate(sessionId: string): Promise<void> {
+    this.log(`Refresh candidate ${sessionId} (no-op for Agora)`);
+    // Agora handles reconnection automatically
   }
 
   // ============================================================================
-  // WebSocket Message Handling
+  // Private Helpers - Client Callbacks Setup
   // ============================================================================
 
-  /**
-   * Handle incoming WebSocket messages from signaling server.
-   */
-  private async handleWebSocketMessage(event: MessageEvent): Promise<void> {
-    try {
-      const message = JSON.parse(event.data);
-      this.log(`Received message: ${message.type}`);
-
-      switch (message.type) {
-        case "active_sessions":
-          await this.handleActiveSessions(message.sessions || []);
-          break;
-
-        case "new_session":
-          await this.handleNewSession(message);
-          break;
-
-        case "candidate_connected":
-          // Handle real-time notification when candidate WebSocket connects
-          await this.handleNewSession(message.session || message);
-          break;
-
-        case "session_ended":
-          this.handleSessionEnded(message.sessionId);
-          break;
-
-        case "session_data":
-          await this.handleSessionData(message);
-          break;
-
-        default:
-          this.log(`Unknown message type: ${message.type}`);
+  private setupClientCallbacks(): void {
+    if (!this.client) return;
+    
+    // Remove existing listeners to prevent duplicates
+    this.client.removeAllListeners();
+    
+    this.client.on("user-published", async (user, mediaType) => {
+      if (mediaType === "video" || mediaType === "audio") {
+        await this.handleUserPublished(user.uid, mediaType);
       }
-    } catch (err) {
-      this.log("Error processing message", err);
-    }
-  }
-
-  /**
-   * Handle list of active sessions from server.
-   */
-  private async handleActiveSessions(
-    sessions: Array<{ sessionId: string; candidateId: string; status: string }>
-  ): Promise<void> {
-    this.log(`Received ${sessions.length} active sessions`, sessions);
-
-    const sessionIds = sessions.map((s) => s.sessionId);
-    this.updateState({ activeSessions: sessionIds, isLoading: false });
-
-    // Connect to each active candidate
-    for (const session of sessions) {
-      await this.connectToCandidate(session);
-    }
-  }
-
-  /**
-   * Handle new session notification.
-   */
-  private async handleNewSession(message: {
-    sessionId: string;
-    candidateId: string;
-    status?: string;
-  }): Promise<void> {
-    const { sessionId, candidateId, status } = message;
-    this.log(`New session started: ${sessionId}`);
-
-    // Add to active sessions
-    if (!this.state.activeSessions.includes(sessionId)) {
-      this.updateState({
-        activeSessions: [...this.state.activeSessions, sessionId],
-      });
-    }
-
-    // Connect if not already connected
-    const existingPc = this.peerConnections.get(sessionId);
-    const isConnecting = this.connectingSessions.has(sessionId);
-
-    if (
-      !existingPc ||
-      existingPc.connectionState === "disconnected" ||
-      existingPc.connectionState === "failed" ||
-      existingPc.connectionState === "closed"
-    ) {
-      if (!isConnecting) {
-        await this.connectToCandidate(
-          { sessionId, candidateId, status: status || "candidate_initiated" },
-          false
-        );
-      }
-    }
-  }
-
-  /**
-   * Handle session ended notification.
-   */
-  private handleSessionEnded(sessionId: string): void {
-    this.log(`Session ended: ${sessionId}`);
-
-    // Remove from active sessions
-    this.updateState({
-      activeSessions: this.state.activeSessions.filter((id) => id !== sessionId),
     });
 
-    // Close peer connection
-    this.closePeerConnection(sessionId);
+    this.client.on("user-unpublished", async (user, mediaType) => {
+      if (mediaType === "video" || mediaType === "audio") {
+        await this.handleUserUnpublished(user.uid, mediaType);
+      }
+    });
 
-    // Remove from streams map
-    this.candidateStreams.delete(sessionId);
+    this.client.on("user-left", async (user) => {
+      await this.handleUserLeft(user.uid);
+    });
 
-    // Notify callback
-    this.callbacks?.onCandidateDisconnected?.(sessionId);
-  }
-
-  /**
-   * Handle session data (offer) from server.
-   */
-  private async handleSessionData(message: {
-    sessionId: string;
-    candidateId?: string;
-    offer?: RTCSessionDescriptionInit;
-    candidateICE?: unknown[];
-  }): Promise<void> {
-    const { sessionId, candidateId, offer, candidateICE } = message;
-
-    if (!offer) {
-      this.log(`No offer in session_data for ${sessionId}, retrying...`);
-      // Retry after delay
-      setTimeout(() => {
-        sendWebSocketMessage(this.ws, {
-          type: "get_session",
-          sessionId,
-        });
-      }, 2000);
-      return;
-    }
-
-    this.log(`Received session data for ${sessionId}`);
-
-    // Remove from connecting set
-    this.connectingSessions.delete(sessionId);
-
-    // Store candidateId
-    if (candidateId) {
-      this.candidateIdMap.set(sessionId, candidateId);
-    }
-
-    // Check existing connection
-    const existingPc = this.peerConnections.get(sessionId);
-    if (
-      existingPc &&
-      (existingPc.connectionState === "connected" ||
-        existingPc.connectionState === "connecting")
-    ) {
-      this.log(`Already connected to ${sessionId}, skipping (fresh offer will be ignored)`);
-      return;
-    }
-
-    // Close existing if in bad state (disconnected/failed/closed)
-    // This allows reconnection with fresh offer
-    if (existingPc) {
-      this.log(`Closing existing connection in state: ${existingPc.connectionState}`);
-      this.closePeerConnection(sessionId);
-    }
-
-    // Create new peer connection
-    await this.setupPeerConnection(
-      sessionId,
-      candidateId || sessionId,
-      offer,
-      candidateICE || []
-    );
+    this.client.on("connection-state-change", (curState: string, prevState: string) => {
+      this.log(`Connection state changed: ${prevState} -> ${curState}`);
+      if (curState === "DISCONNECTED" || curState === "FAILED") {
+        this.callbacks?.onError?.(`Connection ${curState.toLowerCase()}`);
+      }
+    });
   }
 
   // ============================================================================
-  // Peer Connection Management
+  // Private Event Handlers
   // ============================================================================
 
-  /**
-   * Connect to a candidate session.
-   */
-  private async connectToCandidate(
-    session: { sessionId: string; candidateId: string; status: string },
-    forceReconnect: boolean = false
-  ): Promise<void> {
-    const { sessionId, candidateId } = session;
-
-    // Check if already connecting
-    if (this.connectingSessions.has(sessionId) && !forceReconnect) {
-      this.log(`Already connecting to ${sessionId}, skipping`);
+  private async handleUserPublished(uid: UID, mediaType: "video" | "audio"): Promise<void> {
+    if (!this.client || mediaType !== "video") {
       return;
     }
 
-    // Check existing connection
-    const existingPc = this.peerConnections.get(sessionId);
-    if (existingPc && !forceReconnect) {
-      const state = existingPc.connectionState;
-      if (state === "connected" || state === "connecting") {
-        this.log(`Already have active connection for ${sessionId}`);
+    try {
+      this.log(`User ${uid} published video`);
+
+      // Subscribe to remote video track
+      await this.client.subscribe(uid, mediaType);
+      const remoteUser = this.client.remoteUsers.find((u) => u.uid === uid);
+      if (!remoteUser || !remoteUser.videoTrack) {
         return;
       }
-    }
 
-    // Mark as connecting
-    this.connectingSessions.add(sessionId);
-    this.candidateIdMap.set(sessionId, candidateId);
+      const videoTrack = remoteUser.videoTrack as IRemoteVideoTrack;
 
-    // Update stream state
-    this.updateCandidateStream(sessionId, {
-      sessionId,
-      candidateId,
-      status: "connecting",
-      webcamStream: null,
-      screenStream: null,
-      error: null,
-    });
+      // Identify track type: UID ending with "-screen" is screen share, otherwise webcam
+      const uidString = uid.toString();
+      const isScreenTrack = uidString.endsWith("-screen");
+      const candidateId = isScreenTrack ? uidString.replace(/-screen$/, "") : uidString;
 
-    // Request session data (offer) from server
-    if (!sendWebSocketMessage(this.ws, { type: "get_session", sessionId })) {
-      this.log(`Failed to request session data for ${sessionId}`);
-      this.connectingSessions.delete(sessionId);
-      this.updateCandidateStream(sessionId, {
-        status: "failed",
-        error: "WebSocket not connected",
-      });
-    }
+      this.log(`Track from user ${uid}: ${isScreenTrack ? "SCREEN" : "WEBCAM"} (candidateId: ${candidateId})`);
 
-    this.log(`Requested session data for ${sessionId}`);
-  }
+      // Get or create tracks for this candidate (group by candidateId, not UID)
+      const existing = this.remoteTracks.get(candidateId as UID) || {};
 
-  /**
-   * Setup peer connection for a candidate.
-   */
-  private async setupPeerConnection(
-    sessionId: string,
-    candidateId: string,
-    offer: RTCSessionDescriptionInit,
-    candidateICE: unknown[]
-  ): Promise<void> {
-    const pc = createPeerConnection(WEBRTC_CONFIG);
-    this.peerConnections.set(sessionId, pc);
-
-    // Initialize video track tracking
-    this.receivedVideoTracks.set(sessionId, new Set());
-
-    // Handle incoming tracks
-    pc.ontrack = (event) => {
-      this.handleTrack(sessionId, candidateId, event);
-    };
-
-    // Handle ICE candidates
-    pc.onicecandidate = (event) => {
-      if (event.candidate) {
-        sendWebSocketMessage(this.ws, {
-          type: "ice",
-          sessionId,
-          ...formatIceCandidate(event.candidate),
-        });
-        this.log(`Sent ICE candidate for ${sessionId}`);
+      // Store track in correct slot (prevent duplicate processing)
+      if (isScreenTrack) {
+        // If screen track already exists and it's the same track, skip
+        if (existing.screen === videoTrack) {
+          this.log(`Candidate ${candidateId} screen track already stored, skipping duplicate`);
+          return;
+        }
+        // If screen track already exists, replace it (newer track takes precedence)
+        if (existing.screen) {
+          existing.screen.stop();
+        }
+        existing.screen = videoTrack;
+        this.log(`Candidate ${candidateId} screen track received and stored`);
+      } else {
+        // If webcam track already exists and it's the same track, skip
+        if (existing.webcam === videoTrack) {
+          this.log(`Candidate ${candidateId} webcam track already stored, skipping duplicate`);
+          return;
+        }
+        // If webcam track already exists, replace it (newer track takes precedence)
+        if (existing.webcam) {
+          existing.webcam.stop();
+        }
+        existing.webcam = videoTrack;
+        this.log(`Candidate ${candidateId} webcam track received and stored`);
       }
-    };
 
-    // Handle connection state changes
-    pc.onconnectionstatechange = () => {
-      this.handleConnectionStateChange(sessionId, pc);
-    };
+      // Store tracks by candidateId (not UID) so webcam and screen are grouped together
+      this.remoteTracks.set(candidateId as UID, existing);
 
-    // Set remote description (offer)
-    this.log(`Setting remote description for ${sessionId}`);
-    await pc.setRemoteDescription(new RTCSessionDescription(offer));
+      // Map UIDs to candidateId
+      this.uidToSessionId.set(uid, candidateId);
+      this.sessionIdToUid.set(candidateId, uid);
 
-    // Add candidate ICE candidates
-    for (const ice of candidateICE) {
-      const candidate = parseIceCandidate(ice);
-      if (candidate) {
-        try {
-          await pc.addIceCandidate(candidate);
-        } catch (err) {
-          // Ignore invalid ICE candidates
+      // Use candidateId as sessionId
+      const sessionId = candidateId;
+
+      // Look up candidate info - try multiple sources
+      let candidateName: string | undefined;
+      let candidateEmail: string | undefined;
+      
+      this.log(`🔍 [DEBUG] Looking up candidate info for candidateId: ${candidateId}`);
+      
+      // 1. Check window map (same tab only)
+      if (typeof window !== 'undefined') {
+        const windowMap = (window as any).__CANDIDATE_INFO_MAP;
+        if (windowMap && windowMap instanceof Map) {
+          const windowInfo = windowMap.get(candidateId);
+          if (windowInfo) {
+            candidateName = windowInfo.candidateName;
+            candidateEmail = windowInfo.candidateEmail;
+            this.log(`✅ Found candidate info from window map: ${candidateName || candidateEmail || 'none'}`);
+          }
         }
       }
-    }
+      
+      // 2. Check local map
+      const localInfo = CANDIDATE_INFO_MAP.get(candidateId);
+      if (localInfo) {
+        candidateName = candidateName || localInfo.candidateName;
+        candidateEmail = candidateEmail || localInfo.candidateEmail;
+        if (candidateName || candidateEmail) {
+          this.log(`✅ Found candidate info from local map: ${candidateName || candidateEmail || 'none'}`);
+        }
+      }
+      
+      // 3. Fetch from backend if not found (works across tabs/windows)
+      if (!candidateName && !candidateEmail) {
+        try {
+          this.log(`🔍 [DEBUG] Fetching candidate info from backend for candidateId: ${candidateId}`);
+          const tokenResponse = await fetch(LIVE_PROCTORING_ENDPOINTS.agoraToken(), {
+            method: "POST",
+            credentials: "include",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              assessmentId: this.config.assessmentId,
+              candidateId: candidateId,
+              role: "candidate",
+            }),
+          });
+          
+          if (tokenResponse.ok) {
+            const tokenData = await tokenResponse.json();
+            if (tokenData.candidateName || tokenData.candidateEmail) {
+              candidateName = tokenData.candidateName;
+              candidateEmail = tokenData.candidateEmail;
+              
+              // Store in maps for future use
+              CANDIDATE_INFO_MAP.set(candidateId, {
+                candidateName,
+                candidateEmail,
+                timestamp: Date.now(),
+              });
+              if (typeof window !== 'undefined') {
+                const windowMap = (window as any).__CANDIDATE_INFO_MAP || new Map();
+                windowMap.set(candidateId, { candidateName, candidateEmail, timestamp: Date.now() });
+                (window as any).__CANDIDATE_INFO_MAP = windowMap;
+              }
+              
+              this.log(`✅ Fetched candidate info from backend: ${candidateName || candidateEmail || 'none'}`);
+            } else {
+              this.log(`⚠️ Backend token response has no candidate info for candidateId: ${candidateId}`);
+            }
+          } else {
+            this.log(`⚠️ Failed to fetch candidate info from backend: ${tokenResponse.statusText}`);
+          }
+        } catch (error) {
+          this.log(`⚠️ Error fetching candidate info from backend: ${error}`);
+        }
+      }
+      
+      if (!candidateName && !candidateEmail) {
+        this.log(`⚠️ No candidate info found for candidateId: ${candidateId}`);
+      } else {
+        this.log(`✅ Final candidate info: name=${candidateName || 'none'}, email=${candidateEmail || 'none'}`);
+      }
 
-    // Create and send answer
-    this.log(`Creating answer for ${sessionId}`);
-    const answer = await pc.createAnswer();
-    await pc.setLocalDescription(answer);
-
-    sendWebSocketMessage(this.ws, {
-      type: "answer",
-      sessionId,
-      answer: { type: answer.type, sdp: answer.sdp },
-    });
-
-    this.log(`✅ Answer sent for ${sessionId}`);
-  }
-
-  /**
-   * Handle incoming track from candidate.
-   */
-  private handleTrack(
-    sessionId: string,
-    candidateId: string,
-    event: RTCTrackEvent
-  ): void {
-    if (event.track.kind !== "video") return;
-
-    const stream = event.streams[0];
-    const trackId = event.track.id;
-    const streamType = detectStreamType(event.track, stream?.id);
-
-    this.log(`Received ${streamType} track for ${sessionId}`, {
-      trackId,
-      label: event.track.label,
-      streamId: stream?.id,
-    });
-
-    // Track received video tracks to distinguish webcam/screen by order
-    const sessionTracks = this.receivedVideoTracks.get(sessionId) || new Set();
-    const isFirstTrack = sessionTracks.size === 0;
-    sessionTracks.add(trackId);
-    this.receivedVideoTracks.set(sessionId, sessionTracks);
-
-    // Determine stream type (priority: detected type > order)
-    const isScreen = streamType === "screen" || (!isFirstTrack && sessionTracks.size === 2);
-
-    // Get current stream info
-    const current = this.candidateStreams.get(sessionId) || {
+      // Create or update CandidateStreamInfo
+      const streamInfo = this.toCandidateStreamInfo(
       sessionId,
       candidateId,
-      status: "connecting" as LiveConnectionState,
-      webcamStream: null,
-      screenStream: null,
-      error: null,
-    };
+        existing.webcam || null,
+        existing.screen || null,
+        candidateName,
+        candidateEmail
+      );
 
-    // Update appropriate stream
-    if (isScreen && !current.screenStream) {
-      this.log(`✅ Screen stream for ${sessionId}`);
-      this.updateCandidateStream(sessionId, {
-        screenStream: stream,
-        status: current.webcamStream ? "connected" : "connecting",
+      this.candidateStreams.set(sessionId, streamInfo);
+      this.updateState({
+        candidateStreams: new Map(this.candidateStreams),
+        activeSessions: Array.from(this.candidateStreams.keys()),
       });
-    } else if (!isScreen && !current.webcamStream) {
-      this.log(`✅ Webcam stream for ${sessionId}`);
-      this.updateCandidateStream(sessionId, {
-        webcamStream: stream,
-        status: current.screenStream ? "connected" : "connecting",
+
+      this.callbacks?.onCandidateConnected?.(sessionId, candidateId);
+    } catch (error) {
+      this.log(`Error handling user published ${uid}:`, error);
+    }
+  }
+
+  private async handleUserUnpublished(uid: UID, mediaType: "video" | "audio"): Promise<void> {
+    if (mediaType !== "video") {
+      return;
+    }
+
+    this.log(`User ${uid} unpublished video`);
+
+    // Identify track type by UID
+    const uidString = uid.toString();
+    const isScreenTrack = uidString.endsWith("-screen");
+    const candidateId = isScreenTrack ? uidString.replace(/-screen$/, "") : uidString;
+
+    const existing = this.remoteTracks.get(candidateId as UID);
+    if (existing) {
+      // Remove the appropriate track based on UID
+      if (isScreenTrack && existing.screen) {
+        existing.screen.stop();
+        existing.screen = undefined;
+        this.log(`Candidate ${candidateId} screen track unpublished`);
+      } else if (!isScreenTrack && existing.webcam) {
+        existing.webcam.stop();
+        existing.webcam = undefined;
+        this.log(`Candidate ${candidateId} webcam track unpublished`);
+      }
+
+      if (!existing.webcam && !existing.screen) {
+        this.remoteTracks.delete(candidateId as UID);
+      } else {
+        this.remoteTracks.set(candidateId as UID, existing);
+      }
+
+      // Update CandidateStreamInfo
+      const sessionId = candidateId;
+      const streamInfo = this.toCandidateStreamInfo(
+        sessionId,
+        candidateId,
+        existing.webcam || null,
+        existing.screen || null
+      );
+
+      this.candidateStreams.set(sessionId, streamInfo);
+      this.updateState({
+        candidateStreams: new Map(this.candidateStreams),
       });
     }
   }
 
-  /**
-   * Handle peer connection state changes.
-   */
-  private handleConnectionStateChange(
-    sessionId: string,
-    pc: RTCPeerConnection
-  ): void {
-    const state = pc.connectionState;
-    this.log(`Connection state for ${sessionId}: ${state}`);
+  private async handleUserLeft(uid: UID): Promise<void> {
+    this.log(`User ${uid} left`);
 
-    switch (state) {
-      case "connected":
-        this.connectingSessions.delete(sessionId);
-        this.updateCandidateStream(sessionId, { status: "connected" });
-        this.callbacks?.onCandidateConnected?.(
-          sessionId,
-          this.candidateIdMap.get(sessionId) || sessionId
-        );
-        break;
+    // Identify candidateId from UID
+    const uidString = uid.toString();
+    const isScreenTrack = uidString.endsWith("-screen");
+    const candidateId = isScreenTrack ? uidString.replace(/-screen$/, "") : uidString;
 
-      case "disconnected":
-        this.updateCandidateStream(sessionId, { status: "disconnected" });
-        break;
+    const existing = this.remoteTracks.get(candidateId as UID);
+    if (existing) {
+      // Remove the appropriate track based on UID
+      if (isScreenTrack && existing.screen) {
+        existing.screen.stop();
+        existing.screen = undefined;
+        this.log(`Candidate ${candidateId} screen track left`);
+      } else if (!isScreenTrack && existing.webcam) {
+        existing.webcam.stop();
+        existing.webcam = undefined;
+        this.log(`Candidate ${candidateId} webcam track left`);
+      }
 
-      case "failed":
-        this.connectingSessions.delete(sessionId);
-        this.updateCandidateStream(sessionId, {
-          status: "failed",
-          error: "Connection failed",
+      // Only delete candidate if both tracks are gone
+      if (!existing.webcam && !existing.screen) {
+        this.remoteTracks.delete(candidateId as UID);
+        const sessionId = candidateId;
+        this.candidateStreams.delete(sessionId);
+        this.uidToSessionId.delete(uid);
+        this.sessionIdToUid.delete(sessionId);
+
+        this.updateState({
+      candidateStreams: new Map(this.candidateStreams),
+          activeSessions: Array.from(this.candidateStreams.keys()),
         });
-        break;
-    }
-  }
 
-  /**
-   * Close peer connection for a session.
-   */
-  private closePeerConnection(sessionId: string): void {
-    const pc = this.peerConnections.get(sessionId);
-    if (pc) {
-      try {
-        pc.close();
-      } catch (err) {
-        // Ignore
-      }
-      this.peerConnections.delete(sessionId);
-    }
-
-    this.connectingSessions.delete(sessionId);
-    this.receivedVideoTracks.delete(sessionId);
-    this.log(`Closed peer connection for ${sessionId}`);
-  }
-
-  // ============================================================================
-  // State Management
-  // ============================================================================
-
-  /**
-   * Update state and notify callback.
-   */
-  private updateState(partial: Partial<AdminLiveState>): void {
-    this.state = { ...this.state, ...partial };
-    this.callbacks?.onStateChange({
-      ...partial,
-      candidateStreams: new Map(this.candidateStreams),
-    });
-  }
-
-  /**
-   * Update stream info for a candidate.
-   */
-  private updateCandidateStream(
-    sessionId: string,
-    partial: Partial<CandidateStreamInfo>
-  ): void {
-    const current = this.candidateStreams.get(sessionId) || {
+        this.callbacks?.onCandidateDisconnected?.(sessionId);
+      } else {
+        // Update state with remaining track
+        this.remoteTracks.set(candidateId as UID, existing);
+        const sessionId = candidateId;
+        const streamInfo = this.toCandidateStreamInfo(
       sessionId,
-      candidateId: this.candidateIdMap.get(sessionId) || sessionId,
-      status: "disconnected" as LiveConnectionState,
-      webcamStream: null,
-      screenStream: null,
-      error: null,
-    };
-
-    this.candidateStreams.set(sessionId, { ...current, ...partial });
-
-    // Notify state change
-    this.callbacks?.onStateChange({
+          candidateId,
+          existing.webcam || null,
+          existing.screen || null
+        );
+        this.candidateStreams.set(sessionId, streamInfo);
+        this.updateState({
       candidateStreams: new Map(this.candidateStreams),
-    });
-  }
-
-  /**
-   * Cleanup all resources.
-   */
-  private cleanup(): void {
-    this.log("Cleaning up...");
-
-    // Close WebSocket
-    if (this.ws) {
-      try {
-        this.ws.close();
-      } catch (e) {
-        /* ignore */
+          activeSessions: Array.from(this.candidateStreams.keys()),
+        });
       }
-      this.ws = null;
     }
 
-    // Close all peer connections
-    Array.from(this.peerConnections.keys()).forEach((sessionId) => {
-      this.closePeerConnection(sessionId);
-    });
-
-    // Reset state
-    this.candidateStreams.clear();
-    this.candidateIdMap.clear();
-    this.connectingSessions.clear();
-    this.receivedVideoTracks.clear();
-
-    this.state = { ...INITIAL_ADMIN_LIVE_STATE };
-    this.callbacks?.onStateChange(this.state);
+    // Clean up UID mappings
+    this.uidToSessionId.delete(uid);
   }
 
   /**
-   * Log with prefix.
+   * Flag a candidate for suspicious behavior/mischief.
+   * Logs the flag event to proctoring logs.
    */
-  private log(msg: string, data?: unknown): void {
-    liveLog("AdminLive", msg, data);
-  }
-}
+  async flagCandidate(
+    candidateId: string,
+    reason: string,
+    severity: 'low' | 'medium' | 'high' = 'medium'
+  ): Promise<boolean> {
+    try {
+      // Get candidate info from streams
+      const candidateInfo = this.candidateStreams.get(candidateId);
+      const candidateEmail = candidateInfo?.candidateEmail || candidateId;
+      const candidateName = candidateInfo?.candidateName;
 
-// ============================================================================
-// Singleton Instance
-// ============================================================================
+      // Capture snapshot from webcam stream if available
+      let snapshotBase64: string | null = null;
+      try {
+        const candidateInfo = this.candidateStreams.get(candidateId);
+        const webcamStream = candidateInfo?.webcamStream;
+        if (webcamStream && typeof window !== 'undefined') {
+          const videoElement = document.createElement('video');
+          videoElement.srcObject = webcamStream;
+          videoElement.play();
+          
+          await new Promise((resolve) => setTimeout(resolve, 200)); // Wait for video to load
+          
+          if (videoElement.readyState >= 2) { // HAVE_CURRENT_DATA
+            const canvas = document.createElement('canvas');
+            canvas.width = videoElement.videoWidth || 640;
+            canvas.height = videoElement.videoHeight || 480;
+            const ctx = canvas.getContext('2d');
+            if (ctx && videoElement.videoWidth > 0 && videoElement.videoHeight > 0) {
+              ctx.drawImage(videoElement, 0, 0);
+              snapshotBase64 = canvas.toDataURL('image/jpeg', 0.8).split(',')[1];
+            }
+          }
+        }
+      } catch (snapshotError) {
+        this.log('Failed to capture snapshot for flag:', snapshotError);
+        // Continue without snapshot
+      }
 
-let adminLiveInstance: AdminLiveService | null = null;
+      // Map frontend severity to backend severity enum
+      // Backend expects: "info", "warning", "critical"
+      const severityMap: Record<'low' | 'medium' | 'high', 'info' | 'warning' | 'critical'> = {
+        low: 'warning',
+        medium: 'warning',
+        high: 'critical',
+      };
+      const backendSeverity = severityMap[severity];
 
-/**
- * Get or create the admin live proctoring service.
- */
-export function getAdminLiveService(
-  config: Pick<AdminLiveProctoringConfig, "assessmentId" | "adminId"> &
-    Partial<AdminLiveProctoringConfig>
-): AdminLiveService {
-  if (!adminLiveInstance) {
-    adminLiveInstance = new AdminLiveService(config);
-  }
-  return adminLiveInstance;
-}
+      // Prepare log payload
+      const logPayload = {
+        assessmentId: this.config.assessmentId,
+        candidateId: candidateId,
+        candidateEmail: candidateEmail,
+        eventType: 'LIVE_PROCTORING_FLAGGED',
+        severity: backendSeverity,
+        timestamp: new Date().toISOString(),
+        meta: {
+          reason: reason,
+          candidateName: candidateName,
+          flagType: 'admin_flag',
+          severity: severity, // Keep original severity in metadata
+          ...(snapshotBase64 && {
+            evidence: {
+              type: 'image',
+              format: 'jpeg',
+              data: snapshotBase64,
+            },
+          }),
+        },
+        source: 'live-proctor',
+        snapshotRef: null,
+        recordingRef: null,
+        createdBy: null,
+      };
 
-/**
- * Reset the admin live proctoring service.
- */
-export function resetAdminLiveService(): void {
-  if (adminLiveInstance) {
-    adminLiveInstance.stopMonitoring();
-    adminLiveInstance = null;
+      // Send to backend
+      const response = await fetch(LIVE_PROCTORING_ENDPOINTS.proctoringLog(), {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(logPayload),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        this.log(`Failed to log flag event: ${response.status} ${errorText}`);
+        return false;
+      }
+
+      this.log(`✅ Candidate ${candidateId} flagged: ${reason}`);
+      return true;
+    } catch (error) {
+      this.log(`Error flagging candidate ${candidateId}:`, error);
+      return false;
+    }
   }
 }

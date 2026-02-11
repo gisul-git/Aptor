@@ -38,15 +38,11 @@ export {
 // Candidate Service
 export {
   CandidateLiveService,
-  getCandidateLiveService,
-  resetCandidateLiveService,
 } from "./CandidateLiveService";
 
 // Admin Service
 export {
   AdminLiveService,
-  getAdminLiveService,
-  resetAdminLiveService,
 } from "./AdminLiveService";
 
 // Utilities

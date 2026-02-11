@@ -751,6 +751,7 @@ async def list_custom_mcq_assessments(
         assessments_docs = await db.custom_mcq_assessments.aggregate(pipeline).to_list(length=limit)
         
         assessments = []
+        assessment_count = 0
         for assessment in assessments_docs:
             assessment_count += 1
             assessment_serialized = serialize_document(assessment)
@@ -823,9 +824,20 @@ async def get_custom_mcq_assessment(
         submissions = assessment_serialized.get("submissions", {})
         submissions_list = []
         for key, submission_data in submissions.items():
+            candidate_info = submission_data.get("candidateInfo", {})
+            candidate_requirements = submission_data.get("candidateRequirements", {})
+            
+            # Ensure phone, LinkedIn, GitHub are in candidateRequirements if they exist in candidateInfo
+            if candidate_info.get("phone") and "phone" not in candidate_requirements:
+                candidate_requirements["phone"] = candidate_info.get("phone")
+            if candidate_info.get("linkedIn") and "linkedIn" not in candidate_requirements:
+                candidate_requirements["linkedIn"] = candidate_info.get("linkedIn")
+            if candidate_info.get("github") and "github" not in candidate_requirements:
+                candidate_requirements["github"] = candidate_info.get("github")
+            
             submissions_list.append({
                 "candidateKey": key,
-                "candidateInfo": submission_data.get("candidateInfo", {}),
+                "candidateInfo": candidate_info,  # Include full candidateInfo
                 "score": submission_data.get("score", 0),
                 "totalMarks": submission_data.get("totalMarks", 0),
                 "percentage": submission_data.get("percentage", 0),
@@ -842,7 +854,7 @@ async def get_custom_mcq_assessment(
                 "codingTotal": submission_data.get("codingTotal", 0),
                 "answerLogs": submission_data.get("answerLogs", {}),  # Include answer logs
                 "submissions": submission_data.get("submissions", []),  # Include graded submissions with marks
-                "candidateRequirements": submission_data.get("candidateRequirements", {}),  # Include candidate requirements
+                "candidateRequirements": candidate_requirements,  # Include merged candidate requirements
             })
         
         assessment_serialized["submissionsList"] = submissions_list
@@ -1024,22 +1036,30 @@ async def update_custom_mcq_assessment(
             schedule_updated = True
         
         # Extract candidateRequirements from request body if available (for update endpoint)
+        # Start with existing candidateRequirements to preserve them
         candidate_requirements = schedule.get("candidateRequirements", {})
+        if not isinstance(candidate_requirements, dict):
+            candidate_requirements = {}
+        
+        # Override with new values from request if provided
         if http_request:
             try:
                 body = await http_request.json()
                 if isinstance(body, dict) and "schedule" in body:
                     schedule_data = body.get("schedule", {})
                     if isinstance(schedule_data, dict) and "candidateRequirements" in schedule_data:
-                        candidate_requirements = schedule_data.get("candidateRequirements", {})
+                        new_requirements = schedule_data.get("candidateRequirements", {})
+                        if isinstance(new_requirements, dict):
+                            # Merge new requirements with existing (new values override existing)
+                            candidate_requirements = {**candidate_requirements, **new_requirements}
             except Exception:
                 pass  # If parsing fails, preserve existing
         
-        if schedule_updated:
-            schedule["candidateRequirements"] = candidate_requirements
-            update_doc["schedule"] = schedule
-        elif candidate_requirements:  # If schedule not updated but candidateRequirements provided
-            schedule["candidateRequirements"] = candidate_requirements
+        # Always preserve candidateRequirements in schedule
+        schedule["candidateRequirements"] = candidate_requirements
+        
+        # Update schedule if it was modified or if candidateRequirements need to be preserved
+        if schedule_updated or candidate_requirements:
             update_doc["schedule"] = schedule
         
         if request.passPercentage is not None:
@@ -1787,14 +1807,19 @@ async def get_custom_mcq_assessment_for_taking(
                 time_remaining = duration * 60 if duration else None  # Timer starts with full duration
         
         # Normalize schedule structure before serialization
-        # Ensure candidateRequirements is always a dict, never None
+        # Ensure candidateRequirements is always a dict, never None, but preserve existing values
         if "schedule" in assessment:
             schedule_data = assessment.get("schedule") or {}
             if not isinstance(schedule_data, dict):
                 schedule_data = {}
-            # Ensure candidateRequirements exists and is a dict
-            if "candidateRequirements" not in schedule_data or schedule_data.get("candidateRequirements") is None:
+            # Ensure candidateRequirements exists and is a dict, but preserve existing values
+            existing_requirements = schedule_data.get("candidateRequirements")
+            if existing_requirements is None or not isinstance(existing_requirements, dict):
+                # Only set to empty dict if it doesn't exist or is invalid
                 schedule_data["candidateRequirements"] = {}
+            else:
+                # Preserve existing candidateRequirements
+                schedule_data["candidateRequirements"] = existing_requirements
             assessment["schedule"] = schedule_data
         
         # Prepare candidate-facing assessment data
@@ -1807,11 +1832,19 @@ async def get_custom_mcq_assessment_for_taking(
         assessment_serialized.pop("assessmentToken", None)
         
         # Ensure schedule.candidateRequirements is properly set after serialization too
+        # Preserve existing values from the original assessment
         if "schedule" in assessment_serialized:
             schedule_serialized = assessment_serialized.get("schedule") or {}
             if not isinstance(schedule_serialized, dict):
                 schedule_serialized = {}
-            if "candidateRequirements" not in schedule_serialized or schedule_serialized.get("candidateRequirements") is None:
+            # Get original requirements from the assessment before serialization
+            original_schedule = assessment.get("schedule") or {}
+            original_requirements = original_schedule.get("candidateRequirements")
+            if original_requirements is not None and isinstance(original_requirements, dict):
+                # Preserve original candidateRequirements
+                schedule_serialized["candidateRequirements"] = original_requirements
+            elif "candidateRequirements" not in schedule_serialized or schedule_serialized.get("candidateRequirements") is None:
+                # Only set to empty dict if it doesn't exist
                 schedule_serialized["candidateRequirements"] = {}
             assessment_serialized["schedule"] = schedule_serialized
         
@@ -2787,14 +2820,9 @@ async def submit_custom_mcq_assessment(
         existing_answer_logs = existing_submission.get("answerLogs", {})
         existing_candidate_info = existing_submission.get("candidateInfo", {})
         
-        # Merge candidate requirements from request with existing candidateInfo (resume, phone, LinkedIn, GitHub)
-        # This ensures resume and other info saved earlier are included in candidateRequirements
+        # Merge candidate requirements from request with existing candidateInfo (phone, LinkedIn, GitHub)
+        # This ensures other info saved earlier are included in candidateRequirements
         candidate_requirements = request.candidateRequirements.copy() if request.candidateRequirements else {}
-        
-        # Merge resume from candidateInfo if it exists and wasn't already in candidateRequirements
-        if existing_candidate_info.get("resume") and "resume" not in candidate_requirements:
-            candidate_requirements["resume"] = existing_candidate_info.get("resume")
-            candidate_requirements["hasResume"] = existing_candidate_info.get("hasResume", False)
         
         # Merge phone, LinkedIn, GitHub from candidateInfo if they exist and weren't already in candidateRequirements
         if existing_candidate_info.get("phone") and "phone" not in candidate_requirements:
@@ -2806,18 +2834,31 @@ async def submit_custom_mcq_assessment(
         
         # Log candidate requirements received
         logger.info(f"Received candidate requirements for {candidate_key}: {request.candidateRequirements}")
-        logger.info(f"Merged candidate requirements (including resume) for {candidate_key}: {candidate_requirements}")
+        logger.info(f"Merged candidate requirements for {candidate_key}: {candidate_requirements}")
         
-        # Prepare candidateInfo - preserve existing data (resume, phone, LinkedIn, GitHub) and update name/email
+        # Prepare candidateInfo - preserve existing data (phone, LinkedIn, GitHub) and update name/email
         candidate_info = existing_candidate_info.copy() if existing_candidate_info else {}
+        # Preserve phone, LinkedIn, GitHub from existing candidateInfo
+        preserved_phone = candidate_info.get("phone")
+        preserved_linkedIn = candidate_info.get("linkedIn")
+        preserved_github = candidate_info.get("github")
+        
         candidate_info.update({
             "name": request.name,
             "email": request.email,
         })
         
+        # Restore preserved fields if they exist
+        if preserved_phone:
+            candidate_info["phone"] = preserved_phone
+        if preserved_linkedIn:
+            candidate_info["linkedIn"] = preserved_linkedIn
+        if preserved_github:
+            candidate_info["github"] = preserved_github
+        
         # Save submission
         submission_data = {
-            "candidateInfo": candidate_info,  # Preserve existing candidateInfo including resume
+            "candidateInfo": candidate_info,  # Preserve existing candidateInfo
             "submissions": graded_submissions,
             "score": total_score,
             "totalMarks": total_marks,
@@ -2834,7 +2875,7 @@ async def submit_custom_mcq_assessment(
             "codingScore": coding_score,
             "codingTotal": coding_total,
             "answerLogs": existing_answer_logs,  # Preserve answer logs from previous saves
-            "candidateRequirements": candidate_requirements,  # Store merged candidate requirements (including resume)
+            "candidateRequirements": candidate_requirements,  # Store merged candidate requirements
         }
         
         logger.info(f"Storing candidate requirements in submission: {submission_data.get('candidateRequirements')}")
@@ -3402,7 +3443,7 @@ async def save_custom_mcq_candidate_info(
     db: AsyncIOMotorDatabase = Depends(get_db),
 ) -> Dict[str, Any]:
     """
-    Save candidate information for Custom MCQ assessments (phone, LinkedIn, GitHub, resume).
+    Save candidate information for Custom MCQ assessments (phone, LinkedIn, GitHub).
     This is called from the candidate requirements page.
     """
     try:
@@ -3421,8 +3462,6 @@ async def save_custom_mcq_candidate_info(
         name = request.get("name", "").strip()
         token = request.get("token", "").strip()
         phone = request.get("phone", "").strip() if request.get("phone") else None
-        hasResume = request.get("hasResume", False)
-        resume = request.get("resume")  # Base64 encoded resume
         linkedIn = request.get("linkedIn", "").strip() if request.get("linkedIn") else None
         github = request.get("github", "").strip() if request.get("github") else None
         
@@ -3446,16 +3485,8 @@ async def save_custom_mcq_candidate_info(
             "email": email,
             "name": name,
             "phone": phone,
-            "hasResume": hasResume,
             "savedAt": datetime.now(timezone.utc).isoformat(),
         }
-        
-        # Store resume if provided
-        if resume:
-            candidate_info["resume"] = resume
-        elif hasResume and existing_submission.get("candidateInfo", {}).get("resume"):
-            # Preserve existing resume if hasResume is True but no new resume provided
-            candidate_info["resume"] = existing_submission.get("candidateInfo", {}).get("resume")
         
         if linkedIn:
             candidate_info["linkedIn"] = linkedIn

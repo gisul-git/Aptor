@@ -13,6 +13,16 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+@router.get("/verify-face")
+async def verify_face_health():
+    """Health check endpoint to verify the router is working"""
+    return {
+        "status": "ok",
+        "message": "Face verification endpoint is accessible",
+        "model_loaded": face_verification_service.model_loaded
+    }
+
+
 class FaceVerificationRequest(BaseModel):
     """Request model for face verification"""
     assessmentId: str = Field(..., description="Assessment ID")

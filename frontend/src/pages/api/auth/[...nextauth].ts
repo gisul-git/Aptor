@@ -17,15 +17,17 @@ export const authOptions: NextAuthOptions = {
     maxAge: 30 * 24 * 60 * 60, // 30 days (matches refresh token expiration)
   },
   debug: process.env.NODE_ENV === "development",
-  useSecureCookies: process.env.NODE_ENV === "production", // Secure cookies only in production
+  // Only use secure cookies if NEXTAUTH_URL is HTTPS
+  useSecureCookies: process.env.NEXTAUTH_URL?.startsWith("https://") ?? false,
   cookies: {
     sessionToken: {
-      name: `${process.env.NODE_ENV === "production" ? "__Secure-" : ""}next-auth.session-token`,
+      name: `${process.env.NEXTAUTH_URL?.startsWith("https://") ? "__Secure-" : ""}next-auth.session-token`,
       options: {
         httpOnly: true,
         sameSite: "lax", // Changed from strict to allow OAuth redirects
         path: "/",
-        secure: process.env.NODE_ENV === "production" || process.env.NEXT_PUBLIC_FORCE_SECURE_COOKIES === "true", // Secure in production or when forced
+        // Only use secure cookies when using HTTPS
+        secure: process.env.NEXTAUTH_URL?.startsWith("https://") || process.env.NEXT_PUBLIC_FORCE_SECURE_COOKIES === "true",
       },
     },
   },
@@ -237,7 +239,8 @@ export const authOptions: NextAuthOptions = {
       }
 
       try {
-        const baseURL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:80"; // API Gateway
+        // Server-side: use internal API Gateway URL
+        const baseURL = process.env.API_GATEWAY_URL || "http://api-gateway:80";
         
         // Skip health check for OAuth - go directly to login
         // Health check was causing timeouts. OAuth login will fail fast if backend is down.
@@ -330,7 +333,7 @@ export const authOptions: NextAuthOptions = {
           response: error?.response?.data,
           status: error?.response?.status,
           code: error?.code,
-          baseURL: process.env.NEXT_PUBLIC_API_URL || "http://localhost:80", // API Gateway
+          baseURL: process.env.API_GATEWAY_URL || "http://api-gateway:80",
         });
         
         // Check if this is a signup required error
@@ -352,7 +355,7 @@ export const authOptions: NextAuthOptions = {
         }
         
         // Handle connection errors
-        const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:80";
+        const apiUrl = process.env.API_GATEWAY_URL || "http://api-gateway:80";
         if (error?.code === "ECONNREFUSED" || error?.message?.includes("ECONNREFUSED")) {
           throw new Error(`Cannot connect to API Gateway. Please ensure the gateway is running on ${apiUrl}`);
         } else if (error?.code === "ETIMEDOUT" || error?.message?.includes("timeout")) {

@@ -1010,11 +1010,11 @@ export default function CustomMCQTakePage() {
       const subjectiveTotal = resultData.subjectiveTotal ?? 0;
       const codingScore = resultData.codingScore ?? 0;
       const codingTotal = resultData.codingTotal ?? 0;
-      const showResult = resultData.showResultToCandidate !== false; // Default to true if not specified
       
-      // Redirect to results page with evaluation status
+      // Redirect to results page - candidates only see submission confirmation (no results displayed)
+      // AI evaluation continues in the background
       router.push(
-        `/custom-mcq/result/${assessmentId}?score=${resultData.score}&total=${resultData.totalMarks}&percentage=${resultData.percentage}&passed=${resultData.passed}&token=${token}&gradingStatus=${gradingStatus}&mcqScore=${mcqScore}&mcqTotal=${mcqTotal}&subjectiveScore=${subjectiveScore}&subjectiveTotal=${subjectiveTotal}&codingScore=${codingScore}&codingTotal=${codingTotal}&showResult=${showResult}&isEvaluating=${isEvaluating}`
+        `/custom-mcq/result/${assessmentId}?token=${token}&gradingStatus=${gradingStatus}&isEvaluating=${isEvaluating}`
       );
     } catch (err: any) {
       setError(err.message || "Failed to submit assessment");

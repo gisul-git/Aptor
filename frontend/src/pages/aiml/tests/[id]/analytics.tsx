@@ -92,6 +92,9 @@ interface Candidate {
   submission_score?: number
   created_at?: string
   submitted_at?: string
+  started_at?: string  // Added to detect started status
+  invited?: boolean  // Added for invited status detection
+  invited_at?: string  // Added for invited status detection
   status?: string // 'pending' | 'invited' | 'started' | 'completed'
 }
 
@@ -315,9 +318,31 @@ export default function AnalyticsPage() {
           user_id: c.user_id,
           name: c.name,
           email: c.email,
+          status: c.status, // Include status in debug log
           has_submitted: c.has_submitted,
-          submission_score: c.submission_score
-        }))
+          submission_score: c.submission_score,
+          invited: c.invited,
+          invited_at: c.invited_at,
+          submitted_at: c.submitted_at,
+          started_at: c.started_at // Check if started_at exists
+        })),
+        fullCandidatesData: candidatesData // Log full objects to see all fields
+      })
+      
+      // Debug: Log each candidate's full object to see all available fields
+      candidatesData.forEach((c: any, index: number) => {
+        console.log(`[AIML Analytics] 🔍 Candidate ${index + 1} full object:`, {
+          email: c.email,
+          name: c.name,
+          status: c.status,
+          has_submitted: c.has_submitted,
+          submitted_at: c.submitted_at,
+          started_at: c.started_at,
+          invited: c.invited,
+          invited_at: c.invited_at,
+          allFields: Object.keys(c),
+          fullObject: c
+        })
       })
       setCandidates(candidatesData)
     } else {
@@ -1084,24 +1109,62 @@ export default function AnalyticsPage() {
                       <td style={{ padding: "0.75rem", fontSize: "0.875rem" }}>{candidate.email}</td>
                       <td style={{ padding: "0.75rem", fontSize: "0.875rem" }}>{candidate.name}</td>
                       <td style={{ padding: "0.75rem" }}>
-                        <span style={{
-                          padding: "0.25rem 0.75rem",
-                          borderRadius: "9999px",
-                          fontSize: "0.75rem",
-                          fontWeight: 600,
-                          backgroundColor: 
-                            candidate.status === "completed" ? "#d1fae5" :
-                            candidate.status === "started" ? "#dbeafe" :
-                            candidate.status === "invited" ? "#fef3c7" :
-                            "#f3f4f6",
-                          color: 
-                            candidate.status === "completed" ? "#065f46" :
-                            candidate.status === "started" ? "#1e40af" :
-                            candidate.status === "invited" ? "#92400e" :
-                            "#374151",
-                        }}>
-                          {candidate.status || (candidate.has_submitted ? "completed" : "pending")}
-                        </span>
+                        {(() => {
+                          // Calculate status with fallback logic (priority: backend status > has_submitted > started > invited > pending)
+                          let displayStatus = candidate.status;
+                          
+                          // Debug logging for status calculation
+                          const debugInfo = {
+                            email: candidate.email,
+                            backendStatus: candidate.status,
+                            has_submitted: candidate.has_submitted,
+                            submitted_at: candidate.submitted_at,
+                            started_at: candidate.started_at,
+                            invited: candidate.invited,
+                            invited_at: candidate.invited_at
+                          };
+                          
+                          // If backend status is missing or "pending", check submission state
+                          if (!displayStatus || displayStatus === "pending") {
+                            if (candidate.has_submitted || candidate.submitted_at) {
+                              displayStatus = "completed";
+                              console.log(`[Status] ${candidate.email}: Setting to "completed" (has_submitted: ${candidate.has_submitted}, submitted_at: ${candidate.submitted_at})`, debugInfo);
+                            } else if (candidate.started_at) {
+                              // Candidate has started but not submitted yet
+                              displayStatus = "started";
+                              console.log(`[Status] ${candidate.email}: Setting to "started" (started_at: ${candidate.started_at})`, debugInfo);
+                            } else if (candidate.invited || candidate.invited_at) {
+                              displayStatus = "invited";
+                              console.log(`[Status] ${candidate.email}: Setting to "invited"`, debugInfo);
+                            } else {
+                              displayStatus = "pending";
+                              console.log(`[Status] ${candidate.email}: Setting to "pending" (no submission data)`, debugInfo);
+                            }
+                          } else {
+                            console.log(`[Status] ${candidate.email}: Using backend status "${displayStatus}"`, debugInfo);
+                          }
+                          
+                          return (
+                            <span style={{
+                              padding: "0.25rem 0.75rem",
+                              borderRadius: "9999px",
+                              fontSize: "0.75rem",
+                              fontWeight: 600,
+                              backgroundColor: 
+                                displayStatus === "completed" ? "#d1fae5" :
+                                displayStatus === "started" ? "#dbeafe" :
+                                displayStatus === "invited" ? "#fef3c7" :
+                                "#f3f4f6",
+                              color: 
+                                displayStatus === "completed" ? "#065f46" :
+                                displayStatus === "started" ? "#1e40af" :
+                                displayStatus === "invited" ? "#92400e" :
+                                "#374151",
+                            }}>
+                              {displayStatus}
+                            </span>
+                          );
+                        })()}
                       </td>
                       <td style={{ padding: "0.75rem", display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
                         <button

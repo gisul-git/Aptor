@@ -71,6 +71,9 @@ async def lifespan(app: FastAPI):
     
     logger.info("=" * 60)
     yield
+    
+    # Log routes after app is fully initialized (this runs after yield in lifespan)
+    # Note: This will log routes during shutdown, but it's useful for debugging
     logger.info("=" * 60)
     logger.info("🛑 Shutting down Proctoring Service")
     await close_mongo_connection()
@@ -101,8 +104,40 @@ app.add_middleware(
 )
 
 app.include_router(proctor_router)
-app.include_router(verify_face_router, prefix="/api/v1/proctor", tags=["Face Verification"])
+logger.info("✅ Proctor router included")
+
+try:
+    app.include_router(verify_face_router, prefix="/api/v1/proctor", tags=["Face Verification"])
+    logger.info("✅ Verify face router included with prefix /api/v1/proctor")
+except Exception as e:
+    logger.error(f"❌ Failed to include verify_face_router: {e}", exc_info=True)
+
 app.include_router(proctoring_router)
+logger.info("✅ Proctoring router included")
+
+# Log registered routes after all routers are included
+logger.info("=" * 60)
+logger.info("📋 Registered Routes:")
+verify_face_routes_found = False
+for route in app.routes:
+    if hasattr(route, "path") and hasattr(route, "methods"):
+        methods = ", ".join(route.methods) if route.methods else "N/A"
+        path = route.path
+        logger.info(f"  {methods:15} {path}")
+        if "verify-face" in path:
+            verify_face_routes_found = True
+    elif hasattr(route, "path"):
+        path = route.path
+        logger.info(f"  {'N/A':15} {path}")
+        if "verify-face" in path:
+            verify_face_routes_found = True
+
+if not verify_face_routes_found:
+    logger.error("❌ WARNING: verify-face routes NOT found in registered routes!")
+    logger.error("   This means the router was not included successfully.")
+else:
+    logger.info("✅ verify-face routes found in registered routes")
+logger.info("=" * 60)
 
 app.add_exception_handler(RequestValidationError, validation_exception_handler)
 app.add_exception_handler(StarletteHTTPException, not_found_handler)

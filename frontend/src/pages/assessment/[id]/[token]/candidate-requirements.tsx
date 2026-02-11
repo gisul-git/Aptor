@@ -12,7 +12,6 @@ const DEFAULT_REQUIREMENTS = {
   requireEmail: false,
   requireName: false,
   requirePhone: false,
-  requireResume: false,
   requireLinkedIn: false,
   requireGithub: false,
 };
@@ -26,8 +25,6 @@ export default function CandidateRequirementsPage() {
   const [phone, setPhone] = useState<string>("");
   const [linkedInUrl, setLinkedInUrl] = useState<string>("");
   const [githubUrl, setGithubUrl] = useState<string>("");
-  const [resumeFile, setResumeFile] = useState<File | null>(null);
-  const [resumeFileName, setResumeFileName] = useState<string>("");
   const [customFieldValues, setCustomFieldValues] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -39,7 +36,6 @@ export default function CandidateRequirementsPage() {
     requireEmail: boolean;
     requireName: boolean;
     requirePhone: boolean;
-    requireResume: boolean;
     requireLinkedIn?: boolean;
     requireGithub?: boolean;
   }>(DEFAULT_REQUIREMENTS);
@@ -153,7 +149,6 @@ export default function CandidateRequirementsPage() {
           console.log("[DSA] Candidate requirements from schedule:", JSON.stringify(candidateReqs, null, 2));
           console.log("[DSA] Candidate requirements type:", typeof candidateReqs);
           console.log("[DSA] Raw values - requirePhone:", candidateReqs?.requirePhone, "type:", typeof candidateReqs?.requirePhone);
-          console.log("[DSA] Raw values - requireResume:", candidateReqs?.requireResume, "type:", typeof candidateReqs?.requireResume);
           console.log("[DSA] Raw values - requireLinkedIn:", candidateReqs?.requireLinkedIn, "type:", typeof candidateReqs?.requireLinkedIn);
           console.log("[DSA] Raw values - requireGithub:", candidateReqs?.requireGithub, "type:", typeof candidateReqs?.requireGithub);
 
@@ -168,7 +163,6 @@ export default function CandidateRequirementsPage() {
             requireEmail: false, // Email is always collected in entry page
             requireName: false, // Name is always collected in entry page
             requirePhone: normalizeBool(candidateReqs?.requirePhone),
-            requireResume: normalizeBool(candidateReqs?.requireResume),
             requireLinkedIn: normalizeBool(candidateReqs?.requireLinkedIn),
             requireGithub: normalizeBool(candidateReqs?.requireGithub),
           };
@@ -179,7 +173,6 @@ export default function CandidateRequirementsPage() {
           // Check if any requirements are enabled
           const hasAnyRequirement =
             normalizedRequirements.requirePhone ||
-            normalizedRequirements.requireResume ||
             normalizedRequirements.requireLinkedIn ||
             normalizedRequirements.requireGithub;
 
@@ -265,7 +258,6 @@ export default function CandidateRequirementsPage() {
             requireEmail: false, // Email is always collected in entry page
             requireName: false, // Name is always collected in entry page
             requirePhone: normalizeBool(candidateReqs?.requirePhone),
-            requireResume: normalizeBool(candidateReqs?.requireResume),
             requireLinkedIn: normalizeBool(candidateReqs?.requireLinkedIn),
             requireGithub: normalizeBool(candidateReqs?.requireGithub),
           };
@@ -283,7 +275,6 @@ export default function CandidateRequirementsPage() {
             normalizedRequirements.requireEmail ||
             normalizedRequirements.requireName ||
             normalizedRequirements.requirePhone ||
-            normalizedRequirements.requireResume ||
             normalizedRequirements.requireLinkedIn ||
             normalizedRequirements.requireGithub ||
             (customFieldsData.length > 0);
@@ -292,7 +283,6 @@ export default function CandidateRequirementsPage() {
             requireEmail: normalizedRequirements.requireEmail,
             requireName: normalizedRequirements.requireName,
             requirePhone: normalizedRequirements.requirePhone,
-            requireResume: normalizedRequirements.requireResume,
             requireLinkedIn: normalizedRequirements.requireLinkedIn,
             requireGithub: normalizedRequirements.requireGithub,
             customFieldsLength: customFieldsData.length,
@@ -363,10 +353,12 @@ export default function CandidateRequirementsPage() {
           console.log("Custom MCQ API response:", data);
           
           // Handle different response structures
+          // Backend returns: {success: true, data: {...}, message: "..."}
+          // So we need to access data.data
           const assessment = data?.data || data?.assessment || data;
 
           if (!assessment || typeof assessment !== "object") {
-            console.warn("No custom MCQ assessment found, using default requirements");
+            console.warn("No custom MCQ assessment found, using default requirements", { data, assessment });
             setAssessmentInfo(null);
             setCandidateRequirements(DEFAULT_REQUIREMENTS);
             setFetchingAssessment(false);
@@ -381,6 +373,15 @@ export default function CandidateRequirementsPage() {
           
           const candidateReqs = schedule?.candidateRequirements || {};
           console.log("Candidate requirements from schedule:", candidateReqs);
+          
+          // Debug: Log the full structure to help diagnose issues
+          if (!candidateReqs || Object.keys(candidateReqs).length === 0) {
+            console.warn("No candidate requirements found in schedule", {
+              hasSchedule: !!schedule,
+              scheduleKeys: schedule ? Object.keys(schedule) : [],
+              fullSchedule: schedule
+            });
+          }
 
           // More robust normalization - handle both boolean and string "true"/"false"
           const normalizeBool = (val: any): boolean => {
@@ -393,7 +394,6 @@ export default function CandidateRequirementsPage() {
             requireEmail: false, // Email is always collected in entry page
             requireName: false, // Name is always collected in entry page
             requirePhone: normalizeBool(candidateReqs?.requirePhone),
-            requireResume: normalizeBool(candidateReqs?.requireResume),
             requireLinkedIn: normalizeBool(candidateReqs?.requireLinkedIn),
             requireGithub: normalizeBool(candidateReqs?.requireGithub),
           };
@@ -403,7 +403,6 @@ export default function CandidateRequirementsPage() {
 
           const hasAnyRequirement =
             normalizedRequirements.requirePhone ||
-            normalizedRequirements.requireResume ||
             normalizedRequirements.requireLinkedIn ||
             normalizedRequirements.requireGithub;
 
@@ -530,7 +529,6 @@ export default function CandidateRequirementsPage() {
           requireEmail: candidateReqs?.requireEmail ?? DEFAULT_REQUIREMENTS.requireEmail,
           requireName: candidateReqs?.requireName ?? DEFAULT_REQUIREMENTS.requireName,
           requirePhone: candidateReqs?.requirePhone ?? DEFAULT_REQUIREMENTS.requirePhone,
-          requireResume: candidateReqs?.requireResume ?? DEFAULT_REQUIREMENTS.requireResume,
           requireLinkedIn: candidateReqs?.requireLinkedIn ?? DEFAULT_REQUIREMENTS.requireLinkedIn,
           requireGithub: candidateReqs?.requireGithub ?? DEFAULT_REQUIREMENTS.requireGithub,
         };
@@ -543,7 +541,6 @@ export default function CandidateRequirementsPage() {
           normalizedRequirements.requireEmail ||
           normalizedRequirements.requireName ||
           normalizedRequirements.requirePhone ||
-          normalizedRequirements.requireResume ||
           normalizedRequirements.requireLinkedIn ||
           normalizedRequirements.requireGithub ||
           (customFieldsData.length > 0);
@@ -552,7 +549,6 @@ export default function CandidateRequirementsPage() {
           requireEmail: normalizedRequirements.requireEmail,
           requireName: normalizedRequirements.requireName,
           requirePhone: normalizedRequirements.requirePhone,
-          requireResume: normalizedRequirements.requireResume,
           requireLinkedIn: normalizedRequirements.requireLinkedIn,
           requireGithub: normalizedRequirements.requireGithub,
           customFieldsLength: customFieldsData.length,
@@ -607,27 +603,6 @@ export default function CandidateRequirementsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, token]);
  
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      // Validate file type (PDF, DOC, DOCX)
-      const allowedTypes = ["application/pdf", "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"];
-      if (!allowedTypes.includes(file.type)) {
-        setError("Please upload a PDF, DOC, or DOCX file");
-        return;
-      }
-     
-      // Validate file size (max 5MB)
-      if (file.size > 5 * 1024 * 1024) {
-        setError("File size must be less than 5MB");
-        return;
-      }
-     
-      setResumeFile(file);
-      setResumeFileName(file.name);
-      setError(null);
-    }
-  };
  
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -659,12 +634,6 @@ export default function CandidateRequirementsPage() {
     
     if (candidateRequirements.requirePhone && !phone.trim()) {
       setError("Phone Number is required");
-      setLoading(false);
-      return;
-    }
-    
-    if (candidateRequirements.requireResume && !resumeFile) {
-      setError("Resume upload is required");
       setLoading(false);
       return;
     }
@@ -763,34 +732,6 @@ export default function CandidateRequirementsPage() {
         ? name.trim() 
         : (sessionStorage.getItem("candidateName") || "");
      
-      // Upload resume if provided - MUST complete before saving candidate info
-      if (resumeFile) {
-        const formData = new FormData();
-        formData.append("resume", resumeFile);
-        formData.append("assessmentId", id as string);
-        formData.append("token", token as string);
-        formData.append("email", finalEmail);
-        formData.append("name", finalName);
-       
-        try {
-          const uploadResponse = await axios.post("/api/assessment/upload-resume", formData, {
-            headers: {
-              "Content-Type": "multipart/form-data",
-            },
-          });
-          console.log("[Candidate Requirements] Resume upload successful:", uploadResponse.data);
-        } catch (uploadError: any) {
-          console.error("Resume upload failed:", uploadError);
-          // Show error but don't block - backend will preserve existing resume if upload failed
-          setError("Resume upload failed. Please try again or continue without resume.");
-        }
-      }
-     
-      // Small delay to ensure resume upload completes and is saved to DB
-      if (resumeFile) {
-        await new Promise(resolve => setTimeout(resolve, 500));
-      }
-     
       // Save candidate requirements to backend
       // For custom MCQ, data is stored in sessionStorage and sent with assessment submission
       if (isAIFlow) {
@@ -811,7 +752,6 @@ export default function CandidateRequirementsPage() {
             email: finalEmail,
             name: finalName,
             phone: phone.trim() || null,
-            hasResume: !!resumeFile,
             linkedIn: linkedInUrl.trim() || null,
             github: githubUrl.trim() || null,
             customFields: Object.keys(customFieldsObj).length > 0 ? customFieldsObj : null,
@@ -838,7 +778,6 @@ export default function CandidateRequirementsPage() {
               email: finalEmail,
               name: finalName,
               phone: phone.trim() || null,
-              hasResume: !!resumeFile,
               linkedIn: linkedInUrl.trim() || null,
               github: githubUrl.trim() || null,
               customFields: Object.keys(customFieldsObj).length > 0 ? customFieldsObj : null,
@@ -953,7 +892,6 @@ export default function CandidateRequirementsPage() {
            !candidateRequirements.requireEmail && 
            !candidateRequirements.requireName && 
            !candidateRequirements.requirePhone && 
-           !candidateRequirements.requireResume && 
            !candidateRequirements.requireLinkedIn && 
            !candidateRequirements.requireGithub && 
            customFields.length === 0 && (
@@ -973,7 +911,6 @@ export default function CandidateRequirementsPage() {
           {/* Warning if DSA flow but no requirements found */}
           {!fetchingAssessment && isDSAFlow && 
            !candidateRequirements.requirePhone && 
-           !candidateRequirements.requireResume && 
            !candidateRequirements.requireLinkedIn && 
            !candidateRequirements.requireGithub && (
             <div style={{
@@ -1201,86 +1138,6 @@ export default function CandidateRequirementsPage() {
                 </div>
               ))}
               
-              {/* Resume Upload - Only show if required */}
-              {candidateRequirements.requireResume && (
-                <div>
-                  <label style={{
-                    display: "block",
-                    marginBottom: "0.375rem",
-                    fontWeight: 500,
-                    color: "#374151",
-                    fontSize: "0.875rem"
-                  }}>
-                    Resume <span style={{ color: "#ef4444" }}>*</span>
-                  </label>
-                <div style={{
-                  border: "2px dashed #d1d5db",
-                  borderRadius: "0.375rem",
-                  padding: "1rem",
-                  textAlign: "center",
-                  backgroundColor: "#f9fafb",
-                  transition: "border-color 0.2s",
-                  cursor: "pointer",
-                }}
-                onDragOver={(e) => {
-                  e.preventDefault();
-                  e.currentTarget.style.borderColor = "#6953a3";
-                }}
-                onDragLeave={(e) => {
-                  e.currentTarget.style.borderColor = "#d1d5db";
-                }}
-                onDrop={(e) => {
-                  e.preventDefault();
-                  e.currentTarget.style.borderColor = "#d1d5db";
-                  const file = e.dataTransfer.files[0];
-                  if (file) {
-                    const allowedTypes = ["application/pdf", "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"];
-                    if (allowedTypes.includes(file.type) && file.size <= 5 * 1024 * 1024) {
-                      setResumeFile(file);
-                      setResumeFileName(file.name);
-                      setError(null);
-                    } else {
-                      setError("Please upload a PDF, DOC, or DOCX file (max 5MB)");
-                    }
-                  }
-                }}
-                >
-                  <input
-                    type="file"
-                    id="resume-upload"
-                    accept=".pdf,.doc,.docx"
-                    onChange={handleFileChange}
-                    style={{ display: "none" }}
-                  />
-                  <label
-                    htmlFor="resume-upload"
-                    style={{
-                      cursor: "pointer",
-                      display: "block",
-                      color: "#6953a3",
-                      fontWeight: 600,
-                    }}
-                  >
-                    {resumeFileName ? (
-                      <div>
-                        <div style={{ marginBottom: "0.25rem", fontSize: "0.875rem" }}>✓ {resumeFileName}</div>
-                        <div style={{ fontSize: "0.75rem", color: "#64748b" }}>
-                          Click to change file
-                        </div>
-                      </div>
-                    ) : (
-                      <div>
-                        <div style={{ marginBottom: "0.375rem", fontSize: "1.25rem" }}>📄</div>
-                        <div style={{ fontSize: "0.875rem" }}>Click to upload or drag and drop</div>
-                        <div style={{ fontSize: "0.75rem", color: "#64748b", marginTop: "0.25rem" }}>
-                          PDF, DOC, or DOCX (max 5MB)
-                        </div>
-                      </div>
-                    )}
-                  </label>
-                </div>
-                </div>
-              )}
             </div>
            
             {/* Success Message */}
@@ -1320,7 +1177,6 @@ export default function CandidateRequirementsPage() {
                 (candidateRequirements.requireEmail && !email.trim()) ||
                 (candidateRequirements.requireName && !name.trim()) ||
                 (candidateRequirements.requirePhone && !phone.trim()) ||
-                (candidateRequirements.requireResume && !resumeFile) ||
                 (candidateRequirements.requireLinkedIn && !linkedInUrl.trim()) ||
                 (candidateRequirements.requireGithub && !githubUrl.trim())}
               style={{
@@ -1330,14 +1186,12 @@ export default function CandidateRequirementsPage() {
                   (candidateRequirements.requireEmail && !email.trim()) ||
                   (candidateRequirements.requireName && !name.trim()) ||
                   (candidateRequirements.requirePhone && !phone.trim()) ||
-                  (candidateRequirements.requireResume && !resumeFile) ||
                   (candidateRequirements.requireLinkedIn && !linkedInUrl.trim()) ||
                   (candidateRequirements.requireGithub && !githubUrl.trim())) ? "#e2e8f0" : "#6953a3",
                 color: (loading ||
                   (candidateRequirements.requireEmail && !email.trim()) ||
                   (candidateRequirements.requireName && !name.trim()) ||
                   (candidateRequirements.requirePhone && !phone.trim()) ||
-                  (candidateRequirements.requireResume && !resumeFile) ||
                   (candidateRequirements.requireLinkedIn && !linkedInUrl.trim()) ||
                   (candidateRequirements.requireGithub && !githubUrl.trim())) ? "#94a3b8" : "#ffffff",
                 border: "none",
@@ -1348,14 +1202,12 @@ export default function CandidateRequirementsPage() {
                   (candidateRequirements.requireEmail && !email.trim()) ||
                   (candidateRequirements.requireName && !name.trim()) ||
                   (candidateRequirements.requirePhone && !phone.trim()) ||
-                  (candidateRequirements.requireResume && !resumeFile) ||
                   (candidateRequirements.requireLinkedIn && !linkedInUrl.trim()) ||
                   (candidateRequirements.requireGithub && !githubUrl.trim())) ? "not-allowed" : "pointer",
                 boxShadow: (loading ||
                   (candidateRequirements.requireEmail && !email.trim()) ||
                   (candidateRequirements.requireName && !name.trim()) ||
                   (candidateRequirements.requirePhone && !phone.trim()) ||
-                  (candidateRequirements.requireResume && !resumeFile) ||
                   (candidateRequirements.requireLinkedIn && !linkedInUrl.trim()) ||
                   (candidateRequirements.requireGithub && !githubUrl.trim())) ? "none" : "0 2px 4px rgba(105, 83, 163, 0.2)",
                 transition: "all 0.2s ease"

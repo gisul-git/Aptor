@@ -13,6 +13,8 @@ class Settings(BaseSettings):
     aws_secret_key: str | None = None
     aws_region: str | None = None
     aws_s3_bucket: str | None = None
+    agora_app_id: str = ""
+    agora_app_certificate: str = ""
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 

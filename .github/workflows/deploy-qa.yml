@@ -58,37 +58,45 @@ jobs:
             git checkout QA
             git pull origin QA
             
-            # Ensure .env file exists (if needed, you can copy from a template)
+            # Ensure .env file exists
             if [ ! -f .env ]; then
               echo "⚠️  Warning: .env file not found. Please ensure environment variables are set."
             fi
             
-            # Stop existing containers gracefully
+            # Stop existing containers (with timeout and force removal)
             echo "🛑 Stopping existing containers..."
-            docker-compose down || true
+            docker compose down --timeout 30 --remove-orphans || true
             
-            # Remove old images to free up space (optional)
+            # Force stop any remaining containers from this project
+            echo "🛑 Force stopping any remaining containers..."
+            docker compose ps -q | xargs -r docker stop -t 10 || true
+            docker compose ps -q | xargs -r docker rm -f || true
+            
+            # Remove any orphaned containers with our naming pattern
+            docker ps -a --filter "name=gisul-" --format "{{.ID}}" | xargs -r docker rm -f || true
+            
+            # Cleanup old images
             echo "🧹 Cleaning up old Docker images..."
             docker system prune -f || true
             
-            # Build and start all services
-            echo "🔨 Building and starting all services..."
-            docker-compose build --no-cache
+            # Build and start services
+            echo "🔨 Building services..."
+            docker compose build --no-cache
             
             echo "🚀 Starting services..."
-            docker-compose up -d
+            docker compose up -d
             
-            # Wait for services to be healthy
+            # Wait for services
             echo "⏳ Waiting for services to be ready..."
             sleep 10
             
-            # Check container status
+            # Status check
             echo "📊 Container status:"
-            docker-compose ps
+            docker compose ps
             
-            # Verify services are running
+            # Verify containers are running
             echo "✅ Verifying services..."
-            docker-compose ps | grep -q "Up" || (echo "❌ Some services failed to start" && exit 1)
+            docker compose ps | grep -q "Up" || (echo "❌ Some services failed to start" && exit 1)
             
             echo "✅ QA deployment completed successfully!"
           EOF

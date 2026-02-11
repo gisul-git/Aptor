@@ -3069,28 +3069,54 @@ async def get_test_candidates(
     for candidate in candidates:
         user_id_cand = candidate.get("user_id")
         
-        # Check if candidate has submitted
-        submission = await db.test_submissions.find_one({
+        # Check if candidate has submitted (completed)
+        completed_submission = await db.test_submissions.find_one({
             "test_id": test_id,
             "user_id": user_id_cand,
             "is_completed": True
         })
         
-        has_submitted = submission is not None
+        # Check if candidate has started but not completed
+        started_submission = None
+        if not completed_submission:
+            started_submission = await db.test_submissions.find_one({
+                "test_id": test_id,
+                "user_id": user_id_cand,
+                "started_at": {"$exists": True}
+            })
+        
+        # Determine status based on submission state
+        # Priority: completed > started > invited > pending
+        candidate_status = candidate.get("status", "pending")
+        
+        if completed_submission:
+            candidate_status = "completed"
+        elif started_submission:
+            candidate_status = "started"
+        elif candidate.get("invited") or candidate.get("invited_at"):
+            candidate_status = "invited"
+        else:
+            candidate_status = "pending"
+        
+        # Use completed submission if exists, otherwise use started submission
+        submission = completed_submission or started_submission
+        has_submitted = completed_submission is not None
         submission_score = submission.get("score", 0) if submission else 0
         submitted_at = submission.get("submitted_at") if submission else None
+        started_at = submission.get("started_at") if submission else None
         
         result.append({
             "user_id": user_id_cand,
             "name": candidate.get("name"),
             "email": candidate.get("email"),
-            "status": candidate.get("status", "pending"),
+            "status": candidate_status,  # Use calculated status
             "invited": candidate.get("invited", False),
             "invited_at": candidate.get("invited_at").isoformat() if candidate.get("invited_at") else None,
             "created_at": candidate.get("created_at").isoformat() if candidate.get("created_at") else None,
             "has_submitted": has_submitted,
             "submission_score": submission_score,
             "submitted_at": submitted_at.isoformat() if submitted_at else None,
+            "started_at": started_at.isoformat() if started_at else None,  # Include started_at for frontend
         })
     
     return result

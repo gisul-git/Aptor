@@ -56,9 +56,6 @@ export default function Station5Schedule({ assessmentData, updateAssessmentData,
   const [faceMismatchEnabled, setFaceMismatchEnabled] = useState(
     (assessmentData as any)?.proctoringSettings?.faceMismatchEnabled ?? false
   );
-  const [showResultToCandidate, setShowResultToCandidate] = useState(
-    (assessmentData as any)?.showResultToCandidate ?? true
-  );
   const [liveProctoringEnabled, setLiveProctoringEnabled] = useState(
     (assessmentData as any)?.proctoringSettings?.liveProctoringEnabled ?? false
   );
@@ -70,9 +67,6 @@ export default function Station5Schedule({ assessmentData, updateAssessmentData,
   // Candidate Requirements
   const [requirePhone, setRequirePhone] = useState(
     (assessmentData as any)?.schedule?.candidateRequirements?.requirePhone ?? false
-  );
-  const [requireResume, setRequireResume] = useState(
-    (assessmentData as any)?.schedule?.candidateRequirements?.requireResume ?? false
   );
   const [requireLinkedIn, setRequireLinkedIn] = useState(
     (assessmentData as any)?.schedule?.candidateRequirements?.requireLinkedIn ?? false
@@ -157,18 +151,11 @@ export default function Station5Schedule({ assessmentData, updateAssessmentData,
       }
     }
     
-    // Sync showResultToCandidate
-    if ((assessmentData as any).showResultToCandidate !== undefined) {
-      setShowResultToCandidate((assessmentData as any).showResultToCandidate);
-    }
     
     // Sync candidate requirements
     const candidateReqs = schedule.candidateRequirements || {};
     if (candidateReqs.requirePhone !== undefined) {
       setRequirePhone(candidateReqs.requirePhone);
-    }
-    if (candidateReqs.requireResume !== undefined) {
-      setRequireResume(candidateReqs.requireResume);
     }
     if (candidateReqs.requireLinkedIn !== undefined) {
       setRequireLinkedIn(candidateReqs.requireLinkedIn);
@@ -239,7 +226,6 @@ export default function Station5Schedule({ assessmentData, updateAssessmentData,
         faceMismatchEnabled: aiProctoringEnabled ? faceMismatchEnabled : false, // Only enabled if AI Proctoring is enabled
         liveProctoringEnabled,
       } as CustomMCQAssessment["proctoringSettings"],
-      showResultToCandidate,
       schedule: {
         ...existingSchedule,
         startTime: startTime ? new Date(startTime).toISOString() : undefined,
@@ -247,7 +233,6 @@ export default function Station5Schedule({ assessmentData, updateAssessmentData,
         duration: finalDuration,
         candidateRequirements: {
           requirePhone,
-          requireResume,
           requireLinkedIn,
           requireGithub,
         },
@@ -262,7 +247,6 @@ export default function Station5Schedule({ assessmentData, updateAssessmentData,
       duration: finalDuration,
       candidateRequirements: {
         requirePhone,
-        requireResume,
         requireLinkedIn,
         requireGithub,
       },
@@ -277,9 +261,7 @@ export default function Station5Schedule({ assessmentData, updateAssessmentData,
     aiProctoringEnabled,
     faceMismatchEnabled,
     liveProctoringEnabled,
-    showResultToCandidate,
     requirePhone,
-    requireResume,
     requireLinkedIn,
     requireGithub,
     // Removed enablePerSectionTimers and sectionTimers - they're only used for calculation, not as triggers
@@ -677,15 +659,6 @@ export default function Station5Schedule({ assessmentData, updateAssessmentData,
             <label style={{ display: "flex", alignItems: "center", gap: "0.75rem", cursor: "pointer" }}>
               <input
                 type="checkbox"
-                checked={requireResume}
-                onChange={(e) => setRequireResume(e.target.checked)}
-                style={{ width: "18px", height: "18px", cursor: "pointer" }}
-              />
-              <span style={{ fontWeight: 600, color: "#1E5A3B" }}>Resume (File Upload)</span>
-            </label>
-            <label style={{ display: "flex", alignItems: "center", gap: "0.75rem", cursor: "pointer" }}>
-              <input
-                type="checkbox"
                 checked={requireLinkedIn}
                 onChange={(e) => setRequireLinkedIn(e.target.checked)}
                 style={{ width: "18px", height: "18px", cursor: "pointer" }}
@@ -702,27 +675,6 @@ export default function Station5Schedule({ assessmentData, updateAssessmentData,
               <span style={{ fontWeight: 600, color: "#1E5A3B" }}>GitHub URL</span>
             </label>
           </div>
-        </div>
-
-        {/* Result Visibility Settings */}
-        <div style={{ padding: "1.5rem", border: "1px solid #A8E8BC", borderRadius: "0.5rem", backgroundColor: "#F3FFF8" }}>
-          <h3 style={{ marginBottom: "1rem", color: "#1E5A3B" }}>Result Visibility</h3>
-          <label style={{ display: "flex", alignItems: "flex-start", gap: "0.75rem", cursor: "pointer" }}>
-            <input
-              type="checkbox"
-              checked={showResultToCandidate}
-              onChange={(e) => setShowResultToCandidate(e.target.checked)}
-              style={{ marginTop: "0.25rem" }}
-            />
-            <span>
-              <div style={{ fontWeight: 600, color: "#1E5A3B" }}>
-                Show result to candidate
-              </div>
-              <div style={{ fontSize: "0.875rem", color: "#2D7A52", marginTop: "0.25rem" }}>
-                If checked, candidates will see their results after submission. If unchecked, candidates will only see an "Assessment submitted" message.
-              </div>
-            </span>
-          </label>
         </div>
 
         {/* Create/Update Button */}
