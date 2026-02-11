@@ -28,7 +28,7 @@ Example usage:
     ```
 
 Note: These models are used for type hints and validation.
-Actual question dictionaries may have additional fields.
+Actual question dictionaries may have additional fieldss.
 """
 from __future__ import annotations
 
