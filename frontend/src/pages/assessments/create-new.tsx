@@ -4,7 +4,7 @@ import { GetServerSideProps } from "next";
 import { requireAuth } from "../../lib/auth";
 import Link from "next/link";
 import { QuestionGenerationSkeleton } from "@/components/QuestionGenerationSkeleton";
-// React Query hooks
+// React Query hookss
 import {
   useAssessment,
   useAssessmentQuestions,
