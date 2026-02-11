@@ -46,13 +46,6 @@ class Settings(BaseSettings):
     PENPOT_ADMIN_EMAIL: str = os.getenv("PENPOT_ADMIN_EMAIL", "admin@penpot.local")
     PENPOT_ADMIN_PASSWORD: str = os.getenv("PENPOT_ADMIN_PASSWORD", "admin123")
     
-    # MinIO Object Storage
-    MINIO_ENDPOINT: str = os.getenv("MINIO_ENDPOINT", "localhost:9000")
-    MINIO_ACCESS_KEY: str = os.getenv("MINIO_ACCESS_KEY", "minioadmin")
-    MINIO_SECRET_KEY: str = os.getenv("MINIO_SECRET_KEY", "minioadmin")
-    MINIO_BUCKET: str = os.getenv("MINIO_BUCKET", "design-submissions")
-    MINIO_SECURE: bool = os.getenv("MINIO_SECURE", "False").lower() == "true"
-    
     # Redis
     REDIS_HOST: str = os.getenv("REDIS_HOST", "localhost")
     REDIS_PORT: int = int(os.getenv("REDIS_PORT", 6379))
