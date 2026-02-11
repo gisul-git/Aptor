@@ -112,7 +112,7 @@ services:
       - microservices-network
     restart: unless-stopped
 
-  # AI Assessment Services
+  # AI Assessment Service
   ai-assessment-service:
     build:
       context: ./services/ai-assessment-service
