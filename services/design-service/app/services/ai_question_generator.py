@@ -231,48 +231,123 @@ Generate the question now."""
         role_name = role.value.replace('_', ' ').title()
         task_name = task_type.value.replace('_', ' ')
         
-        # Build ROLE-SPECIFIC descriptions for each task type and topic
+        # Build ROLE-SPECIFIC and DIFFICULTY-SPECIFIC descriptions
         # Each role gets a completely different question focus
+        # Each difficulty level has different complexity and scope
+        
+        # Difficulty-specific scope modifiers
+        if difficulty == DifficultyLevel.BEGINNER:
+            scope = "simple, single-screen"
+            complexity = "Focus on basic layout, clear visual hierarchy, and fundamental design principles."
+            user_scope = "a single primary user type"
+        elif difficulty == DifficultyLevel.INTERMEDIATE:
+            scope = "multi-section, moderately complex"
+            complexity = "Include multiple sections, interactive states, and demonstrate intermediate design skills."
+            user_scope = "2-3 different user scenarios"
+        else:  # ADVANCED
+            scope = "comprehensive, complex multi-flow"
+            complexity = "Design complete user journeys, handle edge cases, and demonstrate strategic thinking."
+            user_scope = "multiple user personas with diverse needs"
         
         if role == DesignRole.UI_DESIGNER:
             # UI Designer: Focus on visual design, interface aesthetics, pixel-perfect execution
-            task_descriptions = {
-                TaskType.LANDING_PAGE: f"You are tasked with creating a visually stunning landing page for a {topic}. Your focus should be on creating a pixel-perfect interface with exceptional visual hierarchy, beautiful typography, harmonious color schemes, and precise spacing. The design should showcase your mastery of visual design principles, grid systems, and modern UI trends while ensuring the interface is aesthetically pleasing and professionally polished.",
-                TaskType.MOBILE_APP: f"Design a mobile app interface for a {topic} with emphasis on visual excellence and interface aesthetics. Focus on creating beautiful, modern UI screens with perfect alignment, consistent spacing, elegant typography, and a cohesive color palette. Pay attention to visual details like shadows, borders, icons, and micro-interactions that make the interface feel polished and premium.",
-                TaskType.DASHBOARD: f"Create a visually appealing dashboard interface for a {topic} that demonstrates your UI design skills. Focus on creating a clean, modern layout with well-organized data cards, beautiful charts and graphs, consistent visual styling, and perfect pixel alignment. Emphasize visual hierarchy through typography, color, and spacing to make complex data look simple and elegant.",
-                TaskType.COMPONENT: f"Design a reusable UI component library for a {topic} that showcases your attention to visual detail. Create components with multiple states (default, hover, active, disabled), consistent styling, perfect alignment, and scalable design tokens. Focus on visual consistency, aesthetic appeal, and creating a cohesive design language."
-            }
+            if difficulty == DifficultyLevel.BEGINNER:
+                task_descriptions = {
+                    TaskType.LANDING_PAGE: f"Create a {scope} landing page design for a {topic}. Focus on establishing a clean visual foundation with proper typography hierarchy, a simple 2-3 color palette, and basic spacing principles. {complexity} This is an entry-level task to demonstrate your understanding of visual design fundamentals.",
+                    TaskType.MOBILE_APP: f"Design a {scope} mobile app screen for a {topic}. Focus on creating a clean, simple interface with clear visual hierarchy, readable typography, and basic UI components (buttons, inputs, cards). {complexity} Demonstrate your grasp of mobile design basics.",
+                    TaskType.DASHBOARD: f"Create a {scope} dashboard interface for a {topic}. Design a simple layout with 2-3 data cards or widgets, basic charts, and clear visual organization. {complexity} Show your ability to present information clearly and attractively.",
+                    TaskType.COMPONENT: f"Design a {scope} UI component for a {topic}. Create a single component (button, card, or input field) with 2-3 states. {complexity} Demonstrate attention to visual detail and consistency."
+                }
+            elif difficulty == DifficultyLevel.INTERMEDIATE:
+                task_descriptions = {
+                    TaskType.LANDING_PAGE: f"Design a {scope} landing page for a {topic} with multiple sections (hero, features, testimonials, CTA). Focus on creating visual consistency across sections, implementing a cohesive design system, and balancing aesthetics with functionality. {complexity} Demonstrate your ability to handle moderate complexity.",
+                    TaskType.MOBILE_APP: f"Create a {scope} mobile app interface for a {topic} with 3-4 connected screens. Focus on visual consistency, smooth transitions between states, and implementing interactive elements. {complexity} Show your skills in creating cohesive multi-screen experiences.",
+                    TaskType.DASHBOARD: f"Design a {scope} dashboard for a {topic} with 4-6 data visualization widgets, filtering options, and responsive layout. Focus on creating visual hierarchy, consistent styling, and making complex data look elegant. {complexity} Demonstrate your ability to organize and beautify data.",
+                    TaskType.COMPONENT: f"Create a {scope} component library for a {topic} with 3-5 related components. Design multiple states, variations, and ensure visual consistency. {complexity} Show your understanding of design systems and scalability."
+                }
+            else:  # ADVANCED
+                task_descriptions = {
+                    TaskType.LANDING_PAGE: f"Design a {scope} landing page system for a {topic} with multiple page variations, responsive breakpoints, and advanced interactions. Create a complete visual design system with typography scales, color systems, spacing tokens, and component libraries. {complexity} Demonstrate mastery of visual design at scale.",
+                    TaskType.MOBILE_APP: f"Create a {scope} mobile app design for a {topic} covering complete user flows with 8-10 screens. Design for multiple device sizes, handle complex interactions, create custom illustrations or icons, and establish a unique visual identity. {complexity} Show expert-level visual design thinking.",
+                    TaskType.DASHBOARD: f"Design a {scope} dashboard platform for a {topic} with advanced data visualizations, customizable layouts, multiple user views, and sophisticated filtering. Create a complete design system that scales across different dashboard types. {complexity} Demonstrate strategic visual design for complex products.",
+                    TaskType.COMPONENT: f"Create a {scope} enterprise-grade component system for a {topic} with 10+ components, comprehensive documentation, accessibility considerations, and theming capabilities. {complexity} Show mastery of design systems and scalable visual architecture."
+                }
         
         elif role == DesignRole.UX_DESIGNER:
             # UX Designer: Focus on user flows, research, usability, problem-solving
-            task_descriptions = {
-                TaskType.LANDING_PAGE: f"Design a user-centered landing page experience for a {topic} based on user research and behavioral insights. Your task is to create an intuitive information architecture that guides users through the content, reduces cognitive load, and optimizes conversion paths. Focus on user psychology, content hierarchy, accessibility, and creating clear user journeys from landing to conversion.",
-                TaskType.MOBILE_APP: f"Create a comprehensive user experience design for a {topic} mobile application. Focus on user research, persona development, user journey mapping, and designing intuitive user flows. Your design should solve real user problems, minimize friction, handle edge cases gracefully, and provide clear feedback at every step. Emphasize usability testing insights and accessibility compliance.",
-                TaskType.DASHBOARD: f"Design a user-friendly dashboard experience for a {topic} that helps users accomplish their goals efficiently. Focus on information architecture, task analysis, and creating intuitive navigation patterns. Your design should prioritize user needs, reduce cognitive load through smart data organization, provide contextual help, and ensure users can find and understand information quickly.",
-                TaskType.COMPONENT: f"Design an accessible and user-friendly component system for a {topic}. Focus on usability patterns, accessibility compliance (WCAG), keyboard navigation, screen reader support, and creating components that work for diverse user needs. Emphasize user testing insights, interaction patterns, and ensuring components are intuitive for all users."
-            }
+            if difficulty == DifficultyLevel.BEGINNER:
+                task_descriptions = {
+                    TaskType.LANDING_PAGE: f"Design a {scope} landing page user experience for a {topic}. Focus on creating a clear information hierarchy, simple navigation, and one primary call-to-action. {complexity} Consider {user_scope} and their basic needs.",
+                    TaskType.MOBILE_APP: f"Create a {scope} mobile app user flow for a {topic}. Design a simple 2-3 step user journey with clear navigation and basic error handling. {complexity} Focus on {user_scope} completing one primary task.",
+                    TaskType.DASHBOARD: f"Design a {scope} dashboard experience for a {topic}. Create a simple information architecture with 2-3 main sections and basic navigation. {complexity} Help {user_scope} find and understand key information easily.",
+                    TaskType.COMPONENT: f"Design a {scope} component interaction pattern for a {topic}. Focus on one component's usability, accessibility basics, and clear user feedback. {complexity} Ensure {user_scope} can use it intuitively."
+                }
+            elif difficulty == DifficultyLevel.INTERMEDIATE:
+                task_descriptions = {
+                    TaskType.LANDING_PAGE: f"Design a {scope} landing page experience for a {topic} with multiple conversion paths. Create user journey maps, consider {user_scope}, and optimize for different entry points. {complexity} Include A/B testing considerations and accessibility compliance.",
+                    TaskType.MOBILE_APP: f"Create a {scope} mobile app UX for a {topic} with 4-6 interconnected screens. Design complete user flows, handle error states, create onboarding, and ensure accessibility. {complexity} Address {user_scope} and their different goals.",
+                    TaskType.DASHBOARD: f"Design a {scope} dashboard experience for a {topic} with multiple user workflows. Create task flows, information architecture, and navigation patterns for {user_scope}. {complexity} Reduce cognitive load and optimize for efficiency.",
+                    TaskType.COMPONENT: f"Design a {scope} component system UX for a {topic} with 3-5 components. Focus on interaction patterns, accessibility (WCAG AA), keyboard navigation, and usability for {user_scope}. {complexity} Ensure intuitive and inclusive design."
+                }
+            else:  # ADVANCED
+                task_descriptions = {
+                    TaskType.LANDING_PAGE: f"Design a {scope} landing page strategy for a {topic} based on user research. Create detailed user personas, journey maps, conduct competitive analysis, and design for {user_scope} with different motivations. {complexity} Include usability testing plans and optimization strategies.",
+                    TaskType.MOBILE_APP: f"Create a {scope} mobile app UX strategy for a {topic} covering complete user journeys. Conduct user research, create personas, design 10+ screens with complex flows, handle all edge cases, and ensure WCAG AAA compliance. {complexity} Address {user_scope} and their diverse needs comprehensively.",
+                    TaskType.DASHBOARD: f"Design a {scope} dashboard UX system for a {topic} with advanced workflows. Create comprehensive information architecture, multiple user role experiences, complex filtering and search, and personalization options. {complexity} Optimize for {user_scope} with varying expertise levels.",
+                    TaskType.COMPONENT: f"Design a {scope} component system UX for a {topic} with comprehensive accessibility. Create 10+ components with full WCAG AAA compliance, internationalization support, and usability for {user_scope} including users with disabilities. {complexity} Demonstrate expert-level inclusive design."
+                }
         
         elif role == DesignRole.PRODUCT_DESIGNER:
             # Product Designer: Focus on business goals, strategy, end-to-end experience
-            task_descriptions = {
-                TaskType.LANDING_PAGE: f"Design a strategic landing page for a {topic} that aligns business objectives with user needs. Your task is to create an end-to-end experience that drives key business metrics (conversions, sign-ups, engagement) while solving user problems. Consider market positioning, competitive analysis, value proposition communication, and creating a landing experience that supports product-market fit and business growth.",
-                TaskType.MOBILE_APP: f"Lead the product design for a {topic} mobile application from concept to execution. Your responsibility is to balance business goals, user needs, and technical constraints while designing the complete product experience. Focus on defining product strategy, creating user personas, mapping customer journeys, designing core features, and ensuring the product delivers business value while delighting users.",
-                TaskType.DASHBOARD: f"Design a strategic dashboard product for a {topic} that drives business outcomes and user success. Your task is to understand business KPIs, user goals, and technical capabilities, then design a dashboard that helps users make better decisions while supporting business objectives. Consider monetization opportunities, engagement strategies, and creating a product that scales with user needs.",
-                TaskType.COMPONENT: f"Design a scalable component system for a {topic} product that supports business growth and team efficiency. Focus on creating a design system that enables rapid product development, maintains brand consistency across platforms, and scales with the product roadmap. Consider technical implementation, team collaboration, documentation, and ensuring components support business objectives."
-            }
+            if difficulty == DifficultyLevel.BEGINNER:
+                task_descriptions = {
+                    TaskType.LANDING_PAGE: f"Design a {scope} landing page product for a {topic}. Define one clear business goal (e.g., sign-ups), identify {user_scope}, and create a simple value proposition. {complexity} Balance basic business needs with user experience.",
+                    TaskType.MOBILE_APP: f"Create a {scope} mobile app product concept for a {topic}. Define the core problem, identify {user_scope}, and design one key feature. {complexity} Show basic product thinking and user-business alignment.",
+                    TaskType.DASHBOARD: f"Design a {scope} dashboard product for a {topic}. Define 1-2 key metrics, identify {user_scope}, and create a simple dashboard that supports business goals. {complexity} Demonstrate basic product strategy.",
+                    TaskType.COMPONENT: f"Design a {scope} component product strategy for a {topic}. Define how components support business goals, consider {user_scope}, and create basic documentation. {complexity} Show understanding of design systems as products."
+                }
+            elif difficulty == DifficultyLevel.INTERMEDIATE:
+                task_descriptions = {
+                    TaskType.LANDING_PAGE: f"Design a {scope} landing page product strategy for a {topic}. Define 2-3 business KPIs, create user personas for {user_scope}, conduct basic competitive analysis, and design for conversion optimization. {complexity} Balance business metrics with user satisfaction.",
+                    TaskType.MOBILE_APP: f"Create a {scope} mobile app product for a {topic}. Define product strategy, create personas for {user_scope}, design 3-4 core features, and establish success metrics. {complexity} Show product thinking that balances business and user needs.",
+                    TaskType.DASHBOARD: f"Design a {scope} dashboard product for a {topic}. Define business KPIs, identify {user_scope}, create monetization strategy, and design engagement features. {complexity} Demonstrate strategic product design for data products.",
+                    TaskType.COMPONENT: f"Design a {scope} component system product for a {topic}. Define adoption metrics, create governance model, design for {user_scope} (designers and developers), and plan rollout strategy. {complexity} Show product thinking for design systems."
+                }
+            else:  # ADVANCED
+                task_descriptions = {
+                    TaskType.LANDING_PAGE: f"Design a {scope} landing page product ecosystem for a {topic}. Conduct market research, define comprehensive business strategy, create detailed personas for {user_scope}, perform competitive analysis, and design multi-variant testing strategy. {complexity} Demonstrate strategic product leadership.",
+                    TaskType.MOBILE_APP: f"Lead a {scope} mobile app product strategy for a {topic}. Define complete product vision, conduct user research, create personas for {user_scope}, design 8-10 features with roadmap, establish OKRs, and plan go-to-market strategy. {complexity} Show executive-level product thinking.",
+                    TaskType.DASHBOARD: f"Design a {scope} dashboard product platform for a {topic}. Define business model, create pricing strategy, design for {user_scope} with different subscription tiers, establish growth metrics, and plan scaling strategy. {complexity} Demonstrate product leadership for complex platforms.",
+                    TaskType.COMPONENT: f"Design a {scope} enterprise component system product for a {topic}. Define adoption strategy, create governance framework, design for {user_scope} across multiple teams, establish metrics, and plan multi-year roadmap. {complexity} Show strategic product thinking at organizational scale."
+                }
         
         else:  # DesignRole.VISUAL_DESIGNER
             # Visual Designer: Focus on branding, visual storytelling, creative expression
-            task_descriptions = {
-                TaskType.LANDING_PAGE: f"Create a visually compelling landing page for a {topic} that tells a brand story through visual design. Your focus should be on creating a unique visual identity, using creative imagery, establishing brand personality through color and typography, and crafting a memorable visual experience. Emphasize visual storytelling, emotional design, and creating a distinctive aesthetic that sets the brand apart.",
-                TaskType.MOBILE_APP: f"Design a visually distinctive mobile app for a {topic} that expresses brand personality and creates emotional connections. Focus on creating a unique visual language, custom illustrations or graphics, memorable iconography, and a cohesive brand experience. Your design should showcase creative expression, visual innovation, and establish a strong brand identity through visual design.",
-                TaskType.DASHBOARD: f"Create a branded dashboard experience for a {topic} that combines data visualization with visual storytelling. Focus on designing custom charts and graphs, creating a unique visual style, using color and typography to express brand personality, and making data beautiful and engaging. Emphasize creative data visualization, brand consistency, and visual innovation.",
-                TaskType.COMPONENT: f"Design a branded component library for a {topic} that establishes a unique visual identity. Create components with distinctive visual styling, custom iconography, brand-specific color palettes, and unique visual treatments. Focus on visual consistency, brand expression, and creating components that feel uniquely ownable and memorable."
-            }
+            if difficulty == DifficultyLevel.BEGINNER:
+                task_descriptions = {
+                    TaskType.LANDING_PAGE: f"Create a {scope} landing page visual design for a {topic}. Focus on establishing a basic brand identity with a simple color palette (2-3 colors), one typography pairing, and basic visual elements. {complexity} Show your creative foundation.",
+                    TaskType.MOBILE_APP: f"Design a {scope} mobile app visual identity for a {topic}. Create a simple brand style with basic color scheme, typography, and 2-3 custom icons. {complexity} Demonstrate your visual creativity basics.",
+                    TaskType.DASHBOARD: f"Create a {scope} dashboard visual design for a {topic}. Design simple custom charts with basic brand styling and consistent visual language. {complexity} Show your ability to make data visually appealing.",
+                    TaskType.COMPONENT: f"Design a {scope} component visual style for a {topic}. Create basic brand styling for one component with simple visual treatments. {complexity} Demonstrate attention to visual brand details."
+                }
+            elif difficulty == DifficultyLevel.INTERMEDIATE:
+                task_descriptions = {
+                    TaskType.LANDING_PAGE: f"Create a {scope} landing page brand experience for a {topic}. Design a cohesive visual identity with custom illustrations, unique color system, typography pairings, and branded visual elements. {complexity} Show your creative visual storytelling.",
+                    TaskType.MOBILE_APP: f"Design a {scope} mobile app brand identity for a {topic}. Create custom visual assets (illustrations, icons, graphics), establish unique visual language, and design branded interactions. {complexity} Demonstrate your creative visual design skills.",
+                    TaskType.DASHBOARD: f"Create a {scope} dashboard brand experience for a {topic}. Design custom data visualizations, create unique visual style, use color and typography to express brand personality, and make data beautiful. {complexity} Show your creative approach to data design.",
+                    TaskType.COMPONENT: f"Design a {scope} component brand system for a {topic}. Create branded components with custom visual treatments, unique styling, and cohesive visual language. {complexity} Demonstrate your brand design thinking."
+                }
+            else:  # ADVANCED
+                task_descriptions = {
+                    TaskType.LANDING_PAGE: f"Create a {scope} landing page brand system for a {topic}. Design complete brand identity with custom illustrations, motion design principles, unique visual language, and comprehensive brand guidelines. {complexity} Demonstrate mastery of brand visual design.",
+                    TaskType.MOBILE_APP: f"Design a {scope} mobile app brand experience for a {topic}. Create comprehensive visual identity with custom illustration system, motion design, unique iconography, and branded micro-interactions. {complexity} Show expert-level creative visual design.",
+                    TaskType.DASHBOARD: f"Create a {scope} dashboard brand platform for a {topic}. Design innovative data visualizations, create unique visual design system, establish brand personality through creative design, and push visual boundaries. {complexity} Demonstrate creative leadership in data visualization.",
+                    TaskType.COMPONENT: f"Design a {scope} enterprise brand system for a {topic}. Create comprehensive branded component library with custom visual treatments, motion principles, illustration system, and complete brand guidelines. {complexity} Show mastery of brand systems at scale."
+                }
         
         description = task_descriptions.get(
             task_type,
-            f"Design a {task_name} for a {topic} that demonstrates professional design skills, user-centered thinking, and attention to detail. Create a solution that balances aesthetics with functionality."
+            f"Design a {scope} {task_name} for a {topic}. {complexity}"
         )
         
         # Generate ROLE-SPECIFIC constraints
