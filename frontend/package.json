@@ -39,6 +39,7 @@
     "react-markdown": "^10.1.0",
     "react-split": "^2.0.14",
     "react-window": "^2.2.6",
+    "recharts": "^3.7.0",
     "swiper": "^12.0.3",
     "tailwind-merge": "^3.4.0",
     "three": "^0.164.0",

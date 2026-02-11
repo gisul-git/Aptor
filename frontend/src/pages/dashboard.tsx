@@ -7,61 +7,61 @@ import Image from "next/image";
 import QuickActions from "../components/QuickActions";
 import AssessmentsList from "../components/AssessmentsList";
 // React Query hooks
-import { 
-  useAssessments, 
-  usePauseAssessment, 
-  useResumeAssessment, 
+import {
+  useAssessments,
+  usePauseAssessment,
+  useResumeAssessment,
   useCloneAssessment,
-  useDeleteAssessment 
+  useDeleteAssessment,
 } from "@/hooks/api/useAssessments";
-import { 
-  useCustomMCQAssessments, 
-  usePauseCustomMCQ, 
-  useResumeCustomMCQ, 
+import {
+  useCustomMCQAssessments,
+  usePauseCustomMCQ,
+  useResumeCustomMCQ,
   useCloneCustomMCQ,
-  useDeleteCustomMCQAssessment 
+  useDeleteCustomMCQAssessment,
 } from "@/hooks/api/useCustomMCQ";
-import { 
-  useDSATests, 
+import {
+  useDSATests,
   useDeleteDSATest,
   usePauseDSATest,
   useResumeDSATest,
-  useCloneDSATest
+  useCloneDSATest,
 } from "@/hooks/api/useDSA";
-import { 
-  useAIMLTests, 
+import {
+  useAIMLTests,
   useDeleteAIMLTest,
   usePauseAIMLTest,
   useResumeAIMLTest,
-  useCloneAIMLTest
+  useCloneAIMLTest,
 } from "@/hooks/api/useAIML";
-import { 
-  useDesignTests, 
+import {
+  useDesignTests,
   useDeleteDesignTest,
   usePauseDesignTest,
   useResumeDesignTest,
-  useCloneDesignTest
+  useCloneDesignTest,
 } from "@/hooks/api/useDesign";
-import { 
-  useDataEngineeringTests, 
+import {
+  useDataEngineeringTests,
   useDeleteDataEngineeringTest,
   usePauseDataEngineeringTest,
   useResumeDataEngineeringTest,
-  useCloneDataEngineeringTest
+  useCloneDataEngineeringTest,
 } from "@/hooks/api/useDataEngineering";
-import { 
-  useCloudTests, 
+import {
+  useCloudTests,
   useDeleteCloudTest,
   usePauseCloudTest,
   useResumeCloudTest,
-  useCloneCloudTest
+  useCloneCloudTest,
 } from "@/hooks/api/useCloud";
-import { 
-  useDevOpsTests, 
+import {
+  useDevOpsTests,
   useDeleteDevOpsTest,
   usePauseDevOpsTest,
   useResumeDevOpsTest,
-  useCloneDevOpsTest
+  useCloneDevOpsTest,
 } from "@/hooks/api/useDevOps";
 import { useUserProfile } from "@/hooks/auth";
 import { useDashboardAssessments } from "@/hooks/useDashboardAssessments";
@@ -70,16 +70,20 @@ interface DashboardPageProps {
   session: any;
 }
 
-export default function DashboardPage({ session: serverSession }: DashboardPageProps) {
+export default function DashboardPage({
+  session: serverSession,
+}: DashboardPageProps) {
   const { data: session, update: updateSession } = useSession();
   const router = useRouter();
-  
+
   // Use server session if available, fallback to client session
   const activeSession = serverSession || session;
-  
+
   // Check if user is super_admin - show back button for super admins
-  const isSuperAdmin = Boolean(activeSession && (activeSession as any)?.user?.role === "super_admin");
-  
+  const isSuperAdmin = Boolean(
+    activeSession && (activeSession as any)?.user?.role === "super_admin",
+  );
+
   // React Query hooks for refetching
   const { refetch: refetchAssessments } = useAssessments();
   const { refetch: refetchCustomMCQ } = useCustomMCQAssessments();
@@ -90,7 +94,7 @@ export default function DashboardPage({ session: serverSession }: DashboardPageP
   const { refetch: refetchCloud } = useCloudTests();
   const { refetch: refetchDevOps } = useDevOpsTests();
   const { data: userProfileData, isLoading: loadingProfile } = useUserProfile();
-  
+
   // Use the dashboard assessments hook to get combined data
   const {
     assessments,
@@ -103,9 +107,9 @@ export default function DashboardPage({ session: serverSession }: DashboardPageP
     hasCloudAssessments,
     hasDevOpsAssessments,
     isLoading: loading,
-    error
+    error,
   } = useDashboardAssessments();
-  
+
   // Mutations
   const pauseAssessmentMutation = usePauseAssessment();
   const resumeAssessmentMutation = useResumeAssessment();
@@ -139,11 +143,16 @@ export default function DashboardPage({ session: serverSession }: DashboardPageP
   const pauseDevOpsTestMutation = usePauseDevOpsTest();
   const resumeDevOpsTestMutation = useResumeDevOpsTest();
   const cloneDevOpsTestMutation = useCloneDevOpsTest();
-  
+
   // UI state
   const [showProfile, setShowProfile] = useState(false);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
-  const [cloneModal, setCloneModal] = useState<{ show: boolean; assessmentId: string | null; assessmentTitle: string; newTitle: string }>({
+  const [cloneModal, setCloneModal] = useState<{
+    show: boolean;
+    assessmentId: string | null;
+    assessmentTitle: string;
+    newTitle: string;
+  }>({
     show: false,
     assessmentId: null,
     assessmentTitle: "",
@@ -151,14 +160,19 @@ export default function DashboardPage({ session: serverSession }: DashboardPageP
   });
   const [cloning, setCloning] = useState(false);
   const [uiError, setUiError] = useState<string | null>(null);
-  const [resuming, setResuming] = useState<{ show: boolean; testName: string }>({ show: false, testName: "" });
-  const [pausing, setPausing] = useState<{ show: boolean; testName: string }>({ show: false, testName: "" });
+  const [resuming, setResuming] = useState<{ show: boolean; testName: string }>(
+    { show: false, testName: "" },
+  );
+  const [pausing, setPausing] = useState<{ show: boolean; testName: string }>({
+    show: false,
+    testName: "",
+  });
 
   useEffect(() => {
     // Close profile dropdown when clicking outside
     const handleClickOutside = (event: MouseEvent) => {
       const target = event.target as HTMLElement;
-      if (showProfile && !target.closest('[data-profile-dropdown]')) {
+      if (showProfile && !target.closest("[data-profile-dropdown]")) {
         setShowProfile(false);
       }
       if (openMenuId && !target.closest(`[data-menu-id="${openMenuId}"]`)) {
@@ -167,9 +181,9 @@ export default function DashboardPage({ session: serverSession }: DashboardPageP
     };
 
     if (showProfile || openMenuId) {
-      document.addEventListener('mousedown', handleClickOutside);
+      document.addEventListener("mousedown", handleClickOutside);
       return () => {
-        document.removeEventListener('mousedown', handleClickOutside);
+        document.removeEventListener("mousedown", handleClickOutside);
       };
     }
   }, [showProfile, openMenuId]);
@@ -177,7 +191,10 @@ export default function DashboardPage({ session: serverSession }: DashboardPageP
   useEffect(() => {
     // Listen for token refresh events from the interceptor
     const handleTokenRefresh = async (event: Event) => {
-      const customEvent = event as CustomEvent<{ backendToken: string; refreshToken: string }>;
+      const customEvent = event as CustomEvent<{
+        backendToken: string;
+        refreshToken: string;
+      }>;
       const { backendToken, refreshToken } = customEvent.detail;
       try {
         await updateSession({
@@ -205,9 +222,23 @@ export default function DashboardPage({ session: serverSession }: DashboardPageP
     // Check if session has backendToken, if not try to refresh
     if (session?.user && !session.backendToken) {
       // Trigger a session update to re-run the JWT callback
-      updateSession().then(() => {
-        // Wait a bit for session to update, then refetch
-        setTimeout(() => {
+      updateSession()
+        .then(() => {
+          // Wait a bit for session to update, then refetch
+          setTimeout(() => {
+            refetchAssessments();
+            refetchCustomMCQ();
+            refetchDSA();
+            refetchAIML();
+            refetchDesign();
+            refetchDataEngineering();
+            refetchCloud();
+            refetchDevOps();
+          }, 500);
+        })
+        .catch((err) => {
+          console.error("Failed to update session:", err);
+          // Try anyway
           refetchAssessments();
           refetchCustomMCQ();
           refetchDSA();
@@ -216,25 +247,24 @@ export default function DashboardPage({ session: serverSession }: DashboardPageP
           refetchDataEngineering();
           refetchCloud();
           refetchDevOps();
-        }, 500);
-      }).catch((err) => {
-        console.error("Failed to update session:", err);
-        // Try anyway
-        refetchAssessments();
-        refetchCustomMCQ();
-        refetchDSA();
-        refetchAIML();
-        refetchDesign();
-        refetchDataEngineering();
-        refetchCloud();
-        refetchDevOps();
-      });
+        });
     }
 
     return () => {
       window.removeEventListener("token-refreshed", handleTokenRefresh);
     };
-  }, [session, updateSession, refetchAssessments, refetchCustomMCQ, refetchDSA, refetchAIML, refetchDesign, refetchDataEngineering, refetchCloud, refetchDevOps]);
+  }, [
+    session,
+    updateSession,
+    refetchAssessments,
+    refetchCustomMCQ,
+    refetchDSA,
+    refetchAIML,
+    refetchDesign,
+    refetchDataEngineering,
+    refetchCloud,
+    refetchDevOps,
+  ]);
 
   // Refresh assessments when refresh query param is present
   useEffect(() => {
@@ -249,31 +279,58 @@ export default function DashboardPage({ session: serverSession }: DashboardPageP
       refetchCloud();
       refetchDevOps();
       // Remove refresh param from URL
-      router.replace('/dashboard', undefined, { shallow: true });
+      router.replace("/dashboard", undefined, { shallow: true });
     }
-  }, [router.query.refresh, refetchAssessments, refetchCustomMCQ, refetchDSA, refetchAIML, refetchDesign, refetchDataEngineering, refetchCloud, refetchDevOps, router]);
+  }, [
+    router.query.refresh,
+    refetchAssessments,
+    refetchCustomMCQ,
+    refetchDSA,
+    refetchAIML,
+    refetchDesign,
+    refetchDataEngineering,
+    refetchCloud,
+    refetchDevOps,
+    router,
+  ]);
 
-  const handleDeleteAssessment = async (assessmentId: string, assessmentTitle: string, assessmentType?: 'assessment' | 'dsa' | 'custom_mcq' | 'aiml' | 'design' | 'data_engineering' | 'cloud' | 'devops') => {
-    if (!confirm(`Are you sure you want to delete "${assessmentTitle}"? This action cannot be undone.`)) {
+  const handleDeleteAssessment = async (
+    assessmentId: string,
+    assessmentTitle: string,
+    assessmentType?:
+      | "assessment"
+      | "dsa"
+      | "custom_mcq"
+      | "aiml"
+      | "design"
+      | "data_engineering"
+      | "cloud"
+      | "devops",
+  ) => {
+    if (
+      !confirm(
+        `Are you sure you want to delete "${assessmentTitle}"? This action cannot be undone.`,
+      )
+    ) {
       return;
     }
 
     try {
       setUiError(null);
-      
-      if (assessmentType === 'dsa') {
+
+      if (assessmentType === "dsa") {
         await deleteDSATestMutation.mutateAsync(assessmentId);
-      } else if (assessmentType === 'aiml') {
+      } else if (assessmentType === "aiml") {
         await deleteAIMLTestMutation.mutateAsync(assessmentId);
-      } else if (assessmentType === 'custom_mcq') {
+      } else if (assessmentType === "custom_mcq") {
         await deleteCustomMCQMutation.mutateAsync(assessmentId);
-      } else if (assessmentType === 'design') {
+      } else if (assessmentType === "design") {
         await deleteDesignTestMutation.mutateAsync(assessmentId);
-      } else if (assessmentType === 'data_engineering') {
+      } else if (assessmentType === "data_engineering") {
         await deleteDataEngineeringTestMutation.mutateAsync(assessmentId);
-      } else if (assessmentType === 'cloud') {
+      } else if (assessmentType === "cloud") {
         await deleteCloudTestMutation.mutateAsync(assessmentId);
-      } else if (assessmentType === 'devops') {
+      } else if (assessmentType === "devops") {
         await deleteDevOpsTestMutation.mutateAsync(assessmentId);
       } else {
         await deleteAssessmentMutation.mutateAsync(assessmentId);
@@ -285,39 +342,42 @@ export default function DashboardPage({ session: serverSession }: DashboardPageP
     }
   };
 
-  const handlePauseAssessment = async (assessmentId: string, e: React.MouseEvent) => {
+  const handlePauseAssessment = async (
+    assessmentId: string,
+    e: React.MouseEvent,
+  ) => {
     e.stopPropagation();
     setOpenMenuId(null);
-    
+
     // Find the assessment to get its name and type
-    const assessment = assessments.find(a => a.id === assessmentId);
-    const assessmentType = assessment?.type || 'assessment';
+    const assessment = assessments.find((a) => a.id === assessmentId);
+    const assessmentType = assessment?.type || "assessment";
     const testName = assessment?.title || "Assessment";
-    
+
     // Show pausing modal immediately
     setPausing({ show: true, testName });
     setUiError(null);
-    
+
     try {
       // Use appropriate mutation based on type
-      if (assessmentType === 'custom_mcq') {
+      if (assessmentType === "custom_mcq") {
         await pauseCustomMCQMutation.mutateAsync(assessmentId);
-      } else if (assessmentType === 'aiml') {
+      } else if (assessmentType === "aiml") {
         await pauseAIMLTestMutation.mutateAsync(assessmentId);
-      } else if (assessmentType === 'dsa') {
+      } else if (assessmentType === "dsa") {
         await pauseDSATestMutation.mutateAsync(assessmentId);
-      } else if (assessmentType === 'design') {
+      } else if (assessmentType === "design") {
         await pauseDesignTestMutation.mutateAsync(assessmentId);
-      } else if (assessmentType === 'data_engineering') {
+      } else if (assessmentType === "data_engineering") {
         await pauseDataEngineeringTestMutation.mutateAsync(assessmentId);
-      } else if (assessmentType === 'cloud') {
+      } else if (assessmentType === "cloud") {
         await pauseCloudTestMutation.mutateAsync(assessmentId);
-      } else if (assessmentType === 'devops') {
+      } else if (assessmentType === "devops") {
         await pauseDevOpsTestMutation.mutateAsync(assessmentId);
       } else {
         await pauseAssessmentMutation.mutateAsync(assessmentId);
       }
-      
+
       // React Query will automatically refetch and update the UI
       // Close the modal after successful pause
       setPausing({ show: false, testName: "" });
@@ -329,39 +389,42 @@ export default function DashboardPage({ session: serverSession }: DashboardPageP
     }
   };
 
-  const handleResumeAssessment = async (assessmentId: string, e: React.MouseEvent) => {
+  const handleResumeAssessment = async (
+    assessmentId: string,
+    e: React.MouseEvent,
+  ) => {
     e.stopPropagation();
     setOpenMenuId(null);
-    
+
     // Find the assessment to get its name and type
-    const assessment = assessments.find(a => a.id === assessmentId);
-    const assessmentType = assessment?.type || 'assessment';
+    const assessment = assessments.find((a) => a.id === assessmentId);
+    const assessmentType = assessment?.type || "assessment";
     const testName = assessment?.title || "Assessment";
-    
+
     // Show resuming modal immediately
     setResuming({ show: true, testName });
     setUiError(null);
-    
+
     try {
       // Use appropriate mutation based on type
-      if (assessmentType === 'custom_mcq') {
+      if (assessmentType === "custom_mcq") {
         await resumeCustomMCQMutation.mutateAsync(assessmentId);
-      } else if (assessmentType === 'aiml') {
+      } else if (assessmentType === "aiml") {
         await resumeAIMLTestMutation.mutateAsync(assessmentId);
-      } else if (assessmentType === 'dsa') {
+      } else if (assessmentType === "dsa") {
         await resumeDSATestMutation.mutateAsync(assessmentId);
-      } else if (assessmentType === 'design') {
+      } else if (assessmentType === "design") {
         await resumeDesignTestMutation.mutateAsync(assessmentId);
-      } else if (assessmentType === 'data_engineering') {
+      } else if (assessmentType === "data_engineering") {
         await resumeDataEngineeringTestMutation.mutateAsync(assessmentId);
-      } else if (assessmentType === 'cloud') {
+      } else if (assessmentType === "cloud") {
         await resumeCloudTestMutation.mutateAsync(assessmentId);
-      } else if (assessmentType === 'devops') {
+      } else if (assessmentType === "devops") {
         await resumeDevOpsTestMutation.mutateAsync(assessmentId);
       } else {
         await resumeAssessmentMutation.mutateAsync(assessmentId);
       }
-      
+
       // React Query will automatically refetch and update the UI
       // Close the modal after successful resume
       setResuming({ show: false, testName: "" });
@@ -373,7 +436,10 @@ export default function DashboardPage({ session: serverSession }: DashboardPageP
     }
   };
 
-  const handleCloneAssessment = async (assessmentId: string, newTitle: string) => {
+  const handleCloneAssessment = async (
+    assessmentId: string,
+    newTitle: string,
+  ) => {
     if (!newTitle || newTitle.trim().length < 3) {
       setUiError("Assessment name must be at least 3 characters");
       return;
@@ -381,63 +447,103 @@ export default function DashboardPage({ session: serverSession }: DashboardPageP
 
     setCloning(true);
     setUiError(null);
-    
+
     try {
       // Find the original assessment to get its type
-      const originalAssessment = assessments.find(a => a.id === assessmentId);
-      const assessmentType = originalAssessment?.type || 'assessment';
-      
+      const originalAssessment = assessments.find((a) => a.id === assessmentId);
+      const assessmentType = originalAssessment?.type || "assessment";
+
       // 🔍 Logging for debugging clone routing
-      console.log('🔍 [Clone] Assessment lookup:', {
+      console.log("🔍 [Clone] Assessment lookup:", {
         assessmentId,
         found: !!originalAssessment,
         type: assessmentType,
-        assessment: originalAssessment ? {
-          id: originalAssessment.id,
-          title: originalAssessment.title,
-          type: originalAssessment.type
-        } : null,
+        assessment: originalAssessment
+          ? {
+              id: originalAssessment.id,
+              title: originalAssessment.title,
+              type: originalAssessment.type,
+            }
+          : null,
         totalAssessments: assessments.length,
-        assessmentIds: assessments.map(a => ({ id: a.id, type: a.type }))
+        assessmentIds: assessments.map((a) => ({ id: a.id, type: a.type })),
       });
-      
+
       const cloneData = {
         newTitle: newTitle.trim(),
         keepSchedule: false,
         keepCandidates: false,
       };
-      
+
       // Use appropriate mutation based on type
-      if (assessmentType === 'dsa') {
-        console.log('✅ [Clone] Routing to DSA service:', { testId: assessmentId, cloneData });
-        await cloneDSATestMutation.mutateAsync({ testId: assessmentId, ...cloneData });
-      } else if (assessmentType === 'aiml') {
-        console.log('✅ [Clone] Routing to AIML service:', { testId: assessmentId, cloneData });
-        await cloneAIMLTestMutation.mutateAsync({ testId: assessmentId, ...cloneData });
-      } else if (assessmentType === 'custom_mcq') {
-        await cloneCustomMCQMutation.mutateAsync({ assessmentId, ...cloneData });
-      } else if (assessmentType === 'design') {
-        await cloneDesignTestMutation.mutateAsync({ testId: assessmentId, ...cloneData });
-      } else if (assessmentType === 'data_engineering') {
-        await cloneDataEngineeringTestMutation.mutateAsync({ testId: assessmentId, ...cloneData });
-      } else if (assessmentType === 'cloud') {
-        await cloneCloudTestMutation.mutateAsync({ testId: assessmentId, ...cloneData });
-      } else if (assessmentType === 'devops') {
-        await cloneDevOpsTestMutation.mutateAsync({ testId: assessmentId, ...cloneData });
+      if (assessmentType === "dsa") {
+        console.log("✅ [Clone] Routing to DSA service:", {
+          testId: assessmentId,
+          cloneData,
+        });
+        await cloneDSATestMutation.mutateAsync({
+          testId: assessmentId,
+          ...cloneData,
+        });
+      } else if (assessmentType === "aiml") {
+        console.log("✅ [Clone] Routing to AIML service:", {
+          testId: assessmentId,
+          cloneData,
+        });
+        await cloneAIMLTestMutation.mutateAsync({
+          testId: assessmentId,
+          ...cloneData,
+        });
+      } else if (assessmentType === "custom_mcq") {
+        await cloneCustomMCQMutation.mutateAsync({
+          assessmentId,
+          ...cloneData,
+        });
+      } else if (assessmentType === "design") {
+        await cloneDesignTestMutation.mutateAsync({
+          testId: assessmentId,
+          ...cloneData,
+        });
+      } else if (assessmentType === "data_engineering") {
+        await cloneDataEngineeringTestMutation.mutateAsync({
+          testId: assessmentId,
+          ...cloneData,
+        });
+      } else if (assessmentType === "cloud") {
+        await cloneCloudTestMutation.mutateAsync({
+          testId: assessmentId,
+          ...cloneData,
+        });
+      } else if (assessmentType === "devops") {
+        await cloneDevOpsTestMutation.mutateAsync({
+          testId: assessmentId,
+          ...cloneData,
+        });
       } else {
-        console.log('⚠️ [Clone] Falling back to AI Assessment service (type not recognized):', { assessmentId, assessmentType, cloneData });
-        await cloneAssessmentMutation.mutateAsync({ assessmentId, ...cloneData });
+        console.log(
+          "⚠️ [Clone] Falling back to AI Assessment service (type not recognized):",
+          { assessmentId, assessmentType, cloneData },
+        );
+        await cloneAssessmentMutation.mutateAsync({
+          assessmentId,
+          ...cloneData,
+        });
       }
-      
-      console.log('✅ [Clone] Clone mutation completed successfully');
-      
+
+      console.log("✅ [Clone] Clone mutation completed successfully");
+
       // Close modal
-      setCloneModal({ show: false, assessmentId: null, assessmentTitle: "", newTitle: "" });
+      setCloneModal({
+        show: false,
+        assessmentId: null,
+        assessmentTitle: "",
+        newTitle: "",
+      });
       setOpenMenuId(null);
-      
+
       // Manually refetch all assessments to ensure the cloned test appears
       // React Query cache invalidation might not be immediate, so we force a refetch
-      console.log('🔄 [Clone] Refetching all assessment lists...');
+      console.log("🔄 [Clone] Refetching all assessment lists...");
       await Promise.all([
         refetchAssessments(),
         refetchCustomMCQ(),
@@ -446,22 +552,22 @@ export default function DashboardPage({ session: serverSession }: DashboardPageP
         refetchDesign(),
         refetchDataEngineering(),
         refetchCloud(),
-        refetchDevOps()
+        refetchDevOps(),
       ]);
-      
-      console.log('✅ [Clone] All assessments refetched');
+
+      console.log("✅ [Clone] All assessments refetched");
       alert("Assessment cloned successfully");
     } catch (err: any) {
       // Find assessment again for error logging (in case it wasn't found earlier)
-      const errorAssessment = assessments.find(a => a.id === assessmentId);
+      const errorAssessment = assessments.find((a) => a.id === assessmentId);
       console.error("❌ [Clone] Error cloning assessment:", {
         error: err,
         message: err.message,
         response: err.response?.data,
         status: err.response?.status,
         assessmentId,
-        assessmentType: errorAssessment?.type || 'unknown',
-        found: !!errorAssessment
+        assessmentType: errorAssessment?.type || "unknown",
+        found: !!errorAssessment,
       });
       setUiError(err.message || "Failed to clone assessment");
     } finally {
@@ -471,18 +577,31 @@ export default function DashboardPage({ session: serverSession }: DashboardPageP
 
   // User profile is now handled by useUserProfile hook
   // Fallback to session data if hook data is not available
-  const userProfile = userProfileData || (activeSession?.user ? {
-    name: (activeSession.user as any).name,
-    email: (activeSession.user as any).email,
-    phone: (activeSession.user as any).phone,
-    country: (activeSession.user as any).country,
-  } : null);
+  const userProfile =
+    userProfileData ||
+    (activeSession?.user
+      ? {
+          name: (activeSession.user as any).name,
+          email: (activeSession.user as any).email,
+          phone: (activeSession.user as any).phone,
+          country: (activeSession.user as any).country,
+        }
+      : null);
 
   return (
     <div style={{ backgroundColor: "#ffffff", minHeight: "100vh" }}>
       <header className="enterprise-header">
         <div className="enterprise-header-content">
-          <div style={{ display: "flex", alignItems: "center", gap: "1rem", flex: 1, minWidth: 0, marginLeft: "-5rem" }}>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "1rem",
+              flex: 1,
+              minWidth: 0,
+              marginLeft: "-5rem",
+            }}
+          >
             {isSuperAdmin && (
               <button
                 type="button"
@@ -502,10 +621,12 @@ export default function DashboardPage({ session: serverSession }: DashboardPageP
                   transition: "background-color 0.2s",
                 }}
                 onMouseEnter={(e) => {
-                  e.currentTarget.style.backgroundColor = "rgba(255, 255, 255, 0.3)";
+                  e.currentTarget.style.backgroundColor =
+                    "rgba(255, 255, 255, 0.3)";
                 }}
                 onMouseLeave={(e) => {
-                  e.currentTarget.style.backgroundColor = "rgba(255, 255, 255, 0.2)";
+                  e.currentTarget.style.backgroundColor =
+                    "rgba(255, 255, 255, 0.2)";
                 }}
                 title="Back to Super Admin Dashboard"
               >
@@ -513,22 +634,30 @@ export default function DashboardPage({ session: serverSession }: DashboardPageP
                 <span>Back to Super Admin</span>
               </button>
             )}
-            <Image 
-              src="/Aaptor%20Logo.png" 
-              alt="Aaptor Logo" 
-              width={250} 
-              height={100} 
-              style={{ 
-                objectFit: "contain", 
-                height: "auto", 
+            <Image
+              src="/Aaptor%20Logo.png"
+              alt="Aaptor Logo"
+              width={250}
+              height={100}
+              style={{
+                objectFit: "contain",
+                height: "auto",
                 maxHeight: "100px",
                 width: "auto",
-                maxWidth: "200px"
+                maxWidth: "200px",
               }}
               priority
             />
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexShrink: 0, position: "relative" }}>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "0.5rem",
+              flexShrink: 0,
+              position: "relative",
+            }}
+          >
             <button
               type="button"
               onClick={() => {
@@ -551,12 +680,18 @@ export default function DashboardPage({ session: serverSession }: DashboardPageP
                 transition: "background-color 0.2s",
               }}
               onMouseEnter={(e) => {
-                e.currentTarget.style.backgroundColor = "rgba(255, 255, 255, 0.3)";
+                e.currentTarget.style.backgroundColor =
+                  "rgba(255, 255, 255, 0.3)";
               }}
               onMouseLeave={(e) => {
-                e.currentTarget.style.backgroundColor = "rgba(255, 255, 255, 0.2)";
+                e.currentTarget.style.backgroundColor =
+                  "rgba(255, 255, 255, 0.2)";
               }}
-              title={activeSession?.user?.name || activeSession?.user?.email || "Profile"}
+              title={
+                activeSession?.user?.name ||
+                activeSession?.user?.email ||
+                "Profile"
+              }
             >
               👤
             </button>
@@ -578,18 +713,47 @@ export default function DashboardPage({ session: serverSession }: DashboardPageP
                 }}
               >
                 {loadingProfile && !userProfile ? (
-                  <div style={{ textAlign: "center", padding: "1rem" }}>Loading...</div>
+                  <div style={{ textAlign: "center", padding: "1rem" }}>
+                    Loading...
+                  </div>
                 ) : userProfile ? (
                   <div>
-                    <div style={{ marginBottom: "1rem", paddingBottom: "1rem", borderBottom: "1px solid #e2e8f0" }}>
-                      <div style={{ fontWeight: 600, fontSize: "1rem", color: "#1a1625", marginBottom: "0.25rem" }}>
+                    <div
+                      style={{
+                        marginBottom: "1rem",
+                        paddingBottom: "1rem",
+                        borderBottom: "1px solid #e2e8f0",
+                      }}
+                    >
+                      <div
+                        style={{
+                          fontWeight: 600,
+                          fontSize: "1rem",
+                          color: "#1a1625",
+                          marginBottom: "0.25rem",
+                        }}
+                      >
                         {userProfile.name || "User"}
                       </div>
-                      <div style={{ fontSize: "0.875rem", color: "#64748b" }}>{userProfile.email}</div>
+                      <div style={{ fontSize: "0.875rem", color: "#64748b" }}>
+                        {userProfile.email}
+                      </div>
                     </div>
-                    <div style={{ fontSize: "0.875rem", color: "#1e293b", marginBottom: "0.5rem" }}>
-                      <div><strong>Phone:</strong> {userProfile.phone || "Not provided"}</div>
-                      <div><strong>Country:</strong> {userProfile.country || "Not provided"}</div>
+                    <div
+                      style={{
+                        fontSize: "0.875rem",
+                        color: "#1e293b",
+                        marginBottom: "0.5rem",
+                      }}
+                    >
+                      <div>
+                        <strong>Phone:</strong>{" "}
+                        {userProfile.phone || "Not provided"}
+                      </div>
+                      <div>
+                        <strong>Country:</strong>{" "}
+                        {userProfile.country || "Not provided"}
+                      </div>
                     </div>
                     <button
                       type="button"
@@ -606,7 +770,9 @@ export default function DashboardPage({ session: serverSession }: DashboardPageP
                     </button>
                   </div>
                 ) : (
-                  <div style={{ textAlign: "center", padding: "1rem" }}>Failed to load profile</div>
+                  <div style={{ textAlign: "center", padding: "1rem" }}>
+                    Failed to load profile
+                  </div>
                 )}
               </div>
             )}
@@ -615,33 +781,66 @@ export default function DashboardPage({ session: serverSession }: DashboardPageP
       </header>
 
       <div className="container">
-        <div className="card" style={{ 
-          marginBottom: "2rem",
-          background: "linear-gradient(135deg, #ffffff 0%, #f0fdf4 100%)",
-          border: "1.5px solid #A8E8BC",
-          borderRadius: "1rem",
-          boxShadow: "0 4px 12px rgba(168, 232, 188, 0.15)",
-        }}>
-          <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
+        <div
+          className="card"
+          style={{
+            marginBottom: "2rem",
+            background: "linear-gradient(135deg, #ffffff 0%, #f0fdf4 100%)",
+            border: "1.5px solid #A8E8BC",
+            borderRadius: "1rem",
+            boxShadow: "0 4px 12px rgba(168, 232, 188, 0.15)",
+          }}
+        >
+          <div
+            style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}
+          >
             {/* Header Section */}
-            <div style={{ 
-              paddingBottom: "1.5rem",
-              borderBottom: "2px solid #E8FAF0",
-            }}>
-              <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "1rem", flexWrap: "wrap" }}>
+            <div
+              style={{
+                paddingBottom: "1.5rem",
+                borderBottom: "2px solid #E8FAF0",
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "flex-start",
+                  justifyContent: "space-between",
+                  gap: "1rem",
+                  flexWrap: "wrap",
+                }}
+              >
                 <div style={{ flex: 1, minWidth: "250px" }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginBottom: "0.5rem" }}>
-                    <div style={{
-                      width: "48px",
-                      height: "48px",
-                      borderRadius: "0.75rem",
-                      backgroundColor: "#2D7A52",
+                  <div
+                    style={{
                       display: "flex",
                       alignItems: "center",
-                      justifyContent: "center",
-                      boxShadow: "0 2px 8px rgba(45, 122, 82, 0.2)",
-                    }}>
-                      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#ffffff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      gap: "0.75rem",
+                      marginBottom: "0.5rem",
+                    }}
+                  >
+                    <div
+                      style={{
+                        width: "48px",
+                        height: "48px",
+                        borderRadius: "0.75rem",
+                        backgroundColor: "#2D7A52",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        boxShadow: "0 2px 8px rgba(45, 122, 82, 0.2)",
+                      }}
+                    >
+                      <svg
+                        width="24"
+                        height="24"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="#ffffff"
+                        strokeWidth="2.5"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      >
                         <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
                         <polyline points="14 2 14 8 20 8" />
                         <line x1="16" y1="13" x2="8" y2="13" />
@@ -650,26 +849,30 @@ export default function DashboardPage({ session: serverSession }: DashboardPageP
                       </svg>
                     </div>
                     <div>
-                      <h1 style={{ 
-                        margin: 0, 
-                        fontSize: "clamp(1.5rem, 4vw, 2rem)", 
-                        color: "#1a1625", 
-                        fontWeight: 700,
-                        lineHeight: 1.2,
-                      }}>
+                      <h1
+                        style={{
+                          margin: 0,
+                          fontSize: "clamp(1.5rem, 4vw, 2rem)",
+                          color: "#1a1625",
+                          fontWeight: 700,
+                          lineHeight: 1.2,
+                        }}
+                      >
                         Assessments Dashboard
                       </h1>
                     </div>
                   </div>
                 </div>
-                <div style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "0.75rem",
-                }}>
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "0.75rem",
+                  }}
+                >
                   {/* Employee Management Button */}
                   <button
-                    onClick={() => router.push('/employee/management')}
+                    onClick={() => router.push("/employee/management")}
                     style={{
                       display: "flex",
                       alignItems: "center",
@@ -688,15 +891,26 @@ export default function DashboardPage({ session: serverSession }: DashboardPageP
                     onMouseEnter={(e) => {
                       e.currentTarget.style.backgroundColor = "#1e5a3b";
                       e.currentTarget.style.transform = "translateY(-1px)";
-                      e.currentTarget.style.boxShadow = "0 4px 8px rgba(45, 122, 82, 0.3)";
+                      e.currentTarget.style.boxShadow =
+                        "0 4px 8px rgba(45, 122, 82, 0.3)";
                     }}
                     onMouseLeave={(e) => {
                       e.currentTarget.style.backgroundColor = "#2D7A52";
                       e.currentTarget.style.transform = "translateY(0)";
-                      e.currentTarget.style.boxShadow = "0 2px 4px rgba(45, 122, 82, 0.2)";
+                      e.currentTarget.style.boxShadow =
+                        "0 2px 4px rgba(45, 122, 82, 0.2)";
                     }}
                   >
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <svg
+                      width="16"
+                      height="16"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
                       <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
                       <circle cx="9" cy="7" r="4" />
                       <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
@@ -704,27 +918,42 @@ export default function DashboardPage({ session: serverSession }: DashboardPageP
                     </svg>
                     <span>Employee Management</span>
                   </button>
-                  
+
                   {/* User Info */}
-                  <div style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "0.5rem",
-                    padding: "0.625rem 1rem",
-                    backgroundColor: "#E8FAF0",
-                    borderRadius: "0.75rem",
-                    border: "1px solid #A8E8BC",
-                  }}>
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2D7A52" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "0.5rem",
+                      padding: "0.625rem 1rem",
+                      backgroundColor: "#E8FAF0",
+                      borderRadius: "0.75rem",
+                      border: "1px solid #A8E8BC",
+                    }}
+                  >
+                    <svg
+                      width="16"
+                      height="16"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="#2D7A52"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
                       <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
                       <circle cx="12" cy="7" r="4" />
                     </svg>
-                    <span style={{ 
-                      color: "#2D7A52", 
-                      fontSize: "0.875rem",
-                      fontWeight: 500,
-                    }}>
-                      {activeSession?.user?.name || activeSession?.user?.email || "User"}
+                    <span
+                      style={{
+                        color: "#2D7A52",
+                        fontSize: "0.875rem",
+                        fontWeight: 500,
+                      }}
+                    >
+                      {activeSession?.user?.name ||
+                        activeSession?.user?.email ||
+                        "User"}
                     </span>
                   </div>
                 </div>
@@ -748,16 +977,21 @@ export default function DashboardPage({ session: serverSession }: DashboardPageP
         {loading ? (
           <div className="card">
             <div style={{ textAlign: "center", padding: "3rem" }}>
-              <div className="spinner" style={{ fontSize: "2rem", marginBottom: "1rem" }}>⟳</div>
+              <div
+                className="spinner"
+                style={{ fontSize: "2rem", marginBottom: "1rem" }}
+              >
+                ⟳
+              </div>
               <p style={{ color: "#2D7A52" }}>Loading assessments...</p>
             </div>
           </div>
-        ) : (error || uiError) ? (
+        ) : error || uiError ? (
           <div className="card">
             <div className="alert alert-error">{error || uiError}</div>
-            <button 
-              type="button" 
-              className="btn-primary" 
+            <button
+              type="button"
+              className="btn-primary"
               onClick={() => {
                 refetchAssessments();
                 refetchCustomMCQ();
@@ -768,7 +1002,7 @@ export default function DashboardPage({ session: serverSession }: DashboardPageP
                 refetchCloud();
                 refetchDevOps();
                 setUiError(null);
-              }} 
+              }}
               style={{ marginTop: "1rem" }}
             >
               Retry
@@ -813,7 +1047,9 @@ export default function DashboardPage({ session: serverSession }: DashboardPageP
             animation: "fadeIn 0.2s ease-out",
           }}
         >
-          <style dangerouslySetInnerHTML={{__html: `
+          <style
+            dangerouslySetInnerHTML={{
+              __html: `
             @keyframes fadeIn {
               from {
                 opacity: 0;
@@ -837,7 +1073,9 @@ export default function DashboardPage({ session: serverSession }: DashboardPageP
                 transform: rotate(360deg);
               }
             }
-          `}} />
+          `,
+            }}
+          />
           <div
             style={{
               backgroundColor: "#ffffff",
@@ -845,36 +1083,43 @@ export default function DashboardPage({ session: serverSession }: DashboardPageP
               padding: "2rem",
               maxWidth: "400px",
               width: "90%",
-              boxShadow: "0 20px 50px rgba(0, 0, 0, 0.15), 0 0 0 1px rgba(0, 0, 0, 0.05)",
+              boxShadow:
+                "0 20px 50px rgba(0, 0, 0, 0.15), 0 0 0 1px rgba(0, 0, 0, 0.05)",
               animation: "slideUp 0.2s ease-out",
               textAlign: "center",
             }}
           >
             {/* Spinner */}
-            <div style={{
-              width: "48px",
-              height: "48px",
-              margin: "0 auto 1.5rem",
-              border: "4px solid #e5e7eb",
-              borderTopColor: "#f59e0b",
-              borderRadius: "50%",
-              animation: "spin 0.8s linear infinite",
-            }} />
-            
+            <div
+              style={{
+                width: "48px",
+                height: "48px",
+                margin: "0 auto 1.5rem",
+                border: "4px solid #e5e7eb",
+                borderTopColor: "#f59e0b",
+                borderRadius: "50%",
+                animation: "spin 0.8s linear infinite",
+              }}
+            />
+
             {/* Message */}
-            <h3 style={{ 
-              margin: "0 0 0.5rem", 
-              fontSize: "1.125rem", 
-              fontWeight: 600, 
-              color: "#1a1625" 
-            }}>
+            <h3
+              style={{
+                margin: "0 0 0.5rem",
+                fontSize: "1.125rem",
+                fontWeight: 600,
+                color: "#1a1625",
+              }}
+            >
               Pausing the test
             </h3>
-            <p style={{ 
-              margin: 0, 
-              fontSize: "0.9375rem", 
-              color: "#64748b" 
-            }}>
+            <p
+              style={{
+                margin: 0,
+                fontSize: "0.9375rem",
+                color: "#64748b",
+              }}
+            >
               {pausing.testName}
             </p>
           </div>
@@ -899,7 +1144,9 @@ export default function DashboardPage({ session: serverSession }: DashboardPageP
             animation: "fadeIn 0.2s ease-out",
           }}
         >
-          <style dangerouslySetInnerHTML={{__html: `
+          <style
+            dangerouslySetInnerHTML={{
+              __html: `
             @keyframes fadeIn {
               from {
                 opacity: 0;
@@ -923,7 +1170,9 @@ export default function DashboardPage({ session: serverSession }: DashboardPageP
                 transform: rotate(360deg);
               }
             }
-          `}} />
+          `,
+            }}
+          />
           <div
             style={{
               backgroundColor: "#ffffff",
@@ -931,36 +1180,43 @@ export default function DashboardPage({ session: serverSession }: DashboardPageP
               padding: "2rem",
               maxWidth: "400px",
               width: "90%",
-              boxShadow: "0 20px 50px rgba(0, 0, 0, 0.15), 0 0 0 1px rgba(0, 0, 0, 0.05)",
+              boxShadow:
+                "0 20px 50px rgba(0, 0, 0, 0.15), 0 0 0 1px rgba(0, 0, 0, 0.05)",
               animation: "slideUp 0.2s ease-out",
               textAlign: "center",
             }}
           >
             {/* Spinner */}
-            <div style={{
-              width: "48px",
-              height: "48px",
-              margin: "0 auto 1.5rem",
-              border: "4px solid #e5e7eb",
-              borderTopColor: "#10b981",
-              borderRadius: "50%",
-              animation: "spin 0.8s linear infinite",
-            }} />
-            
+            <div
+              style={{
+                width: "48px",
+                height: "48px",
+                margin: "0 auto 1.5rem",
+                border: "4px solid #e5e7eb",
+                borderTopColor: "#10b981",
+                borderRadius: "50%",
+                animation: "spin 0.8s linear infinite",
+              }}
+            />
+
             {/* Message */}
-            <h3 style={{ 
-              margin: "0 0 0.5rem", 
-              fontSize: "1.125rem", 
-              fontWeight: 600, 
-              color: "#1a1625" 
-            }}>
+            <h3
+              style={{
+                margin: "0 0 0.5rem",
+                fontSize: "1.125rem",
+                fontWeight: 600,
+                color: "#1a1625",
+              }}
+            >
               Resuming the test
             </h3>
-            <p style={{ 
-              margin: 0, 
-              fontSize: "0.9375rem", 
-              color: "#64748b" 
-            }}>
+            <p
+              style={{
+                margin: 0,
+                fontSize: "0.9375rem",
+                color: "#64748b",
+              }}
+            >
               {resuming.testName}
             </p>
           </div>
@@ -986,11 +1242,18 @@ export default function DashboardPage({ session: serverSession }: DashboardPageP
           }}
           onClick={() => {
             if (!cloning) {
-              setCloneModal({ show: false, assessmentId: null, assessmentTitle: "", newTitle: "" });
+              setCloneModal({
+                show: false,
+                assessmentId: null,
+                assessmentTitle: "",
+                newTitle: "",
+              });
             }
           }}
         >
-          <style dangerouslySetInnerHTML={{__html: `
+          <style
+            dangerouslySetInnerHTML={{
+              __html: `
             @keyframes fadeIn {
               from {
                 opacity: 0;
@@ -1009,7 +1272,9 @@ export default function DashboardPage({ session: serverSession }: DashboardPageP
                 transform: translateY(0) scale(1);
               }
             }
-          `}} />
+          `,
+            }}
+          />
           <div
             style={{
               backgroundColor: "#ffffff",
@@ -1017,38 +1282,65 @@ export default function DashboardPage({ session: serverSession }: DashboardPageP
               padding: "2rem",
               maxWidth: "520px",
               width: "90%",
-              boxShadow: "0 20px 50px rgba(0, 0, 0, 0.15), 0 0 0 1px rgba(0, 0, 0, 0.05)",
+              boxShadow:
+                "0 20px 50px rgba(0, 0, 0, 0.15), 0 0 0 1px rgba(0, 0, 0, 0.05)",
               animation: "slideUp 0.2s ease-out",
             }}
             onClick={(e) => e.stopPropagation()}
           >
             {/* Icon Header */}
-            <div style={{ 
-              display: "flex", 
-              alignItems: "center", 
-              gap: "1rem", 
-              marginBottom: "1.25rem" 
-            }}>
-              <div style={{
-                width: "48px",
-                height: "48px",
-                borderRadius: "0.75rem",
-                backgroundColor: "#ecfdf5",
+            <div
+              style={{
                 display: "flex",
                 alignItems: "center",
-                justifyContent: "center",
-                flexShrink: 0,
-              }}>
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#10b981" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                gap: "1rem",
+                marginBottom: "1.25rem",
+              }}
+            >
+              <div
+                style={{
+                  width: "48px",
+                  height: "48px",
+                  borderRadius: "0.75rem",
+                  backgroundColor: "#ecfdf5",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  flexShrink: 0,
+                }}
+              >
+                <svg
+                  width="24"
+                  height="24"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="#10b981"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
                   <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
                   <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
                 </svg>
               </div>
               <div>
-                <h3 style={{ margin: 0, fontSize: "1.25rem", fontWeight: 600, color: "#1a1625" }}>
+                <h3
+                  style={{
+                    margin: 0,
+                    fontSize: "1.25rem",
+                    fontWeight: 600,
+                    color: "#1a1625",
+                  }}
+                >
                   Clone Assessment
                 </h3>
-                <p style={{ margin: "0.25rem 0 0", fontSize: "0.875rem", color: "#64748b" }}>
+                <p
+                  style={{
+                    margin: "0.25rem 0 0",
+                    fontSize: "0.875rem",
+                    color: "#64748b",
+                  }}
+                >
                   Create a copy of "{cloneModal.assessmentTitle}"
                 </p>
               </div>
@@ -1056,19 +1348,23 @@ export default function DashboardPage({ session: serverSession }: DashboardPageP
 
             {/* Input Field */}
             <div style={{ marginBottom: "1.5rem" }}>
-              <label style={{ 
-                display: "block", 
-                marginBottom: "0.5rem", 
-                fontSize: "0.875rem", 
-                fontWeight: 500, 
-                color: "#374151" 
-              }}>
+              <label
+                style={{
+                  display: "block",
+                  marginBottom: "0.5rem",
+                  fontSize: "0.875rem",
+                  fontWeight: 500,
+                  color: "#374151",
+                }}
+              >
                 New Assessment Title
               </label>
               <input
                 type="text"
                 value={cloneModal.newTitle}
-                onChange={(e) => setCloneModal({ ...cloneModal, newTitle: e.target.value })}
+                onChange={(e) =>
+                  setCloneModal({ ...cloneModal, newTitle: e.target.value })
+                }
                 placeholder="Enter new assessment title"
                 style={{
                   width: "100%",
@@ -1080,7 +1376,8 @@ export default function DashboardPage({ session: serverSession }: DashboardPageP
                 }}
                 onFocus={(e) => {
                   e.target.style.borderColor = "#10b981";
-                  e.target.style.boxShadow = "0 0 0 3px rgba(16, 185, 129, 0.1)";
+                  e.target.style.boxShadow =
+                    "0 0 0 3px rgba(16, 185, 129, 0.1)";
                 }}
                 onBlur={(e) => {
                   e.target.style.borderColor = "#e5e7eb";
@@ -1091,12 +1388,23 @@ export default function DashboardPage({ session: serverSession }: DashboardPageP
             </div>
 
             {/* Action Buttons */}
-            <div style={{ display: "flex", gap: "0.75rem", justifyContent: "flex-end" }}>
+            <div
+              style={{
+                display: "flex",
+                gap: "0.75rem",
+                justifyContent: "flex-end",
+              }}
+            >
               <button
                 type="button"
                 onClick={() => {
                   if (!cloning) {
-                    setCloneModal({ show: false, assessmentId: null, assessmentTitle: "", newTitle: "" });
+                    setCloneModal({
+                      show: false,
+                      assessmentId: null,
+                      assessmentTitle: "",
+                      newTitle: "",
+                    });
                   }
                 }}
                 disabled={cloning}
@@ -1130,45 +1438,52 @@ export default function DashboardPage({ session: serverSession }: DashboardPageP
               <button
                 type="button"
                 onClick={async () => {
-                  if (!cloneModal.assessmentId || !cloneModal.newTitle.trim() || cloning) return;
-                  
+                  if (
+                    !cloneModal.assessmentId ||
+                    !cloneModal.newTitle.trim() ||
+                    cloning
+                  )
+                    return;
+
                   setCloning(true);
                   try {
                     // Determine which mutation to use based on assessment type
-                    const assessment = assessments.find(a => a.id === cloneModal.assessmentId);
-                    const assessmentType = assessment?.type || 'assessment';
-                    
-                    if (assessmentType === 'dsa') {
+                    const assessment = assessments.find(
+                      (a) => a.id === cloneModal.assessmentId,
+                    );
+                    const assessmentType = assessment?.type || "assessment";
+
+                    if (assessmentType === "dsa") {
                       await cloneDSATestMutation.mutateAsync({
                         testId: cloneModal.assessmentId,
                         newTitle: cloneModal.newTitle.trim(),
                       });
-                    } else if (assessmentType === 'aiml') {
+                    } else if (assessmentType === "aiml") {
                       await cloneAIMLTestMutation.mutateAsync({
                         testId: cloneModal.assessmentId,
                         newTitle: cloneModal.newTitle.trim(),
                       });
-                    } else if (assessmentType === 'custom_mcq') {
+                    } else if (assessmentType === "custom_mcq") {
                       await cloneCustomMCQMutation.mutateAsync({
                         assessmentId: cloneModal.assessmentId,
                         newTitle: cloneModal.newTitle.trim(),
                       });
-                    } else if (assessmentType === 'design') {
+                    } else if (assessmentType === "design") {
                       await cloneDesignTestMutation.mutateAsync({
                         testId: cloneModal.assessmentId,
                         newTitle: cloneModal.newTitle.trim(),
                       });
-                    } else if (assessmentType === 'data_engineering') {
+                    } else if (assessmentType === "data_engineering") {
                       await cloneDataEngineeringTestMutation.mutateAsync({
                         testId: cloneModal.assessmentId,
                         newTitle: cloneModal.newTitle.trim(),
                       });
-                    } else if (assessmentType === 'cloud') {
+                    } else if (assessmentType === "cloud") {
                       await cloneCloudTestMutation.mutateAsync({
                         testId: cloneModal.assessmentId,
                         newTitle: cloneModal.newTitle.trim(),
                       });
-                    } else if (assessmentType === 'devops') {
+                    } else if (assessmentType === "devops") {
                       await cloneDevOpsTestMutation.mutateAsync({
                         testId: cloneModal.assessmentId,
                         newTitle: cloneModal.newTitle.trim(),
@@ -1179,11 +1494,19 @@ export default function DashboardPage({ session: serverSession }: DashboardPageP
                         newTitle: cloneModal.newTitle.trim(),
                       });
                     }
-                    
-                    setCloneModal({ show: false, assessmentId: null, assessmentTitle: "", newTitle: "" });
+
+                    setCloneModal({
+                      show: false,
+                      assessmentId: null,
+                      assessmentTitle: "",
+                      newTitle: "",
+                    });
                   } catch (err: any) {
                     console.error("Failed to clone assessment:", err);
-                    setUiError(err?.message || "Failed to clone assessment. Please try again.");
+                    setUiError(
+                      err?.message ||
+                        "Failed to clone assessment. Please try again.",
+                    );
                   } finally {
                     setCloning(false);
                   }
@@ -1193,11 +1516,17 @@ export default function DashboardPage({ session: serverSession }: DashboardPageP
                   padding: "0.75rem 1.5rem",
                   border: "none",
                   borderRadius: "0.5rem",
-                  backgroundColor: cloning || !cloneModal.newTitle.trim() ? "#9ca3af" : "#10b981",
+                  backgroundColor:
+                    cloning || !cloneModal.newTitle.trim()
+                      ? "#9ca3af"
+                      : "#10b981",
                   color: "#ffffff",
                   fontSize: "0.9375rem",
                   fontWeight: 500,
-                  cursor: cloning || !cloneModal.newTitle.trim() ? "not-allowed" : "pointer",
+                  cursor:
+                    cloning || !cloneModal.newTitle.trim()
+                      ? "not-allowed"
+                      : "pointer",
                   transition: "all 0.2s",
                   display: "flex",
                   alignItems: "center",
@@ -1216,7 +1545,9 @@ export default function DashboardPage({ session: serverSession }: DashboardPageP
               >
                 {cloning ? (
                   <>
-                    <div className="spinner" style={{ fontSize: "1rem" }}>⟳</div>
+                    <div className="spinner" style={{ fontSize: "1rem" }}>
+                      ⟳
+                    </div>
                     Cloning...
                   </>
                 ) : (
@@ -1227,7 +1558,6 @@ export default function DashboardPage({ session: serverSession }: DashboardPageP
           </div>
         </div>
       )}
-
     </div>
   );
 }
