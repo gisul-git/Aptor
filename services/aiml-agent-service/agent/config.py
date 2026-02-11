@@ -9,7 +9,7 @@ from typing import Optional
 class Config:
     """Configuration class with environment variable support."""
     
-    # Server Configuration
+    # Server Configuration 
     HOST: str = os.getenv('AGENT_HOST', '127.0.0.1')
     PORT: int = int(os.getenv('AGENT_PORT', '8889'))
     HEALTH_PORT: int = int(os.getenv('AGENT_HEALTH_PORT', '8080'))
