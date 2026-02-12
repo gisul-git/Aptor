@@ -360,6 +360,20 @@ export default function AnalyticsPage() {
   useEffect(() => {
     if (analyticsData) {
       console.log('[AIML Analytics] 📊 Syncing analytics data:', analyticsData)
+      console.log('[AIML Analytics] 📊 Data structure check:', {
+        hasQuestionAnalytics: !!analyticsData.question_analytics,
+        questionAnalyticsType: typeof analyticsData.question_analytics,
+        questionAnalyticsIsArray: Array.isArray(analyticsData.question_analytics),
+        questionAnalyticsLength: analyticsData.question_analytics?.length || 0,
+        firstQuestion: analyticsData.question_analytics?.[0] ? {
+          hasCode: !!analyticsData.question_analytics[0].code,
+          codeLength: analyticsData.question_analytics[0].code?.length || 0,
+          hasOutputs: !!analyticsData.question_analytics[0].outputs,
+          outputsCount: analyticsData.question_analytics[0].outputs?.length || 0,
+          hasAiFeedback: !!analyticsData.question_analytics[0].ai_feedback
+        } : null,
+        allKeys: Object.keys(analyticsData)
+      })
       setAnalytics(analyticsData)
       // Fetch proctor logs when analytics data is loaded
       if (selectedCandidateUserId && analyticsData.candidate?.email) {
@@ -1681,7 +1695,24 @@ export default function AnalyticsPage() {
                 </div>
 
                 {/* Question Analytics */}
-                {analytics.question_analytics.map((qa, index) => (
+                {analytics.question_analytics && Array.isArray(analytics.question_analytics) && analytics.question_analytics.length > 0 ? (
+                  analytics.question_analytics.map((qa, index) => {
+                  // Debug logging
+                  console.log(`[Analytics] Question ${index + 1}:`, {
+                    question_id: qa.question_id,
+                    question_title: qa.question_title,
+                    has_code: !!qa.code,
+                    code_type: typeof qa.code,
+                    code_length: qa.code ? qa.code.length : 0,
+                    code_value: qa.code ? qa.code.substring(0, 50) : 'null/undefined',
+                    has_outputs: !!qa.outputs,
+                    outputs_type: Array.isArray(qa.outputs),
+                    outputs_count: qa.outputs ? qa.outputs.length : 0,
+                    has_ai_feedback: !!qa.ai_feedback,
+                    full_qa: qa
+                  });
+                  
+                  return (
                   <div key={qa.question_id} style={{
                     border: "1px solid #e2e8f0",
                     borderRadius: "0.75rem",
@@ -1751,7 +1782,7 @@ export default function AnalyticsPage() {
                     </div>
 
                     {/* Code Display */}
-                    {qa.code && (
+                    {qa.code && typeof qa.code === 'string' && qa.code.trim().length > 0 && (
                       <details style={{ marginTop: "1rem" }}>
                         <summary style={{ cursor: "pointer", fontSize: "0.875rem", fontWeight: 500, color: "#64748b" }}>
                           View Code
@@ -1763,7 +1794,7 @@ export default function AnalyticsPage() {
                     )}
 
                     {/* Outputs Display */}
-                    {qa.outputs && qa.outputs.length > 0 && (
+                    {qa.outputs && Array.isArray(qa.outputs) && qa.outputs.length > 0 && (
                       <details style={{ marginTop: "1rem" }}>
                         <summary style={{ cursor: "pointer", fontSize: "0.875rem", fontWeight: 500, color: "#64748b" }}>
                           View Outputs ({qa.outputs.length})
@@ -2037,7 +2068,13 @@ export default function AnalyticsPage() {
                       </div>
                     )}
                   </div>
-                ))}
+                  );
+                })
+                ) : (
+                  <div style={{ padding: "2rem", textAlign: "center", color: "#64748b" }}>
+                    No question analytics available
+                  </div>
+                )}
               </div>
             )}
           </div>
