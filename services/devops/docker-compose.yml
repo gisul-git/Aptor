@@ -11,6 +11,8 @@ services:
     stdin_open: true
     tty: true
     restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
 
   execution-api:
     build:

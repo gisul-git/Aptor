@@ -58,6 +58,24 @@ export default withAuth(
       authorized: ({ token, req }) => {
         // Protect all routes except public ones
         const { pathname } = req.nextUrl;
+        const hostname = req.nextUrl.hostname;
+        const isLocalhost =
+          hostname === "localhost" ||
+          hostname === "127.0.0.1" ||
+          hostname === "::1";
+
+        // Local DevOps sandbox routes: allow without NextAuth login
+        if (
+          isLocalhost &&
+          (
+            pathname === "/devops" ||
+            pathname.startsWith("/devops/") ||
+            pathname.startsWith("/api/devops/") ||
+            pathname.startsWith("/api/v1/devops/")
+          )
+        ) {
+          return true;
+        }
         
         // DEBUG: Log candidate reference photo routes
         if (pathname.startsWith("/api/v1/candidate/get-reference-photo") ||
@@ -80,6 +98,7 @@ export default withAuth(
         const publicRoutes = [
           "/",
           "/auth/signin",
+          "/auth/error",
           "/auth/signup",
           "/auth/set-password",  // Employee set password page
           "/auth/employee-login",  // Employee login page
@@ -245,4 +264,5 @@ export const config = {
     "/((?!api/auth|api/assessment|api/proctor|api/config|api/v1/candidate|mediapipe|_next/static|_next/image|_next/data|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|js|wasm|data|binarypb)$).*)",
   ],
 };
+
 

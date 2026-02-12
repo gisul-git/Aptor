@@ -13,11 +13,34 @@ def lint_github_actions(content: str) -> Dict:
         with os.fdopen(fd, "w") as tmp:
             tmp.write(content)
 
-        result = subprocess.run(
-            [ACTIONLINT_PATH, tmp_path],
-            capture_output=True,
-            text=True,
-        )
+        try:
+            result = subprocess.run(
+                [ACTIONLINT_PATH, tmp_path],
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+        except FileNotFoundError:
+            return {
+                "status": "failed",
+                "errors": [f"actionlint binary not found at '{ACTIONLINT_PATH}'"],
+                "warnings": [],
+                "score": 0,
+            }
+        except subprocess.TimeoutExpired:
+            return {
+                "status": "failed",
+                "errors": ["actionlint timed out after 30 seconds"],
+                "warnings": [],
+                "score": 0,
+            }
+        except OSError as exc:
+            return {
+                "status": "failed",
+                "errors": [f"actionlint failed to execute: {exc}"],
+                "warnings": [],
+                "score": 0,
+            }
 
         errors: List[str] = []
         warnings: List[str] = []
