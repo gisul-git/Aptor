@@ -13,8 +13,9 @@ export default async function handler(
   }
 
   // Get API Gateway URL from environment variable (server-side)
+  // Priority: NEXT_PUBLIC_API_URL (for client-side HTTPS) > API_GATEWAY_URL (for server-side internal)
   // This can be set in Azure App Service Configuration
-  const apiGatewayUrl = process.env.API_GATEWAY_URL || process.env.NEXT_PUBLIC_API_URL;
+  const apiGatewayUrl = process.env.NEXT_PUBLIC_API_URL || process.env.API_GATEWAY_URL;
 
   if (!apiGatewayUrl) {
     return res.status(500).json({ 
