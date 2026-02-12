@@ -338,10 +338,10 @@ export const aimlService = {
    * Publish/unpublish question
    */
   publishQuestion: async (questionId: string, isPublished: boolean): Promise<ApiResponse<any>> => {
-    // Don't send null body - use undefined or empty object to avoid JSON parsing errors
-    const response = await apiClient.patch<ApiResponse<any>>(`/api/v1/aiml/questions/${questionId}/publish`, undefined, {
-      params: { is_published: isPublished },
-    });
+    // Use query parameter for is_published
+    const response = await apiClient.patch<ApiResponse<any>>(
+      `/api/v1/aiml/questions/${questionId}/publish?is_published=${isPublished}`
+    );
     return response.data;
   },
 
