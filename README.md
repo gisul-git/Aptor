@@ -11,7 +11,7 @@ NEXT_PUBLIC_FACE_DETECTION_MODEL_URL=https://www.kaggle.com/models/mediapipe/fac
 NEXT_PUBLIC_FACE_MESH_MODEL_URL=<paste_face_mesh_model_json_url_here>
 ```
 
-To revert instantly to the current direct-fetch behavior, set:
+To reverts instantly to the current direct-fetch behavior, set:
 
 ```bash
 NEXT_PUBLIC_PROCTOR_MODEL_PROXY=false
