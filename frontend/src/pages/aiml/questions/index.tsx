@@ -274,11 +274,31 @@ export default function AIMLQuestionsListPage() {
   }
 
   const handleTogglePublish = async (questionId: string, currentStatus: boolean) => {
+    const newStatus = !currentStatus
+    
+    // Optimistically update local state for immediate UI feedback
+    setQuestions(prev => prev.map(q => 
+      q.id === questionId ? { ...q, is_published: newStatus } : q
+    ))
+    
     try {
-      await publishQuestionMutation.mutateAsync({ questionId, isPublished: !currentStatus })
+      await publishQuestionMutation.mutateAsync({ questionId, isPublished: newStatus })
+      // Refetch to ensure consistency with backend
       await refetchQuestions()
+      setSuccessToast({ 
+        isOpen: true, 
+        message: `Question ${newStatus ? 'published' : 'unpublished'} successfully!` 
+      })
     } catch (error: any) {
-      alert(error.response?.data?.detail || 'Failed to update publish status')
+      console.error('Publish error:', error)
+      // Revert optimistic update on error
+      await refetchQuestions()
+      const errorMessage = 
+        error?.response?.data?.detail || 
+        error?.response?.data?.error || 
+        error?.message || 
+        'Failed to update publish status'
+      setErrorToast({ isOpen: true, message: errorMessage })
     }
   }
 
