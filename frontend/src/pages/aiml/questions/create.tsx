@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/router'
 import { GetServerSideProps } from 'next'
 import { requireAuth } from '../../../lib/auth'
-import { useCreateAIMLQuestion } from '@/hooks/api/useAIML'
+import { useCreateAIMLQuestion, useGenerateAIMLQuestion } from '@/hooks/api/useAIML'
 import { aimlService } from '@/services/aiml'
 
 const AIML_SKILLS = [
@@ -101,6 +101,7 @@ type Testcase = {
 export default function AIMLQuestionCreatePage() {
   const router = useRouter()
   const createQuestionMutation = useCreateAIMLQuestion()
+  const generateAIQuestionMutation = useGenerateAIMLQuestion()
   const [saving, setSaving] = useState(false)
   const [generating, setGenerating] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -284,8 +285,8 @@ export default function AIMLQuestionCreatePage() {
     setError(null)
 
     try {
-      // Call backend with new format parameters
-      const response = await aimlService.generateAIQuestion({
+      // Use React Query mutation hook for proper cache invalidation
+      const response = await generateAIQuestionMutation.mutateAsync({
         title: assessmentTitle,
         skill: skill,
         topic: topic.trim() || undefined,
@@ -300,7 +301,7 @@ export default function AIMLQuestionCreatePage() {
         responseKeys: response ? Object.keys(response) : [],
       })
 
-      // The service returns the data directly (GenerateAIQuestionResponse)
+      // The mutation returns the data directly (GenerateAIQuestionResponse)
       const data = response
       
       // Validate data exists
@@ -314,9 +315,9 @@ export default function AIMLQuestionCreatePage() {
         const assessment = data.assessment
         const question = data.question
       
-      // Populate form with generated question
+        // Populate form with generated question
         setTitle(assessment.title || assessmentTitle)
-      setDescription(question.description || '')
+        setDescription(question.description || '')
         setDifficulty(assessment.difficulty || aiDifficulty)
         
         // If tasks are provided, convert to description or display separately
@@ -330,8 +331,9 @@ export default function AIMLQuestionCreatePage() {
         setRequiresDataset(data.dataset !== null && data.dataset !== undefined)
         
         // Show success and redirect
-      alert('Question generated and saved successfully!')
-      router.push('/aiml/questions')
+        // Cache invalidation happens automatically via the mutation hook
+        alert('Question generated and saved successfully!')
+        router.push('/aiml/questions')
       } else {
         // Fallback: if response doesn't have expected structure
         console.warn('Unexpected response format:', data)
@@ -344,8 +346,9 @@ export default function AIMLQuestionCreatePage() {
       }
     } catch (err: any) {
       console.error(err)
-      setError(err.response?.data?.detail || 'Failed to generate question')
-      alert(err.response?.data?.detail || 'Failed to generate question')
+      const errorMessage = err.response?.data?.error || err.response?.data?.detail || err.message || 'Failed to generate question'
+      setError(errorMessage)
+      alert(errorMessage)
     } finally {
       setGenerating(false)
     }

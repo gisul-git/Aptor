@@ -434,8 +434,11 @@ export const usePublishAIMLQuestion = () => {
     mutationFn: ({ questionId, isPublished }: { questionId: string; isPublished: boolean }) =>
       aimlService.publishQuestion(questionId, isPublished),
     onSuccess: (_, variables) => {
+      // Invalidate and remove queries to force immediate refetch
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.question(variables.questionId) });
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.questions });
+      // Remove from cache to force refetch (like delete does)
+      queryClient.removeQueries({ queryKey: QUERY_KEYS.questions });
     },
   });
 };
@@ -450,6 +453,29 @@ export const useCreateAIMLQuestion = () => {
     mutationFn: (data: CreateAIMLQuestionDto) => aimlService.createQuestion(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.questions });
+    },
+  });
+};
+
+/**
+ * Generate AI question mutation
+ */
+export const useGenerateAIMLQuestion = () => {
+  const queryClient = useQueryClient();
+  
+  return useMutation({
+    mutationFn: (data: {
+      title: string;
+      skill: string;
+      topic?: string;
+      difficulty: string;
+      dataset_format?: string;
+    }) => aimlService.generateAIQuestion(data),
+    onSuccess: () => {
+      // Invalidate questions list to show the newly generated question
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.questions });
+      // Also remove from cache to force immediate refetch
+      queryClient.removeQueries({ queryKey: QUERY_KEYS.questions });
     },
   });
 };
