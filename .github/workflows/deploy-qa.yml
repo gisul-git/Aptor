@@ -52,15 +52,46 @@ jobs:
             # Navigate to deployment directory
             cd ${DEPLOY_PATH}
             
-            # Pull latest code from QA branch
-            echo "📥 Pulling latest code from QA branch..."
-            git fetch origin
-            git checkout QA
-            git pull origin QA
+            # Sync workspace with QA branch (production-ready approach)
+            echo "📥 Syncing workspace with QA branch..."
             
-            # Ensure .env file exists
+            # Backup critical files before reset
+            echo "💾 Backing up critical files..."
+            if [ -f .env ]; then
+              cp .env .env.backup
+              echo "✅ .env backed up"
+            fi
+            
+            # Fetch latest changes
+            git fetch origin
+            
+            # Ensure we're on QA branch
+            git checkout QA || git checkout -b QA origin/QA
+            
+            # Reset to exactly match remote QA branch (discards local changes)
+            echo "🔄 Resetting to match origin/QA exactly..."
+            git reset --hard origin/QA
+            
+            # Clean untracked files and directories, but preserve .env and backups
+            echo "🧹 Cleaning untracked files (preserving .env)..."
+            git clean -fd -e .env -e .env.backup -e .env.save -e "*.backup" || true
+            
+            # Restore .env if it was backed up
+            if [ -f .env.backup ] && [ ! -f .env ]; then
+              mv .env.backup .env
+              echo "✅ .env restored from backup"
+            elif [ -f .env.backup ]; then
+              rm .env.backup
+              echo "✅ .env already exists, backup removed"
+            fi
+            
+            # Verify .env file exists (critical for deployment)
             if [ ! -f .env ]; then
-              echo "⚠️  Warning: .env file not found. Please ensure environment variables are set."
+              echo "❌ ERROR: .env file not found after git operations!"
+              echo "⚠️  Deployment cannot proceed without .env file."
+              exit 1
+            else
+              echo "✅ .env file verified"
             fi
             
             # Preserve aiml-agent-service - ensure it stays running
