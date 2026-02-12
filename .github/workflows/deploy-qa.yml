@@ -81,7 +81,7 @@ jobs:
               mv .env.backup .env
               echo "✅ .env restored from backup"
             elif [ -f .env.backup ]; then
-              rm .env.backup
+              rm -f .env.backup
               echo "✅ .env already exists, backup removed"
             fi
             
