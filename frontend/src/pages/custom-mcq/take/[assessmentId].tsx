@@ -19,6 +19,7 @@ import { useUniversalProctoring, CandidateLiveService, resolveUserIdForProctorin
 import WebcamPreview from "../../../components/WebcamPreview";
 import { ViolationToast, pushViolationToast } from "@/components/ViolationToast";
 import { FullscreenLockOverlay } from "@/components/FullscreenLockOverlay";
+import ConfirmationModal from "@/components/ConfirmationModal";
 import { useFullscreenLock } from "@/hooks/proctoring/useFullscreenLock";
 import { useCustomMCQAssessmentForTaking, useVerifyCustomMCQCandidate, useSaveCustomMCQAnswerLog, useSubmitCustomMCQAssessment } from "@/hooks/api/useCustomMCQ";
 // (import kept intentionally for future gateContext-based routing; currently enforced via sessionStorage flags)
@@ -211,6 +212,15 @@ export default function CustomMCQTakePage() {
   const [showCodingLockWarning, setShowCodingLockWarning] = useState(false);
   const [pendingNavigationIndex, setPendingNavigationIndex] = useState<number | null>(null);
   const [debugMode, setDebugMode] = useState(false);
+  
+  // Confirmation modal state
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [confirmModalConfig, setConfirmModalConfig] = useState<{
+    title: string;
+    message: string;
+    onConfirm: () => void;
+    confirmText?: string;
+  } | null>(null);
 
   // Proctoring refs
   const thumbVideoRef = useRef<HTMLVideoElement>(null);
@@ -1873,9 +1883,17 @@ export default function CustomMCQTakePage() {
                   // Save all answer logs before submitting
                   await saveAllAnswerLogs();
                   
-                  if (confirm("Are you sure you want to submit the entire assessment? You cannot retake this assessment.")) {
-                    handleSubmit();
-                  }
+                  // Show confirmation modal instead of browser alert
+                  setConfirmModalConfig({
+                    title: "Confirm Submission",
+                    message: "Are you sure you want to submit the entire assessment? You cannot retake this assessment.",
+                    onConfirm: () => {
+                      setShowConfirmModal(false);
+                      handleSubmit();
+                    },
+                    confirmText: "Submit",
+                  });
+                  setShowConfirmModal(true);
                 }}
                 disabled={submitting}
                 className="btn-primary"
@@ -2204,9 +2222,17 @@ export default function CustomMCQTakePage() {
               <button
                 type="button"
                 onClick={() => {
-                  if (confirm("Are you sure you want to lock the MCQ section? You will not be able to change your answers, but you can still review them and answer subjective questions.")) {
-                    handleSubmitMCQSection();
-                  }
+                  // Show confirmation modal instead of browser alert
+                  setConfirmModalConfig({
+                    title: "Lock MCQ Section",
+                    message: "Are you sure you want to lock the MCQ section? You will not be able to change your answers, but you can still review them and answer subjective questions.",
+                    onConfirm: () => {
+                      setShowConfirmModal(false);
+                      handleSubmitMCQSection();
+                    },
+                    confirmText: "Lock Section",
+                  });
+                  setShowConfirmModal(true);
                 }}
                 className="btn-primary"
                 style={{
@@ -2224,9 +2250,17 @@ export default function CustomMCQTakePage() {
                   // Save all answer logs before submitting
                   await saveAllAnswerLogs();
                   
-                  if (confirm("Are you sure you want to submit the entire assessment? You cannot retake this assessment.")) {
-                    handleSubmit();
-                  }
+                  // Show confirmation modal instead of browser alert
+                  setConfirmModalConfig({
+                    title: "Confirm Submission",
+                    message: "Are you sure you want to submit the entire assessment? You cannot retake this assessment.",
+                    onConfirm: () => {
+                      setShowConfirmModal(false);
+                      handleSubmit();
+                    },
+                    confirmText: "Submit",
+                  });
+                  setShowConfirmModal(true);
                 }}
                 disabled={submitting}
                 className="btn-primary"
@@ -2253,6 +2287,22 @@ export default function CustomMCQTakePage() {
           exitCount={fullscreenExitCount}
           message="Fullscreen mode is required during the assessment."
           warningText="Please return to fullscreen to continue your exam. Repeated exits are logged and may affect your assessment."
+        />
+      )}
+      
+      {/* Confirmation Modal - replaces browser alert/confirm */}
+      {confirmModalConfig && (
+        <ConfirmationModal
+          isOpen={showConfirmModal}
+          title={confirmModalConfig.title}
+          message={confirmModalConfig.message}
+          confirmText={confirmModalConfig.confirmText}
+          onConfirm={confirmModalConfig.onConfirm}
+          onCancel={() => {
+            setShowConfirmModal(false);
+            setConfirmModalConfig(null);
+          }}
+          isLoading={submitting}
         />
       )}
     </div>
