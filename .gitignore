@@ -1,0 +1,424 @@
+# ============================================
+# Python / FastAPI Backend
+# ============================================
+
+# Python cache files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+.venv/
+
+# Python testing
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+.hypothesis/
+*.cover
+*.py,cover
+
+# Python type checking
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.pytype/
+.pyre/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# Python distribution / packaging
+*.egg-info/
+dist/
+build/
+eggs/
+.eggs/
+# Only ignore Python lib/ directories (in virtualenvs and Python packages)
+# Do NOT ignore frontend/src/lib/ (source code) - use specific patterns
+venv/lib/
+.venv/lib/
+env/lib/
+ENV/lib/
+*/site-packages/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg
+MANIFEST
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Unit test / coverage reports
+.pytest_cache/
+.coverage
+htmlcov/
+
+# ============================================
+# Node.js / Next.js Frontend
+# ============================================
+
+# Dependencies
+node_modules/
+/.pnp
+.pnp.js
+.yarn/install-state.gz
+
+# Next.js build output
+.next/
+out/
+build/
+dist/
+.vercel
+
+# Next.js cache
+.next
+.vercel
+
+# Production
+/build
+/dist
+
+# Testing
+/coverage
+.nyc_output
+
+# Debug logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+.pnpm-debug.log*
+
+# Local env files
+.env*.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Vercel
+.vercel
+
+# Turbo
+.turbo
+
+# ============================================
+# Environment Variables (CRITICAL - DO NOT COMMIT)
+# ============================================
+
+# Environment files - NEVER COMMIT THESE
+.env
+.env.local
+.env.development
+.env.development.local
+.env.test
+.env.test.local
+.env.production
+.env.production.local
+.env.*.local
+
+# Keep .env.example files (template for others)
+# !.env.example
+# !.env*.example
+
+# ============================================
+# Database Files
+# ============================================
+
+# SQLite
+*.db
+*.sqlite
+*.sqlite3
+*.db-journal
+*.db-wal
+*.db-shm
+
+# MongoDB local data
+data/
+mongodb_data/
+*.mongodb
+
+# Database backups
+*.sql
+*.dump
+*.backup
+
+# ============================================
+# IDE / Editor Files
+# ============================================
+
+# Visual Studio Code
+.vscode/
+*.code-workspace
+.history/
+
+# IntelliJ IDEA / PyCharm
+.idea/
+*.iml
+*.iws
+*.ipr
+out/
+
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+# Vim
+*.swp
+*.swo
+*~
+.vim/
+
+# Emacs
+*~
+\#*\#
+/.emacs.desktop
+/.emacs.desktop.lock
+*.elc
+auto-save-list
+tramp
+.\#*
+
+# VS Code
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+.history/*
+
+# ============================================
+# OS Files
+# ============================================
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+.AppleDB
+.AppleDesktop
+Network Trash Folder
+Temporary Items
+.apdisk
+
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+*.stackdump
+[Dd]esktop.ini
+$RECYCLE.BIN/
+*.cab
+*.msi
+*.msix
+*.msm
+*.msp
+*.lnk
+
+# Linux
+*~
+.fuse_hidden*
+.directory
+.Trash-*
+.nfs*
+
+# ============================================
+# Logs
+# ============================================
+
+# All log files
+*.log
+logs/
+*.log.*
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+.pnpm-debug.log*
+
+# ============================================
+# Temporary Files
+# ============================================
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.backup
+*.swp
+*.swo
+*~
+.cache/
+.temp/
+tmp/
+temp/
+
+# ============================================
+# Application Specific
+# ============================================
+
+# AI Assessment Platform specific
+# Add any project-specific files here
+
+# API keys and secrets (if stored in files)
+*_key.txt
+*_secret.txt
+secrets/
+credentials/
+
+# Uploads and user-generated content
+uploads/
+media/
+static/uploads/
+
+# ============================================
+# Docker
+# ============================================
+
+# Docker override files (local overrides, don't commit)
+docker-compose.override.yml
+.docker/
+
+# Note: Dockerfile, docker-compose.yml, and .dockerignore SHOULD be committed
+# They are NOT ignored and will be included in the repository
+
+# ============================================
+# Miscellaneous
+# ============================================
+
+# Package manager lock files (optional - some teams commit these)
+# Uncomment if you don't want to commit lock files
+# package-lock.json
+# yarn.lock
+# pnpm-lock.yaml
+# poetry.lock
+
+# Compiled binary addons
+*.node
+
+# Optional npm cache directory
+.npm
+
+# Optional eslint cache
+.eslintcache
+
+# Optional REPL history
+.node_repl_history
+
+# Output of 'npm pack'
+*.tgz
+
+# Yarn Integrity file
+.yarn-integrity
+
+# parcel-bundler cache
+.cache
+.parcel-cache
+
+# Stores VSCode versions used for testing VSCode extensions
+.vscode-test
+
+# yarn v2
+.yarn/cache
+.yarn/unplugged
+.yarn/build-state.yml
+.yarn/install-state.gz
+.pnp.*
+
+# ============================================
+# Security & Sensitive Data
+# ============================================
+
+# Never commit these
+*.pem
+*.key
+*.cert
+*.crt
+*.p12
+*.pfx
+*.jks
+*.keystore
+secrets.json
+config/secrets.json
+credentials.json
+
+# ============================================
+# Backup Files
+# ============================================
+
+*.bak
+*.backup
+*.old
+*.orig
+*.save
+*.swp
+*.swo
+
+# ============================================
+# Coverage and Testing
+# ============================================
+
+# Coverage reports
+coverage/
+.nyc_output/
+.coverage
+htmlcov/
+.coverage.*
+coverage.xml
+*.cover
+
+# Test results
+test-results/
+playwright-report/
+test-results.xml
+
+# ============================================
+# Build Artifacts
+# ============================================
+
+# Build directories
+build/
+dist/
+out/
+.next/
+.vercel/
+
+# Compiled files
+*.com
+*.class
+*.dll
+*.exe
+*.o
+*.so
+
+# ============================================
+# End of .gitignore
+# ============================================
+

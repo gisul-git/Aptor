@@ -1,0 +1,105 @@
+name: Deploy Frontend to QA (Debian VM)
+
+on:
+  push:
+    branches:
+      - QA
+    paths:
+      - 'frontend/**'
+      - '.github/workflows/deploy-qa-frontend.yml'
+  pull_request:
+    types: [closed]
+    branches:
+      - QA
+    paths:
+      - 'frontend/**'
+  workflow_dispatch:
+
+env:
+  VM_HOST: ${{ secrets.QA_VM_HOST }}
+  VM_USER: ${{ secrets.QA_VM_USER }}
+  VM_SSH_KEY: ${{ secrets.QA_VM_SSH_KEY }}
+  VM_DEPLOY_PATH: ${{ secrets.QA_VM_DEPLOY_PATH }}
+
+jobs:
+  deploy-frontend-qa:
+    runs-on: ubuntu-latest
+    if: |
+      github.event_name == 'push' ||
+      (github.event_name == 'pull_request' && github.event.pull_request.merged == true) ||
+      github.event_name == 'workflow_dispatch'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: QA
+
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ env.VM_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H ${{ env.VM_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Deploy Frontend to QA VM
+        run: |
+          DEPLOY_PATH="${{ env.VM_DEPLOY_PATH }}"
+          if [ -z "$DEPLOY_PATH" ]; then
+            DEPLOY_PATH="/opt/aptor"
+          fi
+          
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no ${{ env.VM_USER }}@${{ env.VM_HOST }} bash << EOF
+            set -e
+            
+            echo "🚀 Starting Frontend QA deployment..."
+            
+            # Navigate to deployment directory
+            cd ${DEPLOY_PATH}
+            
+            # Pull latest code from QA branch
+            echo "📥 Pulling latest code from QA branch..."
+            git fetch origin
+            git checkout QA
+            git pull origin QA
+            
+            # Navigate to frontend directory
+            cd frontend
+            
+            # Build frontend Docker image
+            echo "🔨 Building frontend Docker image..."
+            docker build -t aptor-frontend:qa -t aptor-frontend:latest .
+            
+            # Stop and remove old frontend container
+            echo "🛑 Stopping old frontend container..."
+            docker stop aptor-frontend || true
+            docker rm aptor-frontend || true
+            
+            # Run new frontend container
+            echo "🚀 Starting new frontend container..."
+            docker run -d \
+              --name aptor-frontend \
+              --network aptor_microservices-network \
+              -p 3000:3000 \
+              --restart unless-stopped \
+              aptor-frontend:qa
+            
+            # Verify container is running
+            echo "⏳ Waiting for frontend to be ready..."
+            sleep 5
+            
+            if docker ps | grep -q aptor-frontend; then
+              echo "✅ Frontend deployed successfully!"
+              docker ps | grep aptor-frontend
+            else
+              echo "❌ Frontend deployment failed!"
+              docker logs aptor-frontend
+              exit 1
+            fi
+          EOF
+
+      - name: Verify Deployment
+        run: |
+          echo "✅ Frontend deployment completed"
+          echo "🌐 Frontend available at: http://${{ env.VM_HOST }}:3000"
+

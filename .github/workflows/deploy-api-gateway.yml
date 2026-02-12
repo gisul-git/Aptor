@@ -1,0 +1,119 @@
+name: Build and Deploy API Gateway to Azure Container Apps
+
+on:
+  push:
+    branches:
+      - dev
+    paths:
+      - 'services/api-gateway/**'
+      - '.github/workflows/deploy-api-gateway.yml'
+  pull_request:
+    types: [closed]
+    branches:
+      - dev
+    paths:
+      - 'services/api-gateway/**'
+  workflow_dispatch:
+
+env:
+  AZURE_RESOURCE_GROUP: Aaptor
+  CONTAINER_APP_NAME: api-gateway   # MUST match Azure name
+  DOCKER_IMAGE_NAME: api-gateway
+  SERVICE_PATH: services/api-gateway
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    if: |
+      github.event_name == 'push' ||
+      (github.event_name == 'pull_request' && github.event.pull_request.merged == true) ||
+      github.event_name == 'workflow_dispatch'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Login to Azure
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Install Azure Container Apps extension
+        run: |
+          az extension add --name containerapp --upgrade
+
+      - name: Login to Azure Container Registry
+        run: |
+          echo ${{ secrets.ACR_PASSWORD }} | docker login ${{ secrets.ACR_LOGIN_SERVER }} \
+            -u ${{ secrets.ACR_USERNAME }} --password-stdin
+
+      - name: Build Docker image
+        run: |
+          docker build \
+            -t ${{ secrets.ACR_LOGIN_SERVER }}/${{ env.DOCKER_IMAGE_NAME }}:${{ github.sha }} \
+            -t ${{ secrets.ACR_LOGIN_SERVER }}/${{ env.DOCKER_IMAGE_NAME }}:latest \
+            ./${{ env.SERVICE_PATH }}
+
+      - name: Push Docker image to ACR
+        run: |
+          docker push ${{ secrets.ACR_LOGIN_SERVER }}/${{ env.DOCKER_IMAGE_NAME }}:${{ github.sha }}
+          docker push ${{ secrets.ACR_LOGIN_SERVER }}/${{ env.DOCKER_IMAGE_NAME }}:latest
+
+      - name: Wait for in-progress operations
+        run: |
+          echo "Checking for in-progress operations on container app: ${{ env.CONTAINER_APP_NAME }}"
+          max_wait=300
+          wait_interval=10
+          elapsed=0
+          while [ $elapsed -lt $max_wait ]; do
+            provisioning_state=$(az containerapp show \
+              --name ${{ env.CONTAINER_APP_NAME }} \
+              --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+              --query "properties.provisioningState" -o tsv 2>/dev/null || echo "Unknown")
+            
+            if [ "$provisioning_state" != "InProgress" ] && [ "$provisioning_state" != "Updating" ]; then
+              echo "✅ Container app is ready. Provisioning state: $provisioning_state"
+              break
+            fi
+            
+            echo "⏳ Waiting for operation to complete... (State: $provisioning_state, Elapsed: ${elapsed}s)"
+            sleep $wait_interval
+            elapsed=$((elapsed + wait_interval))
+          done
+          
+          if [ $elapsed -ge $max_wait ]; then
+            echo "⚠️ Timeout waiting for operations to complete, proceeding with deployment..."
+          fi
+
+      - name: Deploy to Azure Container App with retry
+        run: |
+          max_retries=3
+          retry_delay=30
+          attempt=1
+          
+          while [ $attempt -le $max_retries ]; do
+            echo "🚀 Deployment attempt $attempt of $max_retries"
+            
+            if az containerapp update \
+              --name ${{ env.CONTAINER_APP_NAME }} \
+              --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+              --image ${{ secrets.ACR_LOGIN_SERVER }}/${{ env.DOCKER_IMAGE_NAME }}:${{ github.sha }}; then
+              echo "✅ Deployment successful on attempt $attempt"
+              exit 0
+            else
+              exit_code=$?
+              if [ $attempt -lt $max_retries ]; then
+                echo "⚠️ Deployment failed (exit code: $exit_code), retrying in ${retry_delay}s..."
+                sleep $retry_delay
+              else
+                echo "❌ Deployment failed after $max_retries attempts"
+                exit $exit_code
+              fi
+            fi
+            attempt=$((attempt + 1))
+          done
+
+      - name: Verify deployment
+        run: |
+          echo "API Gateway deployment completed"
+          echo "Image: ${{ secrets.ACR_LOGIN_SERVER }}/${{ env.DOCKER_IMAGE_NAME }}:${{ github.sha }}"
