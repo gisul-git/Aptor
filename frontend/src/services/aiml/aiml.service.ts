@@ -449,7 +449,13 @@ export const aimlService = {
     difficulty: string;
     dataset_format?: string;
   }): Promise<GenerateAIQuestionResponse> => {
-    const response = await apiClient.post<GenerateAIQuestionResponse>('/api/v1/aiml/questions/generate-ai', data);
+    const response = await apiClient.post<GenerateAIQuestionResponse>(
+      '/api/v1/aiml/questions/generate-ai', 
+      data,
+      {
+        timeout: 300000, // 5 minutes timeout for AI question generation (matches API Gateway)
+      }
+    );
     // Backend returns data directly, not wrapped in ApiResponse
     return response.data;
   },
