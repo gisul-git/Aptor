@@ -96,7 +96,7 @@ export const useAIMLQuestions = (lightweight: boolean = false) => {
         return [];
       }
     },
-    staleTime: 5 * 60 * 1000,
+    staleTime: 30 * 1000, // 30 seconds - short enough to get fresh data after deletion
     retry: 1,
     retryOnMount: false,
   });
@@ -479,7 +479,10 @@ export const useDeleteAIMLQuestion = () => {
   return useMutation({
     mutationFn: (questionId: string) => aimlService.deleteQuestion(questionId),
     onSuccess: () => {
+      // Invalidate all question-related queries to ensure fresh data
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.questions });
+      // Also remove from cache immediately to force refetch
+      queryClient.removeQueries({ queryKey: QUERY_KEYS.questions });
     },
   });
 };

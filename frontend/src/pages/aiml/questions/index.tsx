@@ -19,6 +19,182 @@ interface Question {
   updated_at?: string
 }
 
+interface DeleteConfirmModalProps {
+  isOpen: boolean
+  questionTitle: string
+  onConfirm: () => void
+  onCancel: () => void
+  isDeleting: boolean
+}
+
+function DeleteConfirmModal({ isOpen, questionTitle, onConfirm, onCancel, isDeleting }: DeleteConfirmModalProps) {
+  if (!isOpen) return null
+
+  return (
+    <div
+      style={{
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        backgroundColor: 'rgba(0, 0, 0, 0.6)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        zIndex: 10000,
+        padding: '1rem',
+      }}
+      onClick={onCancel}
+    >
+      <div
+        style={{
+          backgroundColor: '#ffffff',
+          borderRadius: '0.75rem',
+          maxWidth: '480px',
+          width: '100%',
+          padding: '1.5rem',
+          boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div style={{ marginBottom: '1rem' }}>
+          <h3 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 600, color: '#1a1625', marginBottom: '0.5rem' }}>
+            Delete Question
+          </h3>
+          <p style={{ margin: 0, color: '#64748b', fontSize: '0.875rem', lineHeight: '1.5' }}>
+            Are you sure you want to delete <strong>"{questionTitle}"</strong>? This action cannot be undone.
+          </p>
+        </div>
+        <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={isDeleting}
+            style={{
+              padding: '0.5rem 1rem',
+              fontSize: '0.875rem',
+              fontWeight: 500,
+              color: '#64748b',
+              backgroundColor: '#f3f4f6',
+              border: '1px solid #e5e7eb',
+              borderRadius: '0.375rem',
+              cursor: isDeleting ? 'not-allowed' : 'pointer',
+              opacity: isDeleting ? 0.6 : 1,
+            }}
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            disabled={isDeleting}
+            style={{
+              padding: '0.5rem 1rem',
+              fontSize: '0.875rem',
+              fontWeight: 500,
+              color: '#ffffff',
+              backgroundColor: '#DC2626',
+              border: '1px solid #DC2626',
+              borderRadius: '0.375rem',
+              cursor: isDeleting ? 'not-allowed' : 'pointer',
+              opacity: isDeleting ? 0.6 : 1,
+            }}
+          >
+            {isDeleting ? 'Deleting...' : 'Delete'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+interface SuccessToastProps {
+  isOpen: boolean
+  message: string
+  onClose: () => void
+}
+
+function SuccessToast({ isOpen, message, onClose }: SuccessToastProps) {
+  useEffect(() => {
+    if (isOpen) {
+      const timer = setTimeout(() => {
+        onClose()
+      }, 3000)
+      return () => clearTimeout(timer)
+    }
+  }, [isOpen, onClose])
+
+  if (!isOpen) return null
+
+  return (
+    <div
+      style={{
+        position: 'fixed',
+        top: '1rem',
+        right: '1rem',
+        backgroundColor: '#10b981',
+        color: '#ffffff',
+        padding: '0.75rem 1rem',
+        borderRadius: '0.5rem',
+        boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)',
+        zIndex: 10001,
+        display: 'flex',
+        alignItems: 'center',
+        gap: '0.5rem',
+        minWidth: '250px',
+        animation: 'slideIn 0.3s ease-out',
+      }}
+    >
+      <span style={{ fontSize: '1.25rem' }}>✓</span>
+      <span style={{ fontSize: '0.875rem', fontWeight: 500 }}>{message}</span>
+    </div>
+  )
+}
+
+interface ErrorToastProps {
+  isOpen: boolean
+  message: string
+  onClose: () => void
+}
+
+function ErrorToast({ isOpen, message, onClose }: ErrorToastProps) {
+  useEffect(() => {
+    if (isOpen) {
+      const timer = setTimeout(() => {
+        onClose()
+      }, 5000)
+      return () => clearTimeout(timer)
+    }
+  }, [isOpen, onClose])
+
+  if (!isOpen) return null
+
+  return (
+    <div
+      style={{
+        position: 'fixed',
+        top: '1rem',
+        right: '1rem',
+        backgroundColor: '#DC2626',
+        color: '#ffffff',
+        padding: '0.75rem 1rem',
+        borderRadius: '0.5rem',
+        boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)',
+        zIndex: 10001,
+        display: 'flex',
+        alignItems: 'center',
+        gap: '0.5rem',
+        minWidth: '250px',
+        animation: 'slideIn 0.3s ease-out',
+      }}
+    >
+      <span style={{ fontSize: '1.25rem' }}>✕</span>
+      <span style={{ fontSize: '0.875rem', fontWeight: 500 }}>{message}</span>
+    </div>
+  )
+}
+
 export default function AIMLQuestionsListPage() {
   const router = useRouter()
   const { data: questionsData, isLoading: loading, refetch: refetchQuestions } = useAIMLQuestions()
@@ -26,6 +202,10 @@ export default function AIMLQuestionsListPage() {
   const publishQuestionMutation = usePublishAIMLQuestion()
   const [questions, setQuestions] = useState<Question[]>([])
   const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false)
+  const [questionToDelete, setQuestionToDelete] = useState<{ id: string; title: string } | null>(null)
+  const [successToast, setSuccessToast] = useState({ isOpen: false, message: '' })
+  const [errorToast, setErrorToast] = useState({ isOpen: false, message: '' })
   
   // Update local state from React Query data
   useEffect(() => {
@@ -45,24 +225,52 @@ export default function AIMLQuestionsListPage() {
         updated_at: q.updated_at || q.updatedAt,
       }))
       setQuestions(mappedQuestions)
+    } else {
+      // Clear questions if data is null/undefined
+      setQuestions([])
     }
   }, [questionsData])
 
-  const handleDelete = async (questionId: string) => {
-    if (!confirm('Are you sure you want to delete this question? This action cannot be undone.')) {
-      return
-    }
+  const handleDeleteClick = (questionId: string, questionTitle: string) => {
+    setQuestionToDelete({ id: questionId, title: questionTitle })
+    setDeleteModalOpen(true)
+  }
 
-    setDeletingId(questionId)
+  const handleDeleteConfirm = async () => {
+    if (!questionToDelete) return
+
+    const questionIdToDelete = questionToDelete.id
+    setDeletingId(questionIdToDelete)
+    setDeleteModalOpen(false)
+    
+    // Optimistically remove from local state for immediate UI update
+    setQuestions(prev => prev.filter(q => q.id !== questionIdToDelete))
+    
     try {
-      await deleteQuestionMutation.mutateAsync(questionId)
+      await deleteQuestionMutation.mutateAsync(questionIdToDelete)
+      // Refetch to ensure consistency with backend
       await refetchQuestions()
-      alert('Question deleted successfully!')
+      setSuccessToast({ isOpen: true, message: 'Question deleted successfully!' })
+      setQuestionToDelete(null)
     } catch (error: any) {
-      alert(error.response?.data?.detail || 'Failed to delete question')
+      console.error('Delete error:', error)
+      // Re-add the question to the list if deletion failed
+      await refetchQuestions()
+      // Extract error message from various possible formats
+      const errorMessage = 
+        error?.response?.data?.detail || 
+        error?.response?.data?.message || 
+        error?.message || 
+        'Failed to delete question'
+      setErrorToast({ isOpen: true, message: errorMessage })
     } finally {
       setDeletingId(null)
     }
+  }
+
+  const handleDeleteCancel = () => {
+    setDeleteModalOpen(false)
+    setQuestionToDelete(null)
   }
 
   const handleTogglePublish = async (questionId: string, currentStatus: boolean) => {
@@ -98,8 +306,38 @@ export default function AIMLQuestionsListPage() {
   }
 
   return (
-    <div style={{ backgroundColor: "#ffffff", minHeight: "100vh" }}>
-      <div className="container" style={{ paddingTop: "2rem", paddingBottom: "2rem" }}>
+    <>
+      <style jsx>{`
+        @keyframes slideIn {
+          from {
+            transform: translateX(100%);
+            opacity: 0;
+          }
+          to {
+            transform: translateX(0);
+            opacity: 1;
+          }
+        }
+      `}</style>
+      <div style={{ backgroundColor: "#ffffff", minHeight: "100vh" }}>
+        <DeleteConfirmModal
+          isOpen={deleteModalOpen}
+          questionTitle={questionToDelete?.title || ''}
+          onConfirm={handleDeleteConfirm}
+          onCancel={handleDeleteCancel}
+          isDeleting={deletingId !== null}
+        />
+        <SuccessToast
+          isOpen={successToast.isOpen}
+          message={successToast.message}
+          onClose={() => setSuccessToast({ isOpen: false, message: '' })}
+        />
+        <ErrorToast
+          isOpen={errorToast.isOpen}
+          message={errorToast.message}
+          onClose={() => setErrorToast({ isOpen: false, message: '' })}
+        />
+        <div className="container" style={{ paddingTop: "2rem", paddingBottom: "2rem" }}>
         <div style={{ marginBottom: "1.5rem", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <button
             type="button"
@@ -290,7 +528,7 @@ export default function AIMLQuestionsListPage() {
                       </Link>
                       <button
                         className="btn-secondary"
-                        onClick={() => handleDelete(q.id)}
+                        onClick={() => handleDeleteClick(q.id, q.title)}
                         disabled={deletingId === q.id}
                         style={{
                           padding: "0.5rem 1rem",
@@ -310,6 +548,7 @@ export default function AIMLQuestionsListPage() {
         </div>
       </div>
     </div>
+    </>
   )
 }
 
