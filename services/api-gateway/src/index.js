@@ -12,7 +12,7 @@ require('dotenv').config();
 const app = express();
 const PORT = process.env.PORT || 80;
 
-// Service URLs from environment variables
+// Service URLs from environment variabless
 const SERVICES = {
   auth: process.env.AUTH_SERVICE_URL || 'http://localhost:4000',
   aiAssessment: process.env.AI_ASSESSMENT_SERVICE_URL || 'http://localhost:3001',
@@ -641,6 +641,29 @@ console.log('🔵 [API Gateway] Setting up AIML service proxy:', {
   target: SERVICES.aiml,
 });
 
+// Special configuration for generate-ai endpoint (longer timeout for OpenAI generation)
+const aimlGenerateAIProxyOptions = {
+  ...proxyOptions,
+  target: SERVICES.aiml,
+  timeout: 300000, // 5 minutes for AI question generation
+  proxyTimeout: 300000,
+  logLevel: 'debug',
+  logProvider: () => ({
+    log: (msg) => console.log('🟡 [HPM-AIML-GenerateAI]', msg),
+    debug: (msg) => console.log('🔵 [HPM-AIML-GenerateAI]', msg),
+    info: (msg) => console.log('🟢 [HPM-AIML-GenerateAI]', msg),
+    warn: (msg) => console.warn('🟠 [HPM-AIML-GenerateAI]', msg),
+    error: (msg) => console.error('🔴 [HPM-AIML-GenerateAI]', msg),
+  }),
+};
+
+// Apply longer timeout specifically for generate-ai endpoint
+app.use(
+  '/api/v1/aiml/questions/generate-ai',
+  createProxyMiddleware(aimlGenerateAIProxyOptions)
+);
+
+// Regular proxy for other AIML endpoints
 app.use(
   '/api/v1/aiml',
   (req, res, next) => {

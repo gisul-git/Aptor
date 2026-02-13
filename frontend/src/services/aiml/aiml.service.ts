@@ -338,10 +338,10 @@ export const aimlService = {
    * Publish/unpublish question
    */
   publishQuestion: async (questionId: string, isPublished: boolean): Promise<ApiResponse<any>> => {
-    // Don't send null body - use undefined or empty object to avoid JSON parsing errors
-    const response = await apiClient.patch<ApiResponse<any>>(`/api/v1/aiml/questions/${questionId}/publish`, undefined, {
-      params: { is_published: isPublished },
-    });
+    // Use query parameter for is_published
+    const response = await apiClient.patch<ApiResponse<any>>(
+      `/api/v1/aiml/questions/${questionId}/publish?is_published=${isPublished}`
+    );
     return response.data;
   },
 
@@ -449,7 +449,13 @@ export const aimlService = {
     difficulty: string;
     dataset_format?: string;
   }): Promise<GenerateAIQuestionResponse> => {
-    const response = await apiClient.post<GenerateAIQuestionResponse>('/api/v1/aiml/questions/generate-ai', data);
+    const response = await apiClient.post<GenerateAIQuestionResponse>(
+      '/api/v1/aiml/questions/generate-ai', 
+      data,
+      {
+        timeout: 300000, // 5 minutes timeout for AI question generation (matches API Gateway)
+      }
+    );
     // Backend returns data directly, not wrapped in ApiResponse
     return response.data;
   },
