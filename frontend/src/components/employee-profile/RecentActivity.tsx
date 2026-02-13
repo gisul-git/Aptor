@@ -41,7 +41,7 @@ const ACTIVITIES = [
 
 const RecentActivity = () => {
   return (
-    <div className="bg-white rounded-xl p-4 sm:p-6 shadow-[0_1px_3px_rgba(0,0,0,0.08)] border border-gray-200">
+    <div className="bg-white rounded-2xl p-4 sm:p-6 shadow-[0_1px_3px_rgba(0,0,0,0.08)] border border-gray-200">
       
       {/* Header */}
       <div className="flex justify-between items-center mb-6 sm:mb-8">
