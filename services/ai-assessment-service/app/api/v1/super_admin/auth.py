@@ -1,4 +1,4 @@
-"""Authentication endpoints for Super Admin."""
+"""Authentications endpoints for Super Admin."""
 from __future__ import annotations
 
 import logging
