@@ -15,14 +15,14 @@
     "jsx": "preserve",
     "incremental": true,
     "baseUrl": "src",
-  "paths": {
-    "@/*": ["./*"],
-    "@/components/*": ["components/*"],
-    "@/lib/*": ["lib/*"],
-    "@/hooks/*": ["hooks/*"],
-    "@/types/*": ["types/*"],
-    "@/styles/*": ["styles/*"]
-  }
+    "paths": {
+      "@/*": ["./*"],
+      "@/components/*": ["components/*"],
+      "@/lib/*": ["lib/*"],
+      "@/hooks/*": ["hooks/*"],
+      "@/types/*": ["types/*"],
+      "@/styles/*": ["styles/*"]
+    }
   },
   "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx"],
   "exclude": ["node_modules"]
