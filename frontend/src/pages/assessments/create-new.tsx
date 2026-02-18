@@ -11723,7 +11723,7 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
                 >
                   {topicsV2.map((topic) => {
                     const totalQs = topic.questionRows.reduce(
-                      (sum, row) => sum + (parseInt(row.questionsCount) || 0),
+                      (sum, row) => sum + (typeof row.questionsCount === 'number' ? row.questionsCount : parseInt(String(row.questionsCount)) || 0),
                       0,
                     );
 
@@ -11987,7 +11987,7 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
                     (acc, t) =>
                       acc +
                       t.questionRows.reduce(
-                        (sum, r) => sum + (parseInt(r.questionsCount) || 0),
+                        (sum, r) => sum + (typeof r.questionsCount === 'number' ? r.questionsCount : parseInt(String(r.questionsCount)) || 0),
                         0,
                       ),
                     0,
@@ -11998,7 +11998,7 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
                     return (
                       acc +
                       topic.questionRows.reduce((rowAcc, row) => {
-                        const count = parseInt(row.questionsCount) || 0;
+                        const count = (row.questionsCount) || 0;
                         const baseTime = getBaseTimePerQuestion(
                           row.questionType,
                         );
@@ -12300,7 +12300,7 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
                           name="examMode"
                           value={mode.id}
                           checked={examMode === mode.id}
-                          onChange={(e) => setExamMode(e.target.value)}
+                          onChange={(e) => setExamMode(e.target.value as any)}
                           style={{
                             marginTop: "4px",
                             accentColor: "#10b981",
@@ -12430,7 +12430,7 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
                             type="datetime-local"
                             value={endTime}
                             onChange={(e) => setEndTime(e.target.value)}
-                            disabled={examMode !== "scheduled"}
+                            disabled={examMode === "flexible" || examMode === "custom"}
                             style={{
                               width: "100%",
                               padding: "0.75rem 1rem 0.75rem 2.5rem",
