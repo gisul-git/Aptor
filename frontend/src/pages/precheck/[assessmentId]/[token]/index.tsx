@@ -122,11 +122,16 @@ export default function PrecheckPage() {
     }
 
     // Load models in background (non-blocking)
-    console.log("[Precheck] 🚀 Pre-loading AI models in background (BlazeFace + FaceMesh)...");
+    console.log("[Precheck] 🚀 Pre-loading AI models in background (BlazeFace + FaceMesh + face-api)...");
     modelService.loadAllModels()
-      .then(({ blazeface, faceMesh }) => {
-        if (blazeface && faceMesh) {
-          console.log("[Precheck] ✅ AI models pre-loaded successfully - ready for identity verification and assessment");
+      .then(({ blazeface, faceMesh, faceApi }) => {
+        const loadedModels = [];
+        if (blazeface) loadedModels.push("BlazeFace");
+        if (faceMesh) loadedModels.push("FaceMesh");
+        if (faceApi) loadedModels.push("face-api");
+        
+        if (loadedModels.length > 0) {
+          console.log(`[Precheck] ✅ AI models pre-loaded successfully (${loadedModels.join(", ")}) - ready for identity verification and assessment`);
         } else {
           console.warn("[Precheck] ⚠️ Some models failed to pre-load, will load on-demand");
         }

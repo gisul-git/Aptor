@@ -8,7 +8,7 @@ on:
     types: [closed]
     branches:
       - QA
-  workflow_dispatch: # Allow manual triggering
+  workflow_dispatch: # Allow manual triggerings
 
 env:
   VM_HOST: ${{ secrets.QA_VM_HOST }}
@@ -52,28 +52,76 @@ jobs:
             # Navigate to deployment directory
             cd ${DEPLOY_PATH}
             
-            # Pull latest code from QA branch
-            echo "📥 Pulling latest code from QA branch..."
-            git fetch origin
-            git checkout QA
-            git pull origin QA
+            # Sync workspace with QA branch (production-ready approach)
+            echo "📥 Syncing workspace with QA branch..."
             
-            # Ensure .env file exists
-            if [ ! -f .env ]; then
-              echo "⚠️  Warning: .env file not found. Please ensure environment variables are set."
+            # Backup critical files before reset
+            echo "💾 Backing up critical files..."
+            if [ -f .env ]; then
+              cp .env .env.backup
+              echo "✅ .env backed up"
             fi
             
-            # Stop existing containers (with timeout and force removal)
-            echo "🛑 Stopping existing containers..."
-            docker compose down --timeout 30 --remove-orphans || true
+            # Fetch latest changes
+            git fetch origin
             
-            # Force stop any remaining containers from this project
-            echo "🛑 Force stopping any remaining containers..."
-            docker compose ps -q | xargs -r docker stop -t 10 || true
-            docker compose ps -q | xargs -r docker rm -f || true
+            # Ensure we're on QA branch
+            git checkout QA || git checkout -b QA origin/QA
             
-            # Remove any orphaned containers with our naming pattern
-            docker ps -a --filter "name=gisul-" --format "{{.ID}}" | xargs -r docker rm -f || true
+            # Reset to exactly match remote QA branch (discards local changes)
+            echo "🔄 Resetting to match origin/QA exactly..."
+            git reset --hard origin/QA
+            
+            # Clean untracked files and directories, but preserve .env and backups
+            echo "🧹 Cleaning untracked files (preserving .env)..."
+            git clean -fd -e .env -e .env.backup -e .env.save -e "*.backup" || true
+            
+            # Restore .env if it was backed up
+            if [ -f .env.backup ] && [ ! -f .env ]; then
+              mv .env.backup .env
+              echo "✅ .env restored from backup"
+            elif [ -f .env.backup ]; then
+              rm -f .env.backup
+              echo "✅ .env already exists, backup removed"
+            fi
+            
+            # Verify .env file exists (critical for deployment)
+            if [ ! -f .env ]; then
+              echo "❌ ERROR: .env file not found after git operations!"
+              echo "⚠️  Deployment cannot proceed without .env file."
+              exit 1
+            else
+              echo "✅ .env file verified"
+            fi
+            
+            # Preserve aiml-agent-service - ensure it stays running
+            echo "🔒 Preserving aiml-agent-service..."
+            AIML_AGENT_RUNNING=false
+            if docker compose ps aiml-agent-service 2>/dev/null | grep -q "Up"; then
+              AIML_AGENT_RUNNING=true
+              echo "✅ aiml-agent-service is running, will preserve it"
+            fi
+            
+            # Stop existing containers (excluding aiml-agent-service)
+            echo "🛑 Stopping existing containers (excluding aiml-agent-service)..."
+            for service in $(docker compose ps --services 2>/dev/null); do
+              if [ "$service" != "aiml-agent-service" ]; then
+                echo "  Stopping $service..."
+                docker compose stop "$service" || true
+              fi
+            done
+            
+            # Remove stopped containers (excluding aiml-agent-service)
+            echo "🧹 Removing stopped containers (excluding aiml-agent-service)..."
+            for service in $(docker compose ps -a --services 2>/dev/null); do
+              if [ "$service" != "aiml-agent-service" ]; then
+                echo "  Removing $service..."
+                docker compose rm -f "$service" || true
+              fi
+            done
+            
+            # Remove any orphaned containers with our naming pattern (excluding aiml-agent-service)
+            docker ps -a --filter "name=gisul-" --format "{{.Names}} {{.ID}}" | grep -v "aiml-agent-service" | awk '{print $2}' | xargs -r docker rm -f || true
             
             # Cleanup old images
             echo "🧹 Cleaning up old Docker images..."
@@ -85,6 +133,12 @@ jobs:
             
             echo "🚀 Starting services..."
             docker compose up -d
+            
+            # Ensure aiml-agent-service is running if it was running before
+            if [ "$AIML_AGENT_RUNNING" = "true" ]; then
+              echo "🔄 Ensuring aiml-agent-service is still running..."
+              docker compose up -d aiml-agent-service || true
+            fi
             
             # Wait for services
             echo "⏳ Waiting for services to be ready..."

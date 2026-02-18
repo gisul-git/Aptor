@@ -96,7 +96,7 @@ export const useAIMLQuestions = (lightweight: boolean = false) => {
         return [];
       }
     },
-    staleTime: 5 * 60 * 1000,
+    staleTime: 30 * 1000, // 30 seconds - short enough to get fresh data after deletion
     retry: 1,
     retryOnMount: false,
   });
@@ -292,16 +292,21 @@ export const useAIMLCandidates = (testId: string | undefined) => {
         const response = await aimlService.getCandidates(testId);
         console.log('[useAIMLCandidates] 📥 Service response:', {
           response,
+          responseType: typeof response,
+          isArray: Array.isArray(response),
           hasData: !!response?.data,
           dataType: typeof response?.data,
-          isArray: Array.isArray(response?.data),
-          dataLength: Array.isArray(response?.data) ? response.data.length : 'N/A',
+          isDataArray: Array.isArray(response?.data),
+          dataLength: Array.isArray(response) ? response.length : (Array.isArray(response?.data) ? response.data.length : 'N/A'),
           fullResponse: response
         })
         
         // Handle both wrapped and unwrapped responses
         let candidates = null
-        if (response && typeof response === 'object') {
+        if (Array.isArray(response)) {
+          // Response is already an array (direct from backend)
+          candidates = response
+        } else if (response && typeof response === 'object') {
           if ('data' in response && response.data !== undefined) {
             candidates = response.data
           } else {
@@ -312,7 +317,16 @@ export const useAIMLCandidates = (testId: string | undefined) => {
         const result = Array.isArray(candidates) ? candidates : (candidates ? [candidates] : [])
         console.log('[useAIMLCandidates] ✅ Returning candidates:', {
           count: result.length,
-          result
+          result: result.map((c: any) => ({
+            user_id: c.user_id,
+            name: c.name,
+            email: c.email,
+            status: c.status, // Include status in log
+            has_submitted: c.has_submitted,
+            submitted_at: c.submitted_at,
+            invited: c.invited
+          })),
+          fullResult: result // Log full objects to debug
         })
         return result
       } catch (error: any) {
@@ -420,8 +434,11 @@ export const usePublishAIMLQuestion = () => {
     mutationFn: ({ questionId, isPublished }: { questionId: string; isPublished: boolean }) =>
       aimlService.publishQuestion(questionId, isPublished),
     onSuccess: (_, variables) => {
+      // Invalidate and remove queries to force immediate refetch
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.question(variables.questionId) });
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.questions });
+      // Remove from cache to force refetch (like delete does)
+      queryClient.removeQueries({ queryKey: QUERY_KEYS.questions });
     },
   });
 };
@@ -436,6 +453,29 @@ export const useCreateAIMLQuestion = () => {
     mutationFn: (data: CreateAIMLQuestionDto) => aimlService.createQuestion(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.questions });
+    },
+  });
+};
+
+/**
+ * Generate AI question mutation
+ */
+export const useGenerateAIMLQuestion = () => {
+  const queryClient = useQueryClient();
+  
+  return useMutation({
+    mutationFn: (data: {
+      title: string;
+      skill: string;
+      topic?: string;
+      difficulty: string;
+      dataset_format?: string;
+    }) => aimlService.generateAIQuestion(data),
+    onSuccess: () => {
+      // Invalidate questions list to show the newly generated question
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.questions });
+      // Also remove from cache to force immediate refetch
+      queryClient.removeQueries({ queryKey: QUERY_KEYS.questions });
     },
   });
 };
@@ -465,7 +505,10 @@ export const useDeleteAIMLQuestion = () => {
   return useMutation({
     mutationFn: (questionId: string) => aimlService.deleteQuestion(questionId),
     onSuccess: () => {
+      // Invalidate all question-related queries to ensure fresh data
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.questions });
+      // Also remove from cache immediately to force refetch
+      queryClient.removeQueries({ queryKey: QUERY_KEYS.questions });
     },
   });
 };

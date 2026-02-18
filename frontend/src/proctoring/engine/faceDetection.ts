@@ -9,6 +9,12 @@ import * as tf from "@tensorflow/tfjs";
 import "@tensorflow/tfjs-core";
 import "@tensorflow/tfjs-backend-webgl";
 
+// Suppress TensorFlow.js kernel registration warnings
+// These warnings occur when multiple libraries initialize TensorFlow.js
+if (typeof window !== 'undefined' && typeof (tf as any).setLogLevel === 'function') {
+  (tf as any).setLogLevel('error'); // Only show errors, suppress warnings
+}
+
 export type FaceDetectionState = "NO_FACE" | "SINGLE_FACE_CENTERED" | "FACE_OFF_CENTER" | "MULTIPLE_FACES";
 
 export interface FaceBox {

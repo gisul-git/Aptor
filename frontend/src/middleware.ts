@@ -77,6 +77,11 @@ export default withAuth(
           return true;
         }
         
+        // Always allow root route (landing page) - must be first check
+        if (pathname === "/") {
+          return true;
+        }
+        
         // DEBUG: Log candidate reference photo routes
         if (pathname.startsWith("/api/v1/candidate/get-reference-photo") ||
             pathname.startsWith("/api/v1/candidate/save-reference-face")) {
@@ -96,10 +101,11 @@ export default withAuth(
         
         // Public routes that don't require authentication
         const publicRoutes = [
-          "/",
           "/auth/signin",
           "/auth/error",
           "/auth/signup",
+          "/auth/forgot-password",  // Forgot password page
+          "/auth/reset-password",  // Reset password page
           "/auth/set-password",  // Employee set password page
           "/auth/employee-login",  // Employee login page
           "/super-admin/mfa",  // MFA page - user is in the middle of login flow

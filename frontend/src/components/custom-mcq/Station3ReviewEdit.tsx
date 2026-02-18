@@ -175,10 +175,16 @@ export default function Station3ReviewEdit({ assessmentData, updateAssessmentDat
 
   const mcqCount = questionsWithIds.filter(q => q.questionType === "mcq" || ("options" in q && "correctAn" in q)).length;
   const subjectiveCount = questionsWithIds.filter(q => q.questionType === "subjective" || !("options" in q && "correctAn" in q)).length;
+  const codingCount = questionsWithIds.filter(q => {
+    const qType = q.questionType;
+    const section = q.section?.toLowerCase() || "";
+    return qType === "coding" || qType?.toLowerCase() === "coding" || 
+           (section === "coding" && !("options" in q && "correctAn" in q));
+  }).length;
 
   // Per-section timer state
   const enablePerSectionTimers = (assessmentData as any).enablePerSectionTimers || false;
-  const sectionTimers = (assessmentData as any).sectionTimers || { MCQ: 20, Subjective: 30 };
+  const sectionTimers = (assessmentData as any).sectionTimers || { MCQ: 20, Subjective: 30, Coding: 30 };
 
   const handleEnablePerSectionTimersChange = (enabled: boolean) => {
     updateAssessmentData({
@@ -187,7 +193,7 @@ export default function Station3ReviewEdit({ assessmentData, updateAssessmentDat
     } as any);
   };
 
-  const handleSectionTimerChange = (section: "MCQ" | "Subjective", value: string) => {
+  const handleSectionTimerChange = (section: "MCQ" | "Subjective" | "Coding", value: string) => {
     const numValue = parseInt(value) || 1;
     const newSectionTimers = {
       ...sectionTimers,
@@ -195,7 +201,7 @@ export default function Station3ReviewEdit({ assessmentData, updateAssessmentDat
     };
     
     // Calculate total duration from section timers
-    const totalDuration = (newSectionTimers.MCQ || 0) + (newSectionTimers.Subjective || 0);
+    const totalDuration = (newSectionTimers.MCQ || 0) + (newSectionTimers.Subjective || 0) + (newSectionTimers.Coding || 0);
     
     updateAssessmentData({
       sectionTimers: newSectionTimers,
@@ -234,7 +240,7 @@ export default function Station3ReviewEdit({ assessmentData, updateAssessmentDat
               Enable Per-Section Timer
             </div>
             <div style={{ fontSize: "0.875rem", color: "#64748b", marginTop: "0.25rem" }}>
-              Each section (MCQ/Subjective) will have its own timer. Sections will be locked when their timer expires.
+              Each section (MCQ/Subjective/Coding) will have its own timer. Sections will be locked when their timer expires.
             </div>
           </div>
         </label>
@@ -285,6 +291,28 @@ export default function Station3ReviewEdit({ assessmentData, updateAssessmentDat
                 </span>
               </div>
             )}
+            {codingCount > 0 && (
+              <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
+                <label style={{ display: "block", minWidth: "120px", fontWeight: 600, color: "#1E5A3B" }}>
+                  Coding Timer (minutes):
+                </label>
+                <input
+                  type="number"
+                  min="1"
+                  value={sectionTimers.Coding || 30}
+                  onChange={(e) => handleSectionTimerChange("Coding", e.target.value)}
+                  style={{ 
+                    width: "150px", 
+                    padding: "0.75rem", 
+                    border: "1px solid #A8E8BC", 
+                    borderRadius: "0.5rem" 
+                  }}
+                />
+                <span style={{ fontSize: "0.875rem", color: "#64748b" }}>
+                  {codingCount} question{codingCount !== 1 ? 's' : ''} in Coding section
+                </span>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -293,7 +321,7 @@ export default function Station3ReviewEdit({ assessmentData, updateAssessmentDat
         <div>
           <strong style={{ color: "#1E5A3B" }}>Total Questions: {questionsWithIds.length}</strong>
           <span style={{ color: "#4A9A6A", marginLeft: "1rem" }}>
-            (MCQ: {mcqCount}, Subjective: {subjectiveCount})
+            (MCQ: {mcqCount}, Subjective: {subjectiveCount}{codingCount > 0 ? `, Coding: ${codingCount}` : ''})
           </span>
         </div>
         <button

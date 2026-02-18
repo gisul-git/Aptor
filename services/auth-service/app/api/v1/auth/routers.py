@@ -18,14 +18,17 @@ from ....core.config import get_settings
 from ....core.security import create_access_token, create_refresh_token, get_password_hash, verify_password, sanitize_text_field
 from ....db.mongo import get_db
 from .schemas import (
+    ForgotPasswordRequest,
     GoogleSignupRequest,
     LoginRequest,
     OAuthLoginRequest,
     OrgSignupRequest,
     RefreshTokenRequest,
+    ResetPasswordRequest,
     SendVerificationCodeRequest,
     SuperAdminSignupRequest,
     VerifyEmailCodeRequest,
+    VerifyResetTokenRequest,
     VerifyTokenRequest,
 )
 from ....utils.email import get_email_service
@@ -408,6 +411,120 @@ async def _find_user_by_email(db: AsyncIOMotorDatabase, email: str) -> dict | No
         preferred["email"] = normalized
 
     return preferred
+
+
+def _generate_reset_token() -> str:
+    """Generate a cryptographically secure random token for password reset."""
+    import secrets
+    return secrets.token_urlsafe(32)
+
+
+async def _store_reset_token(
+    db: AsyncIOMotorDatabase,
+    email: str,
+    token: str,
+    expires_at: datetime,
+) -> None:
+    """Store password reset token in database (hashed)."""
+    normalized = _normalize_email(email)
+    # Hash the token before storing
+    hashed_token = get_password_hash(token)
+    
+    update_data = {
+        "resetToken": hashed_token,
+        "resetTokenExpiresAt": expires_at,
+        "resetTokenCreatedAt": datetime.now(timezone.utc),
+        "resetTokenUsed": False,
+    }
+    
+    await db.password_resets.update_one(
+        {"email": normalized},
+        {"$set": update_data},
+        upsert=True,
+    )
+
+
+async def _send_password_reset_email(
+    db: AsyncIOMotorDatabase,
+    email: str,
+    user_name: str | None,
+    token: str,
+    ttl_minutes: int,
+) -> None:
+    """Send password reset email with reset link."""
+    from urllib.parse import quote
+    
+    settings = get_settings()
+    email_service = get_email_service()
+    
+    # Build reset URL - use frontend URL from settings
+    frontend_url = settings.frontend_url
+    logger.info("Using frontend URL for password reset: %s", frontend_url)
+    # URL encode the token to handle special characters
+    encoded_token = quote(token, safe='')
+    reset_url = f"{frontend_url}/auth/reset-password?token={encoded_token}"
+    
+    subject = "Password Reset Request"
+    html_body = f"""
+    <html>
+        <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+            <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
+                <h2 style="color: #2563eb;">Password Reset Request</h2>
+                <p>Hello {user_name or 'User'},</p>
+                <p>We received a request to reset your password. Click the button below to reset your password:</p>
+                <div style="text-align: center; margin: 30px 0;">
+                    <a href="{reset_url}" style="background-color: #2563eb; color: #ffffff; padding: 12px 30px; text-decoration: none; border-radius: 5px; display: inline-block; font-weight: bold;">
+                        Reset Password
+                    </a>
+                </div>
+                <p>Or copy and paste this link into your browser:</p>
+                <p style="word-break: break-all; color: #2563eb; font-size: 12px;">{reset_url}</p>
+                <p>This link will expire in {ttl_minutes} minutes.</p>
+                <p style="color: #dc2626; font-weight: bold;">If you didn't request this password reset, please ignore this email. Your password will remain unchanged.</p>
+                <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 20px 0;">
+                <p style="color: #6b7280; font-size: 12px;">This is an automated message, please do not reply.</p>
+            </div>
+        </body>
+    </html>
+    """
+
+    try:
+        await email_service.send_email(email, subject, html_body)
+        logger.info("Password reset email sent successfully to %s with reset URL: %s", email, reset_url)
+    except Exception as exc:
+        logger.error("Failed to send password reset email to %s: %s", email, exc, exc_info=True)
+        # Re-raise to ensure the error is logged by the background task handler
+        raise
+
+
+async def _verify_reset_token(db: AsyncIOMotorDatabase, token: str) -> tuple[bool, str | None, dict | None]:
+    """Verify password reset token. Returns (is_valid, email, reset_doc)."""
+    # Iterate through all unused reset tokens to find matching one
+    # Note: We hash tokens, so we need to verify each one
+    async for reset in db.password_resets.find({"resetTokenUsed": False}):
+        stored_hashed = reset.get("resetToken")
+        if stored_hashed and verify_password(token, stored_hashed):
+            # Check expiration
+            expires_at = reset.get("resetTokenExpiresAt")
+            if expires_at:
+                if expires_at.tzinfo is None:
+                    expires_at = expires_at.replace(tzinfo=timezone.utc)
+                elif expires_at.tzinfo != timezone.utc:
+                    expires_at = expires_at.astimezone(timezone.utc)
+                
+                if expires_at < datetime.now(timezone.utc):
+                    # Token expired, mark as used
+                    await db.password_resets.update_one(
+                        {"_id": reset["_id"]},
+                        {"$set": {"resetTokenUsed": True}}
+                    )
+                    return False, None, None
+            
+            # Token is valid
+            email = reset.get("email")
+            return True, email, reset
+    
+    return False, None, None
 
 
 @router.post("/superadmin-signup")
@@ -1070,3 +1187,123 @@ async def verify_token(
     except Exception as e:
         logger.error(f"Token verification error: {e}")
         raise HTTPException(status_code=401, detail="Invalid token")
+
+
+@router.post("/forgot-password")
+async def forgot_password(
+    background_tasks: BackgroundTasks,
+    payload: ForgotPasswordRequest,
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Request password reset. Sends reset email if user exists."""
+    email = _normalize_email(payload.email)
+    
+    # Find user by email
+    user = await _find_user_by_email(db, email)
+    
+    # Generic success message to prevent email enumeration
+    generic_success = "If an account with that email exists, a password reset link has been sent."
+    
+    if not user:
+        logger.info("Password reset requested for non-existent user: %s", email)
+        # Return generic success to prevent user enumeration
+        return success_response(generic_success, {})
+    
+    # Check if user has a password (OAuth-only users can't reset password)
+    if not user.get("password"):
+        logger.info("Password reset requested for user without password (OAuth-only): %s", email)
+        # Still return generic success
+        return success_response(generic_success, {})
+    
+    # For org_admin users, validate org_id if provided
+    if user.get("role") == "org_admin":
+        user_org_id = user.get("orgId")
+        if payload.org_id and payload.org_id != user_org_id:
+            logger.warning("Password reset requested with invalid org_id for user %s: provided=%s, expected=%s", 
+                         email, payload.org_id, user_org_id)
+            # Still return generic success
+            return success_response(generic_success, {})
+    
+    # Generate reset token
+    token = _generate_reset_token()
+    settings = get_settings()
+    # Token expires in 30 minutes
+    expires_at = datetime.now(timezone.utc) + timedelta(minutes=30)
+    
+    # Store reset token
+    await _store_reset_token(db, email, token, expires_at)
+    
+    # Send reset email in background
+    try:
+        background_tasks.add_task(
+            _send_password_reset_email,
+            db,
+            email,
+            user.get("name"),
+            token,
+            30
+        )
+        logger.info("Password reset email queued for user: %s", email)
+    except Exception as exc:
+        logger.error("Failed to queue password reset email for %s: %s", email, exc)
+        # Don't expose error to user
+    
+    return success_response(generic_success, {})
+
+
+@router.get("/verify-reset-token")
+async def verify_reset_token(
+    token: str,
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Verify if a password reset token is valid."""
+    is_valid, email, reset_doc = await _verify_reset_token(db, token)
+    
+    if not is_valid:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired reset token"
+        )
+    
+    return success_response("Token is valid", {"valid": True, "email": email})
+
+
+@router.post("/reset-password")
+async def reset_password(
+    payload: ResetPasswordRequest,
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Reset password using reset token."""
+    # Verify token
+    is_valid, email, reset_doc = await _verify_reset_token(db, payload.token)
+    
+    if not is_valid or not email:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired reset token"
+        )
+    
+    # Find user
+    user = await _find_user_by_email(db, email)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found"
+        )
+    
+    # Update password
+    hashed_password = get_password_hash(payload.newPassword)
+    await db.users.update_one(
+        {"_id": user["_id"]},
+        {"$set": {"password": hashed_password}}
+    )
+    
+    # Mark token as used
+    await db.password_resets.update_one(
+        {"_id": reset_doc["_id"]},
+        {"$set": {"resetTokenUsed": True}}
+    )
+    
+    logger.info("Password reset successful for user: %s", email)
+    
+    return success_response("Password reset successful. You can now sign in with your new password.", {})

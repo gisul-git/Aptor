@@ -232,9 +232,9 @@ export class CandidateLiveService {
       }
 
       // 6. Create separate Agora clients for webcam and screen
-      // RTC mode doesn't support multiple video tracks per client, so we need two clients
-      this.cameraClient = AgoraRTC.createClient({ mode: "rtc", codec: "vp8" });
-      this.screenClient = AgoraRTC.createClient({ mode: "rtc", codec: "vp8" });
+      // Live Broadcast mode supports up to 1,000 hosts per channel (vs 17 in RTC mode)
+      this.cameraClient = AgoraRTC.createClient({ mode: "live", codec: "vp8" });
+      this.screenClient = AgoraRTC.createClient({ mode: "live", codec: "vp8" });
 
       // 7. Join channels with separate clients
       // Use different UIDs to differentiate webcam vs screen on admin side
@@ -273,6 +273,7 @@ export class CandidateLiveService {
           tokenData.token,
           cameraUid
         );
+        await this.cameraClient.setClientRole("host");
         this.log("✅ Joined Agora channel (webcam)");
 
         // Publish webcam track
@@ -295,6 +296,7 @@ export class CandidateLiveService {
           screenTokenData.token,
           screenUid
         );
+        await this.screenClient.setClientRole("host");
         this.log("✅ Joined Agora channel (screen)");
 
         // Publish screen share track

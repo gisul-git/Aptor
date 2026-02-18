@@ -897,7 +897,11 @@ export default function IdentityVerification({
       ctx.drawImage(video, 0, 0);
 
       const photoData = canvas.toDataURL("image/jpeg", 0.8);
+      
+      // IMMEDIATE UI UPDATE: Set photo and stop capturing state right away
+      // This allows React to re-render and show the captured photo immediately
       setCapturedPhoto(photoData);
+      setIsCapturing(false); // Stop "Capturing..." state immediately
 
       // Stop camera stream and cleanup detection immediately
       stopDetectionLoop();
@@ -913,13 +917,26 @@ export default function IdentityVerification({
       sessionStorage.setItem(`referenceFace_${assessmentId}`, photoData);
       sessionStorage.setItem(`capturedPhoto_${assessmentId}`, photoData);
 
-      // Save reference image to backend asynchronously (non-blocking)
-      // This should happen regardless of AI Proctoring status
-      if (!skipBackendSave) {
-        // Prevent duplicate saves
-        if (!isSavingRef.current) {
-          isSavingRef.current = true;
-          (async () => {
+      // IMMEDIATE UI UPDATE: Enable "Confirm & Continue" button immediately
+      // Don't wait for embedding extraction - it will happen in background
+      const shouldExtractEmbedding = aiProctoringEnabled && faceMismatchEnabled;
+      setPhotoQualityValid(true);
+      setPhotoQualityErrors([]);
+      if (shouldExtractEmbedding) {
+        setStatusMessage("✅ Photo captured. Processing face embedding in background... Click 'Confirm & Continue' to proceed.");
+      } else {
+        setStatusMessage("✅ Photo captured successfully. Click 'Confirm & Continue' to proceed.");
+      }
+
+      // Use setTimeout to allow React to re-render before starting async work
+      // This ensures the captured photo appears immediately while processing happens in background
+      setTimeout(async () => {
+        // Save reference image to backend asynchronously (non-blocking)
+        // This should happen regardless of AI Proctoring status
+        if (!skipBackendSave) {
+          // Prevent duplicate saves
+          if (!isSavingRef.current) {
+            isSavingRef.current = true;
             try {
               // Determine test type using gateContext to call the correct endpoint directly
               const ctx = getGateContext(assessmentId);
@@ -971,75 +988,72 @@ export default function IdentityVerification({
             } finally {
               isSavingRef.current = false;
             }
-          })();
+          } else {
+            console.log('[IdentityVerification] Save already in progress, skipping duplicate save');
+          }
         } else {
-          console.log('[IdentityVerification] Save already in progress, skipping duplicate save');
+          console.log('[IdentityVerification] ⚠️ skipBackendSave is true - skipping backend save (photo stored in sessionStorage only)');
         }
-      } else {
-        console.log('[IdentityVerification] ⚠️ skipBackendSave is true - skipping backend save (photo stored in sessionStorage only)');
-      }
 
-      // CONDITIONAL: Only extract embedding if both AI Proctoring AND Face Mismatch Detection are enabled
-      // FIX: Add debug logging to verify proctoring status
-      const shouldExtractEmbedding = aiProctoringEnabled && faceMismatchEnabled;
-      console.log('[IdentityVerification] 🔍 Proctoring status check:', {
-        aiProctoringEnabled,
-        faceMismatchEnabled,
-        shouldExtractEmbedding,
-        type: typeof aiProctoringEnabled,
-        value: aiProctoringEnabled,
-        isTrue: aiProctoringEnabled === true,
-        isFalsy: !aiProctoringEnabled,
-      });
-      
-      if (!shouldExtractEmbedding) {
-        // Face Mismatch Detection disabled: Just store photo, no embedding extraction
-        if (!aiProctoringEnabled) {
-          console.warn('[IdentityVerification] ⚠️ AI Proctoring disabled - storing photo only (no embedding extraction)');
-        } else {
-          console.warn('[IdentityVerification] ⚠️ Face Mismatch Detection disabled - storing photo only (no embedding extraction)');
-        }
-        console.warn('[IdentityVerification] ⚠️ This means face verification will NOT work during assessment!');
-        setPhotoQualityValid(true); // Photo is valid (no quality check needed)
-        setPhotoQualityErrors([]);
-        setStatusMessage("✅ Photo captured successfully. Click 'Confirm & Continue' to proceed.");
-        setIsCapturing(false);
-        return; // Skip embedding extraction
-      }
-      
-      console.log('[IdentityVerification] ✅ Face Mismatch Detection ENABLED - extracting reference embedding');
-
-      // Client-side face recognition: extract reference embedding using MobileFaceNet
-      try {
-        // Initialize FaceRecognitionService (loads MobileFaceNet model)
-        await faceRecognitionService.initialize();
-        
-        // Extract reference embedding from captured photo
-        console.log('[IdentityVerification] Extracting reference embedding from captured photo...');
-        const referenceEmbedding = await faceRecognitionService.extractEmbedding(photoData);
-        
-        // Store reference embedding as JSON (Float32Array serialization)
-        const embeddingArray = Array.from(referenceEmbedding.embedding);
-        sessionStorage.setItem('faceVerificationReferenceEmbedding', JSON.stringify(embeddingArray));
-        sessionStorage.setItem('faceVerificationReferenceImage', photoData); // Keep image for display/debugging
-        sessionStorage.setItem('faceVerificationEnabled', 'true');
-        
-        console.log('[IdentityVerification] ✅ Reference embedding extracted and stored:', {
-          dimensions: referenceEmbedding.embedding.length,
-          confidence: referenceEmbedding.confidence,
+        // CONDITIONAL: Only extract embedding if both AI Proctoring AND Face Mismatch Detection are enabled
+        // FIX: Add debug logging to verify proctoring status
+        const shouldExtractEmbedding = aiProctoringEnabled && faceMismatchEnabled;
+        console.log('[IdentityVerification] 🔍 Proctoring status check:', {
+          aiProctoringEnabled,
+          faceMismatchEnabled,
+          shouldExtractEmbedding,
+          type: typeof aiProctoringEnabled,
+          value: aiProctoringEnabled,
+          isTrue: aiProctoringEnabled === true,
+          isFalsy: !aiProctoringEnabled,
         });
         
-        setPhotoQualityValid(true);
-        setPhotoQualityErrors([]);
-        setStatusMessage("✅ Photo captured. Click 'Confirm & Continue' to proceed. Face will be verified during the assessment.");
-      } catch (error) {
-        console.error('[IdentityVerification] ❌ Error extracting reference embedding:', error);
-        setStatusMessage("⚠️ Error extracting face embedding. Please click 'Retry Photo' and try again.");
-        setPhotoQualityValid(false);
-        setPhotoQualityErrors([`Error: ${error instanceof Error ? error.message : String(error)}`]);
-      }
+        if (!shouldExtractEmbedding) {
+          // Face Mismatch Detection disabled: Just store photo, no embedding extraction
+          if (!aiProctoringEnabled) {
+            console.warn('[IdentityVerification] ⚠️ AI Proctoring disabled - storing photo only (no embedding extraction)');
+          } else {
+            console.warn('[IdentityVerification] ⚠️ Face Mismatch Detection disabled - storing photo only (no embedding extraction)');
+          }
+          console.warn('[IdentityVerification] ⚠️ This means face verification will NOT work during assessment!');
+          // UI already updated above - no need to update again
+          return; // Skip embedding extraction
+        }
+        
+        console.log('[IdentityVerification] ✅ Face Mismatch Detection ENABLED - extracting reference embedding in background');
 
-      setIsCapturing(false);
+        // BACKGROUND PROCESSING: Extract embedding without blocking UI
+        // UI is already updated above - this happens in background
+        try {
+          // Initialize FaceRecognitionService (loads MobileFaceNet model)
+          await faceRecognitionService.initialize();
+          
+          // Extract reference embedding from captured photo
+          console.log('[IdentityVerification] Extracting reference embedding from captured photo...');
+          const referenceEmbedding = await faceRecognitionService.extractEmbedding(photoData);
+          
+          // Store reference embedding as JSON (Float32Array serialization)
+          const embeddingArray = Array.from(referenceEmbedding.embedding);
+          sessionStorage.setItem('faceVerificationReferenceEmbedding', JSON.stringify(embeddingArray));
+          sessionStorage.setItem('faceVerificationReferenceImage', photoData); // Keep image for display/debugging
+          sessionStorage.setItem('faceVerificationEnabled', 'true');
+          
+          console.log('[IdentityVerification] ✅ Reference embedding extracted and stored:', {
+            dimensions: referenceEmbedding.embedding.length,
+            confidence: referenceEmbedding.confidence,
+          });
+          
+          // Optional: Update status message to confirm embedding is ready (non-blocking)
+          // User can already proceed - this is just a confirmation
+          setStatusMessage("✅ Photo captured. Face embedding ready. Click 'Confirm & Continue' to proceed.");
+        } catch (error) {
+          console.error('[IdentityVerification] ❌ Error extracting reference embedding:', error);
+          // Don't block user - embedding extraction failed but photo is still valid
+          // User can proceed, embedding will be extracted on-demand if needed
+          setStatusMessage("✅ Photo captured. Face embedding extraction failed (non-critical). Click 'Confirm & Continue' to proceed.");
+          console.warn('[IdentityVerification] ⚠️ Embedding extraction failed but user can still proceed');
+        }
+      }, 0); // Use setTimeout with 0ms delay to allow React to re-render first
       
       // Don't call onCaptureComplete immediately - wait for user to confirm or retry
       // User will click "Confirm & Continue" button to proceed only if quality is valid

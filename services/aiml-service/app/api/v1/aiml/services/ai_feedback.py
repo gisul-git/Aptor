@@ -4,10 +4,14 @@ Evaluates code submissions with AI and generates feedback
 """
 import logging
 import json
+import re
 from typing import Dict, Any, List, Optional
 from openai import OpenAI
 
 from ..config import OPENAI_API_KEY
+from .code_analyzer import CodeAnalyzer
+from .task_evaluator import evaluate_all_tasks
+from .concise_feedback import generate_concise_feedback
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +35,7 @@ def generate_aiml_feedback(
     difficulty: str = "medium",
     skill: Optional[str] = None,
     dataset_info: Optional[Dict[str, Any]] = None,
+    test_cases: Optional[List[Dict[str, Any]]] = None,
 ) -> Dict[str, Any]:
     """
     Generate AI feedback for an AIML code submission.
@@ -45,6 +50,7 @@ def generate_aiml_feedback(
         difficulty: Question difficulty (easy, medium, hard)
         skill: The skill being assessed (numpy, pandas, etc.)
         dataset_info: Information about the dataset used
+        test_cases: Optional list of test cases with validation criteria
     
     Returns:
         Dictionary containing score, feedback, and detailed evaluation
@@ -78,17 +84,86 @@ def generate_aiml_feedback(
             "ai_generated": False,
         }
     
-    if not client:
-        logger.warning("OpenAI client not available, using rule-based evaluation")
-        return _generate_rule_based_feedback(
-            source_code, outputs, question_title, tasks, constraints, difficulty
+    # NEW TASK-BASED EVALUATION SYSTEM
+    # Use task-based evaluation if test_cases exist
+    if test_cases and len(test_cases) > 0:
+        logger.info("Using task-based evaluation system")
+        
+        # Evaluate all tasks using AST-based validation
+        task_evaluation_result = evaluate_all_tasks(
+            tasks=tasks,
+            test_cases=test_cases,
+            source_code=source_code,
+            outputs=outputs
         )
+        
+        overall_score = task_evaluation_result["overall_score"]
+        task_evaluations = task_evaluation_result["task_scores"]
+        
+        # Generate concise feedback
+        feedback_text = generate_concise_feedback(
+            overall_score=overall_score,
+            task_evaluations=task_evaluations,
+            source_code=source_code,
+            outputs=outputs,
+            tasks=tasks
+        )
+        
+        # Build result dictionary
+        result = {
+            "overall_score": overall_score,
+            "feedback_summary": feedback_text,  # Use concise feedback as summary
+            "one_liner": f"Score: {int(overall_score)}/100 | {'Excellent' if overall_score >= 90 else 'Good' if overall_score >= 75 else 'Needs work' if overall_score >= 50 else 'Incomplete'}",
+            "task_scores": [
+                {
+                    "task_number": te["task_number"],
+                    "task_description": te["task_description"],
+                    "score": te["score"],
+                    "max_score": te["max_score"],
+                    "status": te["status"],
+                    "feedback": f"{te.get('status_symbol', '✅')} {te['task_description']}: {te['score']}/{te['max_score']}"
+                }
+                for te in task_evaluations
+            ],
+            "task_completion": {
+                "completed": len([te for te in task_evaluations if te["score"] >= te["max_score"] * 0.9]),
+                "total": len(tasks),
+                "details": [f"Task {te['task_number']}: {te['status']}" for te in task_evaluations]
+            },
+            # Component scores are now descriptive only, not separate scores
+            "code_quality": {
+                "score": 0,  # Not scored separately
+                "comments": "Code quality assessed as part of task evaluation"
+            },
+            "library_usage": {
+                "score": 0,  # Not scored separately
+                "comments": "Library usage assessed as part of task evaluation"
+            },
+            "output_quality": {
+                "score": 0,  # Not scored separately
+                "comments": "Output quality assessed as part of task evaluation"
+            },
+            "strengths": [],
+            "areas_for_improvement": [],
+            "suggestions": [],
+            "deduction_reasons": [],
+            "ai_generated": False  # Deterministic evaluation
+        }
+        
+        logger.info(f"Task-based evaluation completed. Score: {overall_score}/100")
+        return result
+    
+    # Fallback: If no test_cases, use old system (shouldn't happen in production)
+    logger.warning("No test_cases provided, falling back to old evaluation system")
+    
+    # Old system continues below...
+    deterministic_scores = None
     
     try:
         # Build the evaluation prompt
         prompt = _build_evaluation_prompt(
             source_code, outputs, question_title, question_description,
-            tasks, constraints, difficulty, skill, dataset_info
+            tasks, constraints, difficulty, skill, dataset_info, deterministic_scores
         )
         
         response = client.chat.completions.create(
@@ -132,11 +207,34 @@ MOST IMPORTANTLY: Be ACCURATE and CORRECT in your evaluation. If outputs are wro
         result = json.loads(response.choices[0].message.content)
         result["ai_generated"] = True
         
-        # Ensure score is within bounds
-        if "overall_score" in result:
-            result["overall_score"] = max(0, min(100, int(result.get("overall_score", 0))))
+        # If deterministic scores exist, use them instead of GPT scores
+        if deterministic_scores:
+            result["overall_score"] = deterministic_scores["overall_score"]
+            result["task_scores"] = deterministic_scores["task_scores"]
+            
+            # Calculate component scores based on actual evaluation
+            component_scores = _calculate_component_scores(
+                deterministic_scores,
+                source_code,
+                outputs,
+                analyzer=CodeAnalyzer(source_code) if source_code else None
+            )
+            
+            # Update component scores in result
+            if "code_quality" in result:
+                result["code_quality"]["score"] = component_scores["code_quality"]
+            if "library_usage" in result:
+                result["library_usage"]["score"] = component_scores["library_usage"]
+            if "output_quality" in result:
+                result["output_quality"]["score"] = component_scores["output_quality"]
+            
+            logger.info(f"Using deterministic scores. Overall score: {result['overall_score']}, Component scores: {component_scores}")
         else:
-            result["overall_score"] = 50  # Default if not provided
+            # Ensure score is within bounds
+            if "overall_score" in result:
+                result["overall_score"] = max(0, min(100, int(result.get("overall_score", 0))))
+            else:
+                result["overall_score"] = 50  # Default if not provided
         
         logger.info(f"AI evaluation completed. Score: {result['overall_score']}")
         return result
@@ -146,6 +244,328 @@ MOST IMPORTANTLY: Be ACCURATE and CORRECT in your evaluation. If outputs are wro
         return _generate_rule_based_feedback(
             source_code, outputs, question_title, tasks, constraints, difficulty
         )
+
+
+def _validate_outputs_with_test_cases(
+    outputs: List[str],
+    source_code: str,
+    test_cases: List[Dict[str, Any]],
+    tasks: List[str],
+) -> Dict[str, Any]:
+    """
+    Validate outputs against test cases deterministically.
+    
+    Args:
+        outputs: List of output strings from code execution
+        source_code: The submitted source code
+        test_cases: List of test case dictionaries with validation criteria
+        tasks: List of task descriptions
+    
+    Returns:
+        Dictionary with overall_score and task_scores
+    """
+    combined_output = "\n".join(outputs).lower()
+    source_code_lower = source_code.lower()
+    
+    # Create code analyzer
+    analyzer = CodeAnalyzer(source_code)
+    
+    task_scores = []
+    total_score = 0.0
+    
+    for tc in test_cases:
+        task_num = tc.get("task_number", 0)
+        validation_type = tc.get("validation_type", "").lower()
+        expected_output = tc.get("expected_output", "")
+        points = float(tc.get("points", 0))
+        description = tc.get("description", "")
+        
+        score = 0.0
+        status = "not_attempted"
+        passed = False
+        feedback = None  # Will be set by validation logic or default at end
+        
+        if validation_type == "exact_match":
+            # Check if output contains exact value
+            if expected_output.lower() in combined_output:
+                score = points
+                status = "completed"
+                passed = True
+            else:
+                status = "attempted_incorrect"
+        
+        elif validation_type == "contains":
+            # Check if output contains keyword/substring
+            keywords = expected_output.lower().split("|")  # Support multiple keywords with |
+            if any(keyword.strip() in combined_output for keyword in keywords):
+                score = points
+                status = "completed"
+                passed = True
+            else:
+                status = "attempted_incorrect"
+        
+        elif validation_type == "numeric_range":
+            # Check if number is in range (format: "0.8-0.9" or ">0.8" or "<0.9")
+            try:
+                # Extract numbers from outputs
+                numbers = re.findall(r'-?\d+\.?\d*', combined_output)
+                if numbers:
+                    for num_str in numbers:
+                        try:
+                            num = float(num_str)
+                            if "-" in expected_output:
+                                # Range format: "0.8-0.9"
+                                min_val, max_val = map(float, expected_output.split("-"))
+                                if min_val <= num <= max_val:
+                                    score = points
+                                    status = "completed"
+                                    passed = True
+                                    break
+                            elif expected_output.startswith(">"):
+                                # Greater than format: ">0.8"
+                                threshold = float(expected_output[1:])
+                                if num > threshold:
+                                    score = points
+                                    status = "completed"
+                                    passed = True
+                                    break
+                            elif expected_output.startswith("<"):
+                                # Less than format: "<0.9"
+                                threshold = float(expected_output[1:])
+                                if num < threshold:
+                                    score = points
+                                    status = "completed"
+                                    passed = True
+                                    break
+                        except ValueError:
+                            continue
+                if not passed:
+                    status = "attempted_incorrect"
+            except Exception as e:
+                logger.warning(f"Error in numeric_range validation: {e}")
+                status = "attempted_incorrect"
+        
+        elif validation_type == "code_check":
+            # Check if code contains expected pattern
+            # Handle list, pipe-separated string, or single string expected_output
+            if isinstance(expected_output, list):
+                # Check if any item in the list is found in code
+                found = any(str(item).lower() in source_code_lower for item in expected_output)
+            elif isinstance(expected_output, str) and "|" in expected_output:
+                # Handle pipe-separated values (e.g., "CountVectorizer|TfidfVectorizer")
+                keywords = expected_output.lower().split("|")
+                found = any(keyword.strip() in source_code_lower for keyword in keywords)
+            else:
+                found = str(expected_output).lower() in source_code_lower
+            
+            if found:
+                score = points
+                status = "completed"
+                passed = True
+            else:
+                status = "attempted_incorrect"
+        
+        elif validation_type == "import_check":
+            # Verify import exists in code
+            if analyzer.verify_import(expected_output):
+                score = points
+                status = "completed"
+                passed = True
+                feedback = f"✅ Required import found: {expected_output}"
+            else:
+                status = "attempted_incorrect"
+                feedback = f"❌ Missing import: {expected_output}"
+        
+        elif validation_type == "function_call_check":
+            # Verify function was called
+            if analyzer.verify_function_call(expected_output):
+                score = points
+                status = "completed"
+                passed = True
+                feedback = f"✅ Function called: {expected_output}"
+            else:
+                status = "attempted_incorrect"
+                feedback = f"❌ Function not called: {expected_output}"
+        
+        elif validation_type == "dataset_load_check":
+            # Verify dataset was loaded
+            if analyzer.has_dataset_loading():
+                score = points
+                status = "completed"
+                passed = True
+                feedback = "✅ Dataset loading code detected"
+            else:
+                status = "attempted_incorrect"
+                feedback = "❌ No dataset loading code found"
+        
+        elif validation_type == "model_training_check":
+            # Verify model training (.fit())
+            if analyzer.has_model_training():
+                score = points
+                status = "completed"
+                passed = True
+                feedback = "✅ Model training code detected (.fit())"
+            else:
+                status = "attempted_incorrect"
+                feedback = "❌ No model training code found"
+        
+        elif validation_type == "output_structure_check":
+            # Verify output contains actual data structures
+            has_numeric = any(char.isdigit() for char in combined_output)
+            has_array_like = '[' in combined_output or 'array' in combined_output.lower()
+            has_dataframe = 'dataframe' in combined_output.lower() or '|' in combined_output
+            
+            if expected_output == "numeric" and has_numeric:
+                score = points
+                status = "completed"
+                passed = True
+                feedback = "✅ Output contains numeric data"
+            elif expected_output == "contains_array" and has_array_like:
+                score = points
+                status = "completed"
+                passed = True
+                feedback = "✅ Output contains array-like structure"
+            elif expected_output == "contains_dataframe" and has_dataframe:
+                score = points
+                status = "completed"
+                passed = True
+                feedback = "✅ Output contains DataFrame structure"
+            else:
+                status = "attempted_incorrect"
+                feedback = f"❌ Output doesn't match expected structure: {expected_output}"
+        
+        else:
+            logger.warning(f"Unknown validation_type: {validation_type}")
+            status = "not_attempted"
+            feedback = f"Unknown validation type: {validation_type}"
+        
+        # Use custom feedback if available, otherwise generate default feedback
+        if feedback is None:
+            feedback = f"Test case validation: {'PASSED' if passed else 'FAILED'}. {description}"
+        
+        task_scores.append({
+            "task_number": task_num,
+            "task_description": tasks[task_num - 1] if task_num > 0 and task_num <= len(tasks) else description,
+            "score": round(score, 2),
+            "max_score": round(points, 2),
+            "status": status,
+            "feedback": feedback
+        })
+        
+        total_score += score
+    
+    # Ensure overall_score is between 0 and 100
+    overall_score = max(0, min(100, round(total_score, 2)))
+    
+    return {
+        "overall_score": overall_score,
+        "task_scores": task_scores
+    }
+
+
+def _calculate_component_scores(
+    deterministic_scores: Dict[str, Any],
+    source_code: str,
+    outputs: List[str],
+    analyzer: Optional[CodeAnalyzer] = None
+) -> Dict[str, float]:
+    """
+    Calculate component scores (code_quality, library_usage, output_quality) 
+    based on deterministic evaluation results.
+    
+    Args:
+        deterministic_scores: Dictionary with overall_score and task_scores
+        source_code: The submitted source code
+        outputs: List of output strings
+        analyzer: Optional CodeAnalyzer instance
+    
+    Returns:
+        Dictionary with code_quality, library_usage, output_quality scores
+    """
+    overall_score = deterministic_scores.get("overall_score", 0)
+    task_scores = deterministic_scores.get("task_scores", [])
+    
+    if not analyzer:
+        analyzer = CodeAnalyzer(source_code)
+    
+    # Analyze code structure
+    has_functions = 'def ' in source_code
+    has_comments = '#' in source_code
+    has_imports = len(analyzer.get_imports()) > 0
+    has_structure = has_functions or len(source_code.split('\n')) > 10
+    
+    # Code Quality Score (0-25): Based on structure, readability, best practices
+    code_quality_score = 0.0
+    if has_structure:
+        code_quality_score += 10  # Basic structure
+    if has_functions:
+        code_quality_score += 5  # Functions present
+    if has_comments:
+        code_quality_score += 5  # Comments present
+    if has_imports:
+        code_quality_score += 5  # Imports present
+    
+    # Scale to 0-25 based on overall_score (if code is good, quality should be high)
+    code_quality_score = min(25, code_quality_score * (overall_score / 100.0) * 1.2)
+    
+    # Library Usage Score (0-20): Based on appropriate library usage
+    library_usage_score = 0.0
+    imports = analyzer.get_imports()
+    function_calls = analyzer.get_function_calls()
+    
+    # Check for common AIML libraries
+    aiml_libraries = ['pandas', 'numpy', 'sklearn', 'tensorflow', 'keras', 'torch', 'matplotlib', 'seaborn']
+    library_count = sum(1 for lib in aiml_libraries if any(lib.lower() in imp.lower() for imp in imports))
+    
+    if library_count > 0:
+        library_usage_score = min(20, library_count * 5 + (len(function_calls) * 0.5))
+    
+    # Scale based on overall_score
+    library_usage_score = min(20, library_usage_score * (overall_score / 100.0) * 1.1)
+    
+    # Output Quality Score (0-15): Based on output presence and structure
+    output_quality_score = 0.0
+    combined_output = "\n".join(outputs).lower()
+    
+    if outputs and any(o.strip() for o in outputs):
+        output_quality_score += 5  # Outputs exist
+        
+        # Check for errors
+        has_errors = 'error' in combined_output or 'traceback' in combined_output or 'exception' in combined_output
+        if not has_errors:
+            output_quality_score += 5  # No errors
+        
+        # Check for meaningful data
+        has_numeric = any(char.isdigit() for char in combined_output)
+        has_structure = '[' in combined_output or '{' in combined_output or 'dataframe' in combined_output
+        
+        if has_numeric or has_structure:
+            output_quality_score += 5  # Meaningful output
+    
+    # Scale based on overall_score
+    output_quality_score = min(15, output_quality_score * (overall_score / 100.0) * 1.1)
+    
+    # Normalize to ensure component scores roughly match overall_score
+    # Component scores should sum to approximately overall_score
+    total_component_score = code_quality_score + library_usage_score + output_quality_score
+    
+    if total_component_score > 0 and overall_score > 0:
+        # Scale factor to make components sum closer to overall_score
+        scale_factor = min(1.2, overall_score / max(1, total_component_score))
+        code_quality_score = round(code_quality_score * scale_factor, 2)
+        library_usage_score = round(library_usage_score * scale_factor, 2)
+        output_quality_score = round(output_quality_score * scale_factor, 2)
+    
+    # Ensure scores are within bounds
+    code_quality_score = max(0, min(25, code_quality_score))
+    library_usage_score = max(0, min(20, library_usage_score))
+    output_quality_score = max(0, min(15, output_quality_score))
+    
+    return {
+        "code_quality": code_quality_score,
+        "library_usage": library_usage_score,
+        "output_quality": output_quality_score
+    }
 
 
 def _build_evaluation_prompt(
@@ -158,6 +578,7 @@ def _build_evaluation_prompt(
     difficulty: str,
     skill: Optional[str],
     dataset_info: Optional[Dict[str, Any]],
+    deterministic_scores: Optional[Dict[str, Any]] = None,
 ) -> str:
     """Build the evaluation prompt for OpenAI."""
     
@@ -221,6 +642,16 @@ Constraints:
 
 == EXECUTION OUTPUTS ==
 {outputs_text}
+{f'''
+
+== DETERMINISTIC VALIDATION RESULTS ==
+The following scores have been calculated deterministically from test cases:
+Overall Score: {deterministic_scores.get('overall_score', 0)}/100
+Task Scores:
+{chr(10).join([f"  Task {ts.get('task_number', 0)}: {ts.get('score', 0)}/{ts.get('max_score', 0)} - {ts.get('status', 'unknown')}" for ts in deterministic_scores.get('task_scores', [])])}
+
+NOTE: Use these scores as-is. Focus your evaluation on providing detailed feedback text only.
+''' if deterministic_scores else ''}
 
 == CRITICAL EVALUATION REQUIREMENTS ==
 1. **TASK COMPLETION ANALYSIS**: 
@@ -274,16 +705,16 @@ Evaluate the submission and return a JSON response with this exact structure:
         }}''' for i in range(num_tasks - 1)]) if num_tasks > 1 else ""}
     ],
     "code_quality": {{
-        "score": 0,
-        "comments": "<Comprehensive 4-6 sentence detailed assessment of code structure, readability, best practices. Include: (1) Detailed analysis of code organization and structure, (2) Evaluation of readability and clarity with specific examples, (3) Assessment of whether best practices are followed, (4) Discussion of maintainability and scalability, (5) Code style and conventions evaluation, (6) Educational insights about code quality. Be detailed and educational. NOTE: This is feedback-only and does not contribute to the score.>"
+        "score": <Calculate score 0-25 based on: code structure (functions, organization), readability (comments, naming), best practices (error handling, modularity). Score should reflect actual code quality, not be 0.>,
+        "comments": "<Comprehensive 4-6 sentence detailed assessment of code structure, readability, best practices. Include: (1) Detailed analysis of code organization and structure, (2) Evaluation of readability and clarity with specific examples, (3) Assessment of whether best practices are followed, (4) Discussion of maintainability and scalability, (5) Code style and conventions evaluation, (6) Educational insights about code quality. Be detailed and educational. The score should reflect the actual code quality (0-25).>"
     }},
     "library_usage": {{
-        "score": 0,
-        "comments": "<Comprehensive 4-6 sentence detailed assessment of appropriate library usage. Include: (1) Detailed evaluation of which libraries were used and why, (2) Assessment of whether libraries were used appropriately and efficiently, (3) Discussion of alternative library choices if relevant, (4) Evaluation of library-specific best practices, (5) Educational insights about library selection and usage, (6) Specific examples of good or poor library usage. Be detailed and educational. NOTE: This is feedback-only and does not contribute to the score.>"
+        "score": <Calculate score 0-20 based on: appropriate library selection, efficient usage, library-specific best practices. Score should reflect actual library usage quality, not be 0.>,
+        "comments": "<Comprehensive 4-6 sentence detailed assessment of appropriate library usage. Include: (1) Detailed evaluation of which libraries were used and why, (2) Assessment of whether libraries were used appropriately and efficiently, (3) Discussion of alternative library choices if relevant, (4) Evaluation of library-specific best practices, (5) Educational insights about library selection and usage, (6) Specific examples of good or poor library usage. Be detailed and educational. The score should reflect the actual library usage quality (0-20).>"
     }},
     "output_quality": {{
-        "score": 0,
-        "comments": "<Comprehensive 3-5 sentence detailed assessment of output format and presentation. Include: (1) Detailed evaluation of output format and structure, (2) Assessment of output clarity and presentation, (3) Discussion of whether output meets requirements, (4) Evaluation of output completeness, (5) Educational insights about output quality. Be detailed and educational. NOTE: This is feedback-only and does not contribute to the score.>"
+        "score": <Calculate score 0-15 based on: output format, clarity, completeness, absence of errors. Score should reflect actual output quality, not be 0.>,
+        "comments": "<Comprehensive 3-5 sentence detailed assessment of output format and presentation. Include: (1) Detailed evaluation of output format and structure, (2) Assessment of output clarity and presentation, (3) Discussion of whether output meets requirements, (4) Evaluation of output completeness, (5) Educational insights about output quality. Be detailed and educational. The score should reflect the actual output quality (0-15).>"
     }},
     "task_completion": {{
         "completed": <number of tasks completed CORRECTLY>,
@@ -333,11 +764,12 @@ SCORING GUIDELINES for difficulty "{difficulty}":
 - Medium: Balanced evaluation (60+ for mostly correct implementation with mostly correct outputs)
 - Hard: Stricter evaluation (50+ for partial solutions with partially correct outputs)
 
-FEEDBACK-ONLY SECTIONS (Do NOT contribute to score):
-- **code_quality.score**: Always set to 0 (feedback only)
-- **library_usage.score**: Always set to 0 (feedback only)
-- **output_quality.score**: Always set to 0 (feedback only)
-- These sections provide educational feedback but do not affect the overall_score
+COMPONENT SCORING GUIDELINES:
+- **code_quality.score**: Calculate 0-25 based on code structure, readability, best practices
+- **library_usage.score**: Calculate 0-20 based on appropriate library selection and usage
+- **output_quality.score**: Calculate 0-15 based on output format, clarity, completeness
+- These component scores should reflect actual performance and may not sum exactly to overall_score
+- The overall_score is primarily determined by task completion and correctness
 
 IMPORTANT FEEDBACK REQUIREMENTS:
 - Make the feedback_summary 5-7 sentences with substantial detail, context, and educational insights
@@ -500,6 +932,7 @@ def evaluate_aiml_submission(
         difficulty=question.get("difficulty", "medium"),
         skill=question.get("assessment_metadata", {}).get("skill") or question.get("library"),
         dataset_info=question.get("dataset"),
+        test_cases=question.get("test_cases"),
     )
 
 
