@@ -73,6 +73,7 @@ services:
       - SUPER_ADMIN_SERVICE_URL=http://super-admin-service:3006
       - CORS_ORIGINS=${CORS_ORIGINS:-https://qa.aaptor.com,http://frontend:3000,http://localhost:3000,http://localhost:3001}
       - EMPLOYEE_SERVICE_URL=${EMPLOYEE_SERVICE_URL:-http://employee-service:4005}
+      - AIML_AGENT_SERVICE_URL=${AIML_AGENT_SERVICE_URL:-http://aiml-agent-service:8889}
     depends_on:
       - auth-service
     networks:
@@ -97,6 +98,7 @@ services:
       - JWT_RSA_PRIVATE_KEY_PATH=${JWT_RSA_PRIVATE_KEY_PATH}
       - JWT_RSA_PUBLIC_KEY_PATH=${JWT_RSA_PUBLIC_KEY_PATH}
       - CORS_ORIGINS=${CORS_ORIGINS:-https://qa.aaptor.com,http://localhost:3000,http://frontend:3000}
+      - FRONTEND_URL=${FRONTEND_URL:-https://qa.aaptor.com}
       - EMAIL_PROVIDER=${EMAIL_PROVIDER:-sendgrid}
       - SENDGRID_API_KEY=${SENDGRID_API_KEY}
       - SENDGRID_FROM_EMAIL=${SENDGRID_FROM_EMAIL}
