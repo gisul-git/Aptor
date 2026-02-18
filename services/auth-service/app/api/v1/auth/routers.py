@@ -457,8 +457,9 @@ async def _send_password_reset_email(
     settings = get_settings()
     email_service = get_email_service()
     
-    # Build reset URL - use frontend URL from settings or default
-    frontend_url = getattr(settings, 'frontend_url', 'http://localhost:3000')
+    # Build reset URL - use frontend URL from settings
+    frontend_url = settings.frontend_url
+    logger.info("Using frontend URL for password reset: %s", frontend_url)
     # URL encode the token to handle special characters
     encoded_token = quote(token, safe='')
     reset_url = f"{frontend_url}/auth/reset-password?token={encoded_token}"
@@ -489,9 +490,10 @@ async def _send_password_reset_email(
 
     try:
         await email_service.send_email(email, subject, html_body)
-        logger.info("Password reset email sent to %s", email)
+        logger.info("Password reset email sent successfully to %s with reset URL: %s", email, reset_url)
     except Exception as exc:
-        logger.error("Failed to send password reset email to %s: %s", email, exc)
+        logger.error("Failed to send password reset email to %s: %s", email, exc, exc_info=True)
+        # Re-raise to ensure the error is logged by the background task handler
         raise
 
 
