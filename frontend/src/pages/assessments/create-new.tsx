@@ -4126,13 +4126,14 @@ const handleStartReviewProcess = () => {
             };
           } else {
             // If it doesn't exist, add a new row (check)
-            const newRow = {
+            const newRow: QuestionRow = {
               rowId: `row-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
-              questionType: type,
+              questionType: type as "MCQ" | "Subjective" | "PseudoCode" | "Coding" | "SQL" | "AIML",
               difficulty: "Medium",
               questionsCount: 5, // Default starting value
               canUseJudge0: type === "Coding",
               status: "pending",
+              locked: false,
               questions: [],
             };
             return {
