@@ -1351,10 +1351,25 @@ app.use((err, req, res, next) => {
 });
 
 // Create HTTP server explicitly to handle WebSocket upgrades
-// http-proxy-middleware with ws: true automatically handles upgrade events
-// but we need to create the server explicitly so the middleware can attach to it
 const http = require('http');
 const server = http.createServer(app);
+
+// Handle WebSocket upgrade events
+// http-proxy-middleware requires explicit attachment to server upgrade event
+server.on('upgrade', (req, socket, head) => {
+  // Check if this is a WebSocket request for the AIML agent
+  if (req.url && req.url.startsWith('/ws/aiml-agent')) {
+    console.log('🟢 [API Gateway] WebSocket upgrade request received:', {
+      url: req.url,
+      headers: req.headers,
+    });
+    // Use the proxy middleware's upgrade handler
+    aimlAgentWsProxy.upgrade(req, socket, head);
+  } else {
+    // Not a WebSocket request we handle, destroy the socket
+    socket.destroy();
+  }
+});
 
 // Start server
 server.listen(PORT, () => {
