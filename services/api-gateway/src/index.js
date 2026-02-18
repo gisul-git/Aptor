@@ -12,7 +12,7 @@ require('dotenv').config();
 const app = express();
 const PORT = process.env.PORT || 80;
 
-// Service URLs from environment variables
+// Service URLs from environment variabless
 const SERVICES = {
   auth: process.env.AUTH_SERVICE_URL || 'http://localhost:4000',
   aiAssessment: process.env.AI_ASSESSMENT_SERVICE_URL || 'http://localhost:3001',
@@ -23,6 +23,7 @@ const SERVICES = {
   users: process.env.USER_SERVICE_URL || 'http://localhost:3006',
   superAdmin: process.env.SUPER_ADMIN_SERVICE_URL || 'http://localhost:3007',
   employee: process.env.EMPLOYEE_SERVICE_URL || 'http://localhost:4005',
+  aimlAgent: process.env.AIML_AGENT_SERVICE_URL || 'http://aiml-agent-service:8889',
 };
 
 // Middleware
@@ -1260,6 +1261,76 @@ app.get('/api/v1/employee/all-tests',
   }
 );
 
+// ============================================================================
+// WEBSOCKET PROXY FOR AIML AGENT SERVICE
+// ============================================================================
+// This route proxies WebSocket connections to the AIML agent service
+// Frontend connects to: wss://qa.aaptor.com/ws/aiml-agent
+// This gets proxied to: ws://aiml-agent-service:8889
+// ============================================================================
+
+const aimlAgentWsProxy = createProxyMiddleware({
+  target: SERVICES.aimlAgent,
+  ws: true, // Enable WebSocket proxying
+  changeOrigin: true,
+  logLevel: 'debug',
+  logProvider: () => ({
+    log: (msg) => console.log('🟡 [WS-Proxy]', msg),
+    debug: (msg) => console.log('🔵 [WS-Proxy]', msg),
+    info: (msg) => console.log('🟢 [WS-Proxy]', msg),
+    warn: (msg) => console.warn('🟠 [WS-Proxy]', msg),
+    error: (msg) => console.error('🔴 [WS-Proxy]', msg),
+  }),
+  onProxyReq: (proxyReq, req, res) => {
+    console.log('🔵 [API Gateway] WebSocket proxy request:', {
+      method: req.method,
+      url: req.url,
+      originalUrl: req.originalUrl,
+      path: req.path,
+      headers: req.headers,
+      target: SERVICES.aimlAgent,
+    });
+  },
+  onProxyReqWs: (proxyReq, req, socket, options, head) => {
+    console.log('🟢 [API Gateway] WebSocket upgrade request:', {
+      url: req.url,
+      originalUrl: req.originalUrl,
+      path: req.path,
+      target: SERVICES.aimlAgent,
+    });
+  },
+  onError: (err, req, res) => {
+    console.error('🔴 [API Gateway] WebSocket proxy error:', {
+      error: err.message,
+      code: err.code,
+      url: req.url,
+      target: SERVICES.aimlAgent,
+    });
+    
+    // If it's a WebSocket upgrade request, we can't send a JSON response
+    // The error will be handled by the WebSocket connection itself
+    if (req.headers.upgrade === 'websocket') {
+      if (res.writeHead) {
+        res.writeHead(503, {
+          'Content-Type': 'text/plain',
+        });
+        res.end('WebSocket proxy error: ' + err.message);
+      }
+    } else {
+      res.status(503).json({
+        success: false,
+        message: 'WebSocket proxy error',
+        detail: err.message,
+        service: 'AIML Agent Service',
+        target: SERVICES.aimlAgent,
+      });
+    }
+  },
+});
+
+// Apply WebSocket proxy to /ws/aiml-agent route
+app.use('/ws/aiml-agent', aimlAgentWsProxy);
+
 // 404 handler
 app.use((req, res) => {
   res.status(404).json({
@@ -1279,11 +1350,19 @@ app.use((err, req, res, next) => {
   });
 });
 
-app.listen(PORT, () => {
+// Create HTTP server explicitly to handle WebSocket upgrades
+// http-proxy-middleware with ws: true automatically handles upgrade events
+// but we need to create the server explicitly so the middleware can attach to it
+const http = require('http');
+const server = http.createServer(app);
+
+// Start server
+server.listen(PORT, () => {
   console.log(`🚀 API Gateway running on port ${PORT}`);
   console.log('📡 Service endpoints:');
   Object.entries(SERVICES).forEach(([name, url]) => {
     console.log(`   ${name}: ${url}`);
   });
+  console.log(`🔌 WebSocket proxy available at: /ws/aiml-agent -> ${SERVICES.aimlAgent}`);
 });
 
