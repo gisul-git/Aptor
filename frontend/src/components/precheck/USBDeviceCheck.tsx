@@ -347,7 +347,7 @@ export function USBDeviceCheck({ assessmentId, userId, onComplete }: USBDeviceCh
           style={{
             width: "100%",
             padding: "0.75rem",
-            backgroundColor: "#3b82f6",
+            backgroundColor: "#084A2A",
             color: "#ffffff",
             border: "none",
             borderRadius: "0.5rem",
@@ -358,7 +358,7 @@ export function USBDeviceCheck({ assessmentId, userId, onComplete }: USBDeviceCh
             marginTop: "0.75rem",
           }}
         >
-          {isScanning ? "⏳ Scanning..." : "🔄 Re-scan USB Devices"}
+          {isScanning ? "⏳ Scanning..." : "Re-scan USB Devices"}
         </button>
       )}
 
