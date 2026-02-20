@@ -1,38 +1,36 @@
 /**
- * Employee Management Page
- *
+ * Employee Management Page - FAANG-Level UI/UX Redesign
+ * 
  * For org_admins to manage employees in their organization
  * Allows adding, editing, deleting employees and resending welcome emails
  */
 
-import { useState } from "react";
-import { useRouter } from "next/router";
-import { useSession } from "next-auth/react";
-import { GetServerSideProps } from "next";
-import { getServerSession } from "next-auth";
-import { authOptions } from "../api/auth/[...nextauth]";
+import { useState, useEffect } from 'react';
+import { useRouter } from 'next/router';
+import { useSession } from 'next-auth/react';
+import { GetServerSideProps } from 'next';
+import { getServerSession } from 'next-auth';
+import { authOptions } from '../api/auth/[...nextauth]';
+import { motion } from 'framer-motion';
+import { Building2, PlusCircle, Upload, Mail, UserPlus } from 'lucide-react';
+import AuthGuardModal from '../../components/auth/AuthGuardModal';
+import useAuthGuard from '../../hooks/auth/useAuthGuard';
+import { useEmployees, useDeleteEmployee, useResendWelcomeEmail, type Employee } from '@/hooks/api/useEmployees';
+import { useUserProfile } from '@/hooks/auth';
+import { useOrganization } from '@/hooks/api/useOrganization';
 import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "../../components/dsa/ui/card";
-import { Button } from "../../components/dsa/ui/button";
-import EmployeeList from "../../components/employee/EmployeeList";
-import EmployeeForm from "../../components/employee/EmployeeForm";
-import AuthGuardModal from "../../components/auth/AuthGuardModal";
-import useAuthGuard from "../../hooks/auth/useAuthGuard";
-import { useEmployees, type Employee } from "@/hooks/api/useEmployees";
-import { Users, LogOut, ArrowLeft } from "lucide-react";
-import Link from "next/link";
+  EmployeeTable,
+  SearchBar,
+  FilterBar,
+  AddEmployeeModal,
+  BulkUploadModal,
+} from '../../components/employee-management';
 
 interface EmployeeManagementPageProps {
   session: any;
 }
 
-export default function EmployeeManagementPage({
-  session: serverSession,
-}: EmployeeManagementPageProps) {
+export default function EmployeeManagementPage({ session: serverSession }: EmployeeManagementPageProps) {
   const { data: session, status } = useSession();
   const router = useRouter();
   const [page, setPage] = useState(1);
@@ -48,13 +46,13 @@ export default function EmployeeManagementPage({
 
   // Use auth guard hook to check authentication and role
   const authGuard = useAuthGuard({
-    requiredRole: "org_admin",
+    requiredRole: 'org_admin',
     showModal: true,
-    redirectAfterAuth: "/employee/management",
+    redirectAfterAuth: '/employee/management',
     notAuthenticatedMessage:
-      "You need to sign in as an organization administrator to access the Employee Management page. Please sign in with your organization admin account or create a new account to continue.",
+      'You need to sign in as an organization administrator to access the Employee Management page. Please sign in with your organization admin account or create a new account to continue.',
     wrongRoleMessage:
-      "This page is only accessible to organization administrators. Your current role does not have permission to manage employees.",
+      'This page is only accessible to organization administrators. Your current role does not have permission to manage employees.',
   });
 
   const { data, isLoading, error, refetch } = useEmployees({
@@ -171,7 +169,7 @@ export default function EmployeeManagementPage({
   };
 
   // Show loading state
-  if (authGuard.isLoading || status === "loading") {
+  if (authGuard.isLoading || status === 'loading') {
     return (
       <div className="min-h-screen bg-mint-50 flex items-center justify-center">
         <div className="text-center">
@@ -186,14 +184,10 @@ export default function EmployeeManagementPage({
   if (!authGuard.isAuthenticated || authGuard.reason) {
     return (
       <>
-        <div className="min-h-screen bg-background flex items-center justify-center">
-          <Card className="w-full max-w-md">
-            <CardContent className="p-6 text-center">
-              <p className="text-muted-foreground">
-                Checking access permissions...
-              </p>
-            </CardContent>
-          </Card>
+        <div className="min-h-screen bg-mint-50 flex items-center justify-center">
+          <div className="text-center">
+            <p className="text-text-secondary">Checking access permissions...</p>
+          </div>
         </div>
         {authGuard.reason && (
           <AuthGuardModal
@@ -214,29 +208,45 @@ export default function EmployeeManagementPage({
   // Get user profile to fetch orgId
   const { data: userProfile } = useUserProfile();
   const user = (activeSession as any)?.user;
-  const orgId = (activeSession as any)?.organization || "N/A";
-
-
+  
+  // Get orgId from user profile or session
+  const orgId = (userProfile as any)?.orgId || (user as any)?.orgId || (user as any)?.organization;
+  
+  // Fetch organization details from database using orgId
+  const { data: organization } = useOrganization(orgId);
+  
+  // Extract organization name
+  const orgName = organization?.name || orgId || 'your organization';
+  const employees = data?.employees || [];
+  const pagination = data?.pagination;
 
   return (
-    <div className="min-h-screen bg-background">
-      <div className="container mx-auto px-4 py-8">
-        {/* Header */}
-        <div className="mb-6 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <div>
-              <h1 className="text-4xl font-bold">Employee Management</h1>
-              <p className="text-muted-foreground mt-1">
-                Manage employees for {user?.organization || "your organization"}
-              </p>
-              {orgId && orgId !== "N/A" && (
-                <p className="text-sm text-muted-foreground mt-1">
-                  Organization ID:{" "}
-                  <code className="text-xs bg-muted px-1 py-0.5 rounded">
-                    {orgId}
-                  </code>
-                </p>
-              )}
+    <div className="min-h-screen bg-mint-50">
+      {/* Page Header Section */}
+      <motion.div
+        initial={{ opacity: 0, y: -20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="bg-gradient-to-br from-white via-mint-50 to-mint-100 border-b-2 border-mint-200 shadow-sm mb-8"
+      >
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
+          {/* Breadcrumb */}
+          <nav className="text-sm text-text-secondary font-medium mb-3" aria-label="Breadcrumb">
+            <span className="hover:text-text-primary transition-colors cursor-pointer">Organization</span> / <span className="font-medium text-text-primary">Employee Management</span>
+          </nav>
+
+          {/* Main Header */}
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div className="flex-1">
+              <h1 className="text-3xl sm:text-4xl lg:text-5xl font-extrabold text-text-primary tracking-tight mb-2">
+                Employee Management
+              </h1>
+              <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
+                <span className="text-sm sm:text-base text-text-secondary">Manage employees for</span>
+                <span className="inline-flex items-center px-3 py-1.5 rounded-full bg-mint-100 text-text-primary text-sm font-bold w-fit">
+                  <Building2 className="w-4 h-4 mr-2" />
+                  {orgName}
+                </span>
+              </div>
             </div>
 
             {/* Primary Action - More Prominent */}
@@ -313,25 +323,45 @@ export default function EmployeeManagementPage({
               Add Employee
             </button>
           </div>
-          <Button variant="outline" onClick={() => router.push("/dashboard")}>
-            <LogOut className="h-4 w-4 mr-2" />
-            Create Assessment
-          </Button>
         </div>
       </motion.div>
 
-        {/* Employee List */}
-        <EmployeeList
-          onAddEmployee={handleAddEmployee}
-          onEditEmployee={handleEditEmployee}
-        />
-       
-        {/* Add/Edit Employee Form Modal */}
-        {showAddForm && (
-          <EmployeeForm
-            employee={editingEmployee}
-            onClose={handleFormClose}
-            onSuccess={handleFormSuccess}
+      {/* Data Table */}
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.3 }}
+        className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-6 sm:pb-8 mt-6 sm:mt-8"
+      >
+        {error ? (
+          <div className="bg-white rounded-2xl shadow-lg border border-red-200 p-6">
+            <p className="text-sm text-red-600 mb-4">
+              Error loading employees: {(error as any)?.message || 'Unknown error'}
+            </p>
+            <button
+              onClick={() => refetch()}
+              className="px-4 py-2 bg-mint-100 text-text-primary font-medium rounded-lg hover:bg-mint-200 transition-all"
+            >
+              Retry
+            </button>
+          </div>
+        ) : (
+          <EmployeeTable
+            employees={employees}
+            isLoading={isLoading}
+            currentPage={page}
+            totalPages={pagination?.totalPages || 1}
+            total={pagination?.total || 0}
+            limit={limit}
+            onPageChange={setPage}
+            onEdit={handleEditEmployee}
+            onDelete={handleDelete}
+            onSendEmail={handleResendEmail}
+            onAddEmployee={handleAddEmployee}
+            onUploadCSV={() => setShowUploadModal(true)}
+            isSendingEmail={resendEmailMutation.isPending}
+            isDeleting={deleteEmployeeMutation.isPending}
+            hasFilters={!!(search || statusFilter)}
           />
         )}
       </motion.div>
