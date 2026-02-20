@@ -1,6 +1,3 @@
-import { useState, useEffect } from "react";
-import { useRouter } from "next/router";
-import { signOut, useSession } from "next-auth/react";
 import { GetServerSideProps } from "next";
 import { requireAuth } from "../lib/auth";
 import Image from "next/image";
@@ -188,6 +185,7 @@ export default function DashboardPage({
     }
   }, [showProfile, openMenuId]);
 
+  // Prevent hydration mismatch
   useEffect(() => {
     // Listen for token refresh events from the interceptor
     const handleTokenRefresh = async (event: Event) => {
@@ -1028,6 +1026,8 @@ export default function DashboardPage({
           />
         )}
       </div>
+    );
+  }
 
       {/* Pausing Modal */}
       {pausing.show && (
@@ -1560,6 +1560,10 @@ export default function DashboardPage({
       )}
     </div>
   );
+}
+
+export default function DashboardPage({ session: serverSession }: DashboardPageProps) {
+  return <DashboardContent />;
 }
 
 // Server-side authentication check

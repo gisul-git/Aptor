@@ -817,13 +817,21 @@ export default function CandidateRequirementsPage() {
       setLoading(false);
     }
   };
+
+  // Pre-calculate disabled state to keep JSX clean
+  const isFormInvalid = loading ||
+    (candidateRequirements.requireEmail && !email.trim()) ||
+    (candidateRequirements.requireName && !name.trim()) ||
+    (candidateRequirements.requirePhone && !phone.trim()) ||
+    (candidateRequirements.requireLinkedIn && !linkedInUrl.trim()) ||
+    (candidateRequirements.requireGithub && !githubUrl.trim());
  
   // Show loading state while fetching assessment
   if (fetchingAssessment) {
     return (
       <div style={{
         minHeight: "100vh",
-        backgroundColor: "#f7f3e8",
+        backgroundColor: "#ffffff", // Emerald Mint Theme
         padding: "1.5rem",
         display: "flex",
         alignItems: "center",
@@ -833,8 +841,8 @@ export default function CandidateRequirementsPage() {
           backgroundColor: "#ffffff",
           borderRadius: "0.75rem",
           padding: "1.5rem",
-          boxShadow: "0 2px 8px rgba(0, 0, 0, 0.1)",
-          border: "1px solid #e5e7eb",
+          boxShadow: "0 1px 2px 0 rgba(0, 0, 0, 0.05)",
+          border: "1px solid #D1D5DB",
           textAlign: "center"
         }}>
           <div style={{ fontSize: "0.875rem", color: "#64748b" }}>
@@ -848,7 +856,7 @@ export default function CandidateRequirementsPage() {
   return (
     <div style={{
       minHeight: "100vh",
-      backgroundColor: "#f7f3e8",
+      backgroundColor: "#ffffff", // Emerald Mint Theme
       padding: "1.5rem",
       display: "flex",
       alignItems: "center",
@@ -859,12 +867,12 @@ export default function CandidateRequirementsPage() {
           backgroundColor: "#ffffff",
           borderRadius: "0.75rem",
           padding: "1.5rem",
-          boxShadow: "0 2px 8px rgba(0, 0, 0, 0.1)",
-          border: "1px solid #e5e7eb"
+          boxShadow: "0 1px 2px 0 rgba(0, 0, 0, 0.05)",
+          border: "1px solid #D1D5DB"
         }}>
           {/* Header */}
           <div style={{ marginBottom: "1.25rem" }}>
-            <h1 style={{ fontSize: "1.5rem", fontWeight: 600, color: "#1e293b", marginBottom: "0.25rem" }}>
+            <h1 style={{ fontSize: "1.5rem", fontWeight: 600, color: "#00684A", marginBottom: "0.25rem" }}>
               Candidate Requirements
             </h1>
             <p style={{ color: "#64748b", fontSize: "0.875rem", margin: 0 }}>
@@ -897,10 +905,10 @@ export default function CandidateRequirementsPage() {
            customFields.length === 0 && (
             <div style={{
               padding: "1rem",
-              backgroundColor: "#f0f9ff",
-              border: "1px solid #bae6fd",
+              backgroundColor: "#F0F9F4", // Mint Background
+              border: "1px solid #E1F2E9", // Mint Border
               borderRadius: "0.375rem",
-              color: "#0369a1",
+              color: "#00684A", // Emerald Text
               marginBottom: "1rem",
               textAlign: "center"
             }}>
@@ -965,7 +973,7 @@ export default function CandidateRequirementsPage() {
                       transition: "border-color 0.2s",
                       boxSizing: "border-box"
                     }}
-                    onFocus={(e) => e.target.style.borderColor = "#6953a3"}
+                    onFocus={(e) => e.target.style.borderColor = "#00684A"} // Emerald Outline
                     onBlur={(e) => e.target.style.borderColor = "#d1d5db"}
                   />
                 </div>
@@ -998,7 +1006,7 @@ export default function CandidateRequirementsPage() {
                       transition: "border-color 0.2s",
                       boxSizing: "border-box"
                     }}
-                    onFocus={(e) => e.target.style.borderColor = "#6953a3"}
+                    onFocus={(e) => e.target.style.borderColor = "#00684A"}
                     onBlur={(e) => e.target.style.borderColor = "#d1d5db"}
                   />
                 </div>
@@ -1031,7 +1039,7 @@ export default function CandidateRequirementsPage() {
                       transition: "border-color 0.2s",
                       boxSizing: "border-box"
                     }}
-                    onFocus={(e) => e.target.style.borderColor = "#6953a3"}
+                    onFocus={(e) => e.target.style.borderColor = "#00684A"}
                     onBlur={(e) => e.target.style.borderColor = "#d1d5db"}
                   />
                 </div>
@@ -1065,7 +1073,7 @@ export default function CandidateRequirementsPage() {
                       transition: "border-color 0.2s",
                       boxSizing: "border-box"
                     }}
-                    onFocus={(e) => e.target.style.borderColor = "#6953a3"}
+                    onFocus={(e) => e.target.style.borderColor = "#00684A"}
                     onBlur={(e) => e.target.style.borderColor = "#d1d5db"}
                   />
                 </div>
@@ -1099,7 +1107,7 @@ export default function CandidateRequirementsPage() {
                       transition: "border-color 0.2s",
                       boxSizing: "border-box"
                     }}
-                    onFocus={(e) => e.target.style.borderColor = "#6953a3"}
+                    onFocus={(e) => e.target.style.borderColor = "#00684A"}
                     onBlur={(e) => e.target.style.borderColor = "#d1d5db"}
                   />
                 </div>
@@ -1132,7 +1140,7 @@ export default function CandidateRequirementsPage() {
                       transition: "border-color 0.2s",
                       boxSizing: "border-box"
                     }}
-                    onFocus={(e) => e.target.style.borderColor = "#6953a3"}
+                    onFocus={(e) => e.target.style.borderColor = "#00684A"}
                     onBlur={(e) => e.target.style.borderColor = "#d1d5db"}
                   />
                 </div>
@@ -1173,44 +1181,19 @@ export default function CandidateRequirementsPage() {
             {/* Submit Button */}
             <button
               type="submit"
-              disabled={loading ||
-                (candidateRequirements.requireEmail && !email.trim()) ||
-                (candidateRequirements.requireName && !name.trim()) ||
-                (candidateRequirements.requirePhone && !phone.trim()) ||
-                (candidateRequirements.requireLinkedIn && !linkedInUrl.trim()) ||
-                (candidateRequirements.requireGithub && !githubUrl.trim())}
+              disabled={isFormInvalid}
+              className={`transition-all ${!isFormInvalid ? "bg-brand-primary hover:bg-[#084A2A] hover:shadow-md" : ""}`}
               style={{
                 width: "100%",
                 padding: "0.75rem 1.5rem",
-                backgroundColor: (loading ||
-                  (candidateRequirements.requireEmail && !email.trim()) ||
-                  (candidateRequirements.requireName && !name.trim()) ||
-                  (candidateRequirements.requirePhone && !phone.trim()) ||
-                  (candidateRequirements.requireLinkedIn && !linkedInUrl.trim()) ||
-                  (candidateRequirements.requireGithub && !githubUrl.trim())) ? "#e2e8f0" : "#6953a3",
-                color: (loading ||
-                  (candidateRequirements.requireEmail && !email.trim()) ||
-                  (candidateRequirements.requireName && !name.trim()) ||
-                  (candidateRequirements.requirePhone && !phone.trim()) ||
-                  (candidateRequirements.requireLinkedIn && !linkedInUrl.trim()) ||
-                  (candidateRequirements.requireGithub && !githubUrl.trim())) ? "#94a3b8" : "#ffffff",
+                backgroundColor: isFormInvalid ? "#D1D5DB" : "#00684A", // Emerald or Disabled Gray
+                color: isFormInvalid ? "#6B7280" : "#ffffff",
                 border: "none",
                 borderRadius: "0.375rem",
                 fontSize: "0.9375rem",
-                fontWeight: 600,
-                cursor: (loading ||
-                  (candidateRequirements.requireEmail && !email.trim()) ||
-                  (candidateRequirements.requireName && !name.trim()) ||
-                  (candidateRequirements.requirePhone && !phone.trim()) ||
-                  (candidateRequirements.requireLinkedIn && !linkedInUrl.trim()) ||
-                  (candidateRequirements.requireGithub && !githubUrl.trim())) ? "not-allowed" : "pointer",
-                boxShadow: (loading ||
-                  (candidateRequirements.requireEmail && !email.trim()) ||
-                  (candidateRequirements.requireName && !name.trim()) ||
-                  (candidateRequirements.requirePhone && !phone.trim()) ||
-                  (candidateRequirements.requireLinkedIn && !linkedInUrl.trim()) ||
-                  (candidateRequirements.requireGithub && !githubUrl.trim())) ? "none" : "0 2px 4px rgba(105, 83, 163, 0.2)",
-                transition: "all 0.2s ease"
+                fontWeight: 500, // Matched font-medium
+                cursor: isFormInvalid ? "not-allowed" : "pointer",
+                boxShadow: isFormInvalid ? "none" : "0 1px 2px 0 rgba(0, 0, 0, 0.05)",
               }}
             >
               {loading ? (success ? "Redirecting..." : "Submitting...") : "Continue to Assessment →"}
@@ -1221,4 +1204,3 @@ export default function CandidateRequirementsPage() {
     </div>
   );
 }
- 

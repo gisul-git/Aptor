@@ -497,4 +497,11 @@ class EmployeeService:
             "employee": EmployeeModel.to_dict(employee),
             "token": token,
         }
+    
+    async def get_organization_by_id(self, org_id: str) -> dict | None:
+        """Get organization details by orgId."""
+        org = await self.org_collection.find_one({"orgId": org_id})
+        if not org:
+            return None
+        return OrganizationModel.to_dict(org)
 

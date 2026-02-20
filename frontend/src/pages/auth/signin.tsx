@@ -373,7 +373,7 @@ export default function SignInPage({ providers }: SignInPageProps) {
 
   const googleProvider = providers ? providers["google"] : undefined;
   const microsoftProvider = providers ? providers["azure-ad"] ?? providers["azuread"] : undefined;
-  const callbackUrl = (router.query.callbackUrl as string) ?? "/employee/management";
+  const callbackUrl = (router.query.callbackUrl as string) ?? "/dashboard";
 
   // Caps Lock detection
   useEffect(() => {
@@ -514,8 +514,8 @@ export default function SignInPage({ providers }: SignInPageProps) {
       sessionStorage.removeItem('verified_email');
     }
     
-    // Always redirect to employee management page after successful login
-    window.location.replace("/employee/management");
+    // Redirect to dashboard after successful login
+    window.location.replace("/dashboard");
   };
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
@@ -594,8 +594,8 @@ export default function SignInPage({ providers }: SignInPageProps) {
         sessionStorage.removeItem('verified_email');
       }
       
-      // Redirect to employee management page after successful login
-      window.location.replace("/employee/management");
+      // Redirect to dashboard after successful login
+      window.location.replace("/dashboard");
     } catch (err: any) {
       setLoading(false);
       
@@ -648,8 +648,8 @@ export default function SignInPage({ providers }: SignInPageProps) {
         sessionStorage.removeItem('verified_email');
       }
       
-      // Always redirect to employee management page after successful login
-      window.location.replace("/employee/management");
+      // Redirect to dashboard after successful login
+      window.location.replace("/dashboard");
     }
   }
 
