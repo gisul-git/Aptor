@@ -12,7 +12,7 @@ import RecentActivity from '@/components/employee-profile/RecentActivity';
 
 const EmployeeProfilePage = () => {
   return (
-    <div className="min-h-screen bg-[#F0FDF4]/30 pb-12 font-sans text-gray-900">
+    <div className="min-h-screen bg-[#F0FDF4]/30 pb-12 ">
       
       {/* 1. Profile Header */}
       <ProfileHeader />
@@ -27,42 +27,27 @@ const EmployeeProfilePage = () => {
 
         {/* Row 2: Assessment History vs Skills/Certs */}
         <section className="grid grid-cols-1 lg:grid-cols-[55%_45%] gap-8 items-start">
-           
-           {/* Left Column */}
            <div className="w-full">
               <AssessmentHistory />
            </div>
-
-           {/* Right Column */}
            <div className="w-full flex flex-col gap-8">
               <TopSkills />
               <Certifications />
            </div>
-
         </section>
 
         {/* Row 3: Skill Distribution vs Integrations/Strengths/Weaknesses */}
         <section className="grid grid-cols-1 lg:grid-cols-[55%_45%] gap-8 items-start">
-           
-           {/* Left Column: Skill Distribution (Radar) */}
            <div className="w-full h-full">
               <SkillDistribution />
            </div>
-
-           {/* Right Column: Stacked Components */}
            <div className="w-full flex flex-col gap-8">
-              
-              {/* Integrations Card */}
               <Integrations />
-
-              {/* Strengths & Weaknesses Grid */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                  <Strengths />
                  <AreasForImprovement />
               </div>
-
            </div>
-
         </section>
 
         {/* Row 4: Recent Activity (Full Width) */}

@@ -233,8 +233,14 @@ export default function AnalyticsPage() {
         },
       })
 
+<<<<<<< HEAD
+      const respData = response?.data;
+      if (respData?.success && respData.referenceImage) {
+        setReferencePhoto(respData.referenceImage)
+=======
       if (response.data.data?.success && response.data?.data?.referenceImage) {
         setReferencePhoto(response.data.data.referenceImage)
+>>>>>>> dev
       } else {
         setReferencePhoto(null)
       }
@@ -319,7 +325,11 @@ export default function AnalyticsPage() {
         name: newCandidateName.trim(),
       })
       
+<<<<<<< HEAD
+      if (response?.data?.success) {
+=======
       if (response.data?.success) {
+>>>>>>> dev
         // Refresh assessment data to get updated candidates list
         await refetchAssessment()
         await refetchCandidates()
@@ -346,7 +356,11 @@ export default function AnalyticsPage() {
         email: email,
       })
       
+<<<<<<< HEAD
+      if (response?.data?.success) {
+=======
       if (response.data?.success) {
+>>>>>>> dev
         alert("Invitation resent successfully!")
         // Refresh assessment data
         await refetchAssessment()

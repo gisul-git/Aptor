@@ -11,7 +11,7 @@ const data = [
   { month: 'Jun', score: 78 },
 ];
 
-// Custom Tooltip Component
+// --- Custom Tooltip Component ---
 const CustomTooltip = ({ active, payload, label }: any) => {
   if (active && payload && payload.length) {
     return (
@@ -29,7 +29,7 @@ const CustomTooltip = ({ active, payload, label }: any) => {
 const CapabilityTrend = () => {
   const targetScore = 78;
   const radius = 70;
-  const circumference = 2 * Math.PI * radius;
+  const circumference = 2 * Math.PI * radius; // ~440
 
   // State for animations
   const [score, setScore] = useState(0);
@@ -37,21 +37,23 @@ const CapabilityTrend = () => {
 
   useEffect(() => {
     let animationFrameId: number;
-    const duration = 1500;
+    const duration = 1500; // 1.5 seconds for the full animation
     const startTime = performance.now();
 
     const animate = (currentTime: number) => {
       const elapsed = currentTime - startTime;
       const progress = Math.min(elapsed / duration, 1);
 
-      // Easing Function: EaseOutCubic
+      // --- Easing Function: EaseOutCubic ---
+      // This makes both the bar and number start fast and slow down smoothly at the end
       const easeProgress = 1 - Math.pow(1 - progress, 3);
 
       // 1. Calculate Score based on eased progress
       const currentScore = Math.round(easeProgress * targetScore);
       setScore(currentScore);
 
-      // 2. Calculate Stroke Offset
+      // 2. Calculate Stroke Offset based on eased progress
+      // Full circle (circumference) -> Target empty space
       const maxOffset = circumference - (circumference * targetScore) / 100;
       const currentOffset = circumference - (circumference - maxOffset) * easeProgress;
       setDashOffset(currentOffset);
@@ -69,12 +71,10 @@ const CapabilityTrend = () => {
 
   return (
     <div className="bg-white rounded-xl p-6 sm:p-8 shadow-[0_1px_3px_rgba(0,0,0,0.08)] border border-gray-200 w-full">
-      {/* Flex container: Column on mobile, Row on Large screens */}
       <div className="flex flex-col lg:flex-row gap-8 lg:gap-12 items-center">
         
         {/* --- LEFT: CIRCULAR GAUGE --- */}
-        {/* On mobile: w-full, border-b. On Desktop: w-1/3, border-r, no border-b */}
-        <div className="flex flex-col items-center justify-center w-full lg:w-1/3 border-b lg:border-b-0 lg:border-r border-gray-100 pb-8 lg:pb-0 lg:pr-12">
+        <div className="flex flex-col items-center justify-center lg:w-1/3 lg:border-r border-gray-100 lg:pr-12 w-full pb-8 lg:pb-0 border-b lg:border-b-0">
           <div className="relative w-48 h-48 sm:w-52 sm:h-52">
             <svg className="w-full h-full transform -rotate-90" viewBox="0 0 160 160">
               <defs>
@@ -103,8 +103,9 @@ const CapabilityTrend = () => {
                 stroke="url(#gaugeGradient)"
                 strokeWidth="10"
                 strokeDasharray={circumference}
-                strokeDashoffset={dashOffset}
+                strokeDashoffset={dashOffset} 
                 strokeLinecap="round"
+           
               />
             </svg>
             
@@ -122,23 +123,22 @@ const CapabilityTrend = () => {
             </div>
           </div>
           
-          <p className="mt-6 text-sm text-gray-600 font-medium text-center">
-            Percentile: <span className="text-gray-900 font-semibold">Top 15% in organization</span>
+          <p className="mt-6 text-sm text-gray-600 font-medium">
+            Percentile: <span className="text-gray-600 ">Top 15% in organization</span>
           </p>
         </div>
 
         {/* --- RIGHT: AREA CHART --- */}
         <div className="flex-1 w-full flex flex-col">
-          <div className="mb-6 text-center lg:text-left">
+          <div className="mb-6">
             <h2 className="text-xl font-semibold text-gray-900 tracking-tight">
               Capability Growth Trend
             </h2>
           </div>
 
-          {/* Chart Container */}
           <div className="h-[200px] w-full">
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={data} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+              <AreaChart data={data} margin={{ top: 10, right: 10, left: -25, bottom: 0 }}>
                 <defs>
                   <linearGradient id="colorScore" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="5%" stopColor="#0A5F38" stopOpacity={0.15}/>
@@ -160,10 +160,13 @@ const CapabilityTrend = () => {
                   domain={[0, 100]}
                   ticks={[0, 25, 50, 75, 100]}
                 />
+                
+                {/* Custom Tooltip */}
                 <Tooltip 
                   content={<CustomTooltip />}
                   cursor={{ stroke: '#0A5F38', strokeWidth: 2, strokeDasharray: '5 5' }}
                 />
+                
                 <Area 
                   type="monotone" 
                   dataKey="score" 
@@ -178,18 +181,18 @@ const CapabilityTrend = () => {
           </div>
 
           {/* Bottom Stats Grid */}
-          <div className="grid grid-cols-3 gap-2 sm:gap-4 mt-6 pt-6 border-t border-gray-50">
+          <div className="grid grid-cols-3 gap-4 mt-6 pt-6 border-t border-gray-50">
              <div className="text-center">
                 <p className="text-[10px] sm:text-xs text-gray-500 font-medium uppercase tracking-wider mb-1">Starting Score</p>
-                <p className="text-lg sm:text-2xl font-semibold text-gray-900">66</p>
+                <p className="text-xl sm:text-2xl font-semibold text-gray-900">66</p>
              </div>
              <div className="text-center">
                 <p className="text-[10px] sm:text-xs text-gray-500 font-medium uppercase tracking-wider mb-1">Current Score</p>
-                <p className="text-lg sm:text-2xl font-semibold text-gray-900">78</p>
+                <p className="text-xl sm:text-2xl font-semibold text-gray-900">78</p>
              </div>
              <div className="text-center">
                 <p className="text-[10px] sm:text-xs text-gray-500 font-medium uppercase tracking-wider mb-1">Total Growth</p>
-                <p className="text-lg sm:text-2xl font-semibold text-[#0A5F38]">+12</p>
+                <p className="text-xl sm:text-2xl font-semibold text-[#0A5F38]">+12</p>
              </div>
           </div>
         </div>

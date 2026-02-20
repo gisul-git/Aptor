@@ -68,12 +68,12 @@ const Certifications = () => {
 
               {/* Mobile Title Wrapper (Title + Badge on same row for mobile if space permits, or stacked) */}
               <div className="flex-1 min-w-0 sm:hidden">
-                 <h4 className="text-sm font-semibold text-gray-900 leading-tight mb-1 break-words">
+                 <h4 className="text-sm font-semibold text-gray-900 leading-tight mb-1">
                    {cert.title}
                  </h4>
                  {/* Mobile Verified Badge */}
                  {cert.verified && (
-                    <span className="inline-flex items-center px-2 py-0.5 bg-gray-50 text-gray-500 text-[10px] font-medium rounded border border-gray-100 tracking-wide mt-1">
+                    <span className="inline-flex items-center px-2 py-0.5 bg-gray-50 text-gray-500 text-[10px] font-medium rounded border border-gray-100 tracking-wide">
                       Verified
                     </span>
                  )}
@@ -81,9 +81,7 @@ const Certifications = () => {
             </div>
 
             {/* Content (Desktop Layout & Mobile Details) */}
-            <div className="flex-1 min-w-0 w-full pl-0 sm:pl-0"> 
-            {/* Added pl-0 to reset padding on desktop if needed, though flex handles spacing via gap */}
-            
+            <div className="flex-1 min-w-0 w-full">
                {/* Desktop Title */}
                <h4 className="hidden sm:block text-base font-semibold text-gray-900 truncate leading-tight mb-2">
                  {cert.title}
@@ -92,7 +90,7 @@ const Certifications = () => {
                {/* Metadata Row: Provider & Date */}
                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-500 font-medium">
                   {/* Provider */}
-                  <div className="flex items-center gap-1.5 w-full sm:w-auto">
+                  <div className="flex items-center gap-1.5">
                     <Building2 size={14} className="text-gray-400 shrink-0" />
                     <span className="truncate max-w-[200px] sm:max-w-none text-xs sm:text-sm">{cert.provider}</span>
                   </div>
