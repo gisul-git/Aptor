@@ -146,21 +146,16 @@ export default function PrecheckPage() {
     }
 
     // Load models in background (non-blocking)
-    console.log(
-      "[Precheck] 🚀 Pre-loading AI models in background (BlazeFace + FaceMesh + face-api)...",
-    );
-    modelService
-      .loadAllModels()
+    console.log("[Precheck] 🚀 Pre-loading AI models in background (BlazeFace + FaceMesh + face-api)...");
+    modelService.loadAllModels()
       .then(({ blazeface, faceMesh, faceApi }) => {
         const loadedModels = [];
         if (blazeface) loadedModels.push("BlazeFace");
         if (faceMesh) loadedModels.push("FaceMesh");
         if (faceApi) loadedModels.push("face-api");
-
+        
         if (loadedModels.length > 0) {
-          console.log(
-            `[Precheck] ✅ AI models pre-loaded successfully (${loadedModels.join(", ")}) - ready for identity verification and assessment`,
-          );
+          console.log(`[Precheck] ✅ AI models pre-loaded successfully (${loadedModels.join(", ")}) - ready for identity verification and assessment`);
         } else {
           console.warn(
             "[Precheck] ⚠️ Some models failed to pre-load, will load on-demand",
@@ -250,7 +245,7 @@ export default function PrecheckPage() {
         // Warm-up request to establish connection (reduces cold start overhead)
         if (attempt === 1) {
           try {
-            await fetch("https://www.google.com/favicon.ico", {
+            await fetch("https://www.google.com/favicon.ico", { 
               cache: "no-store",
               method: "HEAD",
               mode: "no-cors",
@@ -261,28 +256,17 @@ export default function PrecheckPage() {
             // Warm-up failure is okay, continue with test
           }
         }
-
+        
         // Run multiple ping tests using external endpoint and take the best (lowest) result
-        setSteps((prev) =>
-          prev.map((step, idx) =>
-            idx === 1
-              ? {
-                  ...step,
-                  status: "running",
-                  message:
-                    attempt > 1
-                      ? "Retrying network test..."
-                      : "Testing ping...",
-                }
-              : step,
-          ),
-        );
-
+        setSteps(prev => prev.map((step, idx) => 
+          idx === 1 ? { ...step, status: "running", message: attempt > 1 ? "Retrying network test..." : "Testing ping..." } : step
+        ));
+        
         const pingTests: number[] = [];
         for (let i = 0; i < 3; i++) {
           try {
             const pingStart = Date.now();
-            await fetch("https://www.google.com/favicon.ico", {
+            await fetch("https://www.google.com/favicon.ico", { 
               cache: "no-store",
               method: "HEAD",
               mode: "no-cors",
@@ -302,36 +286,24 @@ export default function PrecheckPage() {
 
         // Use the best (lowest) ping from multiple tests
         const ping = Math.min(...pingTests);
-
+        
         // Speed test using external CDN (measures actual internet download speed)
-        setSteps((prev) =>
-          prev.map((step, idx) =>
-            idx === 1
-              ? {
-                  ...step,
-                  status: "running",
-                  message: "Testing download speed...",
-                }
-              : step,
-          ),
-        );
-
+        setSteps(prev => prev.map((step, idx) => 
+          idx === 1 ? { ...step, status: "running", message: "Testing download speed..." } : step
+        ));
+        
         const speedTests: number[] = [];
         for (let i = 0; i < 2; i++) {
           try {
             const speedTestStart = Date.now();
             // Use a public CDN file for speed test (~100KB)
-            const response = await fetch(
-              "https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.1/jquery.min.js",
-              {
-                cache: "no-store",
-              },
-            );
+            const response = await fetch("https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.1/jquery.min.js", {
+              cache: "no-store",
+            });
             const blob = await response.blob();
             const speedTestTime = (Date.now() - speedTestStart) / 1000; // seconds
             const downloadSize = blob.size / (1024 * 1024); // MB
-            const downloadSpeed =
-              Math.round((downloadSize / speedTestTime) * 8 * 10) / 10; // Mbps
+            const downloadSpeed = Math.round((downloadSize / speedTestTime) * 8 * 10) / 10; // Mbps
             speedTests.push(downloadSpeed);
             // Small delay between tests
             if (i < 1) await new Promise((resolve) => setTimeout(resolve, 200));

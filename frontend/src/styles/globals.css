@@ -1,4 +1,5 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
 
 /* Tailwind CSS directives - these are valid and processed by Tailwind */
 /* @tailwind directives are processed by PostCSS/Tailwind during build */
@@ -62,6 +63,7 @@ body {
   line-height: 1.7; /* Improved readability for body text */
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  font-family: 'Inter', "Inter Fallback";
 }
 
 /* Typography Scale - Mint Cream Theme */
@@ -866,3 +868,98 @@ label {
     flex-wrap: wrap;
   }
 }
+
+/*  Tushar's Style for assessments dashboard */
+
+
+/* --- ANIMATIONS --- */
+@keyframes sidebarSmoothSlide {
+  0% { opacity: 0; transform: translateX(-20px); }
+  100% { opacity: 1; transform: translateX(0); }
+}
+.animate-sidebar-smooth { animation: sidebarSmoothSlide 0.6s cubic-bezier(0.2, 0.8, 0.2, 1) forwards; }
+
+@keyframes logoPop {
+  0% { transform: scale(0.9); opacity: 0; }
+  100% { transform: scale(1); opacity: 1; }
+}
+.animate-logo-pop { animation: logoPop 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) forwards; }
+
+@keyframes contentFadeUp {
+  0% { opacity: 0; transform: translateY(10px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+.animate-content-fade { opacity: 0; animation: contentFadeUp 0.8s cubic-bezier(0.2, 0.8, 0.2, 1) forwards; }
+
+@keyframes letterReveal {
+  0% { opacity: 0; transform: translateY(20px) rotateX(10deg); }
+  100% { opacity: 1; transform: translateY(0) rotateX(0deg); }
+}
+.animate-letter-reveal { animation: letterReveal 0.6s cubic-bezier(0.2, 0.8, 0.2, 1) forwards; }
+
+@keyframes modalUp {
+  0% { opacity: 0; transform: scale(0.95) translateY(20px); }
+  100% { opacity: 1; transform: scale(1) translateY(0); }
+}
+.animate-modal-up { animation: modalUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+
+@keyframes expandWidth { from { width: 0; opacity: 0; } to { width: auto; opacity: 1; } }
+.animate-expand { animation: expandWidth 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+
+@keyframes dropdownSlide {
+  0% { opacity: 0; transform: translateY(-10px) scale(0.95); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+.animate-dropdown-enter { animation: dropdownSlide 0.2s cubic-bezier(0.2, 0.8, 0.2, 1) forwards; }
+
+@keyframes popIn {
+  0% { transform: scale(0); }
+  70% { transform: scale(1.1); }
+  100% { transform: scale(1); }
+}
+.animate-pop-in { animation: popIn 0.3s ease-out forwards; }
+
+@keyframes fadeInRight {
+  0% { opacity: 0; transform: translateX(10px); }
+  100% { opacity: 1; transform: translateX(0); }
+}
+.animate-fade-in-right { animation: fadeInRight 0.3s ease-out forwards; }
+
+/* Number Input Cleanup */
+input[type=number]::-webkit-inner-spin-button, 
+input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+
+
+/* Animation Style  for create-new-assessment (Skill Adding) */
+/* src/globals.css */
+
+@keyframes popIn {
+  0% { opacity: 0; transform: scale(0.9); }
+  70% { transform: scale(1.05); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+.animate-pop-in {
+  animation: popIn 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+}
+
+/* Custom File Input Styling for CSV Upload */
+.mint-file-input::file-selector-button {
+  background-color: #1E5A3B; /* Primary Text Color */
+  color: white;
+  padding: 0.5rem 1rem;
+  border: none;
+  border-radius: 0.5rem;
+  font-weight: 600;
+  margin-right: 1rem;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.mint-file-input::file-selector-button:hover {
+  background-color: #15422B; /* Darker shade for hover */
+}
+
+
+
+

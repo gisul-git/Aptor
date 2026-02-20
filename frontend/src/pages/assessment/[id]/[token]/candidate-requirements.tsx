@@ -1181,19 +1181,44 @@ export default function CandidateRequirementsPage() {
             {/* Submit Button */}
             <button
               type="submit"
-              disabled={isFormInvalid}
-              className={`transition-all ${!isFormInvalid ? "bg-brand-primary hover:bg-[#084A2A] hover:shadow-md" : ""}`}
+              disabled={loading ||
+                (candidateRequirements.requireEmail && !email.trim()) ||
+                (candidateRequirements.requireName && !name.trim()) ||
+                (candidateRequirements.requirePhone && !phone.trim()) ||
+                (candidateRequirements.requireLinkedIn && !linkedInUrl.trim()) ||
+                (candidateRequirements.requireGithub && !githubUrl.trim())}
               style={{
                 width: "100%",
                 padding: "0.75rem 1.5rem",
-                backgroundColor: isFormInvalid ? "#D1D5DB" : "#00684A", // Emerald or Disabled Gray
-                color: isFormInvalid ? "#6B7280" : "#ffffff",
+                backgroundColor: (loading ||
+                  (candidateRequirements.requireEmail && !email.trim()) ||
+                  (candidateRequirements.requireName && !name.trim()) ||
+                  (candidateRequirements.requirePhone && !phone.trim()) ||
+                  (candidateRequirements.requireLinkedIn && !linkedInUrl.trim()) ||
+                  (candidateRequirements.requireGithub && !githubUrl.trim())) ? "#e2e8f0" : "#6953a3",
+                color: (loading ||
+                  (candidateRequirements.requireEmail && !email.trim()) ||
+                  (candidateRequirements.requireName && !name.trim()) ||
+                  (candidateRequirements.requirePhone && !phone.trim()) ||
+                  (candidateRequirements.requireLinkedIn && !linkedInUrl.trim()) ||
+                  (candidateRequirements.requireGithub && !githubUrl.trim())) ? "#94a3b8" : "#ffffff",
                 border: "none",
                 borderRadius: "0.375rem",
                 fontSize: "0.9375rem",
-                fontWeight: 500, // Matched font-medium
-                cursor: isFormInvalid ? "not-allowed" : "pointer",
-                boxShadow: isFormInvalid ? "none" : "0 1px 2px 0 rgba(0, 0, 0, 0.05)",
+                fontWeight: 600,
+                cursor: (loading ||
+                  (candidateRequirements.requireEmail && !email.trim()) ||
+                  (candidateRequirements.requireName && !name.trim()) ||
+                  (candidateRequirements.requirePhone && !phone.trim()) ||
+                  (candidateRequirements.requireLinkedIn && !linkedInUrl.trim()) ||
+                  (candidateRequirements.requireGithub && !githubUrl.trim())) ? "not-allowed" : "pointer",
+                boxShadow: (loading ||
+                  (candidateRequirements.requireEmail && !email.trim()) ||
+                  (candidateRequirements.requireName && !name.trim()) ||
+                  (candidateRequirements.requirePhone && !phone.trim()) ||
+                  (candidateRequirements.requireLinkedIn && !linkedInUrl.trim()) ||
+                  (candidateRequirements.requireGithub && !githubUrl.trim())) ? "none" : "0 2px 4px rgba(105, 83, 163, 0.2)",
+                transition: "all 0.2s ease"
               }}
             >
               {loading ? (success ? "Redirecting..." : "Submitting...") : "Continue to Assessment →"}

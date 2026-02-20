@@ -1,5 +1,50 @@
 import React from 'react';
 
+<<<<<<< HEAD
+interface MCQQuestionProps {
+  question: {
+    _id?: string;
+    id?: string;
+    questionText?: string;
+    title?: string;
+    options?: string[];
+    score?: number;
+  };
+  answer: string | null | undefined;
+  onAnswerChange: (answer: string) => void;
+  disabled?: boolean;
+}
+
+export function MCQQuestion({ question, answer, onAnswerChange, disabled = false }: MCQQuestionProps) {
+  const questionId = question._id || question.id || '';
+  const questionText = question.questionText || question.title || '';
+  const options = question.options || [];
+
+  return (
+    <div>
+      <div style={{ marginBottom: 12 }}>
+        <p style={{ margin: 0, fontWeight: 600 }}>{questionText}</p>
+      </div>
+      <div>
+        {options.map((opt, idx) => (
+          <label key={idx} style={{ display: 'block', marginBottom: 8, cursor: disabled ? 'not-allowed' : 'pointer' }}>
+            <input
+              type="radio"
+              name={questionId}
+              value={opt}
+              disabled={disabled}
+              checked={answer === opt}
+              onChange={() => !disabled && onAnswerChange(opt)}
+              style={{ marginRight: 8 }}
+            />
+            {opt}
+          </label>
+        ))}
+      </div>
+    </div>
+  );
+}
+=======
 type MCQOption = string | { label: string; value?: string };
 
 interface MCQQuestionProps {
@@ -158,3 +203,4 @@ export const MCQQuestion: React.FC<MCQQuestionProps> = ({
 };
 
 
+>>>>>>> dev
