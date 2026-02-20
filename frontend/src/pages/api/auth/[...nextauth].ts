@@ -214,19 +214,19 @@ export const authOptions: NextAuthOptions = {
       // Prevent the "flash" of landing page by never redirecting to "/"
       // after sign-in. Also restrict redirects to same-origin for safety.
       try {
-        // Relative URLs (e.g. "/employee/management")
+        // Relative URLs (e.g. "/dashboard")
         if (url.startsWith("/")) {
-          return url === "/" ? `${baseUrl}/employee/management` : `${baseUrl}${url}`;
+          return url === "/" ? `${baseUrl}/dashboard` : `${baseUrl}${url}`;
         }
 
         // Absolute URLs
         const parsed = new URL(url);
         if (parsed.origin !== baseUrl) {
-          return `${baseUrl}/employee/management`;
+          return `${baseUrl}/dashboard`;
         }
-        return parsed.pathname === "/" ? `${baseUrl}/employee/management` : url;
+        return parsed.pathname === "/" ? `${baseUrl}/dashboard` : url;
       } catch {
-        return `${baseUrl}/employee/management`;
+        return `${baseUrl}/dashboard`;
       }
     },
     async signIn({ user, account, profile }) {
