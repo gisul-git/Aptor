@@ -1531,9 +1531,11 @@ export default function CustomMCQTakePage() {
     setPendingNavigationIndex(null);
   };
 
-  return (
-    <div style={{ minHeight: "100vh", backgroundColor: "#ffffff", padding: "2rem" }}>
+ return (
+    <div style={{ display: "flex", height: "100vh", width: "100vw", backgroundColor: "#F3F4F6", overflow: "hidden", fontFamily: "system-ui, -apple-system, sans-serif" }}>
       <ViolationToast />
+      
+      {/* Webcam Preview */}
       {cameraProctorEnabled && (
         <WebcamPreview
           ref={thumbVideoRef}
@@ -1573,10 +1575,10 @@ export default function CustomMCQTakePage() {
             }}
           >
             <div style={{ marginBottom: "1.5rem" }}>
-              <h2 style={{ color: "#ef4444", marginBottom: "1rem", fontSize: "1.5rem" }}>
+              <h2 style={{ color: "#ef4444", marginBottom: "1rem", fontSize: "1.5rem", fontWeight: 700 }}>
                 ⚠️ Warning: Moving to {questions[pendingNavigationIndex || 0]?.questionType === "coding" ? "Coding" : "Subjective"} Questions
               </h2>
-              <p style={{ color: "#1E5A3B", fontSize: "1rem", lineHeight: "1.6" }}>
+              <p style={{ color: "#374151", fontSize: "1rem", lineHeight: "1.6" }}>
                 The MCQ section will be locked once you proceed. You will not be able to change your MCQ answers after this.
               </p>
             </div>
@@ -1587,9 +1589,9 @@ export default function CustomMCQTakePage() {
                 style={{
                   padding: "0.75rem 1.5rem",
                   backgroundColor: "#ffffff",
-                  border: "2px solid #A8E8BC",
+                  border: "1px solid #D1D5DB",
                   borderRadius: "0.5rem",
-                  color: "#1E5A3B",
+                  color: "#374151",
                   fontWeight: 600,
                   cursor: "pointer",
                 }}
@@ -1645,10 +1647,10 @@ export default function CustomMCQTakePage() {
             }}
           >
             <div style={{ marginBottom: "1.5rem" }}>
-              <h2 style={{ color: "#ef4444", marginBottom: "1rem", fontSize: "1.5rem" }}>
+              <h2 style={{ color: "#ef4444", marginBottom: "1rem", fontSize: "1.5rem", fontWeight: 700 }}>
                 ⚠️ Warning: Moving to {questions[pendingNavigationIndex || 0]?.questionType === "mcq" ? "MCQ" : "Subjective"} Questions
               </h2>
-              <p style={{ color: "#1E5A3B", fontSize: "1rem", lineHeight: "1.6" }}>
+              <p style={{ color: "#374151", fontSize: "1rem", lineHeight: "1.6" }}>
                 The Coding section will be locked once you proceed. You will not be able to change your coding answers after this.
               </p>
             </div>
@@ -1659,9 +1661,9 @@ export default function CustomMCQTakePage() {
                 style={{
                   padding: "0.75rem 1.5rem",
                   backgroundColor: "#ffffff",
-                  border: "2px solid #A8E8BC",
+                  border: "1px solid #D1D5DB",
                   borderRadius: "0.5rem",
-                  color: "#1E5A3B",
+                  color: "#374151",
                   fontWeight: 600,
                   cursor: "pointer",
                 }}
@@ -1687,136 +1689,140 @@ export default function CustomMCQTakePage() {
           </div>
         </div>
       )}
-      
-      <div style={{ maxWidth: "1000px", margin: "0 auto", display: "flex", gap: "2rem" }}>
-        {/* Phase Indicator (Left Panel) - Show if multiple question types exist or if exam started */}
-        {(hasBothTypes || hasCoding || hasMCQ || hasSubjective) && examStarted && (
-          <div style={{ width: "200px", flexShrink: 0 }}>
-            <div
-              style={{
-                padding: "1rem",
-                backgroundColor: "#E8FAF0",
-                border: "2px solid #A8E8BC",
-                borderRadius: "0.5rem",
-                position: "sticky",
-                top: "2rem",
-              }}
-            >
-              <h3 style={{ marginBottom: "1rem", color: "#1E5A3B", fontSize: "1rem" }}>Section</h3>
-              <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-                {hasMCQ && (
-                  <div
-                    style={{
-                      padding: "0.75rem",
-                      border: isMCQ ? "2px solid #2D7A52" : mcqSubmitted ? "1px solid #10b981" : "1px solid #A8E8BC",
-                      borderRadius: "0.5rem",
-                      backgroundColor: isMCQ ? "#C9F4D4" : mcqSubmitted ? "#dcfce7" : "#ffffff",
-                      color: "#1E5A3B",
-                      fontWeight: isMCQ ? 600 : 400,
-                      textAlign: "left",
-                      opacity: mcqSubmitted && !isMCQ ? 0.7 : 1,
-                    }}
-                  >
-                    <div>MCQ</div>
-                    {mcqSubmitted && (
-                      <div style={{ fontSize: "0.75rem", color: "#10b981", marginTop: "0.25rem" }}>✓ Completed</div>
-                    )}
-                    {isMCQ && (
-                      <div style={{ fontSize: "0.75rem", color: "#2D7A52", marginTop: "0.25rem" }}>Current</div>
-                    )}
-                  </div>
-                )}
-                {hasCoding && (
-                  <div
-                    style={{
-                      padding: "0.75rem",
-                      border: isCoding ? "2px solid #2D7A52" : codingSubmitted ? "1px solid #10b981" : "1px solid #A8E8BC",
-                      borderRadius: "0.5rem",
-                      backgroundColor: isCoding ? "#C9F4D4" : codingSubmitted ? "#dcfce7" : "#ffffff",
-                      color: "#1E5A3B",
-                      fontWeight: isCoding ? 600 : 400,
-                      textAlign: "left",
-                      opacity: codingSubmitted && !isCoding ? 0.7 : 1,
-                    }}
-                  >
-                    <div>Coding</div>
-                    {codingSubmitted && (
-                      <div style={{ fontSize: "0.75rem", color: "#10b981", marginTop: "0.25rem" }}>✓ Completed</div>
-                    )}
-                    {isCoding && (
-                      <div style={{ fontSize: "0.75rem", color: "#2D7A52", marginTop: "0.25rem" }}>Current</div>
-                    )}
-                  </div>
-                )}
-                {hasSubjective && (
-                  <div
-                    style={{
-                      padding: "0.75rem",
-                      border: isSubjective ? "2px solid #2D7A52" : "1px solid #A8E8BC",
-                      borderRadius: "0.5rem",
-                      backgroundColor: isSubjective ? "#C9F4D4" : "#ffffff",
-                      color: "#1E5A3B",
-                      fontWeight: !isMCQ ? 600 : 400,
-                      textAlign: "left",
-                      opacity: !mcqSubmitted && hasMCQ && isMCQ ? 0.5 : 1,
-                    }}
-                  >
-                    <div>Subjective</div>
-                    {!isMCQ && (
-                      <div style={{ fontSize: "0.75rem", color: "#2D7A52", marginTop: "0.25rem" }}>Current</div>
-                    )}
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        )}
-        
-        <div style={{ flex: 1 }}>
-        {/* Header with Timer and Submit Button */}
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            padding: "1rem 1.5rem",
-            backgroundColor: "#E8FAF0",
-            border: "1px solid #A8E8BC",
-            borderRadius: "0.5rem",
-            marginBottom: "2rem",
-          }}
-        >
-          <div>
-            <h1 style={{ margin: 0, color: "#1E5A3B", fontSize: "1.5rem" }}>{assessment.title}</h1>
+
+      {/* =========================================
+          LEFT SIDEBAR (FULL HEIGHT NAVIGATION)
+          ========================================= */}
+      {(hasBothTypes || hasCoding || hasMCQ || hasSubjective) && examStarted && (
+        <aside style={{ width: "280px", backgroundColor: "#ffffff", borderRight: "1px solid #E5E7EB", display: "flex", flexDirection: "column", flexShrink: 0, zIndex: 20 }}>
+          {/* Info Box (Dashboard Branding Header) */}
+          <div style={{ padding: "1.5rem", borderBottom: "1px solid #E5E7EB", backgroundColor: "#F9FAFB" }}>
+            <h1 style={{ margin: "0 0 0.5rem 0", color: "#00684A", fontSize: "1.125rem", fontWeight: 700, lineHeight: "1.4" }}>
+              {assessment.title}
+            </h1>
             {candidateInfo && (
-              <p style={{ margin: "0.5rem 0 0 0", color: "#2D7A52", fontSize: "0.875rem" }}>
-                {candidateInfo.name} ({candidateInfo.email})
-              </p>
+              <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
+                <span style={{ color: "#374151", fontSize: "0.875rem", fontWeight: 600 }}>{candidateInfo.name}</span>
+                <span style={{ color: "#6B7280", fontSize: "0.75rem", wordBreak: "break-all" }}>{candidateInfo.email}</span>
+              </div>
             )}
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: "1rem", flexWrap: "wrap" }}>
+
+          {/* Section Navigation List */}
+          <div style={{ padding: "1.5rem", flex: 1, overflowY: "auto" }}>
+            <h3 style={{ margin: "0 0 1rem 0", color: "#6B7280", fontSize: "0.75rem", textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 700 }}>
+              Assessment Sections
+            </h3>
+            
+            <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+              {hasMCQ && (
+                <div
+                  style={{
+                    padding: "1rem",
+                    border: isMCQ ? "2px solid #00684A" : mcqSubmitted ? "1px solid #D1D5DB" : "1px solid #E5E7EB",
+                    borderRadius: "0.5rem",
+                    backgroundColor: isMCQ ? "#F0F9F4" : mcqSubmitted ? "#F9FAFB" : "#ffffff",
+                    transition: "all 0.2s ease"
+                  }}
+                >
+                  <div style={{ color: isMCQ ? "#00684A" : "#374151", fontWeight: isMCQ ? 700 : 500, fontSize: "0.95rem" }}>Multiple Choice</div>
+                  {mcqSubmitted && (
+                    <div style={{ fontSize: "0.75rem", color: "#6B7280", marginTop: "0.35rem", display: "flex", alignItems: "center", gap: "0.25rem" }}>✓ Locked</div>
+                  )}
+                  {isMCQ && (
+                    <div style={{ fontSize: "0.75rem", color: "#00684A", marginTop: "0.35rem", fontWeight: 600 }}>● Current Section</div>
+                  )}
+                </div>
+              )}
+              {hasCoding && (
+                <div
+                  style={{
+                    padding: "1rem",
+                    border: isCoding ? "2px solid #00684A" : codingSubmitted ? "1px solid #D1D5DB" : "1px solid #E5E7EB",
+                    borderRadius: "0.5rem",
+                    backgroundColor: isCoding ? "#F0F9F4" : codingSubmitted ? "#F9FAFB" : "#ffffff",
+                    transition: "all 0.2s ease"
+                  }}
+                >
+                  <div style={{ color: isCoding ? "#00684A" : "#374151", fontWeight: isCoding ? 700 : 500, fontSize: "0.95rem" }}>Coding Assessment</div>
+                  {codingSubmitted && (
+                    <div style={{ fontSize: "0.75rem", color: "#6B7280", marginTop: "0.35rem", display: "flex", alignItems: "center", gap: "0.25rem" }}>✓ Locked</div>
+                  )}
+                  {isCoding && (
+                    <div style={{ fontSize: "0.75rem", color: "#00684A", marginTop: "0.35rem", fontWeight: 600 }}>● Current Section</div>
+                  )}
+                </div>
+              )}
+              {hasSubjective && (
+                <div
+                  style={{
+                    padding: "1rem",
+                    border: isSubjective ? "2px solid #00684A" : "1px solid #E5E7EB",
+                    borderRadius: "0.5rem",
+                    backgroundColor: isSubjective ? "#F0F9F4" : "#ffffff",
+                    transition: "all 0.2s ease",
+                    opacity: !mcqSubmitted && hasMCQ && isMCQ ? 0.5 : 1,
+                  }}
+                >
+                  <div style={{ color: isSubjective ? "#00684A" : "#374151", fontWeight: !isMCQ && !isCoding ? 700 : 500, fontSize: "0.95rem" }}>Subjective Response</div>
+                  {!isMCQ && !isCoding && (
+                    <div style={{ fontSize: "0.75rem", color: "#00684A", marginTop: "0.35rem", fontWeight: 600 }}>● Current Section</div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        </aside>
+      )}
+
+      {/* =========================================
+          MAIN CANVAS (HEADER, CONTENT, FOOTER)
+          ========================================= */}
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", height: "100vh", position: "relative" }}>
+        
+        {/* TOP HEADER */}
+        <header style={{ height: "76px", display: "flex", justifyContent: "space-between", alignItems: "center", padding: "0 2rem", backgroundColor: "#ffffff", borderBottom: "1px solid #E5E7EB", flexShrink: 0, zIndex: 10 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
+            {/* Fallback title if sidebar is hidden */}
+            {!(hasBothTypes || hasCoding || hasMCQ || hasSubjective) && (
+               <h1 style={{ margin: 0, color: "#00684A", fontSize: "1.25rem", fontWeight: 700 }}>{assessment.title}</h1>
+            )}
+
+            {currentQuestion && examStarted && (
+              <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+                <span style={{ color: "#00684A", fontWeight: 700, fontSize: "1.125rem" }}>
+                  {isMCQ ? "Multiple Choice" : isCoding ? "Coding Challenge" : "Subjective Response"}
+                </span>
+                <span style={{ color: "#6B7280", backgroundColor: "#F3F4F6", border: "1px solid #E5E7EB", padding: "0.25rem 0.75rem", borderRadius: "1rem", fontSize: "0.875rem", fontWeight: 600 }}>
+                  Question {actualIndex + 1} of {questions.length}
+                </span>
+              </div>
+            )}
+          </div>
+
+          <div style={{ display: "flex", alignItems: "center", gap: "1.5rem" }}>
+            {/* Timers */}
             {(() => {
               const enablePerSectionTimers = (assessment as any)?.enablePerSectionTimers || false;
               
               if (enablePerSectionTimers && examStarted) {
-                // Show both per-section timer and global duration timer
                 const currentSection = assessmentPhase === "mcq" ? "MCQ" : assessmentPhase === "coding" ? "Coding" : "Subjective";
                 const currentTimer = sectionTimers[currentSection] || 0;
                 const isLocked = lockedSections.has(assessmentPhase);
                 
                 return (
-                  <>
-                    {/* Per-section timer */}
+                  <div style={{ display: "flex", gap: "1rem" }}>
                     {currentTimer > 0 && !isLocked ? (
                       <div
                         style={{
-                          padding: "0.75rem 1.5rem",
-                          backgroundColor: currentTimer < 300 ? "#fee2e2" : "#ffffff",
-                          border: `2px solid ${currentTimer < 300 ? "#ef4444" : "#2D7A52"}`,
-                          borderRadius: "0.5rem",
-                          fontSize: "1.25rem",
+                          padding: "0.5rem 1rem",
+                          backgroundColor: currentTimer < 300 ? "#fef2f2" : "#ffffff",
+                          border: `1px solid ${currentTimer < 300 ? "#ef4444" : "#D1D5DB"}`,
+                          borderRadius: "0.375rem",
+                          fontSize: "1.125rem",
                           fontWeight: 700,
-                          color: currentTimer < 300 ? "#991b1b" : "#1E5A3B",
+                          color: currentTimer < 300 ? "#ef4444" : "#00684A",
+                          boxShadow: "0 1px 2px 0 rgba(0, 0, 0, 0.05)"
                         }}
                       >
                         {currentSection}: {formatTime(currentTimer)}
@@ -1824,66 +1830,68 @@ export default function CustomMCQTakePage() {
                     ) : isLocked ? (
                       <div
                         style={{
-                          padding: "0.75rem 1.5rem",
-                          backgroundColor: "#fee2e2",
-                          border: "2px solid #ef4444",
-                          borderRadius: "0.5rem",
-                          fontSize: "1rem",
+                          padding: "0.5rem 1rem",
+                          backgroundColor: "#fef2f2",
+                          border: "1px solid #ef4444",
+                          borderRadius: "0.375rem",
+                          fontSize: "0.875rem",
                           fontWeight: 600,
-                          color: "#991b1b",
+                          color: "#ef4444",
                         }}
                       >
-                        {currentSection} Section Locked
+                        {currentSection} Locked
                       </div>
                     ) : null}
                     
-                    {/* Global duration timer */}
                     {timeRemaining !== null && !isNaN(timeRemaining) && (
                       <div
                         style={{
-                          padding: "0.75rem 1.5rem",
-                          backgroundColor: timeRemaining < 300 ? "#fee2e2" : "#e0f2fe",
-                          border: `2px solid ${timeRemaining < 300 ? "#ef4444" : "#0ea5e9"}`,
-                          borderRadius: "0.5rem",
-                          fontSize: "1.25rem",
-                          fontWeight: 700,
-                          color: timeRemaining < 300 ? "#991b1b" : "#0c4a6e",
+                          padding: "0.5rem 1rem",
+                          backgroundColor: "#F9FAFB",
+                          border: "1px solid #E5E7EB",
+                          borderRadius: "0.375rem",
+                          fontSize: "1rem",
+                          fontWeight: 600,
+                          color: "#6B7280",
                         }}
                         title="Total assessment duration"
                       >
                         Total: {formatTime(timeRemaining)}
                       </div>
                     )}
-                  </>
+                  </div>
                 );
               } else if (timeRemaining !== null && !isNaN(timeRemaining)) {
-                // Show global timer only (per-section timers disabled)
                 return (
                   <div
                     style={{
-                      padding: "0.75rem 1.5rem",
-                      backgroundColor: timeRemaining < 300 ? "#fee2e2" : "#ffffff",
-                      border: `2px solid ${timeRemaining < 300 ? "#ef4444" : "#2D7A52"}`,
-                      borderRadius: "0.5rem",
-                      fontSize: "1.5rem",
+                      padding: "0.5rem 1rem",
+                      backgroundColor: timeRemaining < 300 ? "#fef2f2" : "#ffffff",
+                      border: `1px solid ${timeRemaining < 300 ? "#ef4444" : "#D1D5DB"}`,
+                      borderRadius: "0.375rem",
+                      fontSize: "1.25rem",
                       fontWeight: 700,
-                      color: timeRemaining < 300 ? "#991b1b" : "#1E5A3B",
+                      color: timeRemaining < 300 ? "#ef4444" : "#00684A",
+                      boxShadow: "0 1px 2px 0 rgba(0, 0, 0, 0.05)",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "0.5rem"
                     }}
                   >
+                    <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6v6l4 2"></path></svg>
                     {formatTime(timeRemaining)}
                   </div>
                 );
               }
               return null;
             })()}
+
+            {/* Global Submit Button */}
             {examStarted && (
               <button
                 type="button"
                 onClick={async () => {
-                  // Save all answer logs before submitting
                   await saveAllAnswerLogs();
-                  
-                  // Show confirmation modal instead of browser alert
                   setConfirmModalConfig({
                     title: "Confirm Submission",
                     message: "Are you sure you want to submit the entire assessment? You cannot retake this assessment.",
@@ -1896,389 +1904,406 @@ export default function CustomMCQTakePage() {
                   setShowConfirmModal(true);
                 }}
                 disabled={submitting}
-                className="btn-primary"
                 style={{
-                  padding: "0.75rem 1.5rem",
-                  fontSize: "1rem",
-                  backgroundColor: "#10b981",
-                  border: "none",
-                  borderRadius: "0.5rem",
+                  padding: "0.6rem 1.25rem",
+                  backgroundColor: "#00684A",
                   color: "#ffffff",
+                  border: "none",
+                  borderRadius: "0.375rem",
+                  fontSize: "0.875rem",
                   fontWeight: 600,
                   cursor: submitting ? "not-allowed" : "pointer",
                   opacity: submitting ? 0.5 : 1,
+                  boxShadow: "0 1px 2px 0 rgba(0, 0, 0, 0.05)"
                 }}
               >
-                {submitting ? "Submitting..." : "Submit All Answers"}
+                {submitting ? "Submitting..." : "Submit Assessment"}
               </button>
             )}
           </div>
-        </div>
+        </header>
 
-        {error && !waitingForStart && (
-          <div
-            style={{
-              padding: "1rem",
-              backgroundColor: "#fee2e2",
-              border: "1px solid #ef4444",
-              borderRadius: "0.5rem",
-              color: "#991b1b",
-              marginBottom: "1.5rem",
-            }}
-          >
-            {error}
-          </div>
-        )}
-
-        {/* Question */}
-        {currentQuestion && examStarted && (
-          <div
-            style={{
-              padding: "2rem",
-              backgroundColor: "#ffffff",
-              border: "1px solid #A8E8BC",
-              borderRadius: "0.75rem",
-              marginBottom: "2rem",
-            }}
-          >
-            <div style={{ marginBottom: "1.5rem" }}>
-              <span style={{ color: "#2D7A52", fontWeight: 600 }}>
-                {isMCQ 
-                  ? `MCQ Question ${actualIndex + 1} of ${questions.length}`
-                  : isCoding
-                  ? `Coding Question ${actualIndex + 1} of ${questions.length}`
-                  : `Subjective Question ${actualIndex + 1} of ${questions.length}`
-                }
-              </span>
-              <span style={{ color: "#4A9A6A", marginLeft: "1rem" }}>[{currentQuestion.section}]</span>
-              <span style={{ 
-                color: "#4A9A6A", 
-                marginLeft: "1rem",
-                fontWeight: 500
-              }}>
-                {currentQuestion.marks || 1} marks
-              </span>
-              {mcqSubmitted && isMCQ && (
-                <span style={{ 
-                  marginLeft: "1rem",
-                  padding: "0.25rem 0.5rem", 
-                  backgroundColor: "#fee2e2", 
+        {/* SCROLLABLE QUESTION BODY */}
+        <main style={{ flex: 1, overflowY: "auto", padding: "2rem", display: "flex", flexDirection: "column", alignItems: "center" }}>
+          <div style={{ width: "100%", maxWidth: "850px" }}>
+            
+            {/* Error Message */}
+            {error && !waitingForStart && (
+              <div
+                style={{
+                  padding: "1rem",
+                  backgroundColor: "#fef2f2",
+                  border: "1px solid #ef4444",
+                  borderRadius: "0.5rem",
                   color: "#991b1b",
-                  borderRadius: "0.25rem",
-                  fontSize: "0.875rem",
-                  fontWeight: 600
-                }}>
-                  Locked
-                </span>
-              )}
-              {codingSubmitted && isCoding && (
-                <span style={{ 
-                  marginLeft: "1rem",
-                  padding: "0.25rem 0.5rem", 
-                  backgroundColor: "#fee2e2", 
-                  color: "#991b1b",
-                  borderRadius: "0.25rem",
-                  fontSize: "0.875rem",
-                  fontWeight: 600
-                }}>
-                  Locked
-                </span>
-              )}
-            </div>
+                  marginBottom: "1.5rem",
+                }}
+              >
+                {error}
+              </div>
+            )}
 
-            <h2 style={{ marginBottom: "2rem", color: "#1E5A3B" }}>{currentQuestion.question}</h2>
+            {/* Main Question Card */}
+            {currentQuestion && examStarted && (
+              <div
+                style={{
+                  padding: "2.5rem",
+                  backgroundColor: "#ffffff",
+                  border: "1px solid #D1D5DB",
+                  borderRadius: "1rem",
+                  marginBottom: "2rem",
+                  boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03)"
+                }}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "2rem" }}>
+                  <h2 style={{ margin: 0, color: "#111827", fontSize: "1.25rem", lineHeight: "1.6", fontWeight: 600 }}>
+                    {currentQuestion.question}
+                  </h2>
+                  <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexShrink: 0, marginLeft: "1rem" }}>
+                    <span style={{ color: "#4B5563", backgroundColor: "#F3F4F6", padding: "0.25rem 0.75rem", borderRadius: "1rem", fontSize: "0.85rem", fontWeight: 600, border: "1px solid #E5E7EB", whiteSpace: "nowrap" }}>
+                      {currentQuestion.section}
+                    </span>
+                    <span style={{ color: "#4B5563", backgroundColor: "#F3F4F6", padding: "0.25rem 0.75rem", borderRadius: "1rem", fontSize: "0.85rem", fontWeight: 600, border: "1px solid #E5E7EB", whiteSpace: "nowrap" }}>
+                      {currentQuestion.marks || 1} {currentQuestion.marks === 1 ? 'Mark' : 'Marks'}
+                    </span>
+                    {((mcqSubmitted && isMCQ) || (codingSubmitted && isCoding)) && (
+                      <span style={{ padding: "0.25rem 0.75rem", backgroundColor: "#fef2f2", color: "#ef4444", borderRadius: "1rem", fontSize: "0.85rem", fontWeight: 600 }}>
+                        Locked
+                      </span>
+                    )}
+                  </div>
+                </div>
 
-            {isMCQ && (currentQuestion as MCQQuestion).options ? (
-              <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
-                {(currentQuestion as MCQQuestion).options.map((option) => {
-                  const isSelected = currentAnswers.includes(option.label);
-                  return (
-                    <label
-                      key={option.label}
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        padding: "1rem",
-                        border: isSelected ? "2px solid #2D7A52" : "1px solid #A8E8BC",
-                        borderRadius: "0.5rem",
-                        cursor: mcqSubmitted && isMCQ ? "not-allowed" : "pointer",
-                        backgroundColor: isSelected ? "#E8FAF0" : "#ffffff",
-                        transition: "all 0.2s",
-                        opacity: mcqSubmitted && isMCQ ? 0.6 : 1,
-                      }}
-                    >
-                      <input
-                        type={(currentQuestion as MCQQuestion).answerType === "single" ? "radio" : "checkbox"}
-                        checked={isSelected}
-                        onChange={() => handleAnswerChange(currentQuestion.id!, option.label, currentQuestion as MCQQuestion)}
-                        disabled={mcqSubmitted && isMCQ}
-                        style={{ 
-                          marginRight: "1rem", 
-                          width: "20px", 
-                          height: "20px",
-                          cursor: mcqSubmitted && isMCQ ? "not-allowed" : "pointer",
-                          opacity: mcqSubmitted && isMCQ ? 0.5 : 1
+                {/* Input Area */}
+                {isMCQ && (currentQuestion as MCQQuestion).options ? (
+                  <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+                    {(currentQuestion as MCQQuestion).options.map((option) => {
+                      const isSelected = currentAnswers.includes(option.label);
+                      return (
+                        <label
+                          key={option.label}
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            padding: "1.125rem 1.5rem",
+                            border: isSelected ? "2px solid #00684A" : "1px solid #D1D5DB",
+                            borderRadius: "0.75rem",
+                            cursor: mcqSubmitted && isMCQ ? "not-allowed" : "pointer",
+                            backgroundColor: isSelected ? "#F0F9F4" : "#ffffff",
+                            transition: "all 0.2s ease",
+                            opacity: mcqSubmitted && isMCQ ? 0.6 : 1,
+                          }}
+                          onMouseOver={(e) => {
+                            if (!isSelected && !(mcqSubmitted && isMCQ)) e.currentTarget.style.borderColor = "#00684A";
+                          }}
+                          onMouseOut={(e) => {
+                            if (!isSelected) e.currentTarget.style.borderColor = "#D1D5DB";
+                          }}
+                        >
+                          <input
+                            type={(currentQuestion as MCQQuestion).answerType === "single" ? "radio" : "checkbox"}
+                            checked={isSelected}
+                            onChange={() => handleAnswerChange(currentQuestion.id!, option.label, currentQuestion as MCQQuestion)}
+                            disabled={mcqSubmitted && isMCQ}
+                            style={{ 
+                              marginRight: "1.25rem", 
+                              width: "20px", 
+                              height: "20px",
+                              cursor: mcqSubmitted && isMCQ ? "not-allowed" : "pointer",
+                              accentColor: "#00684A"
+                            }}
+                          />
+                          <div style={{ fontSize: "1.05rem", color: "#374151" }}>
+                            <strong style={{ color: isSelected ? "#00684A" : "#4B5563", marginRight: "0.75rem" }}>{option.label}.</strong>
+                            {option.text}
+                          </div>
+                        </label>
+                      );
+                    })}
+                  </div>
+                ) : isCoding ? (
+                  <div>
+                    <label style={{ display: "block", marginBottom: "0.75rem", fontWeight: 600, color: "#00684A" }}>
+                      Your Code
+                    </label>
+                    <div style={{ border: "1px solid #D1D5DB", borderRadius: "0.75rem", overflow: "hidden", boxShadow: "0 1px 3px rgba(0,0,0,0.1)" }}>
+                      <MonacoEditor
+                        height="500px"
+                        language="python"
+                        value={currentCodeAnswer}
+                        onChange={(value) => {
+                          if (codingSubmitted && isCoding) return;
+                          const newCode = value || "";
+                          setCodeAnswers(prev => ({ ...prev, [currentQuestion.id!]: newCode }));
+                          codeAnswersRef.current = { ...codeAnswersRef.current, [currentQuestion.id!]: newCode };
+                        }}
+                        theme="vs-dark"
+                        options={{
+                          minimap: { enabled: false },
+                          fontSize: 14,
+                          wordWrap: "on",
+                          lineNumbers: "on",
+                          roundedSelection: false,
+                          scrollBeyondLastLine: false,
+                          readOnly: codingSubmitted && isCoding,
+                          cursorStyle: "line",
+                          automaticLayout: true,
+                          tabSize: 2,
+                          insertSpaces: true,
+                          suggestOnTriggerCharacters: true,
+                          quickSuggestions: true,
+                          fontFamily: "'Fira Code', 'Consolas', 'Monaco', 'Courier New', monospace",
+                          fontLigatures: true,
                         }}
                       />
-                      <div>
-                        <strong style={{ color: "#1E5A3B", marginRight: "0.5rem" }}>{option.label}:</strong>
-                        <span style={{ color: "#2D7A52" }}>{option.text}</span>
-                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div>
+                    <label style={{ display: "block", marginBottom: "0.75rem", fontWeight: 600, color: "#00684A" }}>
+                      Your Answer
                     </label>
-                  );
-                })}
-              </div>
-            ) : isCoding ? (
-              <div>
-                <label style={{ display: "block", marginBottom: "0.5rem", fontWeight: 600, color: "#1E5A3B" }}>
-                  Your Code
-                </label>
-                <div style={{ border: "1px solid #A8E8BC", borderRadius: "0.5rem", overflow: "hidden" }}>
-                  <MonacoEditor
-                    height="500px"
-                    language="python"
-                    value={currentCodeAnswer}
-                    onChange={(value) => {
-                      if (codingSubmitted && isCoding) return;
-                      const newCode = value || "";
-                      setCodeAnswers(prev => ({ ...prev, [currentQuestion.id!]: newCode }));
-                      codeAnswersRef.current = { ...codeAnswersRef.current, [currentQuestion.id!]: newCode };
-                    }}
-                    theme="vs-dark"
-                    options={{
-                      minimap: { enabled: false },
-                      fontSize: 14,
-                      wordWrap: "on",
-                      lineNumbers: "on",
-                      roundedSelection: false,
-                      scrollBeyondLastLine: false,
-                      readOnly: codingSubmitted && isCoding,
-                      cursorStyle: "line",
-                      automaticLayout: true,
-                      tabSize: 2,
-                      insertSpaces: true,
-                      suggestOnTriggerCharacters: true,
-                      quickSuggestions: true,
-                      fontFamily: "'Fira Code', 'Consolas', 'Monaco', 'Courier New', monospace",
-                      fontLigatures: true,
-                    }}
-                  />
-                </div>
-              </div>
-            ) : (
-              <div>
-                <label style={{ display: "block", marginBottom: "0.5rem", fontWeight: 600, color: "#1E5A3B" }}>
-                  Your Answer
-                </label>
-                <textarea
-                  value={currentTextAnswer}
-                  onChange={(e) => {
-                    const questionId = currentQuestion?.id;
-                    if (!questionId) {
-                      console.error("Cannot save text answer: question ID is missing", currentQuestion);
-                      return;
-                    }
-                    console.log(`Textarea onChange: questionId=${questionId}, text length=${e.target.value.length}`);
-                    handleTextAnswerChange(questionId, e.target.value);
-                  }}
-                  placeholder="Type your answer here..."
-                  rows={10}
-                  disabled={isMCQ}
-                  style={{
-                    width: "100%",
-                    padding: "1rem",
-                    border: "2px solid #A8E8BC",
-                    borderRadius: "0.5rem",
-                    fontSize: "1rem",
-                    fontFamily: "inherit",
-                    resize: "vertical",
-                    opacity: isMCQ ? 0.6 : 1,
-                    cursor: isMCQ ? "not-allowed" : "text",
-                  }}
-                />
+                    <textarea
+                      value={currentTextAnswer}
+                      onChange={(e) => {
+                        const questionId = currentQuestion?.id;
+                        if (!questionId) {
+                          console.error("Cannot save text answer: question ID is missing", currentQuestion);
+                          return;
+                        }
+                        handleTextAnswerChange(questionId, e.target.value);
+                      }}
+                      placeholder="Type your detailed response here..."
+                      rows={12}
+                      disabled={isMCQ}
+                      style={{
+                        width: "100%",
+                        padding: "1.25rem",
+                        border: "1px solid #D1D5DB",
+                        borderRadius: "0.75rem",
+                        fontSize: "1rem",
+                        fontFamily: "inherit",
+                        resize: "vertical",
+                        opacity: isMCQ ? 0.6 : 1,
+                        cursor: isMCQ ? "not-allowed" : "text",
+                        outline: "none",
+                        transition: "border-color 0.2s",
+                        boxShadow: "inset 0 1px 2px rgba(0,0,0,0.05)",
+                        boxSizing: "border-box"
+                      }}
+                      onFocus={(e) => e.target.style.borderColor = "#00684A"}
+                      onBlur={(e) => e.target.style.borderColor = "#D1D5DB"}
+                    />
+                  </div>
+                )}
               </div>
             )}
           </div>
-        )}
+        </main>
 
-        {/* Navigation */}
+        {/* BOTTOM FOOTER (Pagination & Controls) */}
         {examStarted && (
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "1rem" }}>
-          <button
-            type="button"
-            onClick={async () => {
-              // Save answer log for current subjective question before navigating
-              if (currentQuestion && !isMCQ && !isCoding && currentQuestion.id) {
-                const currentAnswer = textAnswersRef.current[currentQuestion.id] || "";
-                if (currentAnswer.trim()) {
-                  await saveAnswerLog(currentQuestion.id, currentAnswer);
-                }
-              }
-              
-              // Navigate to previous question (any type)
-              const prevIndex = actualIndex - 1;
-              if (prevIndex >= 0) {
-                if (checkAndShowSectionLockWarning(prevIndex)) {
-                  setCurrentQuestionIndex(prevIndex);
-                }
-              }
-            }}
-            disabled={actualIndex === 0}
-            className="btn-secondary"
-            style={{
-              padding: "0.75rem 1.5rem",
-              opacity: actualIndex === 0 ? 0.5 : 1,
-              cursor: actualIndex === 0 ? "not-allowed" : "pointer",
-            }}
-          >
-            ← Previous
-          </button>
-
-          <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", justifyContent: "center" }}>
-            {questions.map((q, idx) => {
-              const isQMCQ = q.questionType === "mcq" || ("options" in q && "correctAn" in q);
-              const isQCoding = q.questionType === "coding" || 
-                q.questionType?.toLowerCase() === "coding" ||
-                (q.section?.toLowerCase() === "coding" && !("options" in q && "correctAn" in q));
-              const isQSubjective = q.questionType === "subjective" && !("options" in q && "correctAn" in q);
-              const hasAnswer = isQMCQ 
-                ? (answers[q.id || ""]?.length > 0)
-                : isQCoding
-                ? (codeAnswers[q.id || ""]?.trim().length > 0)
-                : (textAnswers[q.id || ""]?.trim().length > 0);
-              const isCurrent = idx === actualIndex;
-              const isLocked = (mcqSubmitted && isQMCQ) || (codingSubmitted && isQCoding);
-              
-              return (
-                <button
-                  key={q.id || idx}
-                  type="button"
-                  onClick={async () => {
-                    // Save answer log for current subjective question before navigating
-                    if (currentQuestion && !isMCQ && !isCoding && currentQuestion.id) {
-                      const currentAnswer = textAnswersRef.current[currentQuestion.id] || "";
-                      if (currentAnswer.trim()) {
-                        await saveAnswerLog(currentQuestion.id, currentAnswer);
-                      }
-                    }
-                    
-                    if (!checkAndShowSectionLockWarning(idx)) {
-                      return; // Warning shown, wait for user confirmation
-                    }
-                    
-                    setCurrentQuestionIndex(idx);
-                  }}
-                  style={{
-                    width: "40px",
-                    height: "40px",
-                    borderRadius: "50%",
-                    border: isCurrent ? "2px solid #2D7A52" : isLocked ? "1px solid #ef4444" : "1px solid #A8E8BC",
-                    backgroundColor: hasAnswer ? "#C9F4D4" : isCurrent ? "#E8FAF0" : "#ffffff",
-                    color: "#1E5A3B",
-                    cursor: "pointer",
-                    fontWeight: isCurrent ? 700 : 400,
-                    opacity: isLocked ? 0.7 : 1,
-                  }}
-                  title={isLocked ? "MCQ Section Locked" : isQMCQ ? "MCQ Question" : "Subjective Question"}
-                >
-                  {idx + 1}
-                </button>
-              );
-            })}
-          </div>
-
-          {actualIndex < questions.length - 1 ? (
+          <footer style={{ height: "80px", display: "flex", justifyContent: "space-between", alignItems: "center", padding: "0 2rem", backgroundColor: "#ffffff", borderTop: "1px solid #E5E7EB", flexShrink: 0, zIndex: 10 }}>
+            
+            {/* Prev Button */}
             <button
               type="button"
-                  onClick={async () => {
-                    // Save answer log for current subjective question before navigating
-                    if (currentQuestion && !isMCQ && !isCoding && currentQuestion.id) {
-                      const currentAnswer = textAnswersRef.current[currentQuestion.id] || "";
-                      if (currentAnswer.trim()) {
-                        await saveAnswerLog(currentQuestion.id, currentAnswer);
-                      }
-                    }
-                    
-                    // Navigate to next question (any type)
-                    const nextIndex = actualIndex + 1;
-                    if (nextIndex < questions.length) {
-                      // Check if navigating from MCQ to Subjective and show warning
-                      if (!checkAndShowSectionLockWarning(nextIndex)) {
-                        return; // Warning shown, wait for user confirmation
+              onClick={async () => {
+                // Save answer log for current subjective question before navigating
+                if (currentQuestion && !isMCQ && !isCoding && currentQuestion.id) {
+                  const currentAnswer = textAnswersRef.current[currentQuestion.id] || "";
+                  if (currentAnswer.trim()) {
+                    await saveAnswerLog(currentQuestion.id, currentAnswer);
+                  }
+                }
+                
+                // Navigate to previous question
+                const prevIndex = actualIndex - 1;
+                if (prevIndex >= 0) {
+                  if (checkAndShowSectionLockWarning(prevIndex)) {
+                    setCurrentQuestionIndex(prevIndex);
+                  }
+                }
+              }}
+              disabled={actualIndex === 0}
+              style={{
+                padding: "0.6rem 1.25rem",
+                backgroundColor: "#ffffff",
+                border: "1px solid #D1D5DB",
+                color: "#4B5563",
+                borderRadius: "0.375rem",
+                fontWeight: 600,
+                fontSize: "0.95rem",
+                opacity: actualIndex === 0 ? 0.5 : 1,
+                cursor: actualIndex === 0 ? "not-allowed" : "pointer",
+                transition: "all 0.2s",
+                display: "flex",
+                alignItems: "center",
+                gap: "0.5rem"
+              }}
+              onMouseOver={(e) => { if (actualIndex !== 0) e.currentTarget.style.backgroundColor = "#F9FAFB"; }}
+              onMouseOut={(e) => { if (actualIndex !== 0) e.currentTarget.style.backgroundColor = "#ffffff"; }}
+            >
+              ← Previous
+            </button>
+
+            {/* Question Number Pagination Map */}
+            <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", justifyContent: "center", flex: 1, padding: "0 2rem" }}>
+              {questions.map((q, idx) => {
+                const isQMCQ = q.questionType === "mcq" || ("options" in q && "correctAn" in q);
+                const isQCoding = q.questionType === "coding" || 
+                  q.questionType?.toLowerCase() === "coding" ||
+                  (q.section?.toLowerCase() === "coding" && !("options" in q && "correctAn" in q));
+                const isQSubjective = q.questionType === "subjective" && !("options" in q && "correctAn" in q);
+                const hasAnswer = isQMCQ 
+                  ? (answers[q.id || ""]?.length > 0)
+                  : isQCoding
+                  ? (codeAnswers[q.id || ""]?.trim().length > 0)
+                  : (textAnswers[q.id || ""]?.trim().length > 0);
+                const isCurrent = idx === actualIndex;
+                const isLocked = (mcqSubmitted && isQMCQ) || (codingSubmitted && isQCoding);
+                
+                return (
+                  <button
+                    key={q.id || idx}
+                    type="button"
+                    onClick={async () => {
+                      if (currentQuestion && !isMCQ && !isCoding && currentQuestion.id) {
+                        const currentAnswer = textAnswersRef.current[currentQuestion.id] || "";
+                        if (currentAnswer.trim()) {
+                          await saveAnswerLog(currentQuestion.id, currentAnswer);
+                        }
                       }
                       
-                      setCurrentQuestionIndex(nextIndex);
-                    }
-                  }}
-              className="btn-primary"
-              style={{ padding: "0.75rem 1.5rem" }}
-            >
-              Next →
-            </button>
-          ) : (
-            // Last question - show appropriate button based on question types
-            !mcqSubmitted && hasMCQ && hasSubjective ? (
-              // Both MCQ and Subjective exist - show Lock MCQ button
-              <button
-                type="button"
-                onClick={() => {
-                  // Show confirmation modal instead of browser alert
-                  setConfirmModalConfig({
-                    title: "Lock MCQ Section",
-                    message: "Are you sure you want to lock the MCQ section? You will not be able to change your answers, but you can still review them and answer subjective questions.",
-                    onConfirm: () => {
-                      setShowConfirmModal(false);
-                      handleSubmitMCQSection();
-                    },
-                    confirmText: "Lock Section",
-                  });
-                  setShowConfirmModal(true);
-                }}
-                className="btn-primary"
-                style={{
-                  padding: "0.75rem 1.5rem",
-                  backgroundColor: "#10b981",
-                }}
-              >
-                Lock MCQ Section
-              </button>
-            ) : (
-              // Only MCQ or only Subjective - show Submit button directly
+                      if (!checkAndShowSectionLockWarning(idx)) {
+                        return;
+                      }
+                      
+                      setCurrentQuestionIndex(idx);
+                    }}
+                    style={{
+                      width: "38px",
+                      height: "38px",
+                      borderRadius: "0.375rem",
+                      border: isCurrent ? "none" : isLocked ? "1px solid #ef4444" : hasAnswer ? "1px solid #00684A" : "1px solid #D1D5DB",
+                      backgroundColor: isCurrent ? "#00684A" : hasAnswer ? "#E1F2E9" : "#ffffff",
+                      color: isCurrent ? "#ffffff" : hasAnswer ? "#00684A" : "#4B5563",
+                      cursor: "pointer",
+                      fontWeight: isCurrent ? 700 : 500,
+                      fontSize: "0.95rem",
+                      opacity: isLocked && !isCurrent ? 0.6 : 1,
+                      transition: "all 0.2s ease"
+                    }}
+                    title={isLocked ? "Section Locked" : isQMCQ ? "MCQ Question" : "Subjective Question"}
+                  >
+                    {idx + 1}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Next / Lock / Submit Button */}
+            {actualIndex < questions.length - 1 ? (
               <button
                 type="button"
                 onClick={async () => {
-                  // Save all answer logs before submitting
-                  await saveAllAnswerLogs();
+                  if (currentQuestion && !isMCQ && !isCoding && currentQuestion.id) {
+                    const currentAnswer = textAnswersRef.current[currentQuestion.id] || "";
+                    if (currentAnswer.trim()) {
+                      await saveAnswerLog(currentQuestion.id, currentAnswer);
+                    }
+                  }
                   
-                  // Show confirmation modal instead of browser alert
-                  setConfirmModalConfig({
-                    title: "Confirm Submission",
-                    message: "Are you sure you want to submit the entire assessment? You cannot retake this assessment.",
-                    onConfirm: () => {
-                      setShowConfirmModal(false);
-                      handleSubmit();
-                    },
-                    confirmText: "Submit",
-                  });
-                  setShowConfirmModal(true);
+                  const nextIndex = actualIndex + 1;
+                  if (nextIndex < questions.length) {
+                    if (!checkAndShowSectionLockWarning(nextIndex)) {
+                      return;
+                    }
+                    setCurrentQuestionIndex(nextIndex);
+                  }
                 }}
-                disabled={submitting}
-                className="btn-primary"
                 style={{
-                  padding: "0.75rem 1.5rem",
-                  backgroundColor: "#10b981",
-                  opacity: submitting ? 0.5 : 1,
+                  padding: "0.6rem 1.5rem",
+                  backgroundColor: "#00684A",
+                  color: "#ffffff",
+                  border: "none",
+                  borderRadius: "0.375rem",
+                  fontSize: "0.95rem",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "0.5rem"
                 }}
               >
-                {submitting ? "Submitting..." : "Submit Whole Assessment"}
+                Next →
               </button>
-            )
-          )}
-          </div>
+            ) : (
+              !mcqSubmitted && hasMCQ && hasSubjective ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setConfirmModalConfig({
+                      title: "Lock MCQ Section",
+                      message: "Are you sure you want to lock the MCQ section? You will not be able to change your answers, but you can still review them and answer subjective questions.",
+                      onConfirm: () => {
+                        setShowConfirmModal(false);
+                        handleSubmitMCQSection();
+                      },
+                      confirmText: "Lock Section",
+                    });
+                    setShowConfirmModal(true);
+                  }}
+                  style={{
+                    padding: "0.6rem 1.5rem",
+                    backgroundColor: "#00684A",
+                    color: "#ffffff",
+                    border: "none",
+                    borderRadius: "0.375rem",
+                    fontSize: "0.95rem",
+                    fontWeight: 600,
+                    cursor: "pointer",
+                  }}
+                >
+                  Lock MCQ Section
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={async () => {
+                    await saveAllAnswerLogs();
+                    setConfirmModalConfig({
+                      title: "Confirm Submission",
+                      message: "Are you sure you want to submit the entire assessment? You cannot retake this assessment.",
+                      onConfirm: () => {
+                        setShowConfirmModal(false);
+                        handleSubmit();
+                      },
+                      confirmText: "Submit",
+                    });
+                    setShowConfirmModal(true);
+                  }}
+                  disabled={submitting}
+                  style={{
+                    padding: "0.6rem 1.5rem",
+                    backgroundColor: "#00684A",
+                    color: "#ffffff",
+                    border: "none",
+                    borderRadius: "0.375rem",
+                    fontSize: "0.95rem",
+                    fontWeight: 600,
+                    cursor: submitting ? "not-allowed" : "pointer",
+                    opacity: submitting ? 0.5 : 1,
+                  }}
+                >
+                  {submitting ? "Submitting..." : "Submit Whole Assessment"}
+                </button>
+              )
+            )}
+          </footer>
         )}
-        </div>
       </div>
-      
+
       {/* FULLSCREEN LOCK OVERLAY - only when AI Proctoring enabled */}
       {cameraProctorEnabled && (
         <FullscreenLockOverlay
@@ -2308,3 +2333,4 @@ export default function CustomMCQTakePage() {
     </div>
   );
 }
+
