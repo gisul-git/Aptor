@@ -1182,7 +1182,7 @@ export default function IdentityVerification({
               disabled={isCapturing}
               style={{
                 padding: "0.75rem 1.5rem",
-                backgroundColor: isCapturing ? "#94a3b8" : "#6953a3",
+                backgroundColor: isCapturing ? "#94a3b8" : "#00684A",
                 color: "#ffffff",
                 border: "none",
                 borderRadius: "0.5rem",
