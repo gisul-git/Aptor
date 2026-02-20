@@ -43,6 +43,8 @@ import {
   useSendInvitations,
 } from "@/hooks/api/useAssessments";
 
+
+import { User, Plus, X, Sparkles, FileType, CheckCircle2, ChevronRight, ArrowLeft, ArrowRight, Edit3, Link as LinkIcon, Copy, Lightbulb,BookOpen, FileText, Clock, FastForward, Check} from 'lucide-react';
 // ============================================
 // QUESTION RENDERING COMPONENTS
 // ============================================
@@ -4016,7 +4018,7 @@ export default function CreateNewAssessmentPage() {
   const [regenerateQuestionFeedback, setRegenerateQuestionFeedback] =
     useState<string>("");
   // Schedule settings (Station 4)
-  const [examMode, setExamMode] = useState<"strict" | "flexible">("strict");
+ const [examMode, setExamMode] = useState<"strict" | "flexible" | "custom" | "scheduled">("strict");
   const [duration, setDuration] = useState<string>("");
   const [visibilityMode, setVisibilityMode] = useState<string>("public");
   const [candidateRequirements, setCandidateRequirements] = useState<{
@@ -4051,6 +4053,54 @@ export default function CreateNewAssessmentPage() {
     "individual" | "bulk"
   >("individual");
 
+const [isUrlCopied, setIsUrlCopied] = useState(false);
+
+const handleCopyUrl = () => {
+    if (assessmentUrl) {
+        navigator.clipboard.writeText(assessmentUrl);
+        setIsUrlCopied(true);
+        // Reset back to original state after 1 seconds
+        setTimeout(() => setIsUrlCopied(false), 1000);
+    }
+};
+
+const handleStartCrafting = async () => {
+  if (!assessmentId) {
+    console.error("Assessment ID is missing. URL cannot be generated.");
+    return;
+  }
+
+  setIsCrafting(true);
+  setCraftingProgress(0);
+
+  // 2. Generate dynamic URL
+  const token = Math.random().toString(36).substring(2, 15);
+  const url = `${window.location.origin}/assessment/${assessmentId}/${token}`;
+  setAssessmentUrl(url);
+
+  // 3. Logic to calculate total duration - FIXED TS ERROR
+  const totalQs = topicsV2.reduce((acc, t) => 
+    acc + t.questionRows.reduce((sum, r) => sum + (r.questionsCount || 0), 0), 0
+  );
+  
+  // Update state with calculated duration string
+  setDuration(Math.round(totalQs * 2.5).toString());
+
+  // 4. Animation Engine
+  const interval = setInterval(() => {
+    setCraftingProgress((prev) => {
+      if (prev >= 100) {
+        clearInterval(interval);
+        setTimeout(() => {
+          setIsCrafting(false);
+          setShowFinalReview(true);
+        }, 600);
+        return 100;
+      }
+      return Math.min(prev + Math.floor(Math.random() * 8) + 2, 100);
+    });
+  }, 120);
+};
   
 const handleStartReviewProcess = () => {
   setIsCrafting(true);
@@ -10510,13 +10560,6 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
     }
   };
 
-  const handleCopyUrl = () => {
-    if (assessmentUrl) {
-      navigator.clipboard.writeText(assessmentUrl);
-      // You could show a toast notification here
-      alert("URL copied to clipboard!");
-    }
-  };
 
   const handleFinalize = async () => {
     setLoading(true);
@@ -10623,24 +10666,26 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
 
       <div
         style={{
-          backgroundColor: "#f1dcba",
+           backgroundColor: "#6EE7B7",
           minHeight: "100vh",
           padding: "2rem 0",
         }}
       >
-        <div className="container" >
+        <div
+  className="container"
+>
           <div className="card">
             {/* Progress Header Container - Made Sticky */}
             <div
   style={{
     position: "sticky",
     top: 0,
-    zIndex: 100, // Increased z-index to stay above all content
-    backgroundColor: "#EBFAFD", // Mint 50: Solid background prevents transparency [cite: 7, 91]
+    zIndex: 100, 
+    backgroundColor: "#EBFAFD", 
     paddingTop: "1.5rem",
     paddingBottom: "1rem",
     marginBottom: "2rem",
-    borderBottom: "1px solid #C9F4D4", // Mint 100 [cite: 12, 91]
+    borderBottom: "1px solid #C9F4D4", 
   }}
 >
   {/* Top Row: Back/Skip and Save Draft */}
@@ -10672,29 +10717,45 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
           gap: "0.5rem",
           fontSize: "1rem",
           fontWeight: 700,
-          color: "#1E5A3B", // Primary Text [cite: 22, 91]
+          color: "#1E5A3B", 
           padding: 0,
         }}
       >
-         Back
+       <ArrowLeft/>  Back 
       </button>
 
       {currentStation < 6 && (
         <button
-          type="button"
-          onClick={() => setCurrentStation(currentStation + 1)}
-          style={{
-            background: "none",
-            border: "none",
-            cursor: "pointer",
-            fontSize: "1rem",
-            fontWeight: 600,
-            color: "#2D7A52", // Secondary Text [cite: 25, 91]
-            padding: 0,
-          }}
-        >
-          Skip
-        </button>
+  type="button"
+  onClick={() => setCurrentStation(currentStation + 1)}
+  style={{
+    background: "none",
+    border: "2px solid #C9F4D4", 
+    borderRadius: "0.75rem",
+    cursor: "pointer",
+    fontSize: "1rem",
+    fontWeight: 700,
+    color: "#2D7A52", 
+    padding: "0.8rem 2rem", 
+    minWidth: "140px",      
+    display: "inline-flex", 
+    alignItems: "center",
+    justifyContent: "center",
+    gap: "0.5rem",
+    
+    transition: "all 0.2s ease",
+  }}
+  onMouseEnter={(e) => {
+    e.currentTarget.style.backgroundColor = "#EBFAFD"; 
+    e.currentTarget.style.borderColor = "#10b981";
+  }}
+  onMouseLeave={(e) => {
+    e.currentTarget.style.backgroundColor = "transparent";
+    e.currentTarget.style.borderColor = "#C9F4D4";
+  }}
+>
+  Skip <FastForward size={18} strokeWidth={2.5} />
+</button>
       )}
     </div>
 
@@ -10732,9 +10793,9 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
         gap: "0.5rem",
         padding: "0.6rem 1.25rem",
         backgroundColor: "#ffffff",
-        border: "1.5px solid #C9F4D4", // Mint 100 [cite: 12, 91]
+        border: "2px solid #6EE7B7", 
         borderRadius: "0.75rem",
-        color: "#1E5A3B", // Primary Text [cite: 22, 91]
+        color: "#1E5A3B", 
         fontWeight: 700,
         fontSize: "0.95rem",
         cursor: "pointer",
@@ -10767,7 +10828,7 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
       backgroundColor: "#ffffff",
       borderRadius: "4px",
       overflow: "hidden",
-      border: "1px solid #C9F4D4", // Subtle border for the track [cite: 12]
+      border: "1px solid #C9F4D4", 
     }}
   >
     <div
@@ -10837,7 +10898,7 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
                   }}
                 >
                   What's the job role?{" "}
-                  <span style={{ color: "#ef4444" }}>*</span>
+             
                 </h1>
 
                 {/* Job Designation Input */}
@@ -10877,7 +10938,7 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
                     color: "#0f766e", // Teal/Greenish text to match image vibe
                   }}
                 >
-                  <span style={{ fontSize: "1.25rem" }}>💡</span>
+                  <span style={{ fontSize: "1.25rem" }}><Lightbulb/></span>
                   <span
                     style={{
                       fontSize: "0.95rem",
@@ -10920,7 +10981,7 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
                       (e.currentTarget.style.transform = "scale(1)")
                     }
                   >
-                    <span>✨</span>
+                    <span><Sparkles/></span>
                     {loading ? "Generating..." : "Get AI Skills"}
                   
                   </button>
@@ -11046,33 +11107,34 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
                 {/* Continue Button (Bottom Navigation) */}
                 <div style={{ marginTop: "2rem" }}>
                   <button
-                    type="button"
-                    onClick={handleGenerateTopicsUnified} // 🟢 Trigger the logic you provided
-                    disabled={loading || selectedSkills.length === 0}
-                    style={{
-                      width: "100%",
-                      maxWidth: "200px",
-                      padding: "1rem 2rem",
-                      backgroundColor: "#6ee7b7",
-                      color: "#064e3b",
-                      fontSize: "1.125rem",
-                      fontWeight: 700,
-                      border: "none",
-                      borderRadius: "0.75rem",
-                      cursor:
-                        loading || selectedSkills.length === 0
-                          ? "not-allowed"
-                          : "pointer",
-                      boxShadow: "0 4px 6px -1px rgba(16, 185, 129, 0.2)",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      gap: "0.5rem",
-                      opacity: loading ? 0.7 : 1,
-                    }}
-                  >
-                    {loading ? "Generating..." : "Continue →"}
-                  </button>
+  type="button"
+  onClick={handleGenerateTopicsUnified} 
+  disabled={loading || selectedSkills.length === 0}
+  style={{
+    width: "100%",
+    maxWidth: "200px",
+    padding: "1rem 2rem",
+    backgroundColor: "#6EE7B7", 
+    color: "#064e3b",
+    fontSize: "1.125rem",
+    fontWeight: 700,
+    border: "none",
+    borderRadius: "0.75rem",
+    cursor: loading || selectedSkills.length === 0 ? "not-allowed" : "pointer",
+    boxShadow: "0 4px 6px -1px rgba(16, 185, 129, 0.2)",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: "0.5rem",
+    opacity: loading ? 0.7 : 1,
+  }}
+>
+  {loading ? "Generating..." : (
+    <>
+      Continue <ArrowRight size={20} />
+    </>
+  )}
+</button>
 
                   {/* Press Enter hint */}
                   <div
@@ -11094,7 +11156,7 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
             )}
 
             {/* Station 2: Configure Topics (NEW V2 IMPLEMENTATION) */}
-            {/* Station 2: Configure Topics (REDESIGNED) */}
+
             {currentStation === 2 && (
               <div
                 style={{
@@ -11127,8 +11189,7 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
                     lineHeight: 1.2,
                   }}
                 >
-                  Which skills do you want to assess?{" "}
-                  <span style={{ color: "#ef4444" }}>*</span>
+                  Which skills do you want to assess?
                 </h1>
 
                 {/* Main Input Field */}
@@ -11180,7 +11241,7 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
                     gap: "0.5rem",
                   }}
                 >
-                  <span>💡</span> Add at least 2 skills (press Enter after each)
+                  <span> <Lightbulb/></span> Add at least 2 skills (press Enter after each)
                 </div>
 
                 {/* Active Skills Display (Chips) */}
@@ -11276,7 +11337,7 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
                         e.currentTarget.style.backgroundColor = "#C9F4D4";
                     }}
                   >
-                    Continue <span>→</span>
+                    Continue <ArrowRight/>
                   </button>
 
                   <div
@@ -11621,7 +11682,7 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
                       gap: "0.5rem",
                     }}
                   >
-                    Continue <span>→</span>
+                    Continue <ArrowRight/>
                   </button>
 
                   <div
@@ -11644,449 +11705,427 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
 
             {/* Station 4: Schedule Exam */}
             {currentStation === 4 && (
+  <div
+    style={{
+      maxWidth: "800px",
+      margin: "0 auto",
+      fontFamily: "'Inter', sans-serif",
+    }}
+  >
+    <div
+      style={{
+        color: "#10b981",
+        fontWeight: 700,
+        fontSize: "0.875rem",
+        marginBottom: "1rem",
+      }}
+    >
+      STEP 4 OF 6
+    </div>
+    <h1
+      style={{
+        fontSize: "2.5rem",
+        fontWeight: 800,
+        color: "#064e3b",
+        marginBottom: "2rem",
+      }}
+    >
+      Configure topics and question types
+    </h1>
+
+    {/* Info and Add Button */}
+    <div
+      style={{
+        display: "flex",
+        gap: "1rem",
+        marginBottom: "2rem",
+        alignItems: "center",
+      }}
+    >
+      <div
+        style={{
+          flex: 1,
+          padding: "0.75rem 1.25rem",
+          backgroundColor: "#fffbeb",
+          border: "1px solid #fcd34d",
+          borderRadius: "0.5rem",
+          color: "#92400e",
+          fontSize: "0.875rem",
+          fontWeight: 500,
+        }}
+      >
+        ✨ AI generated these topics based on your skills
+      </div>
+      <button
+        onClick={() => setShowCustomTopicModal(true)}
+        style={{
+          padding: "0.75rem 1.25rem",
+          border: "1px dashed #10b981",
+          borderRadius: "0.5rem",
+          color: "#065f46",
+          fontWeight: 600,
+          cursor: "pointer",
+          backgroundColor: "#fff",
+        }}
+      >
+        + Add Custom Topic
+      </button>
+    </div>
+
+    {/* Topics List */}
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        gap: "1.5rem",
+        marginBottom: "3rem",
+      }}
+    >
+      {topicsV2.map((topic) => {
+        const totalQs = topic.questionRows.reduce(
+          (sum, row) => sum + (typeof row.questionsCount === 'number' ? row.questionsCount : parseInt(String(row.questionsCount)) || 0),
+          0,
+        );
+
+        return (
+          <div
+            key={topic.id}
+            style={{
+              padding: "1.5rem",
+              border: "1px solid #a7f3d0",
+              borderRadius: "1.25rem",
+              backgroundColor: "#ffffff",
+              boxShadow: "0 2px 4px rgba(0,0,0,0.02)",
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                marginBottom: "1.5rem",
+              }}
+            >
               <div
                 style={{
-                  maxWidth: "800px",
-                  margin: "0 auto",
-                  fontFamily: "'Inter', sans-serif",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "0.75rem",
                 }}
               >
-                <div
+                <span style={{ fontSize: "1.75rem" }}>⚡</span>
+                <h3
                   style={{
-                    color: "#10b981",
-                    fontWeight: 700,
-                    fontSize: "0.875rem",
-                    marginBottom: "1rem",
-                  }}
-                >
-                  STEP 4 OF 6
-                </div>
-                <h1
-                  style={{
-                    fontSize: "2.5rem",
+                    fontSize: "1.35rem",
                     fontWeight: 800,
                     color: "#064e3b",
-                    marginBottom: "2rem",
+                    margin: 0,
                   }}
                 >
-                  Configure topics and question types{" "}
-                  <span style={{ color: "#ef4444" }}>*</span>
-                </h1>
-
-                {/* Info and Add Button */}
-                <div
-                  style={{
-                    display: "flex",
-                    gap: "1rem",
-                    marginBottom: "2rem",
-                    alignItems: "center",
-                  }}
-                >
-                  <div
-                    style={{
-                      flex: 1,
-                      padding: "0.75rem 1.25rem",
-                      backgroundColor: "#fffbeb",
-                      border: "1px solid #fcd34d",
-                      borderRadius: "0.5rem",
-                      color: "#92400e",
-                      fontSize: "0.875rem",
-                      fontWeight: 500,
-                    }}
-                  >
-                    ✨ AI generated these topics based on your skills
-                  </div>
-                  <button
-                    onClick={() => setShowCustomTopicModal(true)}
-                    style={{
-                      padding: "0.75rem 1.25rem",
-                      border: "1px dashed #10b981",
-                      borderRadius: "0.5rem",
-                      color: "#065f46",
-                      fontWeight: 600,
-                      cursor: "pointer",
-                      backgroundColor: "#fff",
-                    }}
-                  >
-                    + Add Custom Topic
-                  </button>
-                </div>
-
-                {/* Topics List */}
-                <div
-                  style={{
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: "1.5rem",
-                    marginBottom: "3rem",
-                  }}
-                >
-                  {topicsV2.map((topic) => {
-                    const totalQs = topic.questionRows.reduce(
-                      (sum, row) => sum + (typeof row.questionsCount === 'number' ? row.questionsCount : parseInt(String(row.questionsCount)) || 0),
-                      0,
-                    );
-
-                    return (
-                      <div
-                        key={topic.id}
-                        style={{
-                          padding: "1.5rem",
-                          border: "1px solid #a7f3d0",
-                          borderRadius: "1.25rem",
-                          backgroundColor: "#ffffff",
-                          boxShadow: "0 2px 4px rgba(0,0,0,0.02)",
-                        }}
-                      >
-                        <div
-                          style={{
-                            display: "flex",
-                            justifyContent: "space-between",
-                            alignItems: "center",
-                            marginBottom: "1.5rem",
-                          }}
-                        >
-                          <div
-                            style={{
-                              display: "flex",
-                              alignItems: "center",
-                              gap: "0.75rem",
-                            }}
-                          >
-                            <span style={{ fontSize: "1.75rem" }}>⚡</span>
-                            <h3
-                              style={{
-                                fontSize: "1.35rem",
-                                fontWeight: 800,
-                                color: "#064e3b",
-                                margin: 0,
-                              }}
-                            >
-                              {topic.label}
-                            </h3>
-                          </div>
-                          <div style={{ display: "flex", gap: "10px" }}>
-                            <button
-                              style={{
-                                background: "none",
-                                border: "none",
-                                color: "#94a3b8",
-                                cursor: "pointer",
-                              }}
-                            >
-                              ⋮
-                            </button>
-                            <button
-                              onClick={() => handleRemoveTopicV2(topic.id)}
-                              style={{
-                                background: "none",
-                                border: "none",
-                                color: "#ef4444",
-                                cursor: "pointer",
-                                fontSize: "1.25rem",
-                              }}
-                            >
-                              ×
-                            </button>
-                          </div>
-                        </div>
-
-                        <div style={{ marginBottom: "1.5rem" }}>
-                          <p
-                            style={{
-                              fontSize: "0.875rem",
-                              fontWeight: 700,
-                              color: "#0f766e",
-                              marginBottom: "1rem",
-                            }}
-                          >
-                            Select question types:
-                          </p>
-                          <div
-                            style={{
-                              display: "flex",
-                              flexWrap: "wrap",
-                              gap: "0.75rem",
-                            }}
-                          >
-                            {["MCQ", "Coding", "Subjective", "Pseudo Code"].map(
-                              (type) => {
-                                const rowType =
-                                  type === "Pseudo Code" ? "PseudoCode" : type;
-                                const row = topic.questionRows.find(
-                                  (r) => r.questionType === rowType,
-                                );
-                                const isSelected = !!row;
-
-                                return (
-                                  <label
-                                    key={type}
-                                    style={{
-                                      display: "flex",
-                                      alignItems: "center",
-                                      gap: "0.6rem",
-                                      padding: "0.6rem 1rem",
-                                      border: `1.5px solid ${isSelected ? "#10b981" : "#e2e8f0"}`,
-                                      borderRadius: "0.75rem",
-                                      backgroundColor: isSelected
-                                        ? "#ecfdf5"
-                                        : "#ffffff",
-                                      cursor: "pointer",
-                                      transition: "all 0.2s ease",
-                                    }}
-                                  >
-                                    <input
-                                      type="checkbox"
-                                      checked={isSelected}
-                                      onChange={() =>
-                                        handleToggleQuestionType(
-                                          topic.id,
-                                          rowType,
-                                        )
-                                      }
-                                      style={{
-                                        width: "16px",
-                                        height: "16px",
-                                        accentColor: "#10b981",
-                                      }}
-                                    />
-                                    <span
-                                      style={{
-                                        fontSize: "0.9rem",
-                                        fontWeight: 600,
-                                        color: isSelected
-                                          ? "#064e3b"
-                                          : "#64748b",
-                                      }}
-                                    >
-                                      {type}
-                                    </span>
-
-                                    {isSelected && (
-                                      <div
-                                        style={{
-                                          marginLeft: "10px",
-                                          backgroundColor: "#d1fae5",
-                                          borderRadius: "10px",
-                                          display: "flex",
-                                          alignItems: "center",
-                                          justifyContent: "center",
-                                          height: "32px",
-                                          width: "45px",
-                                          boxShadow:
-                                            "inset 0 1px 2px rgba(0,0,0,0.05)",
-                                        }}
-                                      >
-                                        <input
-                                          type="text"
-                                          inputMode="numeric"
-                                          value={row.questionsCount}
-                                          onChange={(e) => {
-                                            const val = e.target.value.replace(
-                                              /\D/g,
-                                              "",
-                                            );
-                                            handleUpdateRow(
-                                              topic.id,
-                                              row.rowId,
-                                              "questionsCount",
-                                              parseInt(val) || 0,
-                                            );
-                                          }}
-                                          style={{
-                                            width: "100%",
-                                            border: "none",
-                                            textAlign: "center",
-                                            fontWeight: "900",
-                                            outline: "none",
-                                            backgroundColor: "transparent",
-                                            color: "#064e3b",
-                                            fontSize: "1rem",
-                                            lineHeight: "32px",
-                                          }}
-                                        />
-                                      </div>
-                                    )}
-                                  </label>
-                                );
-                              },
-                            )}
-                          </div>
-                        </div>
-
-                        <div
-                          style={{
-                            display: "flex",
-                            justifyContent: "space-between",
-                            alignItems: "center",
-                            paddingTop: "1.25rem",
-                            borderTop: "1px solid #f1f5f9",
-                          }}
-                        >
-                          <div
-                            style={{
-                              display: "flex",
-                              alignItems: "center",
-                              gap: "0.6rem",
-                            }}
-                          >
-                            <span
-                              style={{
-                                fontSize: "0.875rem",
-                                color: "#64748b",
-                                fontWeight: 500,
-                              }}
-                            >
-                              Difficulty:
-                            </span>
-                            <select
-                              value={
-                                topic.questionRows[0]?.difficulty || "Medium"
-                              }
-                              onChange={(e) =>
-                                handleUpdateRow(
-                                  topic.id,
-                                  topic.questionRows[0]?.rowId,
-                                  "difficulty",
-                                  e.target.value,
-                                )
-                              }
-                              style={{
-                                padding: "0.4rem 0.6rem",
-                                borderRadius: "0.5rem",
-                                border: "1px solid #e2e8f0",
-                                backgroundColor: "#fff",
-                                fontWeight: 600,
-                                color: "#1e293b",
-                                outline: "none",
-                              }}
-                            >
-                              <option value="Easy">Easy</option>
-                              <option value="Medium">Medium</option>
-                              <option value="Hard">Hard</option>
-                            </select>
-                          </div>
-                          <div
-                            style={{
-                              fontWeight: 800,
-                              color: "#064e3b",
-                              fontSize: "0.95rem",
-                            }}
-                          >
-                            Total: {totalQs} questions
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-
-                {/* Summary Bar with Dynamic Time Calculation */}
-                {(() => {
-                  const totalQuestions = topicsV2.reduce(
-                    (acc, t) =>
-                      acc +
-                      t.questionRows.reduce(
-                        (sum, r) => sum + (typeof r.questionsCount === 'number' ? r.questionsCount : parseInt(String(r.questionsCount)) || 0),
-                        0,
-                      ),
-                    0,
-                  );
-
-                  // Calculate total seconds based on your specific functions
-                  const totalSeconds = topicsV2.reduce((acc, topic) => {
-                    return (
-                      acc +
-                      topic.questionRows.reduce((rowAcc, row) => {
-                        const count = (row.questionsCount) || 0;
-                        const baseTime = getBaseTimePerQuestion(
-                          row.questionType,
-                        );
-                        const multiplier = getDifficultyMultiplier(
-                          row.difficulty,
-                        );
-                        return rowAcc + count * baseTime * multiplier;
-                      }, 0)
-                    );
-                  }, 0);
-
-                  const totalMinutes = Math.ceil(totalSeconds / 60);
-
-                  return (
-                    <div
-                      style={{
-                        padding: "1.25rem 2rem",
-                        backgroundColor: "#ecfdf5",
-                        border: "1px solid #6ee7b7",
-                        borderRadius: "1rem",
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "1rem",
-                        marginBottom: "2.5rem",
-                      }}
-                    >
-                      <span
-                        style={{
-                          fontWeight: 700,
-                          color: "#065f46",
-                          display: "flex",
-                          alignItems: "center",
-                          gap: "0.5rem",
-                        }}
-                      >
-                        📚 {topicsV2.length} topics
-                      </span>
-                      <span style={{ color: "#6ee7b7", fontSize: "1.2rem" }}>
-                        •
-                      </span>
-                      <span
-                        style={{
-                          fontWeight: 700,
-                          color: "#065f46",
-                          display: "flex",
-                          alignItems: "center",
-                          gap: "0.5rem",
-                        }}
-                      >
-                        📝 {totalQuestions} questions
-                      </span>
-                      <span style={{ color: "#6ee7b7", fontSize: "1.2rem" }}>
-                        •
-                      </span>
-                      <span
-                        style={{
-                          fontWeight: 700,
-                          color: "#065f46",
-                          display: "flex",
-                          alignItems: "center",
-                          gap: "0.5rem",
-                        }}
-                      >
-                        ⏱️ ~{formatTime(totalMinutes)}
-                      </span>
-                    </div>
-                  );
-                })()}
-
+                  {topic.label}
+                </h3>
+              </div>
+              <div style={{ display: "flex", gap: "10px" }}>
                 <button
-                  onClick={() => setCurrentStation(5)}
                   style={{
-                    width: "220px",
-                    padding: "1.1rem 2rem",
-                    backgroundColor: "#6ee7b7",
-                    color: "#064e3b",
-                    fontSize: "1.125rem",
-                    fontWeight: 800,
+                    background: "none",
                     border: "none",
-                    borderRadius: "1rem",
+                    color: "#94a3b8",
                     cursor: "pointer",
-                    boxShadow: "0 10px 15px -3px rgba(110, 231, 183, 0.3)",
                   }}
                 >
-                  Continue →
+                  ⋮
+                </button>
+                <button
+                  onClick={() => handleRemoveTopicV2(topic.id)}
+                  style={{
+                    background: "none",
+                    border: "none",
+                    color: "#ef4444",
+                    cursor: "pointer",
+                    fontSize: "1.25rem",
+                  }}
+                >
+                  ×
                 </button>
               </div>
-            )}
+            </div>
+
+            <div style={{ marginBottom: "1.5rem" }}>
+              <p
+                style={{
+                  fontSize: "0.875rem",
+                  fontWeight: 700,
+                  color: "#0f766e",
+                  marginBottom: "1rem",
+                }}
+              >
+                Select question types:
+              </p>
+              <div
+                style={{
+                  display: "flex",
+                  flexWrap: "wrap",
+                  gap: "0.75rem",
+                }}
+              >
+                {["MCQ", "Coding", "Subjective", "Pseudo Code"].map((type) => {
+                  const rowType = type === "Pseudo Code" ? "PseudoCode" : type;
+                  const row = topic.questionRows.find((r) => r.questionType === rowType);
+                  const isSelected = !!row;
+
+                  return (
+                    <label
+                      key={type}
+                      style={{
+                        display: "inline-flex", // 🟢 Fixed Alignment
+                        alignItems: "center",   // 🟢 Vertically Centers All Elements
+                        gap: "0.6rem",
+                        padding: "0.6rem 1rem",
+                        border: `1.5px solid ${isSelected ? "#10b981" : "#e2e8f0"}`,
+                        borderRadius: "0.75rem",
+                        backgroundColor: isSelected ? "#ecfdf5" : "#ffffff",
+                        cursor: "pointer",
+                        transition: "all 0.2s ease",
+                        lineHeight: "1",        // 🟢 Ensures no text offset
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={() =>
+                          handleToggleQuestionType(topic.id, rowType)
+                        }
+                        style={{
+                          width: "16px",
+                          height: "16px",
+                          margin: 0,             // 🟢 Resets browser margin
+                          accentColor: "#10b981",
+                        }}
+                      />
+                      <span
+                        style={{
+                          fontSize: "0.9rem",
+                          fontWeight: 600,
+                          color: isSelected ? "#064e3b" : "#64748b",
+                          userSelect: "none",
+                        }}
+                      >
+                        {type}
+                      </span>
+
+                      {isSelected && (
+                        <div
+                          style={{
+                            marginLeft: "6px",
+                            backgroundColor: "#d1fae5",
+                            borderRadius: "8px",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            height: "28px",      // 🟢 Balanced height
+                            width: "40px",       // 🟢 Balanced width
+                            boxShadow: "inset 0 1px 2px rgba(0,0,0,0.05)",
+                          }}
+                        >
+                          <input
+                            type="text"
+                            inputMode="numeric"
+                            value={row.questionsCount}
+                            onChange={(e) => {
+                              const val = e.target.value.replace(/\D/g, "");
+                              handleUpdateRow(
+                                topic.id,
+                                row.rowId,
+                                "questionsCount",
+                                parseInt(val) || 0
+                              );
+                            }}
+                            style={{
+                              width: "100%",
+                              border: "none",
+                              textAlign: "center",
+                              fontWeight: "900",
+                              outline: "none",
+                              backgroundColor: "transparent",
+                              color: "#064e3b",
+                              fontSize: "0.85rem",
+                            }}
+                          />
+                        </div>
+                      )}
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                paddingTop: "1.25rem",
+                borderTop: "1px solid #f1f5f9",
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "0.6rem",
+                }}
+              >
+                <span
+                  style={{
+                    fontSize: "0.875rem",
+                    color: "#64748b",
+                    fontWeight: 500,
+                  }}
+                >
+                  Difficulty:
+                </span>
+                <select
+                  value={topic.questionRows[0]?.difficulty || "Medium"}
+                  onChange={(e) =>
+                    handleUpdateRow(
+                      topic.id,
+                      topic.questionRows[0]?.rowId,
+                      "difficulty",
+                      e.target.value
+                    )
+                  }
+                  style={{
+                    padding: "0.4rem 0.6rem",
+                    borderRadius: "0.5rem",
+                    border: "1px solid #e2e8f0",
+                    backgroundColor: "#fff",
+                    fontWeight: 600,
+                    color: "#1e293b",
+                    outline: "none",
+                  }}
+                >
+                  <option value="Easy">Easy</option>
+                  <option value="Medium">Medium</option>
+                  <option value="Hard">Hard</option>
+                </select>
+              </div>
+              <div
+                style={{
+                  fontWeight: 800,
+                  color: "#064e3b",
+                  fontSize: "0.95rem",
+                }}
+              >
+                Total: {totalQs} questions
+              </div>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+
+    {/* Summary Bar */}
+    {(() => {
+      const totalQuestions = topicsV2.reduce(
+        (acc, t) =>
+          acc +
+          t.questionRows.reduce(
+            (sum, r) => sum + (typeof r.questionsCount === 'number' ? r.questionsCount : parseInt(String(r.questionsCount)) || 0),
+            0,
+          ),
+        0,
+      );
+
+      const totalSeconds = topicsV2.reduce((acc, topic) => {
+        return (
+          acc +
+          topic.questionRows.reduce((rowAcc, row) => {
+            const count = (row.questionsCount) || 0;
+            const baseTime = getBaseTimePerQuestion(row.questionType);
+            const multiplier = getDifficultyMultiplier(row.difficulty);
+            return rowAcc + count * baseTime * multiplier;
+          }, 0)
+        );
+      }, 0);
+
+      const totalMinutes = Math.ceil(totalSeconds / 60);
+
+      return (
+        <div
+          style={{
+            padding: "1.25rem 2rem",
+            backgroundColor: "#ecfdf5",
+            border: "1px solid #6ee7b7",
+            borderRadius: "1rem",
+            display: "flex",
+            alignItems: "center",
+            gap: "1rem",
+            marginBottom: "2.5rem",
+          }}
+        >
+          <span
+            style={{
+              fontWeight: 700,
+              color: "#065f46",
+              display: "flex",
+              alignItems: "center",
+              gap: "0.5rem",
+            }}
+          >
+            <BookOpen size={18} strokeWidth={2.5} /> {topicsV2.length} topics
+          </span>
+          <span style={{ color: "#6ee7b7", fontSize: "1.2rem" }}>•</span>
+          <span
+            style={{
+              fontWeight: 700,
+              color: "#065f46",
+              display: "flex",
+              alignItems: "center",
+              gap: "0.5rem",
+            }}
+          >
+            <FileText size={18} strokeWidth={2.5} /> {totalQuestions} questions
+          </span>
+          <span style={{ color: "#6ee7b7", fontSize: "1.2rem" }}>•</span>
+          <span
+            style={{
+              fontWeight: 700,
+              color: "#065f46",
+              display: "flex",
+              alignItems: "center",
+              gap: "0.5rem",
+            }}
+          >
+            <Clock size={18} strokeWidth={2.5} /> ~{formatTime(totalMinutes)}
+          </span>
+        </div>
+      );
+    })()}
+
+    <button
+      onClick={() => setCurrentStation(5)}
+      style={{
+        width: "220px",
+        padding: "1.1rem 2rem",
+        backgroundColor: "#6EE7B7",
+        color: "#064e3b",
+        fontSize: "1.125rem",
+        fontWeight: 800,
+        border: "none",
+        borderRadius: "1rem",
+        cursor: "pointer",
+        boxShadow: "0 10px 15px -3px rgba(128, 237, 153, 0.3)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: "0.5rem",
+      }}
+    >
+      Continue <ArrowRight size={20} strokeWidth={2.5} />
+    </button>
+  </div>
+)}
 
             {/* --- ADD THIS MODAL COMPONENT HERE --- */}
             {showCustomTopicModal && (
@@ -12680,69 +12719,101 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
     {!isCrafting && !showFinalReview && (
       <>
         <div style={{ color: "#10b981", fontWeight: 700, fontSize: "0.875rem", marginBottom: "1rem" }}>
-          STEP 5 OF 5 <span style={{ marginLeft: "8px" }}>🎉 Final Step!</span>
+          STEP 6 OF 6 <span style={{ marginLeft: "8px" }}> Final Step!</span>
         </div>
         <h1 style={{ fontSize: "2.8rem", fontWeight: 800, color: "#1E5A3B", marginBottom: "0.5rem" }}>Add Candidates</h1>
-        <p style={{ color: "#2D7A52", marginBottom: "2rem", fontSize: "1.125rem", fontWeight: 500 }}>
+        <p style={{ color: "#2D7A52", marginBottom: "2.5rem", fontSize: "1.125rem", fontWeight: 500 }}>
           Choose how you want to add candidates:
         </p>
 
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1.5rem", marginBottom: "2rem" }}>
+        {/* Tab Selection */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1.5rem", marginBottom: "2.5rem" }}>
           <div
             onClick={() => setActiveCandidateTab("individual")}
             style={{
               padding: "1.5rem",
-              border: `2px solid ${activeCandidateTab === "individual" ? "#C9F4D4" : "#EBFAFD"}`,
-              borderRadius: "1rem",
+              border: `2px solid ${activeCandidateTab === "individual" ? "#10b981" : "#EBFAFD"}`,
+              borderRadius: "1.25rem",
               backgroundColor: activeCandidateTab === "individual" ? "#EBFAFD" : "#ffffff",
               cursor: "pointer",
-              transition: "0.2s",
+              transition: "0.3s ease",
             }}
           >
-            <div style={{ fontSize: "2.5rem", marginBottom: "1rem", opacity: activeCandidateTab === "individual" ? 1 : 0.5 }}>👤</div>
-            <div style={{ fontWeight: 800, color: "#1E5A3B", fontSize: "1.1rem" }}>Add Individual</div>
-            {activeCandidateTab === "individual" && <div style={{ fontSize: "0.75rem", color: "#10b981", fontWeight: 700, marginTop: "4px" }}>Selected</div>}
+            <div style={{ width: '48px', height: '48px', backgroundColor: '#C9F4D4', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '1rem' }}>
+              <User size={24} color="#1E5A3B" />
+            </div>
+            <div style={{ fontWeight: 800, color: "#1E5A3B", fontSize: "1.15rem" }}>Add Individual</div>
+            {activeCandidateTab === "individual" && <div style={{ fontSize: "0.75rem", color: "#10b981", fontWeight: 800, marginTop: "4px" }}>Selected</div>}
           </div>
+
           <div
             onClick={() => setActiveCandidateTab("bulk")}
             style={{
               padding: "1.5rem",
-              border: `2px solid ${activeCandidateTab === "bulk" ? "#C9F4D4" : "#EBFAFD"}`,
-              borderRadius: "1rem",
+              border: `2px solid ${activeCandidateTab === "bulk" ? "#10b981" : "#EBFAFD"}`,
+              borderRadius: "1.25rem",
               backgroundColor: activeCandidateTab === "bulk" ? "#EBFAFD" : "#ffffff",
               cursor: "pointer",
-              transition: "0.2s",
+              transition: "0.3s ease",
             }}
           >
-            <div style={{ fontSize: "2.5rem", marginBottom: "1rem", opacity: activeCandidateTab === "bulk" ? 1 : 0.5 }}>📄</div>
-            <div style={{ fontWeight: 800, color: "#1E5A3B", fontSize: "1.1rem" }}>Bulk Upload</div>
+            <div style={{ width: '48px', height: '48px', backgroundColor: '#C9F4D4', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '1rem' }}>
+              <FileText size={24} color="#1E5A3B" />
+            </div>
+            <div style={{ fontWeight: 800, color: "#1E5A3B", fontSize: "1.15rem" }}>Bulk Upload</div>
+            {activeCandidateTab === "bulk" && <div style={{ fontSize: "0.75rem", color: "#10b981", fontWeight: 800, marginTop: "4px" }}>Selected</div>}
           </div>
         </div>
 
+        {/* Input Forms */}
         {activeCandidateTab === "individual" ? (
-          <div style={{ padding: "2rem", backgroundColor: "#ffffff", border: "1.5px solid #C9F4D4", borderRadius: "1.5rem", marginBottom: "2rem" }}>
+          <div style={{ padding: "2.5rem", backgroundColor: "#ffffff", border: "1.5px solid #C9F4D4", borderRadius: "1.5rem", marginBottom: "2.5rem" }}>
             <h2 style={{ fontSize: "1.25rem", fontWeight: 800, color: "#1E5A3B", marginBottom: "1.5rem" }}>Candidate Information</h2>
             <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
-              <input type="text" value={candidateName} onChange={(e) => setCandidateName(e.target.value)} placeholder="Full Name *" style={{ width: "100%", padding: "1rem", border: "1.5px solid #C9F4D4", borderRadius: "0.75rem", outline: "none" }} />
-              <input type="email" value={candidateEmail} onChange={(e) => setCandidateEmail(e.target.value)} placeholder="Email *" style={{ width: "100%", padding: "1rem", border: "1.5px solid #C9F4D4", borderRadius: "0.75rem", outline: "none" }} />
-              <button onClick={handleAddCandidate} style={{ padding: "1rem", border: "1.5px dashed #C9F4D4", borderRadius: "0.75rem", backgroundColor: "#ffffff", color: "#4A9A6A", fontWeight: 700, cursor: "pointer" }}>+ Add Another Candidate</button>
+              <div style={{ display: 'grid', gap: '0.5rem' }}>
+                <label style={{ fontSize: '0.9rem', fontWeight: 700, color: '#1E5A3B' }}>Name </label>
+                <input type="text" value={candidateName} onChange={(e) => setCandidateName(e.target.value)} placeholder="John Doe" style={{ width: "100%", padding: "1rem", border: "1.5px solid #C9F4D4", borderRadius: "0.75rem", outline: "none" }} />
+              </div>
+              <div style={{ display: 'grid', gap: '0.5rem' }}>
+                <label style={{ fontSize: '0.9rem', fontWeight: 700, color: '#1E5A3B' }}>Email </label>
+                <input type="email" value={candidateEmail} onChange={(e) => setCandidateEmail(e.target.value)} placeholder="john.doe@example.com" style={{ width: "100%", padding: "1rem", border: "1.5px solid #C9F4D4", borderRadius: "0.75rem", outline: "none" }} />
+              </div>
+              <button onClick={handleAddCandidate} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', padding: "1rem", border: "1.5px dashed #C9F4D4", borderRadius: "0.75rem", backgroundColor: "#ffffff", color: "#10b981", fontWeight: 700, cursor: "pointer" }}>
+                <Plus size={18} /> Add Another Candidate
+              </button>
             </div>
           </div>
         ) : (
-          <div style={{ padding: "3rem 2rem", backgroundColor: "#ffffff", border: "2px dashed #C9F4D4", borderRadius: "1.5rem", marginBottom: "2rem", textAlign: "center" }}>
-            <div style={{ fontSize: "3.5rem", marginBottom: "1rem" }}>📄</div>
+          <div style={{ padding: "4rem 2rem", backgroundColor: "#ffffff", border: "2px dashed #C9F4D4", borderRadius: "1.5rem", marginBottom: "2.5rem", textAlign: "center" }}>
+            <FileType size={48} color="#10b981" style={{ marginBottom: '1.5rem' }} />
             <h2 style={{ fontSize: "1.5rem", fontWeight: 800, color: "#1E5A3B" }}>Drag & drop CSV or Excel file here</h2>
-            <button onClick={() => document.getElementById("csv-upload-input")?.click()} style={{ marginTop: "1rem", padding: "0.8rem 2.5rem", backgroundColor: "#C9F4D4", color: "#1E5A3B", border: "none", borderRadius: "0.75rem", fontWeight: 800, cursor: "pointer" }}>Browse Files</button>
-            <input type="file" id="csv-upload-input" accept=".csv" onChange={handleCsvUpload} style={{ display: "none" }} />
+            <p style={{ color: "#4A9A6A", fontWeight: 600, margin: '0.5rem 0 1.5rem' }}>or click to browse</p>
+            <button onClick={() => document.getElementById("csv-upload-input")?.click()} style={{ padding: "0.8rem 2.5rem", backgroundColor: "#10b981", color: "#ffffff", border: "none", borderRadius: "0.75rem", fontWeight: 800, cursor: "pointer" }}>Browse Files</button>
+            <input type="file" id="csv-upload-input" accept=".csv, .xlsx, .xls" onChange={handleCsvUpload} style={{ display: "none" }} />
           </div>
         )}
 
-        <div style={{ marginBottom: "2.5rem" }}>
-          <h3 style={{ fontSize: "1.1rem", fontWeight: 800, color: "#1E5A3B", marginBottom: "1rem" }}>Added Candidates ({candidates.length})</h3>
+        {/* Added Candidates List */}
+        <div style={{ marginBottom: "3rem" }}>
+          <h3 style={{ fontSize: "1.2rem", fontWeight: 800, color: "#1E5A3B", marginBottom: "1rem" }}>Added Candidates ({candidates.length})</h3>
           {candidates.length === 0 ? (
-            <div style={{ padding: "3rem", border: "1.5px dashed #C9F4D4", borderRadius: "1.5rem", textAlign: "center", backgroundColor: "#ffffff" }}>
-              <div style={{ fontSize: "3rem", marginBottom: "1rem" }}>✨</div>
-              <p style={{ color: "#2D7A52", fontWeight: 700 }}>No candidates added yet</p>
+            <div 
+              style={{ 
+                padding: "4rem", 
+                border: "1.5px dashed #C9F4D4", 
+                borderRadius: "1.5rem", 
+                backgroundColor: "#ffffff",
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                justifyContent: "center",
+                textAlign: "center" 
+              }}
+            >
+              <Sparkles size={48} color="#6ee7b7" style={{ marginBottom: '1rem' }} />
+              <p style={{ color: "#2D7A52", fontWeight: 700, margin: 0 }}>
+                No candidates added yet
+              </p>
             </div>
           ) : (
             <div style={{ display: "grid", gap: "0.75rem" }}>
@@ -12750,7 +12821,7 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
                 <div key={i} style={{ display: "flex", alignItems: "center", gap: "1rem", padding: "1rem", backgroundColor: "#ffffff", border: "1.5px solid #C9F4D4", borderRadius: "1rem" }}>
                   <div style={{ width: "45px", height: "45px", backgroundColor: "#C9F4D4", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, color: "#1E5A3B" }}>{c.name.charAt(0).toUpperCase()}</div>
                   <div style={{ flex: 1 }}><div style={{ fontWeight: 800, color: "#1E5A3B" }}>{c.name}</div><div style={{ fontSize: "0.85rem", color: "#4A9A6A" }}>{c.email}</div></div>
-                  <button onClick={() => handleRemoveCandidate(c.email)} style={{ background: "none", border: "none", color: "#ef4444", fontSize: "1.25rem", cursor: "pointer" }}>×</button>
+                  <button onClick={() => handleRemoveCandidate(c.email)} style={{ background: "none", border: "none", color: "#ef4444", cursor: "pointer" }}><X size={20} /></button>
                 </div>
               ))}
             </div>
@@ -12758,100 +12829,268 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
         </div>
 
         <button 
-          onClick={() => {
-            setIsCrafting(true);
-            let progress = 0;
-            const interval = setInterval(() => {
-              progress += Math.floor(Math.random() * 5) + 2;
-              if (progress >= 100) {
-                clearInterval(interval);
-                setCraftingProgress(100);
-                setTimeout(() => { setIsCrafting(false); setShowFinalReview(true); }, 500);
-              } else { setCraftingProgress(progress); }
-            }, 100);
-          }}
-          style={{ width: "100%", padding: "1.25rem", backgroundColor: "#C9F4D4", color: "#1E5A3B", fontSize: "1.25rem", fontWeight: 900, border: "none", borderRadius: "1.25rem", cursor: "pointer", boxShadow: "0 10px 25px -5px rgba(201, 244, 212, 0.5)" }}
+          onClick={handleStartCrafting}
+          style={{ width: "100%", padding: "1.25rem", backgroundColor: "#10b981", color: "#ffffff", fontSize: "1.25rem", fontWeight: 900, border: "none", borderRadius: "1rem", cursor: "pointer", boxShadow: "0 10px 25px rgba(16, 185, 129, 0.3)", display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px' }}
         >
-          Review Assessment
+          Review Assessment <ChevronRight size={24} />
         </button>
       </>
     )}
 
-    {/* PHASE 2: AI Crafting Animation */}
+    {/* PHASE 2: AI Crafting Overlay */}
     {isCrafting && (
       <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "#EBFAFD", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", zIndex: 9999 }}>
-        <div style={{ width: "140px", height: "140px", backgroundColor: "#C9F4D4", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: "3rem", fontSize: "4rem", boxShadow: "0 0 40px rgba(201, 244, 212, 0.4)" }}>✨</div>
+        <div style={{ width: "140px", height: "140px", backgroundColor: "#C9F4D4", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: "3rem", fontSize: "4rem", boxShadow: "0 0 50px rgba(201, 244, 212, 0.6)" }}>✨</div>
         <h1 style={{ color: "#1E5A3B", fontSize: "2.8rem", fontWeight: 800, marginBottom: "2.5rem" }}>AI is Crafting Your Assessment</h1>
-        <div style={{ width: "350px", height: "10px", backgroundColor: "#ffffff", borderRadius: "5px", marginBottom: "1.5rem", overflow: "hidden", border: "1px solid #C9F4D4" }}>
-          <div style={{ width: `${craftingProgress}%`, height: "100%", backgroundColor: "#10b981", transition: "width 0.2s ease" }} />
+        <div style={{ width: "400px", height: "12px", backgroundColor: "#ffffff", borderRadius: "6px", marginBottom: "1.5rem", overflow: "hidden", border: "1px solid #C9F4D4" }}>
+          <div style={{ width: `${craftingProgress}%`, height: "100%", backgroundColor: "#10b981", transition: "width 0.3s ease-out" }} />
         </div>
-        <div style={{ color: "#1E5A3B", fontWeight: 800, fontSize: "2rem" }}>{craftingProgress}%</div>
+        <div style={{ color: "#1E5A3B", fontWeight: 800, fontSize: "2rem", marginBottom: "3rem" }}>{craftingProgress}%</div>
+        
+        <div style={{ display: 'grid', gap: '1rem', textAlign: 'left' }}>
+          {[
+            { label: 'Analyzing job requirements', done: craftingProgress > 25 },
+            { label: 'Generating MCQ questions', done: craftingProgress > 50 },
+            { label: 'Creating coding challenges', done: craftingProgress > 75 },
+            { label: 'Finalizing assessment', done: craftingProgress > 90 }
+          ].map((step, idx) => (
+            <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '1rem', color: step.done ? '#1E5A3B' : '#4A9A6A', opacity: step.done ? 1 : 0.6 }}>
+              <CheckCircle2 size={20} color={step.done ? "#10b981" : "#cbd5e1"} />
+              <span style={{ fontWeight: 600, fontSize: '1.1rem' }}>{step.label}</span>
+            </div>
+          ))}
+        </div>
       </div>
     )}
 
     {/* PHASE 3: Final Review Card */}
-    {showFinalReview && (
-      <div>
-        <div style={{ textAlign: "center", marginBottom: "3rem" }}>
-          <div style={{ fontSize: "3.5rem", marginBottom: "1rem" }}>✨</div>
-          <h1 style={{ fontSize: "2.8rem", fontWeight: 800, color: "#1E5A3B", marginBottom: "0.5rem" }}>Almost There!</h1>
-          <p style={{ color: "#2D7A52", fontSize: "1.125rem", fontWeight: 500 }}>Review your assessment before we generate questions</p>
-        </div>
+    {showFinalReview && (() => {
+    
+    const totalQuestionsCount = topicsV2.reduce(
+        (acc, t) => acc + t.questionRows.reduce(
+            (sum, r) => sum + (typeof r.questionsCount === 'number' ? r.questionsCount : parseInt(String(r.questionsCount)) || 0),
+            0,
+        ),
+        0,
+    );
 
-        <div style={{ padding: "3rem", backgroundColor: "#ffffff", border: "1.5px solid #C9F4D4", borderRadius: "2rem", marginBottom: "2rem", boxShadow: "0 15px 35px -5px rgba(0,0,0,0.04)" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: "1rem", marginBottom: "2.5rem" }}>
-            <span style={{ fontSize: "2rem" }}>📄</span>
-            <h2 style={{ fontSize: "1.8rem", fontWeight: 800, color: "#1E5A3B", margin: 0 }}>{finalTitle || "Frontend Assessment"}</h2>
-          </div>
-          
-          <div style={{ display: "grid", gap: "1.5rem", color: "#1E5A3B", fontSize: "1.05rem" }}>
-            <div style={{ display: "flex", alignItems: "center" }}>
-              <span style={{ width: "150px", fontWeight: 700 }}>Skills:</span>
-              <div style={{ display: "flex", gap: "0.5rem" }}>
-                {selectedSkills.map(s => <span key={s} style={{ padding: "0.3rem 0.8rem", border: "1px solid #C9F4D4", borderRadius: "2rem", fontSize: "0.85rem", fontWeight: 700 }}>{s}</span>)}
-              </div>
+    const totalSeconds = topicsV2.reduce((acc, topic) => {
+        return (
+            acc +
+            topic.questionRows.reduce((rowAcc, row) => {
+                const count = (typeof row.questionsCount === 'number' ? row.questionsCount : parseInt(String(row.questionsCount)) || 0);
+                
+                // Uses the same helper functions defined in your component for Station 4
+                const baseTime = getBaseTimePerQuestion(row.questionType);
+                const multiplier = getDifficultyMultiplier(row.difficulty);
+                
+                return rowAcc + count * baseTime * multiplier;
+            }, 0)
+        );
+    }, 0);
+
+    const calculatedMinutes = Math.ceil(totalSeconds / 60);
+
+    const displayUrl = assessmentUrl && !assessmentUrl.includes('/null/') 
+        ? assessmentUrl 
+        : "Generating secure link...";
+
+                  function normalizeDateTime(startTime: string): any {
+                    throw new Error("Function not implemented.");
+                  }
+
+    return (
+        <div style={{ paddingBottom: '5rem' }}>
+            <div style={{ textAlign: "center", marginBottom: "3.5rem" }}>
+                <div style={{ width: '80px', height: '80px', backgroundColor: '#ecfdf5', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1.5rem' }}>
+                    <Sparkles size={40} color="#10b981" />
+                </div>
+                <h1 style={{ fontSize: "2.8rem", fontWeight: 800, color: "#1E5A3B", marginBottom: "0.5rem" }}>Almost There!</h1>
+                <p style={{ color: "#2D7A52", fontSize: "1.125rem", fontWeight: 500 }}>Review your assessment before we generate questions</p>
             </div>
-            <p style={{ margin: 0 }}><strong>Experience:</strong> <span style={{ color: "#2D7A52" }}>{"Junior (0-2 years)"}</span></p>
-            <div style={{ display: "flex", alignItems: "flex-start" }}>
-              <span style={{ width: "150px", fontWeight: 700 }}>Topics:</span>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem", flex: 1 }}>
-                {topicsV2.map(t => <span key={t.id} style={{ padding: "0.3rem 0.8rem", backgroundColor: "#EBFAFD", borderRadius: "2rem", fontSize: "0.85rem", fontWeight: 700 }}>📝 {t.label}</span>)}
-              </div>
-            </div>
-            <p style={{ margin: 0 }}><strong>Total Questions:</strong> {topicsV2.reduce((acc, t) => acc + t.questionRows.reduce((sum, r) => sum + (parseInt(r.questionsCount) || 0), 0), 0)}</p>
-            <p style={{ margin: 0 }}><strong>Estimated Duration:</strong> <span style={{ color: "#2D7A52" }}>~{duration} minutes</span></p>
-          </div>
-        </div>
 
-        <div style={{ padding: "1.5rem", backgroundColor: "#fffbeb", border: "1px solid #fcd34d", borderRadius: "1rem", color: "#1E5A3B", marginBottom: "2rem" }}>
-           <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginBottom: "0.75rem" }}>
-             <span>✨</span><strong style={{ fontSize: "1.1rem" }}>AI will generate:</strong>
-           </div>
-           <ul style={{ listStyle: "none", padding: 0, margin: 0, fontWeight: 600, display: "grid", gap: "0.5rem" }}>
-             <li>• {topicsV2.reduce((acc, t) => acc + t.questionRows.reduce((sum, r) => sum + (parseInt(r.questionsCount) || 0), 0), 0)} questions across {topicsV2.length} topics</li>
-             <li>• Estimated time: ~{duration} minutes</li>
-             <li>• Questions will be generated based on your configuration</li>
-           </ul>
-        </div>
+            {/* Dynamic Summary Card */}
+            <div style={{ padding: "3rem", backgroundColor: "#ffffff", border: "1.5px solid #C9F4D4", borderRadius: "2rem", marginBottom: "2rem", boxShadow: "0 20px 40px rgba(0,0,0,0.03)" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "1rem", marginBottom: "2.5rem" }}>
+                    <FileText size={32} color="#10b981" />
+                    <h2 style={{ fontSize: "1.85rem", fontWeight: 800, color: "#1E5A3B", margin: 0 }}>{finalTitle || jobDesignation || "Assessment Summary"}</h2>
+                </div>
+                
+                <div style={{ display: "grid", gap: "1.5rem", color: "#1E5A3B", fontSize: "1.05rem" }}>
+                    <div style={{ display: "flex", alignItems: "center" }}>
+                        <span style={{ width: "150px", fontWeight: 700 }}>Skills:</span>
+                        <div style={{ display: "flex", gap: "0.5rem" }}>
+                            {selectedSkills.map(s => <span key={s} style={{ padding: "0.3rem 0.9rem", border: "1px solid #C9F4D4", borderRadius: "100px", fontSize: "0.85rem", fontWeight: 700 }}>{s}</span>)}
+                        </div>
+                    </div>
+                    <p style={{ margin: 0 }}><strong>Experience:</strong> <span style={{ color: "#2D7A52" }}>{"Junior (0-2 years)"}</span></p>
+                    <div style={{ display: "flex", alignItems: "flex-start" }}>
+                        <span style={{ width: "150px", fontWeight: 700 }}>Topics:</span>
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: "0.6rem", flex: 1 }}>
+                            {topicsV2.map(t => <span key={t.id} style={{ padding: "0.4rem 0.9rem", backgroundColor: "#EBFAFD", border: '1px solid #C9F4D4', borderRadius: "8px", fontSize: "0.85rem", fontWeight: 700, display: 'flex', alignItems: 'center', gap: '6px' }}>📝 {t.label}</span>)}
+                        </div>
+                    </div>
+                    
+                    {/* Synchronized Totals */}
+                    <p style={{ margin: 0 }}><strong>Total Questions:</strong> <span style={{ fontWeight: 800 }}>{totalQuestionsCount}</span></p>
+                    
+                    {/* FIXED: Uses formatTime helper to show identical format as Station 4 */}
+                    <p style={{ margin: 0 }}><strong>Estimated Duration:</strong> <span style={{ color: "#2D7A52", fontWeight: 700 }}>~{formatTime(calculatedMinutes)}</span></p>
 
-        <div style={{ display: "flex", gap: "1rem" }}>
-           <button onClick={() => setShowFinalReview(false)} style={{ flex: 1, padding: "1.25rem", border: "1.5px solid #C9F4D4", borderRadius: "1.25rem", backgroundColor: "#ffffff", color: "#1E5A3B", fontWeight: 800, cursor: "pointer" }}>← Back to Candidates</button>
-           <button 
-             onClick={async () => {
-               setLoading(true);
-               if (assessmentId) {
-                 await updateScheduleAndCandidatesMutation.mutateAsync({ assessmentId, examMode, duration: parseInt(duration || "0"), startTime, endTime, candidates: accessMode === "private" ? candidates : [], complete: true, accessMode });
-                 router.push("/dashboard?refresh=" + Date.now());
-               }
-               setLoading(false);
-             }}
-             style={{ flex: 1.5, padding: "1.25rem", backgroundColor: "#C9F4D4", color: "#1E5A3B", fontSize: "1.1rem", fontWeight: 900, border: "none", borderRadius: "1.25rem", cursor: "pointer" }}
-           >
-             {loading ? "Finalizing..." : "Continue to Candidates →"}
-           </button>
-        </div>
-      </div>
+                    {/* Link Field */}
+                    <div style={{ marginTop: "1rem", padding: "1.5rem", backgroundColor: "#EBFAFD", borderRadius: "1rem", border: "1.5px solid #C9F4D4" }}>
+                        <label style={{ display: "block", fontSize: "0.875rem", fontWeight: 800, marginBottom: "0.75rem", color: '#1E5A3B' }}>Assessment Link</label>
+                        <div style={{ display: "flex", gap: "0.5rem" }}>
+                            <input readOnly value={displayUrl} style={{ flex: 1, padding: "0.75rem", border: "1.5px solid #C9F4D4", borderRadius: "0.6rem", fontSize: "0.95rem", outline: 'none', backgroundColor: '#ffffff', color: displayUrl.includes('Generating') ? '#94a3b8' : '#1E5A3B' }} />
+                           <button 
+    onClick={handleCopyUrl} 
+    disabled={displayUrl.includes('Generating')} 
+    style={{ 
+        padding: "0.75rem 1.5rem", 
+        // 🟢 Dynamic background color: Green if copied, Dark Green if original
+        backgroundColor: isUrlCopied ? "#10b981" : "#1E5A3B", 
+        color: "#ffffff", 
+        border: "none", 
+        borderRadius: "0.6rem", 
+        cursor: "pointer", 
+        fontWeight: 700, 
+        display: 'flex', 
+        alignItems: 'center', 
+        gap: '8px', 
+        opacity: displayUrl.includes('Generating') ? 0.5 : 1,
+        transition: "all 0.3s ease" // Smooth transition between states
+    }}
+>
+    {isUrlCopied ? (
+        <>
+            <Check size={16} /> Copied
+        </>
+    ) : (
+        <>
+            <Copy size={16} /> Copy
+        </>
     )}
+</button>
+                        </div>
+                    </div>
+
+                    <button onClick={() => setCurrentStation(4)} style={{ width: 'fit-content', display: 'flex', alignItems: 'center', gap: '8px', marginTop: '1rem', padding: '0.6rem 1.2rem', border: '1.5px solid #C9F4D4', borderRadius: '10px', backgroundColor: '#ffffff', color: '#10b981', fontWeight: 800, cursor: 'pointer' }}>
+                        <Edit3 size={16} /> Edit
+                    </button>
+                </div>
+            </div>
+
+
+{/* --- Candidate Details Section --- */}
+{candidates.length > 0 && (
+    <div style={{ marginBottom: "2rem" }}>
+        <h3 style={{ fontSize: "1.25rem", fontWeight: 800, color: "#1E5A3B", marginBottom: "1rem", display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <User size={24} color="#10b981" /> Added Candidates ({candidates.length})
+        </h3>
+        <div style={{ 
+            display: "grid", 
+            gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", 
+            gap: "1rem",
+            maxHeight: "300px", 
+            overflowY: "auto",
+            padding: "0.5rem"
+        }}>
+            {candidates.map((c, i) => (
+                <div key={i} style={{ 
+                    display: "flex", 
+                    alignItems: "center", 
+                    gap: "1rem", 
+                    padding: "1rem", 
+                    backgroundColor: "#ffffff", 
+                    border: "1.5px solid #C9F4D4", 
+                    borderRadius: "1rem",
+                    boxShadow: "0 4px 6px rgba(0,0,0,0.02)"
+                }}>
+                    <div style={{ 
+                        width: "45px", 
+                        height: "45px", 
+                        backgroundColor: "#C9F4D4", 
+                        borderRadius: "50%", 
+                        display: "flex", 
+                        alignItems: "center", 
+                        justifyContent: "center", 
+                        fontWeight: 800, 
+                        color: "#1E5A3B",
+                        fontSize: "1.1rem"
+                    }}>
+                        {c.name.charAt(0).toUpperCase()}
+                    </div>
+                    <div style={{ flex: 1, overflow: 'hidden' }}>
+                        <div style={{ fontWeight: 800, color: "#1E5A3B", whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            {c.name}
+                        </div>
+                        <div style={{ fontSize: "0.85rem", color: "#4A9A6A", whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            {c.email}
+                        </div>
+                    </div>
+                    {/* Status Badge to match theme */}
+                    <div style={{ 
+                        padding: "4px 8px", 
+                        backgroundColor: "#EBFAFD", 
+                        borderRadius: "6px", 
+                        fontSize: "0.7rem", 
+                        fontWeight: 700, 
+                        color: "#10b981",
+                        border: "1px solid #C9F4D4"
+                    }}>
+                        READY
+                    </div>
+                </div>
+            ))}
+        </div>
+    </div>
+)}
+
+
+
+            {/* AI Warning Box */}
+            <div style={{ padding: "1.5rem", backgroundColor: "#fffbeb", border: "1px solid #fcd34d", borderRadius: "1.25rem", color: "#1E5A3B", marginBottom: "2.5rem" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginBottom: "1rem" }}>
+                    <Sparkles size={20} color="#b45309" />
+                    <strong style={{ fontSize: "1.15rem" }}>AI will generate:</strong>
+                </div>
+                <ul style={{ listStyle: "none", padding: 0, margin: 0, fontWeight: 600, display: "grid", gap: "0.6rem" }}>
+                    <li>• {totalQuestionsCount} questions across {topicsV2.length} topics configured</li>
+                    <li>• Estimated time: ~{formatTime(calculatedMinutes)}</li>
+                    <li>• Questions will be generated based on your configuration</li>
+                </ul>
+            </div>
+
+            {/* Navigation Buttons */}
+            <div style={{ display: "flex", gap: "1.5rem", justifyContent: 'center' }}>
+                <button onClick={() => setShowFinalReview(false)} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: "1rem 2rem", border: "1.5px solid #E2E8F0", borderRadius: "1rem", backgroundColor: "#ffffff", color: "#1E5A3B", fontWeight: 800 }}>
+                    <ArrowLeft size={20} /> Back to Edit
+                </button>
+                <button 
+                    onClick={async () => {
+                        setLoading(true);
+                        if (assessmentId) {
+                            await updateScheduleAndCandidatesMutation.mutateAsync({ 
+                                assessmentId, 
+                                examMode, 
+                                duration: calculatedMinutes, 
+                                startTime: startTime ? normalizeDateTime(startTime) : undefined, 
+                                endTime: endTime ? normalizeDateTime(endTime) : undefined, 
+                                candidates: accessMode === "private" ? candidates : [], 
+                                complete: true, 
+                                accessMode 
+                            });
+                            router.push("/dashboard?refresh=" + Date.now());
+                        }
+                    }}
+                    style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: "1rem 2.5rem", backgroundColor: "#10b981", color: "#ffffff", fontSize: "1.1rem", fontWeight: 900, border: "none", borderRadius: "1rem", cursor: "pointer", boxShadow: "0 10px 20px rgba(16, 185, 129, 0.2)" }}
+                >
+                    Continue to Candidates <ChevronRight size={20} />
+                </button>
+            </div>
+        </div>
+    );
+})()}
   </div>
 )}
           </div>
