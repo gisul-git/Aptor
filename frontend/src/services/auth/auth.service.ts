@@ -32,6 +32,7 @@ export interface User {
   };
   phone?: string;
   country?: string;
+  avatar?: string;
 }
 
 export interface RefreshTokenRequest {

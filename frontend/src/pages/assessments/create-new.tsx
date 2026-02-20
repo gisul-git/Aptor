@@ -4030,7 +4030,7 @@ export default function CreateNewAssessmentPage() {
   const [regenerateQuestionFeedback, setRegenerateQuestionFeedback] =
     useState<string>("");
   // Schedule settings (Station 4)
-  const [examMode, setExamMode] = useState<"strict" | "flexible">("strict");
+ const [examMode, setExamMode] = useState<"strict" | "flexible" | "custom" | "scheduled">("strict");
   const [duration, setDuration] = useState<string>("");
   const [visibilityMode, setVisibilityMode] = useState<string>("public");
   const [candidateRequirements, setCandidateRequirements] = useState<{
@@ -4051,6 +4051,163 @@ export default function CreateNewAssessmentPage() {
     faceMismatchEnabled: false, // default OFF until explicitly enabled
     liveProctoringEnabled: false, // default OFF until explicitly enabled
   });
+
+  // For Custom Topic Modal (Step - 4)
+  const [showCustomTopicModal, setShowCustomTopicModal] = useState(false);
+  const [toastMessageCustom, setToastMessageCustom] = useState<string | null>(
+    null,
+  );
+  const [isCrafting, setIsCrafting] = useState(false);
+  const [craftingProgress, setCraftingProgress] = useState(0);
+  const [showFinalReview, setShowFinalReview] = useState(false);
+
+  const [activeCandidateTab, setActiveCandidateTab] = useState<
+    "individual" | "bulk"
+  >("individual");
+
+const [isUrlCopied, setIsUrlCopied] = useState(false);
+
+const handleCopyUrl = () => {
+    if (assessmentUrl) {
+        navigator.clipboard.writeText(assessmentUrl);
+        setIsUrlCopied(true);
+        // Reset back to original state after 1 seconds
+        setTimeout(() => setIsUrlCopied(false), 1000);
+    }
+};
+
+const handleStartCrafting = async () => {
+  if (!assessmentId) {
+    console.error("Assessment ID is missing. URL cannot be generated.");
+    return;
+  }
+
+  setIsCrafting(true);
+  setCraftingProgress(0);
+
+  // 2. Generate dynamic URL
+  const token = Math.random().toString(36).substring(2, 15);
+  const url = `${window.location.origin}/assessment/${assessmentId}/${token}`;
+  setAssessmentUrl(url);
+
+  // 3. Logic to calculate total duration - FIXED TS ERROR
+  const totalQs = topicsV2.reduce((acc, t) => 
+    acc + t.questionRows.reduce((sum, r) => sum + (r.questionsCount || 0), 0), 0
+  );
+  
+  // Update state with calculated duration string
+  setDuration(Math.round(totalQs * 2.5).toString());
+
+  // 4. Animation Engine
+  const interval = setInterval(() => {
+    setCraftingProgress((prev) => {
+      if (prev >= 100) {
+        clearInterval(interval);
+        setTimeout(() => {
+          setIsCrafting(false);
+          setShowFinalReview(true);
+        }, 600);
+        return 100;
+      }
+      return Math.min(prev + Math.floor(Math.random() * 8) + 2, 100);
+    });
+  }, 120);
+};
+  
+const handleStartReviewProcess = () => {
+  setIsCrafting(true);
+  setCraftingProgress(0);
+
+  const interval = setInterval(() => {
+    setCraftingProgress((prev) => {
+      if (prev >= 100) {
+        clearInterval(interval);
+        setTimeout(() => {
+          setIsCrafting(false);
+          setShowFinalReview(true);
+        }, 600); // Visual delay at 100%
+        return 100;
+      }
+      const increment = Math.floor(Math.random() * 6) + 3;
+      return Math.min(prev + increment, 100);
+    });
+  }, 100);
+};
+
+  const handleFinalComplete = async () => {
+    setIsCrafting(true); // Trigger the animation window
+
+    // Simulate progress animation
+    const interval = setInterval(() => {
+      setCraftingProgress((prev) => (prev < 95 ? prev + 5 : prev));
+    }, 500);
+
+    try {
+      if (assessmentId) {
+        await updateScheduleAndCandidatesMutation.mutateAsync({
+          assessmentId,
+          examMode,
+          duration: parseInt(duration || "0"),
+          startTime,
+          endTime,
+          candidates: accessMode === "private" ? candidates : [],
+          complete: true,
+          accessMode: accessMode,
+        });
+
+        setCraftingProgress(100);
+        clearInterval(interval);
+
+        // Navigate after a short delay to show 100% completion
+        setTimeout(() => {
+          router.push("/dashboard?refresh=" + Date.now());
+        }, 1000);
+      }
+    } catch (err) {
+      setIsCrafting(false);
+      clearInterval(interval);
+      setError("Failed to save.");
+    }
+  };
+
+  const handleToggleQuestionType = (topicId: string, type: string) => {
+    setTopicsV2((prev) =>
+      prev.map((topic) => {
+        if (topic.id === topicId) {
+          const existingRow = topic.questionRows.find(
+            (r) => r.questionType === type,
+          );
+
+          if (existingRow) {
+            // If it exists, remove it (uncheck)
+            return {
+              ...topic,
+              questionRows: topic.questionRows.filter(
+                (r) => r.questionType !== type,
+              ),
+            };
+          } else {
+            // If it doesn't exist, add a new row (check)
+            const newRow: QuestionRow = {
+              rowId: `row-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+              questionType: type as "MCQ" | "Subjective" | "PseudoCode" | "Coding" | "SQL" | "AIML",
+              difficulty: "Medium",
+              questionsCount: 5, // Default starting value
+              canUseJudge0: type === "Coding",
+              status: "pending",
+              locked: false,
+              questions: [],
+            };
+            return {
+              ...topic,
+              questionRows: [...topic.questionRows, newRow],
+            };
+          }
+        }
+        return topic;
+      }),
+    );
+  };
 
   const sliderRef = useRef<HTMLDivElement>(null);
   const originalTopicConfigsRef = useRef<Topic[]>([]);
@@ -8139,9 +8296,9 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
       setAiTopicSuggestions([]);
       setSuggestionsFetched(false); // Reset fetched flag
     } catch (err: any) {
-      console.error("Error adding technical topic:", err);
-      setToastMessage("Failed to add topic. Please try again.");
-      setTimeout(() => setToastMessage(null), 3000);
+      const errorText =
+        err.response?.data?.message || err.message || "Failed to add topic.";
+      setToastMessageCustom(errorText);
     } finally {
       setAddingTopic(false);
     }
@@ -11730,7 +11887,7 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
                         </button>
                       </div>
                     </div>
-                  )}
+                  </div>
 
                   {/* Selected Skills Display */}
                   {selectedSkills.length > 0 && (

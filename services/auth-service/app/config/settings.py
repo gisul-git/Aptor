@@ -36,6 +36,7 @@ class Settings(BaseSettings):
     email_provider: str = "sendgrid"
     otp_ttl_minutes: int = 5
     email_verification_code_ttl_minutes: int = 1
+    frontend_url: str = "http://localhost:3000"
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 

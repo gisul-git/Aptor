@@ -8,7 +8,7 @@ on:
     types: [closed]
     branches:
       - QA
-  workflow_dispatch: # Allow manual triggering
+  workflow_dispatch: # Allow manual triggerings
 
 env:
   VM_HOST: ${{ secrets.QA_VM_HOST }}
@@ -52,15 +52,34 @@ jobs:
             # Navigate to deployment directory
             cd ${DEPLOY_PATH}
             
-            # Pull latest code from QA branch
-            echo "📥 Pulling latest code from QA branch..."
+            # Sync workspace with QA branch (production-ready approach)
+            echo "📥 Syncing workspace with QA branch..."
+            
+            # Backup critical files before reset
+            echo "💾 Backing up critical files..."
+            if [ -f .env ]; then
+              cp .env .env.backup
+              echo "✅ .env backed up"
+            fi
+            
+            # Fetch latest changes
             git fetch origin
-            git checkout QA
-            git pull origin QA
             
             # Ensure .env file exists
             if [ ! -f .env ]; then
-              echo "⚠️  Warning: .env file not found. Please ensure environment variables are set."
+              echo "❌ ERROR: .env file not found after git operations!"
+              echo "⚠️  Deployment cannot proceed without .env file."
+              exit 1
+            else
+              echo "✅ .env file verified"
+            fi
+            
+            # Preserve aiml-agent-service - ensure it stays running
+            echo "🔒 Preserving aiml-agent-service..."
+            AIML_AGENT_RUNNING=false
+            if docker compose ps aiml-agent-service 2>/dev/null | grep -q "Up"; then
+              AIML_AGENT_RUNNING=true
+              echo "✅ aiml-agent-service is running, will preserve it"
             fi
             
             # Stop existing containers (with timeout and force removal)

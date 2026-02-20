@@ -163,3 +163,39 @@ class VerifyTokenRequest(BaseModel):
     token: str = Field(..., min_length=1, description="JWT token to verify")
 
 
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+    org_id: str | None = Field(default=None, description="Organization ID (optional, for org_admin users)")
+
+    @field_validator("email")
+    @classmethod
+    def validate_email(cls, v: EmailStr) -> EmailStr:
+        _validate_email_common_typos(str(v))
+        return v
+
+
+class ResetPasswordRequest(BaseModel):
+    token: str = Field(..., min_length=1, description="Password reset token")
+    newPassword: str = Field(..., min_length=8, max_length=255, description="New password")
+
+    @field_validator("newPassword")
+    @classmethod
+    def validate_password(cls, v: str) -> str:
+        """Validate password strength: 8+ chars, uppercase, lowercase, number, special char."""
+        if len(v) < 8:
+            raise ValueError("Password must be at least 8 characters long")
+        if not re.search(r"[A-Z]", v):
+            raise ValueError("Password must contain at least one uppercase letter")
+        if not re.search(r"[a-z]", v):
+            raise ValueError("Password must contain at least one lowercase letter")
+        if not re.search(r"\d", v):
+            raise ValueError("Password must contain at least one number")
+        if not re.search(r"[!@#$%^&*(),.?\":{}|<>]", v):
+            raise ValueError("Password must contain at least one special character")
+        return v
+
+
+class VerifyResetTokenRequest(BaseModel):
+    token: str = Field(..., min_length=1, description="Password reset token to verify")
+
+

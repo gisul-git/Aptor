@@ -1243,7 +1243,7 @@ async def toggle_publish_question(
         question_dict["updated_at"] = question["updated_at"].isoformat() if isinstance(question.get("updated_at"), datetime) else question.get("updated_at")
     return question_dict
 
-@router.delete("/{question_id}")
+@router.delete("/{question_id}", response_model=dict)
 async def delete_question(
     question_id: str,
     current_user: Dict[str, Any] = Depends(require_editor)
@@ -1251,30 +1251,66 @@ async def delete_question(
     """
     Delete a question (requires authentication and ownership)
     """
-    db = get_database()
-    if not ObjectId.is_valid(question_id):
-        raise HTTPException(status_code=400, detail="Invalid question ID")
-    
-    # Check if question exists and belongs to the current user
-    user_id = current_user.get("id") or current_user.get("_id")
-    if not user_id:
-        raise HTTPException(status_code=400, detail="Invalid user ID")
-    user_id = str(user_id)
-    existing_question = await db.questions.find_one({"_id": ObjectId(question_id)})
-    if not existing_question:
-        raise HTTPException(status_code=404, detail="Question not found")
-    
-    # Verify ownership
-    existing_created_by = existing_question.get("created_by")
-    if not existing_created_by or str(existing_created_by).strip() != user_id.strip():
-        logger.error(f"[delete_question] SECURITY ISSUE: User {user_id} attempted to delete question {question_id} created by {existing_created_by}")
-        raise HTTPException(status_code=403, detail="You don't have permission to delete this question")
-    
-    result = await db.questions.delete_one({"_id": ObjectId(question_id)})
-    if result.deleted_count == 0:
-        raise HTTPException(status_code=404, detail="Question not found")
-    
-    return {"message": "Question deleted successfully"}
+    try:
+        db = get_database()
+        if not ObjectId.is_valid(question_id):
+            raise HTTPException(status_code=400, detail="Invalid question ID")
+        
+        # Check if question exists and belongs to the current user
+        user_id = current_user.get("id") or current_user.get("_id")
+        if not user_id:
+            logger.error(f"[delete_question] Invalid user ID in current_user: {list(current_user.keys())}")
+            raise HTTPException(status_code=400, detail="Invalid user ID")
+        user_id = str(user_id).strip()
+        
+        logger.info(f"[delete_question] Attempting to delete question {question_id} by user {user_id}")
+        
+        existing_question = await db.questions.find_one({"_id": ObjectId(question_id)})
+        if not existing_question:
+            logger.warning(f"[delete_question] Question {question_id} not found")
+            raise HTTPException(status_code=404, detail="Question not found")
+        
+        # Verify ownership
+        existing_created_by = existing_question.get("created_by")
+        if not existing_created_by:
+            logger.warning(f"[delete_question] SECURITY: Question {question_id} has no created_by field")
+            raise HTTPException(status_code=403, detail="You don't have permission to delete this question")
+        
+        if str(existing_created_by).strip() != user_id.strip():
+            logger.error(f"[delete_question] SECURITY ISSUE: User {user_id} attempted to delete question {question_id} created by {existing_created_by}")
+            raise HTTPException(status_code=403, detail="You don't have permission to delete this question")
+        
+        result = await db.questions.delete_one({"_id": ObjectId(question_id)})
+        if result.deleted_count == 0:
+            logger.warning(f"[delete_question] Delete operation returned 0 deleted_count for question {question_id}")
+            raise HTTPException(status_code=404, detail="Question not found")
+        
+        # Verify deletion by checking if question still exists
+        verify_deleted = await db.questions.find_one({"_id": ObjectId(question_id)})
+        if verify_deleted:
+            logger.error(f"[delete_question] CRITICAL: Question {question_id} still exists after delete_one operation!")
+            raise HTTPException(status_code=500, detail="Failed to delete question - deletion verification failed")
+        
+        logger.info(f"[delete_question] Successfully deleted question {question_id} by user {user_id} (verified)")
+        
+        # Invalidate any caches that might contain this question
+        try:
+            from app.utils.cache import invalidate_user_tests_cache, invalidate_questions_cache
+            # Invalidate questions cache for this user
+            await invalidate_questions_cache(user_id)
+            # Also invalidate tests cache in case question is referenced in tests
+            await invalidate_user_tests_cache(user_id)
+            logger.info(f"[delete_question] Cache invalidated for user {user_id}")
+        except Exception as cache_error:
+            logger.warning(f"[delete_question] Failed to invalidate cache: {cache_error}")
+        
+        return {"success": True, "message": "Question deleted successfully"}
+    except HTTPException:
+        # Re-raise HTTP exceptions as-is
+        raise
+    except Exception as e:
+        logger.error(f"[delete_question] Unexpected error deleting question {question_id}: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to delete question: {str(e)}")
 
 
 @router.post("/generate-ai", response_model=dict)
@@ -1287,7 +1323,10 @@ async def generate_ai_question(
     Accepts new format: title, skill, topic (optional), difficulty, dataset_format.
     Returns question with optional dataset.
     """
+    import traceback
     try:
+        logger.info("="*80)
+        logger.info("Step 1: Extracting parameters...")
         # Extract parameters (support both old and new format for backward compatibility)
         title = request.get("title") or request.get("assessment_title", "AIML Assessment")
         skill = request.get("skill") or request.get("library", "Python")
@@ -1302,8 +1341,9 @@ async def generate_ai_question(
         if difficulty not in ["easy", "medium", "hard"]:
             raise HTTPException(status_code=400, detail="Difficulty must be easy, medium, or hard")
         
-        logger.info(f"Generating AI question: title={title}, skill={skill}, topic={topic}, difficulty={difficulty}")
+        logger.info(f"Step 1: ✅ Parameters extracted - title={title}, skill={skill}, topic={topic}, difficulty={difficulty}")
         
+        logger.info("Step 2: Generating question with AI...")
         # Generate question using AI (new format)
         generated_data = await generate_aiml_question(
             title=title,
@@ -1312,12 +1352,17 @@ async def generate_ai_question(
             difficulty=difficulty,
             dataset_format=dataset_format
         )
+        logger.info(f"Step 2: ✅ AI generation successful. Keys: {list(generated_data.keys())}")
         
-        # Extract assessment, question, and dataset from response
+        logger.info("Step 3: Extracting data from AI response...")
+        # Extract assessment, question, dataset, and test_cases from response
         assessment = generated_data.get("assessment", {})
         question_info = generated_data.get("question", {})
         dataset_info = generated_data.get("dataset")
+        test_cases = generated_data.get("test_cases", [])
+        logger.info(f"Step 3: ✅ Data extracted - assessment keys: {list(assessment.keys())}, question keys: {list(question_info.keys())}, dataset: {dataset_info is not None}, test_cases: {len(test_cases)}")
         
+        logger.info("Step 4: Transforming to database schema...")
         # Transform to database schema
         question_data = {
             "title": assessment.get("title", title),
@@ -1338,7 +1383,8 @@ async def generate_ai_question(
                 "libraries": assessment.get("libraries", []),
                 "selected_dataset_format": assessment.get("selected_dataset_format", dataset_format)
             },
-            "dataset": dataset_info
+            "dataset": dataset_info,
+            "test_cases": test_cases  # Store test cases for deterministic evaluation
         }
         
         # Store dataset format if dataset is present (always in JSON format internally)
@@ -1346,6 +1392,9 @@ async def generate_ai_question(
         if dataset_info:
             question_data["dataset"]["format"] = dataset_format  # Store the user-selected format
         
+        logger.info(f"Step 4: ✅ Schema transformation complete. Question data keys: {list(question_data.keys())}")
+        
+        logger.info("Step 5: Setting user and timestamps...")
         # Set created_by and timestamps
         user_id = current_user.get("id") or current_user.get("_id")
         if not user_id:
@@ -1356,15 +1405,49 @@ async def generate_ai_question(
         question_data["created_at"] = now
         question_data["updated_at"] = now
         question_data["module_type"] = "aiml"  # Mark as AIML question to isolate from DSA
+        logger.info(f"Step 5: ✅ User and timestamps set - user_id: {user_id}")
         
+        logger.info("Step 6: Inserting into database...")
         # Insert into database
         db = get_database()
+        logger.info(f"Step 6a: Database connection obtained")
         result = await db.questions.insert_one(question_data)
+        logger.info(f"Step 6: ✅ Database insertion successful, ID: {result.inserted_id}")
         
+        logger.info("Step 7: Fetching created question...")
         # Fetch created question
         created_question = await db.questions.find_one({"_id": result.inserted_id})
+        logger.info(f"Step 7: ✅ Question fetched - found: {created_question is not None}")
         
         if created_question:
+            logger.info("Step 8: Building response...")
+            
+            # Helper function to safely serialize datetime
+            def safe_isoformat(dt):
+                if not dt:
+                    return None
+                if isinstance(dt, datetime):
+                    return dt.isoformat()
+                return str(dt) if dt else None
+            
+            # Helper function to recursively serialize nested objects (ObjectId, datetime)
+            def serialize_value(value):
+                if value is None:
+                    return None
+                if isinstance(value, datetime):
+                    return value.isoformat()
+                if isinstance(value, ObjectId):
+                    return str(value)
+                if isinstance(value, dict):
+                    return {k: serialize_value(v) for k, v in value.items()}
+                if isinstance(value, list):
+                    return [serialize_value(item) for item in value]
+                return value
+            
+            # Serialize dataset to ensure all nested objects are JSON serializable
+            dataset = created_question.get("dataset")
+            serialized_dataset = serialize_value(dataset) if dataset else None
+            
             # Return in new format
             response = {
                 "id": str(created_question["_id"]),
@@ -1383,19 +1466,67 @@ async def generate_ai_question(
                     "tasks": created_question.get("tasks", []),
                     "constraints": created_question.get("constraints", [])
                 },
-                "dataset": created_question.get("dataset"),
+                "dataset": serialized_dataset,
                 "ai_generated": True,
                 "requires_dataset": created_question.get("requires_dataset", False),
-                "created_at": created_question.get("created_at").isoformat() if isinstance(created_question.get("created_at"), datetime) else created_question.get("created_at")
+                "created_at": safe_isoformat(created_question.get("created_at"))
             }
+            logger.info(f"Step 8: ✅ Response built successfully. Response keys: {list(response.keys())}")
+            
+            # DEBUG: Log response structure to identify serialization issues
+            logger.info("Step 8b: Checking response serialization...")
+            try:
+                import json
+                # Test if response can be serialized
+                test_json = json.dumps(response, default=str)
+                logger.info(f"Step 8b: ✅ Response is JSON serializable (length: {len(test_json)} chars)")
+            except Exception as json_err:
+                logger.error(f"Step 8b: ❌ JSON serialization failed: {str(json_err)}")
+                logger.error(f"Step 8b: Error type: {type(json_err).__name__}")
+                logger.error(f"Step 8b: Response structure: {str(response)[:500]}")
+                # Try to identify which field is causing the issue
+                for key, value in response.items():
+                    try:
+                        json.dumps({key: value}, default=str)
+                        logger.info(f"Step 8b: ✅ Field '{key}' is serializable")
+                    except Exception as field_err:
+                        logger.error(f"Step 8b: ❌ Field '{key}' failed serialization: {str(field_err)}")
+                        logger.error(f"Step 8b: Field '{key}' type: {type(value)}, value preview: {str(value)[:200]}")
+                raise
+            
+            # DEBUG: Log dataset structure specifically
+            if response.get("dataset"):
+                logger.info(f"Step 8c: Dataset present, type: {type(response['dataset'])}, keys: {list(response['dataset'].keys()) if isinstance(response['dataset'], dict) else 'N/A'}")
+                try:
+                    json.dumps(response["dataset"], default=str)
+                    logger.info("Step 8c: ✅ Dataset is JSON serializable")
+                except Exception as dataset_err:
+                    logger.error(f"Step 8c: ❌ Dataset serialization failed: {str(dataset_err)}")
+                    logger.error(f"Step 8c: Dataset type: {type(response['dataset'])}, preview: {str(response['dataset'])[:500]}")
+            
+            # DEBUG: Log created_at field
+            if response.get("created_at"):
+                logger.info(f"Step 8d: created_at present, type: {type(response['created_at'])}, value: {response['created_at']}")
+            else:
+                logger.info("Step 8d: created_at is None or missing")
+            
+            logger.info("="*80)
+            logger.info("Step 8e: Returning response to FastAPI...")
             return response
         
+        logger.error("Step 7: ❌ Created question not found after insertion")
         raise HTTPException(status_code=500, detail="Failed to create question")
         
     except HTTPException:
+        logger.error("="*80)
+        logger.error("❌ HTTPException raised")
         raise
     except Exception as exc:
-        logger.exception(f"Error generating AI question: {exc}")
+        logger.error("="*80)
+        logger.error(f"❌ ERROR generating AI question: {str(exc)}")
+        logger.error(f"Error type: {type(exc).__name__}")
+        logger.error(f"Full traceback:\n{traceback.format_exc()}")
+        logger.error("="*80)
         raise HTTPException(status_code=500, detail=f"Failed to generate question: {str(exc)}")
 
 

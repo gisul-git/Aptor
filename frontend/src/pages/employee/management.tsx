@@ -35,8 +35,13 @@ export default function EmployeeManagementPage({
 }: EmployeeManagementPageProps) {
   const { data: session, status } = useSession();
   const router = useRouter();
-  const [showAddForm, setShowAddForm] = useState(false);
+  const [page, setPage] = useState(1);
+  const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState<string>('');
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [showUploadModal, setShowUploadModal] = useState(false);
   const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null);
+  const limit = 10;
 
   // Use server session if available, fallback to client session
   const activeSession = serverSession || session;
@@ -52,31 +57,127 @@ export default function EmployeeManagementPage({
       "This page is only accessible to organization administrators. Your current role does not have permission to manage employees.",
   });
 
+  const { data, isLoading, error, refetch } = useEmployees({
+    page,
+    limit,
+    search: search || undefined,
+    status: statusFilter || undefined,
+  });
+
+  const deleteEmployeeMutation = useDeleteEmployee();
+  const resendEmailMutation = useResendWelcomeEmail();
+
   const handleAddEmployee = () => {
     setEditingEmployee(null);
-    setShowAddForm(true);
+    setShowAddModal(true);
   };
 
   const handleEditEmployee = (employee: Employee) => {
     setEditingEmployee(employee);
-    setShowAddForm(true);
+    setShowAddModal(true);
   };
 
   const handleFormSuccess = () => {
-    setShowAddForm(false);
+    setShowAddModal(false);
     setEditingEmployee(null);
+    refetch();
   };
 
   const handleFormClose = () => {
-    setShowAddForm(false);
+    setShowAddModal(false);
     setEditingEmployee(null);
+  };
+
+  const handleDelete = async (aaptorId: string, name: string) => {
+    if (!confirm(`Are you sure you want to delete ${name}? This action cannot be undone.`)) {
+      return;
+    }
+
+    try {
+      await deleteEmployeeMutation.mutateAsync(aaptorId);
+      await refetch();
+    } catch (error: any) {
+      alert(error?.response?.data?.detail || error?.message || 'Failed to delete employee');
+    }
+  };
+
+  const handleResendEmail = async (aaptorId: string, employeeName?: string) => {
+    const employee = data?.employees?.find((emp) => emp.aaptorId === aaptorId);
+    const displayName = employeeName || employee?.name || 'employee';
+
+    try {
+      await resendEmailMutation.mutateAsync(aaptorId);
+      alert(
+        `Email sent successfully to ${displayName} (${employee?.email || 'employee'})! The employee will receive their Aaptor ID and password information.`
+      );
+      await refetch();
+    } catch (error: any) {
+      const errorMsg = error?.response?.data?.detail || error?.message || 'Failed to send email';
+      alert(`Failed to send email to ${displayName}: ${errorMsg}`);
+    }
+  };
+
+  const handleSendEmailToAll = async () => {
+    const employees = data?.employees || [];
+    if (employees.length === 0) {
+      alert('No employees to send emails to.');
+      return;
+    }
+
+    if (!confirm(`Are you sure you want to send emails to all ${employees.length} employee(s)?`)) {
+      return;
+    }
+
+    let successCount = 0;
+    let failCount = 0;
+    const errors: string[] = [];
+
+    for (let i = 0; i < employees.length; i++) {
+      const employee = employees[i];
+
+      if (i > 0) {
+        await new Promise((resolve) => setTimeout(resolve, 300));
+      }
+
+      try {
+        await resendEmailMutation.mutateAsync(employee.aaptorId);
+        successCount++;
+      } catch (error: any) {
+        failCount++;
+        const errorMsg = error?.response?.data?.detail || error?.message || 'Failed to send email';
+        errors.push(`${employee.name} (${employee.email}): ${errorMsg}`);
+      }
+    }
+
+    if (failCount === 0) {
+      alert(`Successfully sent emails to all ${successCount} employee(s)!`);
+    } else {
+      let message = `Sent emails to ${successCount} employee(s). Failed to send to ${failCount} employee(s).`;
+      if (errors.length > 0) {
+        message += '\n\nErrors:\n' + errors.slice(0, 5).join('\n');
+        if (errors.length > 5) {
+          message += `\n... and ${errors.length - 5} more`;
+        }
+      }
+      alert(message);
+    }
+
+    await refetch();
+  };
+
+  const handleUploadSuccess = () => {
+    setShowUploadModal(false);
+    refetch();
   };
 
   // Show loading state
   if (authGuard.isLoading || status === "loading") {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <p>Loading...</p>
+      <div className="min-h-screen bg-mint-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-12 h-12 border-4 border-mint-200 border-t-mint-300 rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-text-secondary">Loading...</p>
+        </div>
       </div>
     );
   }
@@ -110,6 +211,8 @@ export default function EmployeeManagementPage({
     );
   }
 
+  // Get user profile to fetch orgId
+  const { data: userProfile } = useUserProfile();
   const user = (activeSession as any)?.user;
   const orgId = (activeSession as any)?.organization || "N/A";
 
@@ -135,12 +238,87 @@ export default function EmployeeManagementPage({
                 </p>
               )}
             </div>
+
+            {/* Primary Action - More Prominent */}
+            <button
+              onClick={() => router.push('/competency')}
+              className="flex items-center justify-center gap-2 px-8 py-4 bg-gradient-to-r from-mint-200 to-mint-100 hover:from-mint-300 hover:to-mint-200 text-text-primary font-bold rounded-xl shadow-lg hover:shadow-xl transform hover:scale-[1.02] active:scale-[0.98] transition-all duration-200 focus:ring-4 focus:ring-mint-200 outline-none border-2 border-mint-300/50 w-full sm:w-auto"
+            >
+              <PlusCircle className="w-5 h-5" />
+              <span className="hidden sm:inline">Create Assessment</span>
+              <span className="sm:hidden">Create</span>
+            </button>
+          </div>
+        </div>
+      </motion.div>
+
+      {/* Filters & Actions Bar */}
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.3 }}
+        className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-6"
+      >
+        <div className="flex flex-col lg:flex-row gap-4 items-start lg:items-center justify-between">
+          {/* Left: Search & Filter */}
+          <div className="flex flex-col sm:flex-row flex-1 gap-3 w-full lg:w-auto">
+            <SearchBar
+              value={search}
+              onChange={(value) => {
+                setSearch(value);
+                setPage(1);
+              }}
+              className="w-full sm:flex-1"
+            />
+            <FilterBar
+              statusFilter={statusFilter}
+              onStatusChange={(value) => {
+                setStatusFilter(value);
+                setPage(1);
+              }}
+              className="w-full sm:w-auto"
+            />
+          </div>
+
+          {/* Right: Action Buttons */}
+          <div className="flex flex-col sm:flex-row gap-3 w-full lg:w-auto">
+            <button
+              onClick={() => setShowUploadModal(true)}
+              className="flex items-center justify-center gap-2 px-5 h-12 bg-white border-2 border-mint-300 text-text-primary text-sm font-semibold rounded-xl hover:bg-mint-50 transition-all shadow-md hover:shadow-lg active:scale-95 focus:ring-4 focus:ring-mint-100 outline-none w-full sm:w-auto"
+            >
+              <Upload className="w-4 h-4" />
+              <span className="hidden sm:inline">Upload CSV</span>
+              <span className="sm:hidden">Upload</span>
+            </button>
+
+            {employees.length > 0 && (
+              <button
+                onClick={handleSendEmailToAll}
+                disabled={resendEmailMutation.isPending}
+                className="flex items-center justify-center gap-2 px-5 h-12 bg-white border-2 border-mint-300 text-text-primary text-sm font-semibold rounded-xl hover:bg-mint-50 transition-all shadow-md hover:shadow-lg active:scale-95 focus:ring-4 focus:ring-mint-100 outline-none disabled:opacity-50 disabled:cursor-not-allowed w-full sm:w-auto"
+              >
+                <Mail className="w-4 h-4" />
+                <span className="hidden sm:inline">
+                  {resendEmailMutation.isPending ? 'Sending...' : 'Send Email to All'}
+                </span>
+                <span className="sm:hidden">Email All</span>
+              </button>
+            )}
+
+            <button
+              onClick={handleAddEmployee}
+              className="flex items-center justify-center gap-2 px-5 h-12 bg-white border-2 border-mint-300 text-text-primary text-sm font-semibold rounded-xl hover:bg-mint-50 transition-all shadow-md hover:shadow-lg active:scale-95 focus:ring-4 focus:ring-mint-100 outline-none w-full sm:w-auto"
+            >
+              <UserPlus className="w-4 h-4" />
+              Add Employee
+            </button>
           </div>
           <Button variant="outline" onClick={() => router.push("/dashboard")}>
             <LogOut className="h-4 w-4 mr-2" />
             Create Assessment
           </Button>
         </div>
+      </motion.div>
 
         {/* Employee List */}
         <EmployeeList
@@ -156,7 +334,21 @@ export default function EmployeeManagementPage({
             onSuccess={handleFormSuccess}
           />
         )}
-      </div>
+      </motion.div>
+
+      {/* Modals */}
+      <AddEmployeeModal
+        isOpen={showAddModal}
+        onClose={handleFormClose}
+        onSuccess={handleFormSuccess}
+        employee={editingEmployee}
+      />
+
+      <BulkUploadModal
+        isOpen={showUploadModal}
+        onClose={() => setShowUploadModal(false)}
+        onSuccess={handleUploadSuccess}
+      />
     </div>
   );
 }

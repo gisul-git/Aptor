@@ -37,7 +37,7 @@ interface ProctorSummary {
   eventTypeLabels: Record<string, string>;
 }
 
-// ProctorLog is now imported from useProctorPolling
+// ProctorLog is now imported from useProctorPollings
 
 interface AssessmentData {
   title: string;

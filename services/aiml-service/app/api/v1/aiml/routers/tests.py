@@ -2082,25 +2082,27 @@ async def process_ai_evaluation_background(
             total_score += question_score
             
             # Store evaluation with submission
+            # Ensure question_id is string for consistent lookup
+            question_id_str = str(question_id)
             submission_data = {
-                "question_id": question_id,
+                "question_id": question_id_str,  # Store as string for consistent lookup
                 "source_code": submission.get("source_code", ""),
                 "outputs": submission.get("outputs", []),
                 "submitted_at": submission.get("submitted_at", datetime.utcnow()),
-                "status": "evaluated",
+                "status": "evaluated",  # Explicitly set status to "evaluated"
                 "ai_feedback": evaluation,
                 "score": question_score
             }
             
             evaluations.append({
-                "question_id": question_id,
+                "question_id": question_id_str,
                 "question_title": question.get("title", "Unknown"),
                 "score": question_score,
                 "feedback": evaluation
             })
             
-            # Update in existing_submissions
-            existing_submissions[question_id] = submission_data
+            # Update in existing_submissions (use string key)
+            existing_submissions[question_id_str] = submission_data
         
         # Calculate final score out of 100
         final_score = round((total_score / max_possible_score) * 100) if max_possible_score > 0 else 0
@@ -2251,8 +2253,10 @@ async def submit_test(
                     existing_submissions[question_id]["source_code"] = answer["source_code"]
             else:
                 # Add new submission
-                existing_submissions[question_id] = {
-                    "question_id": question_id,
+                # Ensure question_id is string for consistent lookup
+                question_id_str = str(question_id)
+                existing_submissions[question_id_str] = {
+                    "question_id": question_id_str,  # Store as string
                     "source_code": answer.get("source_code", ""),
                     "outputs": answer.get("outputs", []),
                     "submitted_at": datetime.utcnow(),
@@ -3429,20 +3433,25 @@ async def get_candidate_analytics(
                 if not ObjectId.is_valid(qid):
                     continue
                 
-                question = questions_dict.get(qid)
+                qid_str = str(qid)  # Convert to string for dictionary lookup
+                question = questions_dict.get(qid_str)
                 if not question:
-                    logger.warning(f"[{request_id}] Question {qid} not found in batch fetch")
+                    logger.warning(f"[{request_id}] Question {qid_str} not found in batch fetch")
                     continue
                 
-                # O(1) lookup instead of O(n) loop
-                question_submission = submissions_dict.get(qid)
+                # O(1) lookup instead of O(n) loop - use string key
+                question_submission = submissions_dict.get(qid_str)
+                
+                # Debug logging
+                if not question_submission:
+                    logger.warning(f"[{request_id}] No submission found for question {qid_str}. Available keys: {list(submissions_dict.keys())}")
                 
                 # Get AI feedback from submission if available
                 ai_feedback = question_submission.get("ai_feedback") if question_submission else None
                 question_score = question_submission.get("score", 0) if question_submission else 0
                 
                 question_analytics.append({
-                    "question_id": str(qid),
+                    "question_id": qid_str,
                     "question_title": question.get("title", ""),
                     "description": question.get("description", ""),
                     "tasks": question.get("tasks", []),
