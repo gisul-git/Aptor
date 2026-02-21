@@ -328,52 +328,69 @@ jobs:
               echo "⚠️  CHANGED_SERVICES is empty from GitHub Actions"
               echo "🔄 Attempting to detect changes locally on VM..."
               
-              # Try to detect changes by comparing current HEAD with previous commit
+              # Determine what to compare
+              COMPARE_FROM=""
+              COMPARE_TO="$NEW_HEAD"
+              
+              # If OLD_HEAD and NEW_HEAD are different, use OLD_HEAD
               if [ -n "$OLD_HEAD" ] && [ "$OLD_HEAD" != "$NEW_HEAD" ]; then
-                echo "🔍 Comparing $OLD_HEAD with $NEW_HEAD"
+                COMPARE_FROM="$OLD_HEAD"
+                echo "🔍 Comparing $OLD_HEAD with $NEW_HEAD (HEAD changed)"
+              else
+                # If no HEAD change, compare with previous commit (HEAD~1)
+                COMPARE_FROM=$(git rev-parse HEAD~1 2>/dev/null || echo "")
+                if [ -n "$COMPARE_FROM" ]; then
+                  echo "🔍 Comparing $COMPARE_FROM (HEAD~1) with $NEW_HEAD (current HEAD)"
+                else
+                  echo "⚠️  Cannot determine previous commit for comparison"
+                fi
+              fi
+              
+              # Try to detect changes
+              if [ -n "$COMPARE_FROM" ] && [ -n "$COMPARE_TO" ]; then
                 VM_CHANGED_SERVICES=""
                 
-                if git diff --name-only $OLD_HEAD $NEW_HEAD 2>/dev/null | grep -qE "^frontend/"; then
+                if git diff --name-only $COMPARE_FROM $COMPARE_TO 2>/dev/null | grep -qE "^frontend/"; then
                   VM_CHANGED_SERVICES="${VM_CHANGED_SERVICES}frontend "
                   echo "✅ Frontend changed (detected on VM)"
                 fi
-                if git diff --name-only $OLD_HEAD $NEW_HEAD 2>/dev/null | grep -q "^services/api-gateway/"; then
+                if git diff --name-only $COMPARE_FROM $COMPARE_TO 2>/dev/null | grep -q "^services/api-gateway/"; then
                   VM_CHANGED_SERVICES="${VM_CHANGED_SERVICES}api-gateway "
                   echo "✅ API Gateway changed (detected on VM)"
                 fi
-                if git diff --name-only $OLD_HEAD $NEW_HEAD 2>/dev/null | grep -q "^services/auth-service/"; then
+                if git diff --name-only $COMPARE_FROM $COMPARE_TO 2>/dev/null | grep -q "^services/auth-service/"; then
                   VM_CHANGED_SERVICES="${VM_CHANGED_SERVICES}auth-service "
                   echo "✅ Auth Service changed (detected on VM)"
                 fi
-                if git diff --name-only $OLD_HEAD $NEW_HEAD 2>/dev/null | grep -q "^services/ai-assessment-service/"; then
+                if git diff --name-only $COMPARE_FROM $COMPARE_TO 2>/dev/null | grep -q "^services/ai-assessment-service/"; then
                   VM_CHANGED_SERVICES="${VM_CHANGED_SERVICES}ai-assessment-service "
                   echo "✅ AI Assessment Service changed (detected on VM)"
                 fi
-                if git diff --name-only $OLD_HEAD $NEW_HEAD 2>/dev/null | grep -q "^services/custom-mcq-service/"; then
+                if git diff --name-only $COMPARE_FROM $COMPARE_TO 2>/dev/null | grep -q "^services/custom-mcq-service/"; then
                   VM_CHANGED_SERVICES="${VM_CHANGED_SERVICES}custom-mcq-service "
                   echo "✅ Custom MCQ Service changed (detected on VM)"
                 fi
-                if git diff --name-only $OLD_HEAD $NEW_HEAD 2>/dev/null | grep -q "^services/aiml-service/"; then
+                if git diff --name-only $COMPARE_FROM $COMPARE_TO 2>/dev/null | grep -q "^services/aiml-service/"; then
                   VM_CHANGED_SERVICES="${VM_CHANGED_SERVICES}aiml-service "
                   echo "✅ AIML Service changed (detected on VM)"
                 fi
-                if git diff --name-only $OLD_HEAD $NEW_HEAD 2>/dev/null | grep -q "^services/aiml-agent-service/"; then
+                if git diff --name-only $COMPARE_FROM $COMPARE_TO 2>/dev/null | grep -q "^services/aiml-agent-service/"; then
                   VM_CHANGED_SERVICES="${VM_CHANGED_SERVICES}aiml-agent-service "
                   echo "✅ AIML Agent Service changed (detected on VM)"
                 fi
-                if git diff --name-only $OLD_HEAD $NEW_HEAD 2>/dev/null | grep -q "^services/dsa-service/"; then
+                if git diff --name-only $COMPARE_FROM $COMPARE_TO 2>/dev/null | grep -q "^services/dsa-service/"; then
                   VM_CHANGED_SERVICES="${VM_CHANGED_SERVICES}dsa-service "
                   echo "✅ DSA Service changed (detected on VM)"
                 fi
-                if git diff --name-only $OLD_HEAD $NEW_HEAD 2>/dev/null | grep -q "^services/proctoring-service/"; then
+                if git diff --name-only $COMPARE_FROM $COMPARE_TO 2>/dev/null | grep -q "^services/proctoring-service/"; then
                   VM_CHANGED_SERVICES="${VM_CHANGED_SERVICES}proctoring-service "
                   echo "✅ Proctoring Service changed (detected on VM)"
                 fi
-                if git diff --name-only $OLD_HEAD $NEW_HEAD 2>/dev/null | grep -q "^services/super-admin-service/"; then
+                if git diff --name-only $COMPARE_FROM $COMPARE_TO 2>/dev/null | grep -q "^services/super-admin-service/"; then
                   VM_CHANGED_SERVICES="${VM_CHANGED_SERVICES}super-admin-service "
                   echo "✅ Super Admin Service changed (detected on VM)"
                 fi
-                if git diff --name-only $OLD_HEAD $NEW_HEAD 2>/dev/null | grep -q "^services/employee-service/"; then
+                if git diff --name-only $COMPARE_FROM $COMPARE_TO 2>/dev/null | grep -q "^services/employee-service/"; then
                   VM_CHANGED_SERVICES="${VM_CHANGED_SERVICES}employee-service "
                   echo "✅ Employee Service changed (detected on VM)"
                 fi
@@ -384,14 +401,22 @@ jobs:
                   echo "✅ Detected changes on VM: $VM_CHANGED_SERVICES"
                   CHANGED_SERVICES="$VM_CHANGED_SERVICES"
                 else
-                  echo "⚠️  No changes detected on VM either, falling back to full deployment"
+                  echo "⚠️  No changes detected between $COMPARE_FROM and $COMPARE_TO"
+                  echo "🔄 Falling back to full deployment"
                   CHANGED_SERVICES="all"
                 fi
               else
-                echo "⚠️  Cannot compare commits (OLD_HEAD=$OLD_HEAD, NEW_HEAD=$NEW_HEAD)"
+                echo "⚠️  Cannot determine commits for comparison"
                 echo "🔄 Falling back to full deployment"
                 CHANGED_SERVICES="all"
               fi
+            fi
+            
+            # Ensure CHANGED_SERVICES is not empty - final safety check
+            if [ -z "$CHANGED_SERVICES" ] || [ "$CHANGED_SERVICES" == "" ]; then
+              echo "❌ ERROR: CHANGED_SERVICES is still empty after all detection attempts!"
+              echo "🔄 Forcing full deployment as last resort"
+              CHANGED_SERVICES="all"
             fi
             
             echo "📋 Final services to deploy: $CHANGED_SERVICES"
@@ -456,12 +481,21 @@ jobs:
             else
               echo "🎯 Selective deployment: Only deploying changed services"
               
-              # Trim and validate services list
-              CHANGED_SERVICES=$(echo "$CHANGED_SERVICES" | xargs)
+              # Trim and validate services list (but preserve "all" if set)
+              if [ "$CHANGED_SERVICES" != "all" ]; then
+                CHANGED_SERVICES=$(echo "$CHANGED_SERVICES" | xargs)
+              fi
               
-              if [ -z "$CHANGED_SERVICES" ]; then
+              if [ -z "$CHANGED_SERVICES" ] || [ "$CHANGED_SERVICES" == "" ]; then
                 echo "❌ ERROR: No services to deploy after trimming!"
-                exit 1
+                echo "🔄 Falling back to full deployment"
+                CHANGED_SERVICES="all"
+              fi
+              
+              # If somehow still empty or became empty, force full deployment
+              if [ -z "$CHANGED_SERVICES" ] || [ "$CHANGED_SERVICES" == "" ]; then
+                echo "❌ CRITICAL: CHANGED_SERVICES is empty, forcing full deployment"
+                CHANGED_SERVICES="all"
               fi
               
               echo "📦 Services to deploy: $CHANGED_SERVICES"
