@@ -29,6 +29,117 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: QA
+          fetch-depth: 2  # Need previous commit for diff
+
+      - name: Detect changed services
+        id: changes
+        run: |
+          echo "🔍 Detecting changed services..."
+          
+          # Get the previous commit (for push events) or base commit (for PRs)
+          if [ "${{ github.event_name }}" == "push" ]; then
+            PREV_COMMIT="${{ github.event.before }}"
+            CURR_COMMIT="${{ github.sha }}"
+          elif [ "${{ github.event_name }}" == "pull_request" ]; then
+            PREV_COMMIT="${{ github.event.pull_request.base.sha }}"
+            CURR_COMMIT="${{ github.event.pull_request.head.sha }}"
+          else
+            # For workflow_dispatch, compare with previous commit
+            PREV_COMMIT=$(git rev-parse HEAD~1 2>/dev/null || echo "")
+            CURR_COMMIT=$(git rev-parse HEAD)
+          fi
+          
+          # If no previous commit, deploy everything
+          if [ -z "$PREV_COMMIT" ] || [ "$PREV_COMMIT" == "0000000000000000000000000000000000000000" ]; then
+            echo "⚠️  No previous commit found, deploying all services"
+            echo "changed_services=all" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          
+          # Check if docker-compose.yml changed (affects all services)
+          if git diff --name-only $PREV_COMMIT $CURR_COMMIT | grep -q "^docker-compose.yml$"; then
+            echo "📦 docker-compose.yml changed, deploying all services"
+            echo "changed_services=all" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          
+          # Check which services changed
+          CHANGED_SERVICES=""
+          
+          # Frontend
+          if git diff --name-only $PREV_COMMIT $CURR_COMMIT | grep -q "^frontend/"; then
+            CHANGED_SERVICES="${CHANGED_SERVICES}frontend "
+            echo "✅ Frontend changed"
+          fi
+          
+          # API Gateway
+          if git diff --name-only $PREV_COMMIT $CURR_COMMIT | grep -q "^services/api-gateway/"; then
+            CHANGED_SERVICES="${CHANGED_SERVICES}api-gateway "
+            echo "✅ API Gateway changed"
+          fi
+          
+          # Auth Service
+          if git diff --name-only $PREV_COMMIT $CURR_COMMIT | grep -q "^services/auth-service/"; then
+            CHANGED_SERVICES="${CHANGED_SERVICES}auth-service "
+            echo "✅ Auth Service changed"
+          fi
+          
+          # AI Assessment Service
+          if git diff --name-only $PREV_COMMIT $CURR_COMMIT | grep -q "^services/ai-assessment-service/"; then
+            CHANGED_SERVICES="${CHANGED_SERVICES}ai-assessment-service "
+            echo "✅ AI Assessment Service changed"
+          fi
+          
+          # Custom MCQ Service
+          if git diff --name-only $PREV_COMMIT $CURR_COMMIT | grep -q "^services/custom-mcq-service/"; then
+            CHANGED_SERVICES="${CHANGED_SERVICES}custom-mcq-service "
+            echo "✅ Custom MCQ Service changed"
+          fi
+          
+          # AIML Service
+          if git diff --name-only $PREV_COMMIT $CURR_COMMIT | grep -q "^services/aiml-service/"; then
+            CHANGED_SERVICES="${CHANGED_SERVICES}aiml-service "
+            echo "✅ AIML Service changed"
+          fi
+          
+          # AIML Agent Service
+          if git diff --name-only $PREV_COMMIT $CURR_COMMIT | grep -q "^services/aiml-agent-service/"; then
+            CHANGED_SERVICES="${CHANGED_SERVICES}aiml-agent-service "
+            echo "✅ AIML Agent Service changed"
+          fi
+          
+          # DSA Service
+          if git diff --name-only $PREV_COMMIT $CURR_COMMIT | grep -q "^services/dsa-service/"; then
+            CHANGED_SERVICES="${CHANGED_SERVICES}dsa-service "
+            echo "✅ DSA Service changed"
+          fi
+          
+          # Proctoring Service
+          if git diff --name-only $PREV_COMMIT $CURR_COMMIT | grep -q "^services/proctoring-service/"; then
+            CHANGED_SERVICES="${CHANGED_SERVICES}proctoring-service "
+            echo "✅ Proctoring Service changed"
+          fi
+          
+          # Super Admin Service
+          if git diff --name-only $PREV_COMMIT $CURR_COMMIT | grep -q "^services/super-admin-service/"; then
+            CHANGED_SERVICES="${CHANGED_SERVICES}super-admin-service "
+            echo "✅ Super Admin Service changed"
+          fi
+          
+          # Employee Service
+          if git diff --name-only $PREV_COMMIT $CURR_COMMIT | grep -q "^services/employee-service/"; then
+            CHANGED_SERVICES="${CHANGED_SERVICES}employee-service "
+            echo "✅ Employee Service changed"
+          fi
+          
+          # If no services changed, deploy all (safety measure)
+          if [ -z "$CHANGED_SERVICES" ]; then
+            echo "ℹ️  No service-specific changes detected, deploying all services"
+            echo "changed_services=all" >> $GITHUB_OUTPUT
+          else
+            echo "📋 Changed services: $CHANGED_SERVICES"
+            echo "changed_services=$CHANGED_SERVICES" >> $GITHUB_OUTPUT
+          fi
 
       - name: Setup SSH
         run: |
@@ -47,23 +158,28 @@ jobs:
           ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no ${{ env.VM_USER }}@${{ env.VM_HOST }} bash << EOF
             set -e
             
+            CHANGED_SERVICES="${{ steps.changes.outputs.changed_services }}"
+            
             echo "🚀 Starting QA deployment..."
+            echo "📋 Services to deploy: $CHANGED_SERVICES"
             
             # Navigate to deployment directory
             cd ${DEPLOY_PATH}
             
-            # Sync workspace with QA branch (production-ready approach)
+            # Sync workspace with QA branch
             echo "📥 Syncing workspace with QA branch..."
             
-            # Backup critical files before reset
+            # Backup critical files
             echo "💾 Backing up critical files..."
             if [ -f .env ]; then
               cp .env .env.backup
               echo "✅ .env backed up"
             fi
             
-            # Fetch latest changes
+            # Fetch and checkout latest changes
             git fetch origin
+            git checkout QA
+            git pull origin QA || true
             
             # Ensure .env file exists
             if [ ! -f .env ]; then
@@ -74,40 +190,113 @@ jobs:
               echo "✅ .env file verified"
             fi
             
-            # Preserve aiml-agent-service - ensure it stays running
-            echo "🔒 Preserving aiml-agent-service..."
-            AIML_AGENT_RUNNING=false
-            if docker compose ps aiml-agent-service 2>/dev/null | grep -q "Up"; then
-              AIML_AGENT_RUNNING=true
-              echo "✅ aiml-agent-service is running, will preserve it"
+            # Function to map service name to container name
+            get_container_name() {
+              case "$1" in
+                frontend) echo "gisul-frontend" ;;
+                api-gateway) echo "gisul-api-gateway" ;;
+                auth-service) echo "gisul-auth-service" ;;
+                ai-assessment-service) echo "gisul-ai-assessment-service" ;;
+                custom-mcq-service) echo "gisul-custom-mcq-service" ;;
+                aiml-service) echo "gisul-aiml-service" ;;
+                aiml-agent-service) echo "gisul-aiml-agent-service" ;;
+                dsa-service) echo "gisul-dsa-service" ;;
+                proctoring-service) echo "gisul-proctoring-service" ;;
+                super-admin-service) echo "gisul-super-admin-service" ;;
+                employee-service) echo "gisul-employee-service" ;;
+                *) echo "" ;;
+              esac
+            }
+            
+            # Check if we need to deploy all services
+            if [ "$CHANGED_SERVICES" == "all" ]; then
+              echo "🔄 Deploying ALL services (full deployment)"
+              
+              # Preserve aiml-agent-service if running
+              echo "🔒 Preserving aiml-agent-service..."
+              AIML_AGENT_RUNNING=false
+              if docker compose ps aiml-agent-service 2>/dev/null | grep -q "Up"; then
+                AIML_AGENT_RUNNING=true
+                echo "✅ aiml-agent-service is running, will preserve it"
+              fi
+              
+              # Stop and remove existing containers (except aiml-agent-service if running)
+              echo "🛑 Stopping existing containers..."
+              docker compose stop $(docker compose ps -q | grep -v "$(docker ps -a --filter 'name=gisul-aiml-agent-service' --format '{{.ID}}')" || true) 2>/dev/null || true
+              
+              sleep 2
+              
+              # Remove containers (except aiml-agent-service)
+              for container in gisul-frontend gisul-api-gateway gisul-auth-service \
+                              gisul-ai-assessment-service gisul-custom-mcq-service \
+                              gisul-aiml-service gisul-dsa-service gisul-proctoring-service \
+                              gisul-super-admin-service gisul-employee-service gisul-redis; do
+                if docker ps -a --format "{{.Names}}" | grep -q "^${container}$"; then
+                  echo "Removing container: ${container}"
+                  docker stop "${container}" 2>/dev/null || true
+                  docker rm -f "${container}" 2>/dev/null || true
+                fi
+              done
+              
+              # Build and start all services
+              echo "🔨 Building all services..."
+              docker compose build --no-cache
+              
+              echo "🚀 Starting all services..."
+              docker compose up -d --remove-orphans
+              
+            else
+              echo "🎯 Selective deployment: Only deploying changed services"
+              
+              # Deploy each changed service individually
+              for service in $CHANGED_SERVICES; do
+                container_name=$(get_container_name "$service")
+                
+                if [ -z "$container_name" ]; then
+                  echo "⚠️  Unknown service: $service, skipping..."
+                  continue
+                fi
+                
+                echo ""
+                echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                echo "🔄 Deploying: $service (container: $container_name)"
+                echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                
+                # Stop and remove only this specific container
+                if docker ps -a --format "{{.Names}}" | grep -q "^${container_name}$"; then
+                  echo "🛑 Stopping container: $container_name"
+                  docker stop "$container_name" 2>/dev/null || true
+                  docker rm -f "$container_name" 2>/dev/null || true
+                  sleep 1
+                fi
+                
+                # Build only this service
+                echo "🔨 Building service: $service"
+                docker compose build --no-cache "$service"
+                
+                # Start only this service (dependencies will be started if needed)
+                echo "🚀 Starting service: $service"
+                docker compose up -d "$service"
+                
+                # Wait a bit for service to start
+                sleep 2
+                
+                # Verify service is running
+                if docker ps --format "{{.Names}}" | grep -q "^${container_name}$"; then
+                  echo "✅ $service deployed successfully"
+                else
+                  echo "❌ $service failed to start"
+                  docker compose logs --tail=50 "$service" || true
+                fi
+              done
+              
+              echo ""
+              echo "✅ Selective deployment completed"
             fi
             
-            # Stop existing containers (with timeout and force removal)
-            echo "🛑 Stopping existing containers..."
-            docker compose down --timeout 30 --remove-orphans || true
-            
-            # Force stop any remaining containers from this project
-            echo "🛑 Force stopping any remaining containers..."
-            docker compose ps -q | xargs -r docker stop -t 10 || true
-            docker compose ps -q | xargs -r docker rm -f || true
-            
-            # Remove any orphaned containers with our naming pattern
-            docker ps -a --filter "name=gisul-" --format "{{.ID}}" | xargs -r docker rm -f || true
-            
-            # Cleanup old images
-            echo "🧹 Cleaning up old Docker images..."
-            docker system prune -f || true
-            
-            # Build and start services
-            echo "🔨 Building services..."
-            docker compose build --no-cache
-            
-            echo "🚀 Starting services..."
-            docker compose up -d
-            
-            # Wait for services
+            # Wait for services to stabilize
             echo "⏳ Waiting for services to be ready..."
-            sleep 10
+            sleep 5
             
             # Status check
             echo "📊 Container status:"
@@ -115,7 +304,20 @@ jobs:
             
             # Verify containers are running
             echo "✅ Verifying services..."
-            docker compose ps | grep -q "Up" || (echo "❌ Some services failed to start" && exit 1)
+            if [ "$CHANGED_SERVICES" == "all" ]; then
+              docker compose ps | grep -q "Up" || (echo "❌ Some services failed to start" && exit 1)
+            else
+              # Verify only changed services
+              for service in $CHANGED_SERVICES; do
+                container_name=$(get_container_name "$service")
+                if [ -n "$container_name" ] && docker ps --format "{{.Names}}" | grep -q "^${container_name}$"; then
+                  echo "✅ $service is running"
+                elif [ -n "$container_name" ]; then
+                  echo "⚠️  $service is not running, checking logs..."
+                  docker compose logs --tail=20 "$service" || true
+                fi
+              done
+            fi
             
             echo "✅ QA deployment completed successfully!"
           EOF
