@@ -19,7 +19,7 @@ import {
   Repeat,
 } from 'lucide-react';
 
-export default function ApterJourney() {
+export default function AaptorJourney() {
   const [activeStep, setActiveStep] = useState(0);
 
   const steps = [
@@ -162,7 +162,7 @@ export default function ApterJourney() {
           transition={{ duration: 0.6 }}
         >
           <h2 className="text-3xl md:text-4xl lg:text-5xl font-bold text-[#2D5F4A] mb-4">
-            How APTER Transforms Your Workforce
+            How AAPTOR Transforms Your Workforce
           </h2>
           <p className="text-base md:text-lg text-[#5A8B70] max-w-3xl mx-auto">
             From assessment to continuous growth - a complete capability building lifecycle

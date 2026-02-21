@@ -63,6 +63,7 @@ import {
 } from "@/hooks/api/useDevOps";
 import { useDashboardAssessments } from "@/hooks/useDashboardAssessments";
 import { FloatingTopBar } from "@/components/dashboard/FloatingTopBar";
+import { FloatingTabs } from "@/components/dashboard/FloatingTabs";
 
 interface AssessmentsPageProps {
   session: any;
@@ -420,6 +421,7 @@ export default function AssessmentsPage({ session: serverSession }: AssessmentsP
   return (
     <div style={{ backgroundColor: "#ffffff", minHeight: "100vh" }}>
       <FloatingTopBar />
+      <FloatingTabs />
       <div className="container" style={{ paddingTop: "6rem" }}>
         {loading ? (
           <div className="card">
