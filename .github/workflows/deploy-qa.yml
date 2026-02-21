@@ -35,17 +35,29 @@ jobs:
         id: changes
         run: |
           echo "🔍 Detecting changed services..."
+          echo "Event: ${{ github.event_name }}"
+          echo "Current SHA: ${{ github.sha }}"
+          echo "Before SHA: ${{ github.event.before }}"
           
           # Get the previous commit (for push events) or base commit (for PRs)
           if [ "${{ github.event_name }}" == "push" ]; then
             PREV_COMMIT="${{ github.event.before }}"
             CURR_COMMIT="${{ github.sha }}"
+            
+            # If before is empty or null, use HEAD~1 as fallback
+            if [ -z "$PREV_COMMIT" ] || [ "$PREV_COMMIT" == "null" ] || [ "$PREV_COMMIT" == "0000000000000000000000000000000000000000" ]; then
+              echo "⚠️  github.event.before is empty, using HEAD~1"
+              PREV_COMMIT=$(git rev-parse HEAD~1 2>/dev/null || echo "")
+              CURR_COMMIT=$(git rev-parse HEAD)
+            fi
           elif [ "${{ github.event_name }}" == "pull_request" ]; then
             PREV_COMMIT="${{ github.event.pull_request.base.sha }}"
             CURR_COMMIT="${{ github.event.pull_request.head.sha }}"
           else
-            # For workflow_dispatch, compare with previous commit
-            PREV_COMMIT=$(git rev-parse HEAD~1 2>/dev/null || echo "")
+            # For workflow_dispatch, compare with previous commit on QA branch
+            echo "🔄 Workflow dispatch - comparing with previous commit on QA"
+            git fetch origin QA --depth=10
+            PREV_COMMIT=$(git rev-parse origin/QA~1 2>/dev/null || git rev-parse HEAD~1 2>/dev/null || echo "")
             CURR_COMMIT=$(git rev-parse HEAD)
           fi
           
@@ -59,16 +71,30 @@ jobs:
             exit 0
           fi
           
-          # Verify commits exist
+          # Verify commits exist, fetch if needed
           if ! git cat-file -e "$PREV_COMMIT" 2>/dev/null; then
             echo "⚠️  Previous commit not found in local repo, fetching..."
             git fetch origin --depth=100
+            # Try again with HEAD~1 if still not found
+            if ! git cat-file -e "$PREV_COMMIT" 2>/dev/null; then
+              echo "⚠️  Still not found, using HEAD~1"
+              PREV_COMMIT=$(git rev-parse HEAD~1 2>/dev/null || echo "")
+            fi
           fi
           
           if ! git cat-file -e "$CURR_COMMIT" 2>/dev/null; then
             echo "⚠️  Current commit not found in local repo, using HEAD"
             CURR_COMMIT=$(git rev-parse HEAD)
           fi
+          
+          # Final check - if still no valid previous commit, deploy all
+          if [ -z "$PREV_COMMIT" ] || [ "$PREV_COMMIT" == "0000000000000000000000000000000000000000" ]; then
+            echo "⚠️  Could not determine previous commit, deploying all services"
+            echo "changed_services=all" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          
+          echo "✅ Using commits: $PREV_COMMIT -> $CURR_COMMIT"
           
           # Check if docker-compose.yml changed (affects all services)
           if git diff --name-only $PREV_COMMIT $CURR_COMMIT | grep -q "^docker-compose.yml$"; then
@@ -150,6 +176,72 @@ jobs:
           # Trim trailing space from CHANGED_SERVICES
           CHANGED_SERVICES=$(echo "$CHANGED_SERVICES" | xargs)
           
+          # Debug: Show all changed files first
+          echo "📝 All changed files between $PREV_COMMIT and $CURR_COMMIT:"
+          CHANGED_FILES=$(git diff --name-only $PREV_COMMIT $CURR_COMMIT 2>/dev/null || echo "")
+          if [ -n "$CHANGED_FILES" ]; then
+            echo "$CHANGED_FILES" | head -30
+            echo "---"
+          else
+            echo "⚠️  No changed files detected! This might indicate a problem with commit comparison."
+            echo "Trying alternative: comparing HEAD with HEAD~1"
+            CHANGED_FILES=$(git diff --name-only HEAD~1 HEAD 2>/dev/null || echo "")
+            if [ -n "$CHANGED_FILES" ]; then
+              echo "Alternative comparison (HEAD~1 vs HEAD) found:"
+              echo "$CHANGED_FILES" | head -30
+              # Re-run detection with HEAD~1 vs HEAD
+              PREV_COMMIT=$(git rev-parse HEAD~1)
+              CURR_COMMIT=$(git rev-parse HEAD)
+              CHANGED_SERVICES=""
+              # Re-check all services
+              if echo "$CHANGED_FILES" | grep -qE "^frontend/"; then
+                CHANGED_SERVICES="${CHANGED_SERVICES}frontend "
+                echo "✅ Frontend changed (alternative detection)"
+              fi
+              if echo "$CHANGED_FILES" | grep -q "^services/api-gateway/"; then
+                CHANGED_SERVICES="${CHANGED_SERVICES}api-gateway "
+                echo "✅ API Gateway changed (alternative detection)"
+              fi
+              if echo "$CHANGED_FILES" | grep -q "^services/auth-service/"; then
+                CHANGED_SERVICES="${CHANGED_SERVICES}auth-service "
+                echo "✅ Auth Service changed (alternative detection)"
+              fi
+              if echo "$CHANGED_FILES" | grep -q "^services/ai-assessment-service/"; then
+                CHANGED_SERVICES="${CHANGED_SERVICES}ai-assessment-service "
+                echo "✅ AI Assessment Service changed (alternative detection)"
+              fi
+              if echo "$CHANGED_FILES" | grep -q "^services/custom-mcq-service/"; then
+                CHANGED_SERVICES="${CHANGED_SERVICES}custom-mcq-service "
+                echo "✅ Custom MCQ Service changed (alternative detection)"
+              fi
+              if echo "$CHANGED_FILES" | grep -q "^services/aiml-service/"; then
+                CHANGED_SERVICES="${CHANGED_SERVICES}aiml-service "
+                echo "✅ AIML Service changed (alternative detection)"
+              fi
+              if echo "$CHANGED_FILES" | grep -q "^services/aiml-agent-service/"; then
+                CHANGED_SERVICES="${CHANGED_SERVICES}aiml-agent-service "
+                echo "✅ AIML Agent Service changed (alternative detection)"
+              fi
+              if echo "$CHANGED_FILES" | grep -q "^services/dsa-service/"; then
+                CHANGED_SERVICES="${CHANGED_SERVICES}dsa-service "
+                echo "✅ DSA Service changed (alternative detection)"
+              fi
+              if echo "$CHANGED_FILES" | grep -q "^services/proctoring-service/"; then
+                CHANGED_SERVICES="${CHANGED_SERVICES}proctoring-service "
+                echo "✅ Proctoring Service changed (alternative detection)"
+              fi
+              if echo "$CHANGED_FILES" | grep -q "^services/super-admin-service/"; then
+                CHANGED_SERVICES="${CHANGED_SERVICES}super-admin-service "
+                echo "✅ Super Admin Service changed (alternative detection)"
+              fi
+              if echo "$CHANGED_FILES" | grep -q "^services/employee-service/"; then
+                CHANGED_SERVICES="${CHANGED_SERVICES}employee-service "
+                echo "✅ Employee Service changed (alternative detection)"
+              fi
+              CHANGED_SERVICES=$(echo "$CHANGED_SERVICES" | xargs)
+            fi
+          fi
+          
           # If no services changed, deploy all (safety measure)
           if [ -z "$CHANGED_SERVICES" ]; then
             echo "ℹ️  No service-specific changes detected, deploying all services"
@@ -158,10 +250,6 @@ jobs:
             echo "📋 Changed services: $CHANGED_SERVICES"
             echo "changed_services=$CHANGED_SERVICES" >> $GITHUB_OUTPUT
           fi
-          
-          # Debug: Show all changed files
-          echo "📝 All changed files:"
-          git diff --name-only $PREV_COMMIT $CURR_COMMIT | head -20 || true
 
       - name: Setup SSH
         run: |
@@ -183,7 +271,7 @@ jobs:
             CHANGED_SERVICES="${{ steps.changes.outputs.changed_services }}"
             
             echo "🚀 Starting QA deployment..."
-            echo "📋 Services to deploy: $CHANGED_SERVICES"
+            echo "📋 Services to deploy (from GitHub Actions): $CHANGED_SERVICES"
             
             # Navigate to deployment directory
             cd ${DEPLOY_PATH}
@@ -202,6 +290,9 @@ jobs:
             echo "🔄 Updating code from repository..."
             git fetch origin
             
+            # Store current HEAD before reset (for change detection fallback)
+            OLD_HEAD=$(git rev-parse HEAD 2>/dev/null || echo "")
+            
             # Stash or discard local changes to allow pull
             if [ -n "$(git status --porcelain)" ]; then
               echo "⚠️  Local changes detected, stashing them..."
@@ -219,7 +310,9 @@ jobs:
               }
             }
             
+            NEW_HEAD=$(git rev-parse HEAD)
             echo "✅ Code updated to latest QA branch"
+            echo "📌 HEAD moved from $OLD_HEAD to $NEW_HEAD"
             
             # Ensure .env file exists
             if [ ! -f .env ]; then
@@ -230,12 +323,78 @@ jobs:
               echo "✅ .env file verified"
             fi
             
-            # Validate CHANGED_SERVICES is not empty
-            if [ -z "$CHANGED_SERVICES" ]; then
-              echo "❌ ERROR: CHANGED_SERVICES is empty! Cannot proceed with deployment."
-              echo "This should not happen. Falling back to full deployment."
-              CHANGED_SERVICES="all"
+            # Validate CHANGED_SERVICES - if empty, try to detect changes on VM
+            if [ -z "$CHANGED_SERVICES" ] || [ "$CHANGED_SERVICES" == "" ]; then
+              echo "⚠️  CHANGED_SERVICES is empty from GitHub Actions"
+              echo "🔄 Attempting to detect changes locally on VM..."
+              
+              # Try to detect changes by comparing current HEAD with previous commit
+              if [ -n "$OLD_HEAD" ] && [ "$OLD_HEAD" != "$NEW_HEAD" ]; then
+                echo "🔍 Comparing $OLD_HEAD with $NEW_HEAD"
+                VM_CHANGED_SERVICES=""
+                
+                if git diff --name-only $OLD_HEAD $NEW_HEAD 2>/dev/null | grep -qE "^frontend/"; then
+                  VM_CHANGED_SERVICES="${VM_CHANGED_SERVICES}frontend "
+                  echo "✅ Frontend changed (detected on VM)"
+                fi
+                if git diff --name-only $OLD_HEAD $NEW_HEAD 2>/dev/null | grep -q "^services/api-gateway/"; then
+                  VM_CHANGED_SERVICES="${VM_CHANGED_SERVICES}api-gateway "
+                  echo "✅ API Gateway changed (detected on VM)"
+                fi
+                if git diff --name-only $OLD_HEAD $NEW_HEAD 2>/dev/null | grep -q "^services/auth-service/"; then
+                  VM_CHANGED_SERVICES="${VM_CHANGED_SERVICES}auth-service "
+                  echo "✅ Auth Service changed (detected on VM)"
+                fi
+                if git diff --name-only $OLD_HEAD $NEW_HEAD 2>/dev/null | grep -q "^services/ai-assessment-service/"; then
+                  VM_CHANGED_SERVICES="${VM_CHANGED_SERVICES}ai-assessment-service "
+                  echo "✅ AI Assessment Service changed (detected on VM)"
+                fi
+                if git diff --name-only $OLD_HEAD $NEW_HEAD 2>/dev/null | grep -q "^services/custom-mcq-service/"; then
+                  VM_CHANGED_SERVICES="${VM_CHANGED_SERVICES}custom-mcq-service "
+                  echo "✅ Custom MCQ Service changed (detected on VM)"
+                fi
+                if git diff --name-only $OLD_HEAD $NEW_HEAD 2>/dev/null | grep -q "^services/aiml-service/"; then
+                  VM_CHANGED_SERVICES="${VM_CHANGED_SERVICES}aiml-service "
+                  echo "✅ AIML Service changed (detected on VM)"
+                fi
+                if git diff --name-only $OLD_HEAD $NEW_HEAD 2>/dev/null | grep -q "^services/aiml-agent-service/"; then
+                  VM_CHANGED_SERVICES="${VM_CHANGED_SERVICES}aiml-agent-service "
+                  echo "✅ AIML Agent Service changed (detected on VM)"
+                fi
+                if git diff --name-only $OLD_HEAD $NEW_HEAD 2>/dev/null | grep -q "^services/dsa-service/"; then
+                  VM_CHANGED_SERVICES="${VM_CHANGED_SERVICES}dsa-service "
+                  echo "✅ DSA Service changed (detected on VM)"
+                fi
+                if git diff --name-only $OLD_HEAD $NEW_HEAD 2>/dev/null | grep -q "^services/proctoring-service/"; then
+                  VM_CHANGED_SERVICES="${VM_CHANGED_SERVICES}proctoring-service "
+                  echo "✅ Proctoring Service changed (detected on VM)"
+                fi
+                if git diff --name-only $OLD_HEAD $NEW_HEAD 2>/dev/null | grep -q "^services/super-admin-service/"; then
+                  VM_CHANGED_SERVICES="${VM_CHANGED_SERVICES}super-admin-service "
+                  echo "✅ Super Admin Service changed (detected on VM)"
+                fi
+                if git diff --name-only $OLD_HEAD $NEW_HEAD 2>/dev/null | grep -q "^services/employee-service/"; then
+                  VM_CHANGED_SERVICES="${VM_CHANGED_SERVICES}employee-service "
+                  echo "✅ Employee Service changed (detected on VM)"
+                fi
+                
+                VM_CHANGED_SERVICES=$(echo "$VM_CHANGED_SERVICES" | xargs)
+                
+                if [ -n "$VM_CHANGED_SERVICES" ]; then
+                  echo "✅ Detected changes on VM: $VM_CHANGED_SERVICES"
+                  CHANGED_SERVICES="$VM_CHANGED_SERVICES"
+                else
+                  echo "⚠️  No changes detected on VM either, falling back to full deployment"
+                  CHANGED_SERVICES="all"
+                fi
+              else
+                echo "⚠️  Cannot compare commits (OLD_HEAD=$OLD_HEAD, NEW_HEAD=$NEW_HEAD)"
+                echo "🔄 Falling back to full deployment"
+                CHANGED_SERVICES="all"
+              fi
             fi
+            
+            echo "📋 Final services to deploy: $CHANGED_SERVICES"
             
             # Helper function to map service name to container name
             # Using a variable-based approach to avoid function scope issues
