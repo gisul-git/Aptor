@@ -1,62 +1,18 @@
 import React from 'react';
 
-<<<<<<< HEAD
-interface MCQQuestionProps {
-  question: {
-    _id?: string;
-    id?: string;
-    questionText?: string;
-    title?: string;
-    options?: string[];
-    score?: number;
-  };
-  answer: string | null | undefined;
-  onAnswerChange: (answer: string) => void;
-  disabled?: boolean;
-}
-
-export function MCQQuestion({ question, answer, onAnswerChange, disabled = false }: MCQQuestionProps) {
-  const questionId = question._id || question.id || '';
-  const questionText = question.questionText || question.title || '';
-  const options = question.options || [];
-
-  return (
-    <div>
-      <div style={{ marginBottom: 12 }}>
-        <p style={{ margin: 0, fontWeight: 600 }}>{questionText}</p>
-      </div>
-      <div>
-        {options.map((opt, idx) => (
-          <label key={idx} style={{ display: 'block', marginBottom: 8, cursor: disabled ? 'not-allowed' : 'pointer' }}>
-            <input
-              type="radio"
-              name={questionId}
-              value={opt}
-              disabled={disabled}
-              checked={answer === opt}
-              onChange={() => !disabled && onAnswerChange(opt)}
-              style={{ marginRight: 8 }}
-            />
-            {opt}
-          </label>
-        ))}
-      </div>
-    </div>
-  );
-}
-=======
 type MCQOption = string | { label: string; value?: string };
 
 interface MCQQuestionProps {
   question: {
     id?: string;
+    _id?: string;
     title?: string;
     questionText: string;
     options: MCQOption[];
     score?: number;
     difficulty?: string;
   };
-  answer?: string;
+  answer?: string | null;
   onAnswerChange?: (value: string) => void;
   disabled?: boolean;
 }
@@ -67,7 +23,8 @@ export const MCQQuestion: React.FC<MCQQuestionProps> = ({
   onAnswerChange,
   disabled = false,
 }) => {
-  const { id, title, questionText, options, score, difficulty } = question;
+  const { id, _id, title, questionText, options, score, difficulty } = question;
+  const questionId = id || _id || 'mcq';
 
   const handleChange = (value: string) => {
     if (disabled) return;
@@ -162,7 +119,7 @@ export const MCQQuestion: React.FC<MCQQuestionProps> = ({
         {options.map((opt, index) => {
           const label = typeof opt === 'string' ? opt : opt.label;
           const value = typeof opt === 'string' ? opt : opt.value ?? opt.label;
-          const optionId = `${id || 'mcq'}-option-${index}`;
+          const optionId = `${questionId}-option-${index}`;
 
           const checked = answer === value;
 
@@ -186,7 +143,7 @@ export const MCQQuestion: React.FC<MCQQuestionProps> = ({
               <input
                 id={optionId}
                 type="radio"
-                name={id || 'mcq'}
+                name={questionId}
                 value={value}
                 disabled={disabled}
                 checked={checked}
@@ -201,6 +158,3 @@ export const MCQQuestion: React.FC<MCQQuestionProps> = ({
     </div>
   );
 };
-
-
->>>>>>> dev

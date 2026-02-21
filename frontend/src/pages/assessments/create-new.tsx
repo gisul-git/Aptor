@@ -43,20 +43,8 @@ import {
   useSendInvitations,
 } from "@/hooks/api/useAssessments";
 
-import {
-  Briefcase,
-  AlertCircle,
-  Plus,
-  X,
-  FileSpreadsheet,
-  Upload,
-  Trash2,
-  Table as TableIcon,
-  Info,
-  CheckCircle2,
-  FileText,
-} from "lucide-react";
 
+import { User, Plus, X, Sparkles, FileType, CheckCircle2, ChevronRight, ArrowLeft, ArrowRight, Edit3, Link as LinkIcon, Copy, Lightbulb,BookOpen, FileText, Clock, FastForward, Check} from 'lucide-react';
 // ============================================
 // QUESTION RENDERING COMPONENTS
 // ============================================
@@ -8060,241 +8048,85 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
   };
 
   const handleAddCustomTopicV2 = async (
-    isTechnical: boolean = false,
+    isTechnical: boolean = true,
     topicNameOverride?: string,
-    event?: React.MouseEvent,
+    event?: any,
   ) => {
     if (event) {
-      event.preventDefault(); // REQUIRED: Prevent form refresh
-      event.stopPropagation(); // Prevent event bubbling
+      event.preventDefault();
+      event.stopPropagation();
     }
 
-    // For soft skills, use the dedicated handler
-    if (!isTechnical && selectedCategoryForNewTopic) {
-      return handleAddSoftSkillTopic(event);
-    }
+    // Use customTopicInput (from modal) if no override is provided
+    const topicName = topicNameOverride || customTopicInput.trim();
 
-    // Prevent multiple simultaneous additions
-    if (addingTopic) {
+    if (!topicName || addingTopic) return;
+
+    // Check for duplicates
+    if (
+      topicsV2.some((t) => t.label.toLowerCase() === topicName.toLowerCase())
+    ) {
+      setToastMessageCustom("Topic already added.");
+      setTimeout(() => setToastMessageCustom(null), 3000);
       return;
     }
 
-    const topicName = topicNameOverride || customTopicInputV2.trim();
-    if (!topicName) return;
-
-    // Check for duplicate topic names (case-insensitive)
-    const topicExists = topicsV2.some(
-      (t) => t.label.toLowerCase() === topicName.toLowerCase(),
-    );
-    if (topicExists) {
-      setToastMessage("Topic already added.");
-      setTimeout(() => setToastMessage(null), 3000);
-      return;
-    }
-
-    // Set loading state
     setAddingTopic(true);
-
-    let finalCategory:
-      | "aptitude"
-      | "communication"
-      | "logical_reasoning"
-      | "technical";
-    let defaultQuestionType:
-      | "MCQ"
-      | "Subjective"
-      | "PseudoCode"
-      | "Coding"
-      | "SQL"
-      | "AIML" = "MCQ";
-    let canUseJudge0 = false;
-    let contextSummary: string | undefined = undefined;
-    let codingSupported = false; // Track coding support from classification
-    let isSqlRelated = false; // Track if topic is SQL-related
-    let isAimlRelated = false; // Track if topic is AIML-related
+    let defaultQuestionType: any = "MCQ";
+    let codingSupported = false;
 
     try {
       if (isTechnical) {
-        finalCategory = "technical";
-
-        // Classify technical topic using AI
         try {
-          setLoading(true);
           const response = await classifyTechnicalTopicMutation.mutateAsync({
             topic: topicName,
           });
-
           if (response?.success && response.data) {
-            const classification = response.data;
-            defaultQuestionType = classification.questionType as
-              | "MCQ"
-              | "Subjective"
-              | "PseudoCode"
-              | "Coding"
-              | "SQL"
-              | "AIML";
-            canUseJudge0 = classification.canUseJudge0 || false;
-            codingSupported = classification.coding_supported || false; // Get coding_supported from classification
-            contextSummary = classification.contextExplanation;
-
-            // Detect if classification returned SQL or AIML, or if topic is SQL/AIML-related
-            const classifiedType = classification.questionType?.toUpperCase();
-            if (classifiedType === "SQL") {
-              isSqlRelated = true;
-            } else if (classifiedType === "AIML") {
-              isAimlRelated = true;
-            } else {
-              // Fallback: use frontend detection as backup
-              isSqlRelated = isTopicSqlRelated(topicName);
-              isAimlRelated = isTopicAimlRelated(topicName);
-            }
-
-            // Ensure canUseJudge0 is false if question type is not Coding
-            if (defaultQuestionType !== "Coding") {
-              canUseJudge0 = false;
-            }
-          } else {
-            // If classification fails, use frontend detection as fallback
-            isSqlRelated = isTopicSqlRelated(topicName);
-            isAimlRelated = isTopicAimlRelated(topicName);
+            defaultQuestionType = response.data.questionType;
+            codingSupported = response.data.coding_supported || false;
           }
-        } catch (err: any) {
-          console.error("Error classifying technical topic:", err);
-          // On error, use frontend detection as fallback
-          isSqlRelated = isTopicSqlRelated(topicName);
-          isAimlRelated = isTopicAimlRelated(topicName);
-
-          const errorMsg =
-            err.response?.data?.message ||
-            err.response?.data?.data?.error ||
-            "Failed to classify topic. Please try again.";
-          setToastMessage(errorMsg);
-          setTimeout(() => setToastMessage(null), 5000);
-          setLoading(false);
-          // Exit early - the outer finally block will reset addingTopic
-          // The finally block executes even when returning from try block
-          return;
-        } finally {
-          setLoading(false);
+        } catch (classifyErr) {
+          console.warn("AI classification failed, using local fallback");
         }
-      } else {
-        // This should not happen for soft skills (handled by handleAddSoftSkillTopic)
-        setAddingTopic(false);
-        return;
       }
-
-      // Determine allowed question types based on category, coding support, and SQL/AIML detection
-      // At this point, finalCategory is guaranteed to be "technical" (soft skills return early above)
-
-      // Build allowed question types dynamically based on classification results
-      const baseTypes = ["MCQ", "Subjective", "PseudoCode"];
-
-      // Check for web-related topics (don't show Coding for web topics)
-      const isWebRelated = isTopicWebRelated(topicName);
-
-      // Check if topic supports Judge0-compatible Coding (DSA/algorithmic in supported languages)
-      const isCodingCompatible = isTopicCodingSupported(topicName);
-
-      // Add Coding only if:
-      // - codingSupported is true (from classification)
-      // - NOT SQL-related
-      // - NOT AIML-related
-      // - NOT web-related
-      // - Mentions Judge0-supported language and DSA concepts
-      const shouldIncludeCoding =
-        codingSupported &&
-        !isSqlRelated &&
-        !isAimlRelated &&
-        !isWebRelated &&
-        isCodingCompatible;
-
-      const allowedQuestionTypes: string[] = [
-        ...baseTypes,
-        ...(isSqlRelated ? ["SQL"] : []),
-        ...(isAimlRelated ? ["AIML"] : []),
-        ...(shouldIncludeCoding ? ["Coding"] : []),
-      ];
-
-      // Check if questions have already been generated (any topic has generated questions)
-      const hasGeneratedQuestions = topicsV2.some((topic) =>
-        topic.questionRows.some(
-          (row) =>
-            row.questions &&
-            row.questions.length > 0 &&
-            row.status === "generated",
-        ),
-      );
 
       const newTopic: TopicV2 = {
         id: generateId(),
         label: topicName,
         locked: false,
-        category: finalCategory,
-        contextSummary: contextSummary,
-        coding_supported: codingSupported, // NEW: Store coding_supported in topic
-        allowedQuestionTypes: allowedQuestionTypes,
-        status: "pending", // NEW: Always "pending" for newly added topics
+        category: isTechnical ? "technical" : undefined,
+        status: "pending",
         questionRows: [
           {
             rowId: generateId(),
             questionType: defaultQuestionType,
             difficulty: "Medium",
-            questionsCount: 1,
-            canUseJudge0: canUseJudge0,
-            status: "pending", // Always pending for new custom topics
+            questionsCount: 5, // Default to 5 so it's visible
+            canUseJudge0: defaultQuestionType === "Coding",
+            status: "pending",
             locked: false,
             questions: [],
           },
         ],
       };
 
-      // If questions have already been generated, this is a custom topic added after generation
-      // Mark it as pending and do NOT trigger auto-generation
-      if (hasGeneratedQuestions) {
-        console.log(
-          `[Custom Topic] Added after questions generated - marking as pending, no auto-generation`,
-        );
-      }
+      // 🟢 CRITICAL: Update local state immediately so Station 4 re-renders
+      const updatedTopics = [...topicsV2, newTopic];
+      setTopicsV2(updatedTopics);
 
-      // Double-check for duplicate before adding (race condition protection)
-      const topicExistsNow = topicsV2.some(
-        (t) => t.label.toLowerCase() === topicName.toLowerCase(),
-      );
-      if (topicExistsNow) {
-        setToastMessage("Topic already added.");
-        setTimeout(() => setToastMessage(null), 3000);
-        // Don't return here - let the finally block handle resetting addingTopic
-        return;
-      }
+      // 🟢 CRITICAL: Close modal and clear the specific input state you are using
+      setCustomTopicInput("");
+      setShowCustomTopicModal(false);
 
-      // CRITICAL: Use functional update to guarantee immediate UI update
-      setTopicsV2((prev) => [...prev, newTopic]);
-
-      // Save to database immediately (await to ensure it completes)
       if (assessmentId) {
-        try {
-          await updateDraftMutation.mutateAsync({
-            assessmentId: assessmentId || undefined,
-            topics_v2: [...topicsV2, newTopic], // Use updated topics array
-          });
-          console.log("Custom topic saved to database:", newTopic.id);
-        } catch (err: any) {
-          console.error("Error updating draft:", err);
-          setToastMessage("Failed to save topic. Please try again.");
-          setTimeout(() => setToastMessage(null), 3000);
-          // Remove the topic from state if save failed
-          setTopicsV2((prev) => prev.filter((t) => t.id !== newTopic.id));
-          // Don't return here - let the finally block handle resetting addingTopic
-          return;
-        }
+        await updateDraftMutation.mutateAsync({
+          assessmentId,
+          topics_v2: updatedTopics,
+        });
       }
 
-      setTopicInputValues((prev) => ({ ...prev, [newTopic.id]: topicName }));
-      setCustomTopicInputV2("");
-      setShowTechnicalInput(false);
-      setShowAiSuggestions(false);
-      setAiTopicSuggestions([]);
-      setSuggestionsFetched(false); // Reset fetched flag
+      setToastMessageCustom("Topic added successfully!");
+      setTimeout(() => setToastMessageCustom(null), 3000);
     } catch (err: any) {
       const errorText =
         err.response?.data?.message || err.message || "Failed to add topic.";
@@ -10728,13 +10560,6 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
     }
   };
 
-  const handleCopyUrl = () => {
-    if (assessmentUrl) {
-      navigator.clipboard.writeText(assessmentUrl);
-      // You could show a toast notification here
-      alert("URL copied to clipboard!");
-    }
-  };
 
   const handleFinalize = async () => {
     setLoading(true);
@@ -10841,110 +10666,182 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
 
       <div
         style={{
-          backgroundColor: "#f1dcba",
+           backgroundColor: "#6EE7B7",
           minHeight: "100vh",
           padding: "2rem 0",
         }}
       >
-        <div className="container">
+        <div
+  className="container"
+>
           <div className="card">
-            {/* Progress Line */}
-            <div style={{ marginBottom: "3rem" }}>
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  position: "relative",
-                  marginBottom: "1rem",
-                }}
-              >
-                <div
-                  style={{
-                    position: "absolute",
-                    top: "50%",
-                    left: 0,
-                    right: 0,
-                    height: "3px",
-                    backgroundColor: "#e2e8f0",
-                    zIndex: 0,
-                  }}
-                />
-                <div
-                  style={{
-                    position: "absolute",
-                    top: "50%",
-                    left: 0,
-                    width:
-                      currentStation >= 5
-                        ? "100%"
-                        : currentStation >= 4
-                          ? "75%"
-                          : currentStation >= 3
-                            ? "50%"
-                            : currentStation >= 2
-                              ? "25%"
-                              : "0%",
-                    height: "3px",
-                    backgroundColor: "#6953a3",
-                    zIndex: 1,
-                    transition: "width 0.3s ease",
-                  }}
-                />
-                {[1, 2, 3, 4, 5].map((station) => (
-                  <div
-                    key={station}
-                    style={{
-                      position: "relative",
-                      zIndex: 2,
-                      display: "flex",
-                      flexDirection: "column",
-                      alignItems: "center",
-                      flex: 1,
-                    }}
-                  >
-                    <div
-                      style={{
-                        width: "40px",
-                        height: "40px",
-                        borderRadius: "50%",
-                        backgroundColor:
-                          currentStation >= station ? "#6953a3" : "#e2e8f0",
-                        color:
-                          currentStation >= station ? "#ffffff" : "#64748b",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        fontWeight: 700,
-                        fontSize: "1.125rem",
-                        transition: "all 0.3s ease",
-                      }}
-                    >
-                      {station}
-                    </div>
-                    <span
-                      style={{
-                        marginTop: "0.5rem",
-                        fontSize: "0.875rem",
-                        color:
-                          currentStation >= station ? "#6953a3" : "#64748b",
-                        fontWeight: currentStation >= station ? 600 : 400,
-                      }}
-                    >
-                      {station === 1
-                        ? "Topics"
-                        : station === 2
-                          ? "Configure"
-                          : station === 3
-                            ? "Review"
-                            : station === 4
-                              ? "Schedule"
-                              : "Candidates"}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
+            {/* Progress Header Container - Made Sticky */}
+            <div
+  style={{
+    position: "sticky",
+    top: 0,
+    zIndex: 100, 
+    backgroundColor: "#EBFAFD", 
+    paddingTop: "1.5rem",
+    paddingBottom: "1rem",
+    marginBottom: "2rem",
+    borderBottom: "1px solid #C9F4D4", 
+  }}
+>
+  {/* Top Row: Back/Skip and Save Draft */}
+  <div
+    style={{
+      display: "flex",
+      justifyContent: "space-between",
+      alignItems: "center",
+      marginBottom: "1.5rem",
+    }}
+  >
+    {/* Left Actions */}
+    <div style={{ display: "flex", alignItems: "center", gap: "2rem" }}>
+      <button
+        type="button"
+        onClick={() => {
+          if (currentStation > 1) {
+            setCurrentStation(currentStation - 1);
+          } else {
+            handleBackToDashboard();
+          }
+        }}
+        style={{
+          background: "none",
+          border: "none",
+          cursor: "pointer",
+          display: "flex",
+          alignItems: "center",
+          gap: "0.5rem",
+          fontSize: "1rem",
+          fontWeight: 700,
+          color: "#1E5A3B", 
+          padding: 0,
+        }}
+      >
+       <ArrowLeft/>  Back 
+      </button>
+
+      {currentStation < 6 && (
+        <button
+  type="button"
+  onClick={() => setCurrentStation(currentStation + 1)}
+  style={{
+    background: "none",
+    border: "2px solid #C9F4D4", 
+    borderRadius: "0.75rem",
+    cursor: "pointer",
+    fontSize: "1rem",
+    fontWeight: 700,
+    color: "#2D7A52", 
+    padding: "0.8rem 2rem", 
+    minWidth: "140px",      
+    display: "inline-flex", 
+    alignItems: "center",
+    justifyContent: "center",
+    gap: "0.5rem",
+    
+    transition: "all 0.2s ease",
+  }}
+  onMouseEnter={(e) => {
+    e.currentTarget.style.backgroundColor = "#EBFAFD"; 
+    e.currentTarget.style.borderColor = "#10b981";
+  }}
+  onMouseLeave={(e) => {
+    e.currentTarget.style.backgroundColor = "transparent";
+    e.currentTarget.style.borderColor = "#C9F4D4";
+  }}
+>
+  Skip <FastForward size={18} strokeWidth={2.5} />
+</button>
+      )}
+    </div>
+
+    {/* Right Action: Save Draft */}
+    <button
+      type="button"
+      onClick={async () => {
+        if (assessmentId) {
+          try {
+            const titleToSave =
+              finalTitle ||
+              (jobDesignation.trim()
+                ? `Assessment for ${jobDesignation.trim()}`
+                : "Untitled Assessment");
+            await updateDraftMutation.mutateAsync({
+              assessmentId,
+              title: titleToSave,
+              description: finalDescription || "",
+              jobDesignation: jobDesignation.trim(),
+              selectedSkills: selectedSkills,
+              experienceMin: experienceMin,
+              experienceMax: experienceMax,
+              experienceMode: experienceMode,
+              topics_v2: topicsV2,
+            });
+            alert("Draft saved successfully");
+          } catch (err) {
+            console.error("Failed to save draft", err);
+          }
+        }
+      }}
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: "0.5rem",
+        padding: "0.6rem 1.25rem",
+        backgroundColor: "#ffffff",
+        border: "2px solid #6EE7B7", 
+        borderRadius: "0.75rem",
+        color: "#1E5A3B", 
+        fontWeight: 700,
+        fontSize: "0.95rem",
+        cursor: "pointer",
+        boxShadow: "0 2px 4px rgba(0,0,0,0.05)",
+      }}
+    >
+      <svg
+        width="18"
+        height="18"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
+        <polyline points="17 21 17 13 7 13 7 21"></polyline>
+        <polyline points="7 3 7 8 15 8"></polyline>
+      </svg>
+      Save Draft
+    </button>
+  </div>
+
+  {/* Linear Progress Bar Container */}
+  <div
+    style={{
+      width: "100%",
+      height: "8px",
+      backgroundColor: "#ffffff",
+      borderRadius: "4px",
+      overflow: "hidden",
+      border: "1px solid #C9F4D4", 
+    }}
+  >
+    <div
+      style={{
+        width: `${(currentStation / 6) * 100}%`,
+        height: "100%",
+        backgroundColor: "#10b981", // Brand Green
+        borderRadius: "4px",
+        transition: "width 0.4s cubic-bezier(0.4, 0, 0.2, 1)",
+      }}
+    />
+  </div>
+</div>
 
             {error && (
               <div
@@ -10970,5593 +10867,1434 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
 
             {/* Station 1: Topics */}
             {currentStation === 1 && (
-              <div>
+              <div
+                style={{
+                  maxWidth: "800px",
+                  margin: "0 auto",
+                  fontFamily: "Inter, sans-serif",
+                }}
+              >
+                {/* Step Indicator */}
+                <div
+                  style={{
+                    color: "#10b981",
+                    fontWeight: 600,
+                    fontSize: "0.875rem",
+                    marginBottom: "1rem",
+                    letterSpacing: "0.05em",
+                  }}
+                >
+                  STEP 1 OF 6
+                </div>
+
+                {/* Main Heading */}
+                <h1
+                  style={{
+                    fontSize: "2.5rem",
+                    fontWeight: 800,
+                    color: "#064e3b",
+                    marginBottom: "2rem",
+                    lineHeight: 1.2,
+                  }}
+                >
+                  What's the job role?{" "}
+             
+                </h1>
+
+                {/* Job Designation Input */}
+                <div style={{ marginBottom: "1.5rem" }}>
+                  <input
+                    type="text"
+                    value={jobDesignation}
+                    onChange={(e) => setJobDesignation(e.target.value)}
+                    placeholder="e.g., Frontend Developer, Full Stack Engineer"
+                    style={{
+                      width: "100%",
+                      padding: "1rem 1.25rem",
+                      fontSize: "1.125rem",
+                      border: "2px solid #a7f3d0", // Light green border
+                      borderRadius: "1rem",
+                      outline: "none",
+                      color: "#374151",
+                      backgroundColor: "#ffffff",
+                      transition: "border-color 0.2s",
+                    }}
+                    onFocus={(e) => (e.target.style.borderColor = "#10b981")}
+                    onBlur={(e) => (e.target.style.borderColor = "#a7f3d0")}
+                  />
+                </div>
+
+                {/* Tip Box */}
                 <div
                   style={{
                     display: "flex",
-                    justifyContent: "space-between",
                     alignItems: "center",
-                    marginBottom: "1rem",
+                    gap: "0.75rem",
+                    backgroundColor: "#fffbeb", // Light yellow/gold bg
+                    border: "1px solid #fcd34d",
+                    borderRadius: "0.75rem",
+                    padding: "1rem",
+                    marginBottom: "2rem",
+                    color: "#0f766e", // Teal/Greenish text to match image vibe
                   }}
                 >
-                  <div style={{ flex: 1 }}>
-                    <h1
-                      style={{
-                        marginBottom: "0.5rem",
-                        fontSize: "2rem",
-                        color: "#1a1625",
-                        fontWeight: 700,
-                      }}
-                    >
-                      {isEditMode ? "Edit Assessment" : "Create Assessment"}
-                    </h1>
-                    <p
-                      style={{
-                        color: "#6b6678",
-                        marginBottom: "2rem",
-                        fontSize: "1rem",
-                      }}
-                    >
-                      {isEditMode
-                        ? "Edit your assessment details"
-                        : "Enter a job designation or domain to get started"}
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={handleBackToDashboard}
-                    className="btn-secondary"
+                  <span style={{ fontSize: "1.25rem" }}><Lightbulb/></span>
+                  <span
                     style={{
-                      marginLeft: "1rem",
-                      whiteSpace: "nowrap",
-                      padding: "0.75rem 1.5rem",
-                      fontSize: "0.875rem",
+                      fontSize: "0.95rem",
+                      fontWeight: 500,
+                      color: "#0f766e",
                     }}
                   >
-                    Back to Dashboard
-                  </button>
+                    Tip: Be specific for better AI-generated questions
+                  </span>
                 </div>
 
-                {/* Assessment Title Section */}
+                {/* Get AI Skills Button (Triggers Generation) */}
                 <div style={{ marginBottom: "2rem" }}>
-                  {/* Modern Label */}
-                  <label
+                  <button
+                    type="button"
+                    onClick={handleGenerateTopicsUnified}
+                    disabled={loading || !jobDesignation.trim()}
                     style={{
                       display: "flex",
                       alignItems: "center",
                       gap: "0.5rem",
-                      marginBottom: "0.75rem",
-                      fontSize: "0.875rem",
-                      fontWeight: 700,
-                      color: "#1E5A3B", // Primary Text
-                      textTransform: "uppercase",
-                      letterSpacing: "0.05em",
+                      backgroundColor: "#a7f3d0", // Mint green
+                      color: "#065f46", // Dark green text
+                      border: "none",
+                      padding: "0.75rem 1.5rem",
+                      borderRadius: "0.5rem",
+                      fontSize: "1rem",
+                      fontWeight: 600,
+                      cursor:
+                        loading || !jobDesignation.trim()
+                          ? "not-allowed"
+                          : "pointer",
+                      opacity: loading ? 0.7 : 1,
+                      transition: "transform 0.1s",
                     }}
+                    onMouseDown={(e) =>
+                      (e.currentTarget.style.transform = "scale(0.98)")
+                    }
+                    onMouseUp={(e) =>
+                      (e.currentTarget.style.transform = "scale(1)")
+                    }
                   >
-                    <FileText size={16} className="text-[#2D7A52]" />
-                    Assessment Title
-                  </label>
-
-                  {/* Input Wrapper */}
-                  <div style={{ position: "relative" }}>
-                    <input
-                      type="text"
-                      value={finalTitle}
-                      onChange={(e) => setFinalTitle(e.target.value)}
-                      placeholder="e.g. Senior Frontend Developer Assessment"
-                      style={{
-                        width: "100%",
-                        padding: "0.875rem 1rem",
-                        backgroundColor: "#ffffff",
-                        border: "1px solid #C9F4D4", // Mint 100
-                        borderRadius: "0.75rem",
-                        fontSize: "1rem",
-                        color: "#1E5A3B", // Primary Text
-                        fontWeight: 500,
-                        outline: "none",
-                        transition: "all 0.2s ease-in-out",
-                        boxShadow: "0 1px 2px rgba(0,0,0,0.05)",
-                      }}
-                      // Interactive Focus Styles (Inline)
-                      onFocus={(e) => {
-                        e.currentTarget.style.borderColor = "#1E5A3B";
-                        e.currentTarget.style.boxShadow = "0 0 0 4px #E8FAF0"; // Mint 50 Ring
-                      }}
-                      onBlur={(e) => {
-                        e.currentTarget.style.borderColor = "#C9F4D4";
-                        e.currentTarget.style.boxShadow =
-                          "0 1px 2px rgba(0,0,0,0.05)";
-                      }}
-                    />
-                  </div>
+                    <span><Sparkles/></span>
+                    {loading ? "Generating..." : "Get AI Skills"}
+                  
+                  </button>
                 </div>
 
-                {/* Experience Mode and Range - Shared across all methods */}
-                <div
-                  style={{
-                    marginBottom: "2.5rem",
-                    fontFamily: "'Inter', sans-serif",
-                  }}
-                >
-                  {/* --- Experience Mode Section --- */}
-                  <div style={{ marginBottom: "2rem" }}>
+                {/* HIDDEN LOGIC PRESERVED: 
+      The actual skills display (topicCards) is usually shown here. 
+      Based on the prompt, this should appear after clicking the button.
+    */}
+                {topicCards.length > 0 && (
+                  <div
+                    style={{
+                      marginBottom: "3rem",
+                      animation: "fadeIn 0.5s ease-in",
+                    }}
+                  >
                     <label
                       style={{
                         display: "block",
                         marginBottom: "1rem",
-                        fontSize: "0.875rem",
-                        fontWeight: 700,
-                        color: "#1E5A3B", // Primary Text
-                        textTransform: "uppercase",
-                        letterSpacing: "0.05em",
-                      }}
-                    >
-                      Experience Mode{" "}
-                    </label>
-
-                    <div
-                      style={{
-                        display: "grid",
-                        gridTemplateColumns: "1fr 1fr",
-                        gap: "1rem",
-                      }}
-                    >
-                      {/* Option 1: Corporate (Selection Card) */}
-                      <label
-                        style={{
-                          position: "relative",
-                          display: "flex",
-                          flexDirection: "column",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          padding: "1.5rem",
-                          borderRadius: "1rem",
-                          // Mint 100 border if inactive, Primary Text border if active
-                          border:
-                            experienceMode === "corporate"
-                              ? "2px solid #1E5A3B"
-                              : "1px solid #C9F4D4",
-                          // Mint 50 background if active
-                          backgroundColor:
-                            experienceMode === "corporate"
-                              ? "#E8FAF0"
-                              : "#ffffff",
-                          cursor:
-                            isEditMode || !hasVisitedConfigureStation
-                              ? "pointer"
-                              : "default",
-                          opacity:
-                            isEditMode || !hasVisitedConfigureStation ? 1 : 0.6,
-                          pointerEvents:
-                            isEditMode || !hasVisitedConfigureStation
-                              ? "auto"
-                              : "none",
-                          transition: "all 0.3s ease",
-                          boxShadow:
-                            experienceMode === "corporate"
-                              ? "0 4px 12px rgba(30, 90, 59, 0.15)" // Mint shadow
-                              : "0 2px 4px rgba(0,0,0,0.02)",
-                        }}
-                        onMouseEnter={(e) => {
-                          if (isEditMode || !hasVisitedConfigureStation) {
-                            e.currentTarget.style.borderColor = "#1E5A3B";
-                            e.currentTarget.style.transform =
-                              "translateY(-2px)";
-                          }
-                        }}
-                        onMouseLeave={(e) => {
-                          if (isEditMode || !hasVisitedConfigureStation) {
-                            e.currentTarget.style.borderColor =
-                              experienceMode === "corporate"
-                                ? "#1E5A3B"
-                                : "#C9F4D4";
-                            e.currentTarget.style.transform = "translateY(0)";
-                          }
-                        }}
-                      >
-                        <input
-                          type="radio"
-                          name="experienceMode"
-                          value="corporate"
-                          checked={experienceMode === "corporate"}
-                          onChange={(e) => {
-                            setExperienceMode(
-                              e.target.value as "corporate" | "student",
-                            );
-                            if (e.target.value === "corporate") {
-                              setExperienceMin(0);
-                              setExperienceMax(10);
-                            } else {
-                              setExperienceMin(0);
-                              setExperienceMax(3);
-                            }
-                          }}
-                          style={{
-                            position: "absolute",
-                            opacity: 0,
-                            width: 0,
-                            height: 0,
-                          }}
-                        />
-                        {/* Briefcase Icon (SVG) */}
-                        <div
-                          style={{
-                            marginBottom: "0.75rem",
-                            color:
-                              experienceMode === "corporate"
-                                ? "#1E5A3B"
-                                : "#4A9A6A", // Primary vs Subtle Text
-                            transition: "color 0.3s ease",
-                          }}
-                        >
-                          <svg
-                            width="28"
-                            height="28"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="2"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                          >
-                            <rect
-                              x="2"
-                              y="7"
-                              width="20"
-                              height="14"
-                              rx="2"
-                              ry="2"
-                            ></rect>
-                            <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"></path>
-                          </svg>
-                        </div>
-                        <span
-                          style={{
-                            fontWeight: 700,
-                            fontSize: "1rem",
-                            color:
-                              experienceMode === "corporate"
-                                ? "#1E5A3B"
-                                : "#2D7A52", // Primary vs Secondary
-                          }}
-                        >
-                          Corporate
-                        </span>
-                        <span
-                          style={{
-                            fontSize: "0.75rem",
-                            color: "#4A9A6A",
-                            marginTop: "0.25rem",
-                          }}
-                        >
-                          Professional Experience
-                        </span>
-                      </label>
-
-                      {/* Option 2: Student (Selection Card) */}
-                      <label
-                        style={{
-                          position: "relative",
-                          display: "flex",
-                          flexDirection: "column",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          padding: "1.5rem",
-                          borderRadius: "1rem",
-                          border:
-                            experienceMode === "student"
-                              ? "2px solid #1E5A3B"
-                              : "1px solid #C9F4D4",
-                          backgroundColor:
-                            experienceMode === "student"
-                              ? "#E8FAF0"
-                              : "#ffffff",
-                          cursor:
-                            isEditMode || !hasVisitedConfigureStation
-                              ? "pointer"
-                              : "default",
-                          opacity:
-                            isEditMode || !hasVisitedConfigureStation ? 1 : 0.6,
-                          pointerEvents:
-                            isEditMode || !hasVisitedConfigureStation
-                              ? "auto"
-                              : "none",
-                          transition: "all 0.3s ease",
-                          boxShadow:
-                            experienceMode === "student"
-                              ? "0 4px 12px rgba(30, 90, 59, 0.15)"
-                              : "0 2px 4px rgba(0,0,0,0.02)",
-                        }}
-                        onMouseEnter={(e) => {
-                          if (isEditMode || !hasVisitedConfigureStation) {
-                            e.currentTarget.style.borderColor = "#1E5A3B";
-                            e.currentTarget.style.transform =
-                              "translateY(-2px)";
-                          }
-                        }}
-                        onMouseLeave={(e) => {
-                          if (isEditMode || !hasVisitedConfigureStation) {
-                            e.currentTarget.style.borderColor =
-                              experienceMode === "student"
-                                ? "#1E5A3B"
-                                : "#C9F4D4";
-                            e.currentTarget.style.transform = "translateY(0)";
-                          }
-                        }}
-                      >
-                        <input
-                          type="radio"
-                          name="experienceMode"
-                          value="student"
-                          checked={experienceMode === "student"}
-                          onChange={(e) => {
-                            setExperienceMode(
-                              e.target.value as "corporate" | "student",
-                            );
-                            if (e.target.value === "student") {
-                              setExperienceMin(0);
-                              setExperienceMax(3);
-                            } else {
-                              setExperienceMin(0);
-                              setExperienceMax(10);
-                            }
-                          }}
-                          style={{
-                            position: "absolute",
-                            opacity: 0,
-                            width: 0,
-                            height: 0,
-                          }}
-                        />
-                        {/* Graduation Cap Icon (SVG) */}
-                        <div
-                          style={{
-                            marginBottom: "0.75rem",
-                            color:
-                              experienceMode === "student"
-                                ? "#1E5A3B"
-                                : "#4A9A6A",
-                            transition: "color 0.3s ease",
-                          }}
-                        >
-                          <svg
-                            width="28"
-                            height="28"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="2"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                          >
-                            <path d="M22 10v6M2 10l10-5 10 5-10 5z" />
-                            <path d="M6 12v5c3 3 9 3 12 0v-5" />
-                          </svg>
-                        </div>
-                        <span
-                          style={{
-                            fontWeight: 700,
-                            fontSize: "1rem",
-                            color:
-                              experienceMode === "student"
-                                ? "#1E5A3B"
-                                : "#2D7A52",
-                          }}
-                        >
-                          Student
-                        </span>
-                        <span
-                          style={{
-                            fontSize: "0.75rem",
-                            color: "#4A9A6A",
-                            marginTop: "0.25rem",
-                          }}
-                        >
-                          College / University
-                        </span>
-                      </label>
-                    </div>
-                  </div>
-
-                  {/* --- Slider Section --- */}
-                  <div
-                    style={{
-                      padding: "1.5rem",
-                      backgroundColor: "#ffffff",
-                      borderRadius: "1rem",
-                      border: "1px solid #E8FAF0", // Mint 50 Border
-                      boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.05)",
-                    }}
-                  >
-                    <label
-                      style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        alignItems: "center",
-                        marginBottom: "2rem",
-                        fontSize: "0.875rem",
-                        fontWeight: 700,
-                        color: "#1E5A3B", // Primary Text
-                        textTransform: "uppercase",
-                        letterSpacing: "0.05em",
-                      }}
-                    >
-                      <span>
-                        {experienceMode === "corporate"
-                          ? "Experience Range"
-                          : "Education Level"}
-                      </span>
-
-                      {/* Dynamic Badge */}
-                      <span
-                        style={{
-                          backgroundColor: "#E8FAF0", // Mint 50
-                          color: "#1E5A3B", // Primary Text
-                          padding: "0.35rem 0.85rem",
-                          borderRadius: "9999px",
-                          fontSize: "0.8rem",
-                          fontWeight: 700,
-                          border: "1px solid #C9F4D4", // Mint 100
-                        }}
-                      >
-                        {experienceMode === "corporate"
-                          ? `${experienceMin}-${experienceMax} Years`
-                          : (() => {
-                              const minLevel = getStudentLevel(experienceMin);
-                              const maxLevel = getStudentLevel(experienceMax);
-                              return minLevel === maxLevel
-                                ? minLevel
-                                : `${minLevel} - ${maxLevel}`;
-                            })()}
-                      </span>
-                    </label>
-
-                    {/* Slider Track Container */}
-                    <div style={{ padding: "0 10px", position: "relative" }}>
-                      <div
-                        ref={sliderRef}
-                        style={{
-                          position: "relative",
-                          width: "100%",
-                          height: "8px",
-                          backgroundColor: "#C9F4D4", // Mint 100 (Track)
-                          borderRadius: "99px",
-                          marginBottom: "1rem",
-                          cursor:
-                            isEditMode || !hasVisitedConfigureStation
-                              ? "pointer"
-                              : "default",
-                          opacity:
-                            isEditMode || !hasVisitedConfigureStation ? 1 : 0.6,
-                        }}
-                      >
-                        {/* Min Handle */}
-                        <div
-                          ref={minHandleRef}
-                          style={{
-                            position: "absolute",
-                            width: "24px",
-                            height: "24px",
-                            backgroundColor: "#1E5A3B", // Primary Text Color for Handle
-                            border: "3px solid #ffffff",
-                            borderRadius: "50%",
-                            top: "50%",
-                            transform: "translate(-50%, -50%)",
-                            cursor:
-                              isEditMode || !hasVisitedConfigureStation
-                                ? "grab"
-                                : "default",
-                            zIndex: 3,
-                            userSelect: "none",
-                            touchAction: "none",
-                            pointerEvents:
-                              isEditMode || !hasVisitedConfigureStation
-                                ? "auto"
-                                : "none",
-                            boxShadow: "0 2px 5px rgba(30, 90, 59, 0.3)",
-                            transition: "transform 0.1s, box-shadow 0.1s",
-                          }}
-                          onMouseEnter={(e) => {
-                            if (isEditMode || !hasVisitedConfigureStation)
-                              e.currentTarget.style.transform =
-                                "translate(-50%, -50%) scale(1.15)";
-                          }}
-                          onMouseLeave={(e) => {
-                            if (isEditMode || !hasVisitedConfigureStation)
-                              e.currentTarget.style.transform =
-                                "translate(-50%, -50%) scale(1.0)";
-                          }}
-                        />
-                        {/* Max Handle */}
-                        <div
-                          ref={maxHandleRef}
-                          style={{
-                            position: "absolute",
-                            width: "24px",
-                            height: "24px",
-                            backgroundColor: "#1E5A3B", // Primary Text Color for Handle
-                            border: "3px solid #ffffff",
-                            borderRadius: "50%",
-                            top: "50%",
-                            transform: "translate(-50%, -50%)",
-                            cursor:
-                              isEditMode || !hasVisitedConfigureStation
-                                ? "grab"
-                                : "default",
-                            zIndex: 3,
-                            userSelect: "none",
-                            touchAction: "none",
-                            pointerEvents:
-                              isEditMode || !hasVisitedConfigureStation
-                                ? "auto"
-                                : "none",
-                            boxShadow: "0 2px 5px rgba(30, 90, 59, 0.3)",
-                            transition: "transform 0.1s, box-shadow 0.1s",
-                          }}
-                          onMouseEnter={(e) => {
-                            if (isEditMode || !hasVisitedConfigureStation)
-                              e.currentTarget.style.transform =
-                                "translate(-50%, -50%) scale(1.15)";
-                          }}
-                          onMouseLeave={(e) => {
-                            if (isEditMode || !hasVisitedConfigureStation)
-                              e.currentTarget.style.transform =
-                                "translate(-50%, -50%) scale(1.0)";
-                          }}
-                        />
-                      </div>
-                    </div>
-
-                    {/* Scale Labels */}
-                    <div
-                      style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        fontSize: "0.75rem",
-                        fontWeight: 600,
-                        color: "#4A9A6A",
-                        marginTop: "0.5rem",
-                        padding: "0 4px",
-                      }}
-                    >
-                      {experienceMode === "corporate" ? (
-                        <>
-                          <span>Entry Level (0y)</span>
-                          <span>Expert (10y+)</span>
-                        </>
-                      ) : (
-                        <>
-                          <span>{getStudentLevel(0)}</span>
-                          <span>{getStudentLevel(3)}</span>
-                        </>
-                      )}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Unified Requirements Interface */}
-                <div style={{ marginBottom: "2rem" }}>
-                  <label
-                    style={{
-                      display: "block",
-                      marginBottom: "0.75rem",
-                      fontWeight: 600,
-                      color: "#1e293b",
-                    }}
-                  >
-                    Define Skill Requirements
-                  </label>
-
-                  {/* Job Designation (Required) */}
-                  <div style={{ marginBottom: "2rem" }}>
-                    {/* Modern Label */}
-                    <label
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        marginBottom: "0.75rem",
-                        fontSize: "0.875rem",
-                        fontWeight: 700,
-                        color: "#1E5A3B", // Primary Text
-                        textTransform: "uppercase",
-                        letterSpacing: "0.05em",
-                      }}
-                    >
-                      Job Designation / Domain
-                    </label>
-
-                    {/* Input Wrapper for Icon Positioning */}
-                    <div style={{ position: "relative", width: "100%" }}>
-                      {/* Icon */}
-                      <div
-                        style={{
-                          position: "absolute",
-                          left: "1rem",
-                          top: "50%",
-                          transform: "translateY(-50%)",
-                          color: "#64748b",
-                          pointerEvents: "none",
-                        }}
-                      >
-                        <Briefcase size={18} />
-                      </div>
-
-                      <input
-                        type="text"
-                        value={jobDesignation}
-                        onChange={(e) => setJobDesignation(e.target.value)}
-                        placeholder="e.g., Software Engineering, Data Scientist, Frontend Developer"
-                        required
-                        style={{
-                          width: "100%",
-                          padding: "0.875rem 1rem 0.875rem 2.75rem", // Extra left padding for icon
-                          backgroundColor: "#ffffff",
-                          border: jobDesignation.trim()
-                            ? "1px solid #e2e8f0"
-                            : "1px solid #ef4444",
-                          borderRadius: "0.75rem",
-                          fontSize: "1rem",
-                          color: "#1e293b",
-                          outline: "none",
-                          transition: "all 0.2s ease-in-out",
-                          boxShadow: "0 1px 2px rgba(0,0,0,0.05)",
-                        }}
-                        // Add simple focus effect via inline event (or use CSS class if preferred)
-                        onFocus={(e) => {
-                          e.currentTarget.style.borderColor = "#1E5A3B";
-                          e.currentTarget.style.boxShadow = "0 0 0 4px #E8FAF0"; // Mint 50 Ring
-                        }}
-                        onBlur={(e) => {
-                          e.currentTarget.style.borderColor =
-                            jobDesignation.trim() ? "#e2e8f0" : "#ef4444";
-                          e.currentTarget.style.boxShadow =
-                            "0 1px 2px rgba(0,0,0,0.05)";
-                        }}
-                      />
-                    </div>
-
-                    {/* Helper Text */}
-                    <div
-                      style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        alignItems: "flex-start",
-                        marginTop: "0.5rem",
-                      }}
-                    >
-                      <p
-                        style={{
-                          fontSize: "0.8125rem",
-                          color: "#64748b",
-                          margin: 0,
-                          lineHeight: 1.5,
-                        }}
-                      >
-                        Enter a job designation to get AI-suggested skills.
-                      </p>
-
-                      {/* Error Message with Icon */}
-                      {!jobDesignation.trim() && (
-                        <div
-                          style={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: "0.25rem",
-                            color: "#ef4444",
-                            fontSize: "0.8125rem",
-                            fontWeight: 500,
-                            animation: "fadeIn 0.3s ease-in-out",
-                          }}
-                        >
-                          <AlertCircle size={14} />
-                          <span>Required</span>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Topic Cards Display (if job designation is provided) */}
-                  {topicCards.length > 0 &&
-                    jobDesignation.trim() &&
-                    (isEditMode || !hasVisitedConfigureStation) && (
-                      <div style={{ marginBottom: "2rem" }}>
-                        <label
-                          style={{
-                            display: "block",
-                            marginBottom: "0.75rem",
-                            fontWeight: 600,
-                            color: "#1e293b",
-                          }}
-                        >
-                          Related Technologies & Skills
-                        </label>
-                        <div
-                          style={{
-                            display: "flex",
-                            flexWrap: "wrap",
-                            gap: "0.75rem",
-                          }}
-                        >
-                          {topicCards
-                            .filter((card) => {
-                              // Filter out frameworks that are not supported by Judge0
-                              // Judge0 only supports pure programming languages, not frameworks
-                              // that require additional setup (Django, Flask, React, Angular, Spring, etc.)
-                              const cardLower = card.toLowerCase().trim();
-
-                              // List of frameworks/libraries not supported by Judge0
-                              const unsupportedFrameworks = [
-                                "django",
-                                "flask",
-                                "fastapi",
-                                "react",
-                                "angular",
-                                "vue",
-                                "next",
-                                "nextjs",
-                                "express",
-                                "spring",
-                                "hibernate",
-                                "laravel",
-                                "symfony",
-                                "rails",
-                                "ruby on rails",
-                                "asp.net",
-                                "dotnet",
-                                ".net",
-                                "tensorflow",
-                                "pytorch",
-                                "keras",
-                                "scikit-learn",
-                                "scikit",
-                                "pandas",
-                                "numpy",
-                                "matplotlib",
-                                "seaborn",
-                                "jupyter",
-                                "jupyter notebook",
-                                "selenium",
-                                "cypress",
-                                "jest",
-                                "mocha",
-                                "junit",
-                                "pytest",
-                                "unittest",
-                                "maven",
-                                "gradle",
-                                "npm",
-                                "yarn",
-                                "webpack",
-                                "babel",
-                                "gulp",
-                                "grunt",
-                              ];
-
-                              // Check if the topic matches any unsupported framework
-                              for (const framework of unsupportedFrameworks) {
-                                if (
-                                  cardLower === framework ||
-                                  cardLower.startsWith(framework + " ")
-                                ) {
-                                  return false;
-                                }
-                              }
-
-                              return true;
-                            })
-                            .map((card) => (
-                              <button
-                                key={card}
-                                type="button"
-                                onClick={() => handleCardClick(card)}
-                                disabled={
-                                  !isEditMode && selectedSkills.includes(card)
-                                }
-                                style={{
-                                  padding: "0.5rem 1rem",
-                                  border: `1px solid ${selectedSkills.includes(card) ? "#6953a3" : "#e2e8f0"}`,
-                                  borderRadius: "0.5rem",
-                                  backgroundColor: selectedSkills.includes(card)
-                                    ? "#eff6ff"
-                                    : "#ffffff",
-                                  color: selectedSkills.includes(card)
-                                    ? "#1e40af"
-                                    : "#475569",
-                                  cursor:
-                                    !isEditMode && selectedSkills.includes(card)
-                                      ? "default"
-                                      : "pointer",
-                                  fontSize: "0.875rem",
-                                  fontWeight: selectedSkills.includes(card)
-                                    ? 600
-                                    : 400,
-                                  opacity:
-                                    !isEditMode && selectedSkills.includes(card)
-                                      ? 0.7
-                                      : 1,
-                                }}
-                              >
-                                {card} {selectedSkills.includes(card) && "✓"}
-                              </button>
-                            ))}
-                        </div>
-                      </div>
-                    )}
-
-                  {/* Manual Skill Input (Optional) */}
-
-                  {/* Add Specific Skills Section */}
-                  {(isEditMode || !hasVisitedConfigureStation) && (
-                    <div style={{ marginBottom: "2rem" }}>
-                      <label
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: "0.5rem",
-                          marginBottom: "0.75rem",
-                          fontSize: "0.875rem",
-                          fontWeight: 700,
-                          color: "#1E5A3B", // Primary Text
-                          textTransform: "uppercase",
-                          letterSpacing: "0.05em",
-                        }}
-                      >
-                        Add Specific Skills{" "}
-                        <span
-                          style={{
-                            color: "#64748b",
-                            fontWeight: 400,
-                            textTransform: "none",
-                          }}
-                        >
-                          (Optional)
-                        </span>
-                      </label>
-
-                      <div
-                        style={{
-                          display: "flex",
-                          gap: "0.5rem",
-                          position: "relative",
-                        }}
-                      >
-                        <input
-                          type="text"
-                          value={manualSkillInput}
-                          onChange={(e) => setManualSkillInput(e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter") {
-                              e.preventDefault();
-                              handleAddManualSkill();
-                            }
-                          }}
-                          placeholder="e.g. Python, React, AWS..."
-                          style={{
-                            flex: 1,
-                            padding: "0.875rem 1rem",
-                            backgroundColor: "#ffffff",
-                            border: "1px solid #C9F4D4", // Mint 100
-                            borderRadius: "0.75rem",
-                            fontSize: "1rem",
-                            color: "#1E5A3B",
-                            outline: "none",
-                            transition: "all 0.2s ease-in-out",
-                            boxShadow: "0 1px 2px rgba(0,0,0,0.05)",
-                          }}
-                          onFocus={(e) => {
-                            e.currentTarget.style.borderColor = "#1E5A3B";
-                            e.currentTarget.style.boxShadow =
-                              "0 0 0 4px #E8FAF0"; // Mint 50 Ring
-                          }}
-                          onBlur={(e) => {
-                            e.currentTarget.style.borderColor = "#C9F4D4";
-                            e.currentTarget.style.boxShadow =
-                              "0 1px 2px rgba(0,0,0,0.05)";
-                          }}
-                        />
-
-                        <button
-                          type="button"
-                          onClick={handleAddManualSkill}
-                          disabled={!manualSkillInput.trim()}
-                          style={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: "0.5rem",
-                            backgroundColor: manualSkillInput.trim()
-                              ? "#1E5A3B"
-                              : "#E2E8F0",
-                            color: manualSkillInput.trim()
-                              ? "#ffffff"
-                              : "#94A3B8",
-                            border: "none",
-                            borderRadius: "0.75rem",
-                            padding: "0 1.5rem",
-                            fontWeight: 600,
-                            cursor: manualSkillInput.trim()
-                              ? "pointer"
-                              : "not-allowed",
-                            transition: "all 0.2s ease",
-                            transform: manualSkillInput.trim()
-                              ? "scale(1)"
-                              : "scale(0.98)",
-                          }}
-                        >
-                          <Plus size={18} />
-                          Add
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Selected Skills Display */}
-                  {selectedSkills.length > 0 && (
-                    <div style={{ marginBottom: "2rem" }}>
-                      <label
-                        style={{
-                          display: "block",
-                          marginBottom: "1rem",
-                          fontSize: "0.875rem",
-                          fontWeight: 700,
-                          color: "#1E5A3B",
-                          textTransform: "uppercase",
-                          letterSpacing: "0.05em",
-                        }}
-                      >
-                        Selected Skills
-                      </label>
-
-                      <div
-                        style={{
-                          display: "flex",
-                          flexWrap: "wrap",
-                          gap: "0.75rem",
-                        }}
-                      >
-                        {selectedSkills.map((skill, index) => (
-                          <div
-                            key={skill}
-                            className="animate-pop-in" // Uses the CSS class from Step 1
-                            style={{
-                              display: "inline-flex",
-                              alignItems: "center",
-                              gap: "0.5rem",
-                              backgroundColor: "#E8FAF0", // Mint 50
-                              border: "1px solid #C9F4D4", // Mint 100
-                              color: "#1E5A3B", // Primary Text
-                              padding: "0.5rem 1rem",
-                              borderRadius: "2rem",
-                              fontSize: "0.875rem",
-                              fontWeight: 600,
-                              boxShadow: "0 2px 4px rgba(0,0,0,0.02)",
-                              animationDelay: `${index * 50}ms`, // Staggered Effect
-                            }}
-                          >
-                            {skill}
-
-                            {(isEditMode || !hasVisitedConfigureStation) && (
-                              <button
-                                type="button"
-                                onClick={() => handleRemoveSkill(skill)}
-                                style={{
-                                  display: "flex",
-                                  alignItems: "center",
-                                  justifyContent: "center",
-                                  background: "#C9F4D4",
-                                  border: "none",
-                                  borderRadius: "50%",
-                                  width: "20px",
-                                  height: "20px",
-                                  color: "#1E5A3B",
-                                  cursor: "pointer",
-                                  padding: 0,
-                                  transition: "all 0.2s ease",
-                                  marginLeft: "4px",
-                                }}
-                                onMouseEnter={(e) => {
-                                  e.currentTarget.style.backgroundColor =
-                                    "#fee2e2";
-                                  e.currentTarget.style.color = "#ef4444";
-                                }}
-                                onMouseLeave={(e) => {
-                                  e.currentTarget.style.backgroundColor =
-                                    "#C9F4D4";
-                                  e.currentTarget.style.color = "#1E5A3B";
-                                }}
-                              >
-                                <X size={12} strokeWidth={3} />
-                              </button>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* CSV Upload Section */}
-                  <div style={{ marginBottom: "2rem" }}>
-                    <label
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "0.5rem",
-                        marginBottom: "0.75rem",
-                        fontSize: "0.875rem",
-                        fontWeight: 700,
-                        color: "#1E5A3B", // Primary Text
-                        textTransform: "uppercase",
-                        letterSpacing: "0.05em",
-                      }}
-                    >
-                      <FileSpreadsheet size={16} className="text-[#2D7A52]" />
-                      Upload CSV Requirements
-                      <span
-                        style={{
-                          color: "#64748b",
-                          fontWeight: 400,
-                          textTransform: "none",
-                        }}
-                      >
-                        (Optional)
-                      </span>
-                    </label>
-
-                    <div style={{ marginBottom: "1.5rem" }}>
-                      <button
-                        type="button"
-                        onClick={downloadCsvTemplate}
-                        className="btn-secondary"
-                        style={{ marginBottom: "1rem" }}
-                      >
-                        Download CSV Template
-                      </button>
-                      <div
-                        style={{
-                          marginTop: "0.75rem",
-                          padding: "0.75rem",
-                          backgroundColor: "#f0f9ff",
-                          border: "1px solid green",
-                          borderRadius: "0.5rem",
-                          fontSize: "0.875rem",
-                          color: "#0369a1",
-                        }}
-                      >
-                        <div
-                          style={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: "0.75rem",
-                            marginBottom: "1rem",
-                          }}
-                        >
-                          <div
-                            style={{
-                              backgroundColor: "#ffffff",
-                              padding: "0.4rem",
-                              borderRadius: "0.5rem",
-                              border: "1px solid #C9F4D4",
-                              display: "flex",
-                              alignItems: "center",
-                              justifyContent: "center",
-                            }}
-                          >
-                            <Info size={18} className="text-[#2D7A52]" />
-                          </div>
-                          <h4
-                            style={{
-                              margin: 0,
-                              fontSize: "0.9rem",
-                              fontWeight: 700,
-                              textTransform: "uppercase",
-                              letterSpacing: "0.05em",
-                              color: "#1E5A3B", // Primary Text
-                            }}
-                          >
-                            CSV Format Instructions
-                          </h4>
-                        </div>
-
-                        <div
-                          style={{
-                            marginTop: "1.5rem",
-                            padding: "1.5rem",
-                            backgroundColor: "#E8FAF0", // Mint 50 [cite: 8]
-                            border: "1px solid #C9F4D4", // Mint 100 [cite: 13]
-                            borderRadius: "1rem",
-                            color: "#1E5A3B", // Primary Text [cite: 23]
-                            boxShadow: "0 2px 4px rgba(0,0,0,0.02)",
-                          }}
-                        >
-                          {/* Header */}
-
-                          {/* Instructions List */}
-                          <ul
-                            style={{
-                              margin: 0,
-                              padding: 0,
-                              listStyle: "none",
-                              display: "flex",
-                              flexDirection: "column",
-                              gap: "0.75rem",
-                            }}
-                          >
-                            {[
-                              <>
-                                Only three columns allowed:{" "}
-                                <strong>skill_name</strong>,{" "}
-                                <strong>skill_description</strong>,{" "}
-                                <strong>importance_level</strong>
-                              </>,
-                              <>
-                                If you have multiple descriptions for a skill,
-                                separate them using semicolons (
-                                <strong>;</strong>) within the same cell
-                              </>,
-                              <>
-                                Do NOT add extra columns. Keep exactly three
-                                columns
-                              </>,
-                              <>
-                                <strong>skill_description</strong> will be
-                                automatically wrapped in quotes in the template
-                              </>,
-                              <>
-                                <strong>importance_level</strong> must be:{" "}
-                                <span
-                                  style={{ color: "#059669", fontWeight: 700 }}
-                                >
-                                  Low
-                                </span>
-                                ,{" "}
-                                <span
-                                  style={{ color: "#d97706", fontWeight: 700 }}
-                                >
-                                  Medium
-                                </span>
-                                , or{" "}
-                                <span
-                                  style={{ color: "#dc2626", fontWeight: 700 }}
-                                >
-                                  High
-                                </span>
-                              </>,
-                            ].map((item, index) => (
-                              <li
-                                key={index}
-                                style={{
-                                  display: "flex",
-                                  alignItems: "flex-start",
-                                  gap: "0.75rem",
-                                  fontSize: "0.85rem",
-                                  color: "#2D7A52", // Secondary Text [cite: 26]
-                                  lineHeight: 1.5,
-                                }}
-                              >
-                                {/* Custom Bullet Point */}
-                                <CheckCircle2
-                                  size={14}
-                                  style={{
-                                    marginTop: "0.2rem",
-                                    flexShrink: 0,
-                                    color: "#C9F4D4",
-                                    fill: "#1E5A3B",
-                                  }}
-                                />
-                                <span>{item}</span>
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* CSV Upload Button */}
-
-                    <div style={{ marginBottom: "2rem" }}>
-                      {/* Professional Label */}
-                      <label
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: "0.5rem",
-                          marginBottom: "1rem",
-                          fontSize: "0.875rem",
-                          fontWeight: 700,
-                          color: "#1E5A3B", // Primary Text
-                          textTransform: "uppercase",
-                          letterSpacing: "0.05em",
-                        }}
-                      >
-                        {/* Ensure FileSpreadsheet is imported from lucide-react */}
-                        <FileSpreadsheet size={18} className="text-[#2D7A52]" />
-                        Upload Requirements File{" "}
-                        <span
-                          style={{
-                            color: "#64748b",
-                            fontWeight: 400,
-                            textTransform: "none",
-                          }}
-                        >
-                          (CSV)
-                        </span>
-                      </label>
-
-                      {/* Drop Zone Container */}
-                      <div
-                        style={{
-                          position: "relative",
-                          padding: "1.5rem",
-                          backgroundColor: "#F1FDF5", // Mint 50
-                          border: "2px dashed #C9F4D4", // Mint 100
-                          borderRadius: "1rem",
-                          display: "flex",
-                          flexDirection: "column",
-                          alignItems: "center",
-                          gap: "1rem",
-                          transition:
-                            "background-color 0.2s ease, border-color 0.2s ease",
-                        }}
-                        onMouseEnter={(e) => {
-                          e.currentTarget.style.borderColor = "#1E5A3B";
-                          e.currentTarget.style.backgroundColor = "#E8FAF0";
-                        }}
-                        onMouseLeave={(e) => {
-                          e.currentTarget.style.borderColor = "#C9F4D4";
-                          e.currentTarget.style.backgroundColor = "#F1FDF5";
-                        }}
-                      >
-                        {/* Decorative Icon */}
-                        <div
-                          style={{
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            width: "48px",
-                            height: "48px",
-                            backgroundColor: "#ffffff",
-                            borderRadius: "50%",
-                            boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.05)",
-                            color: "#1E5A3B",
-                          }}
-                        >
-                          <Upload size={24} />
-                        </div>
-
-                        {/* The File Input */}
-                        <input
-                          type="file"
-                          accept=".csv"
-                          onChange={handleSkillRequirementsCsvUpload}
-                          style={{
-                            width: "100%",
-                            maxWidth: "400px",
-                            padding: "0.75rem",
-                            backgroundColor: "#ffffff",
-                            border: "1px solid #C9F4D4", // Mint 100 border
-                            borderRadius: "0.5rem",
-                            fontSize: "0.875rem",
-                            color: "#1E5A3B", // Primary Text
-                            cursor: "pointer",
-                            boxShadow: "0 1px 2px rgba(0, 0, 0, 0.05)",
-                          }}
-                        />
-
-                        {/* Helper Text */}
-                        <p
-                          style={{
-                            margin: 0,
-                            fontSize: "0.75rem",
-                            color: "#64748b",
-                            fontWeight: 500,
-                          }}
-                        >
-                          Please ensure your file follows the required CSV
-                          template format.
-                        </p>
-                      </div>
-
-                      {/* Error Message */}
-                      {csvError && (
-                        <div
-                          style={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: "0.5rem",
-                            marginTop: "0.75rem",
-                            padding: "0.75rem",
-                            backgroundColor: "#FEF2F2",
-                            border: "1px solid #FECACA",
-                            borderRadius: "0.5rem",
-                            color: "#991B1B",
-                            fontSize: "0.875rem",
-                            fontWeight: 500,
-                          }}
-                        >
-                          <AlertCircle size={16} />
-                          {csvError}
-                        </div>
-                      )}
-                    </div>
-
-                    {/* CSV Preview Table with Delete Functionality */}
-                    {csvData.length > 0 && (
-                      <div
-                        style={{
-                          marginBottom: "2rem",
-                          animation: "fadeIn 0.3s ease-in-out",
-                        }}
-                      >
-                        {/* Header Section */}
-                        <div
-                          style={{
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "space-between",
-                            marginBottom: "1rem",
-                          }}
-                        >
-                          <label
-                            style={{
-                              display: "flex",
-                              alignItems: "center",
-                              gap: "0.5rem",
-                              fontSize: "0.875rem",
-                              fontWeight: 700,
-                              color: "#1E5A3B",
-                              textTransform: "uppercase",
-                              letterSpacing: "0.05em",
-                            }}
-                          >
-                            <TableIcon size={16} className="text-[#2D7A52]" />
-                            Preview Requirements
-                            <span
-                              style={{
-                                backgroundColor: "#E8FAF0",
-                                color: "#1E5A3B",
-                                padding: "0.1rem 0.5rem",
-                                borderRadius: "99px",
-                                fontSize: "0.75rem",
-                                border: "1px solid #C9F4D4",
-                              }}
-                            >
-                              {csvData.length}{" "}
-                              {csvData.length === 1 ? "skill" : "skills"}
-                            </span>
-                          </label>
-                        </div>
-
-                        {/* Table Container */}
-                        <div
-                          style={{
-                            overflowX: "auto",
-                            border: "1px solid #C9F4D4", // Mint 100
-                            borderRadius: "1rem",
-                            boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.02)",
-                          }}
-                        >
-                          <table
-                            style={{
-                              width: "100%",
-                              borderCollapse: "collapse",
-                              minWidth: "600px",
-                            }}
-                          >
-                            <thead>
-                              <tr
-                                style={{
-                                  backgroundColor: "#E8FAF0",
-                                  borderBottom: "1px solid #C9F4D4",
-                                }}
-                              >
-                                {[
-                                  "Skill Name",
-                                  "Description",
-                                  "Importance",
-                                  "Action",
-                                ].map((header, idx) => (
-                                  <th
-                                    key={idx}
-                                    style={{
-                                      padding: "1rem",
-                                      textAlign: idx === 3 ? "right" : "left",
-                                      fontSize: "0.75rem",
-                                      fontWeight: 700,
-                                      textTransform: "uppercase",
-                                      color: "#2D7A52", // Secondary Text
-                                      letterSpacing: "0.05em",
-                                    }}
-                                  >
-                                    {header}
-                                  </th>
-                                ))}
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {csvData.map((row, idx) => (
-                                <tr
-                                  key={idx}
-                                  style={{
-                                    borderBottom:
-                                      idx === csvData.length - 1
-                                        ? "none"
-                                        : "1px solid #F1F5F9",
-                                    backgroundColor: "#ffffff",
-                                    transition: "background-color 0.2s",
-                                  }}
-                                  onMouseEnter={(e) =>
-                                    (e.currentTarget.style.backgroundColor =
-                                      "#FAFEFC")
-                                  } // Very subtle mint hover
-                                  onMouseLeave={(e) =>
-                                    (e.currentTarget.style.backgroundColor =
-                                      "#ffffff")
-                                  }
-                                >
-                                  {/* Skill Name */}
-                                  <td
-                                    style={{
-                                      padding: "1rem",
-                                      color: "#1E5A3B",
-                                      fontWeight: 600,
-                                      fontSize: "0.9rem",
-                                    }}
-                                  >
-                                    {row.skill_name}
-                                  </td>
-
-                                  {/* Description */}
-                                  <td
-                                    style={{
-                                      padding: "1rem",
-                                      color: "#64748b",
-                                      fontSize: "0.875rem",
-                                      maxWidth: "300px",
-                                    }}
-                                  >
-                                    {row.skill_description || (
-                                      <span
-                                        style={{
-                                          color: "#cbd5e1",
-                                          fontStyle: "italic",
-                                        }}
-                                      >
-                                        No description
-                                      </span>
-                                    )}
-                                  </td>
-
-                                  {/* Importance Badge */}
-                                  <td style={{ padding: "1rem" }}>
-                                    <span
-                                      style={{
-                                        display: "inline-block",
-                                        padding: "0.25rem 0.75rem",
-                                        borderRadius: "9999px",
-                                        fontSize: "0.75rem",
-                                        fontWeight: 700,
-                                        backgroundColor:
-                                          row.importance_level === "High"
-                                            ? "#FEE2E2" // Soft Red
-                                            : row.importance_level === "Medium"
-                                              ? "#FFFEDC" // Butter Yellow (Brand)
-                                              : "#E8FAF0", // Mint 50 (Brand)
-                                        color:
-                                          row.importance_level === "High"
-                                            ? "#991B1B"
-                                            : row.importance_level === "Medium"
-                                              ? "#B45309"
-                                              : "#1E5A3B",
-                                        border:
-                                          row.importance_level === "High"
-                                            ? "1px solid #FECACA"
-                                            : row.importance_level === "Medium"
-                                              ? "1px solid #FDE68A"
-                                              : "1px solid #C9F4D4",
-                                      }}
-                                    >
-                                      {row.importance_level || "Medium"}
-                                    </span>
-                                  </td>
-
-                                  {/* Delete Action */}
-                                  <td
-                                    style={{
-                                      padding: "1rem",
-                                      textAlign: "right",
-                                    }}
-                                  >
-                                    <button
-                                      type="button"
-                                      onClick={() => handleDeleteCsvRow(idx)}
-                                      style={{
-                                        background: "none",
-                                        border: "none",
-                                        cursor: "pointer",
-                                        padding: "0.5rem",
-                                        borderRadius: "0.5rem",
-                                        color: "#94a3b8",
-                                        transition: "all 0.2s ease",
-                                      }}
-                                      onMouseEnter={(e) => {
-                                        e.currentTarget.style.backgroundColor =
-                                          "#FEE2E2";
-                                        e.currentTarget.style.color = "#DC2626";
-                                      }}
-                                      onMouseLeave={(e) => {
-                                        e.currentTarget.style.backgroundColor =
-                                          "transparent";
-                                        e.currentTarget.style.color = "#94a3b8";
-                                      }}
-                                      title="Remove Skill"
-                                    >
-                                      <Trash2 size={18} />
-                                    </button>
-                                  </td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-
-                        {/* Helper Footer */}
-                        <div
-                          style={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: "0.5rem",
-                            marginTop: "0.75rem",
-                            fontSize: "0.75rem",
-                            color: "#64748b",
-                          }}
-                        >
-                          <AlertCircle size={14} />
-                          <span>
-                            Review extracted skills. Click the trash icon to
-                            remove irrelevant entries before generating topics.
-                          </span>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Requirements Free Text Field */}
-                  <div style={{ marginBottom: "2rem" }}>
-                    <label
-                      style={{
-                        display: "block",
-                        marginBottom: "0.5rem",
                         fontWeight: 600,
                         color: "#1e293b",
                       }}
                     >
-                      Requirements
-                      <span
-                        style={{
-                          color: "#64748b",
-                          fontWeight: 400,
-                          fontSize: "0.875rem",
-                          marginLeft: "0.5rem",
-                        }}
-                      >
-                        (Optional)
-                      </span>
+                      Select Skills
                     </label>
-                    <textarea
-                      value={requirementsText}
-                      onChange={(e) => handleRequirementsChange(e.target.value)}
-                      placeholder="Enter free text or website URL"
+                    <div
                       style={{
-                        width: "100%",
-                        minHeight: "200px",
-                        padding: "0.75rem",
-                        border: "1px solid #e2e8f0",
-                        borderRadius: "0.5rem",
-                        fontSize: "1rem",
-                        fontFamily: "inherit",
-                        lineHeight: "1.6",
-                        resize: "vertical",
+                        display: "flex",
+                        flexWrap: "wrap",
+                        gap: "0.75rem",
                       }}
-                    />
-
-                    {/* URL Processing Status */}
-                    {processingUrl && (
-                      <div
-                        style={{
-                          marginTop: "0.5rem",
-                          padding: "0.75rem",
-                          backgroundColor: "#f0f9ff",
-                          border: "1px solid #3b82f6",
-                          borderRadius: "0.5rem",
-                          fontSize: "0.875rem",
-                          color: "#0369a1",
-                        }}
-                      >
-                        <div
-                          style={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: "0.5rem",
-                          }}
-                        >
-                          <div
-                            style={{
-                              width: "16px",
-                              height: "16px",
-                              border: "2px solid #3b82f6",
-                              borderTopColor: "transparent",
-                              borderRadius: "50%",
-                              animation: "spin 1s linear infinite",
-                            }}
-                          />
-                          <span>
-                            Fetching and summarizing website content...
-                          </span>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* URL Error */}
-                    {urlError && (
-                      <div
-                        style={{
-                          marginTop: "0.5rem",
-                          padding: "0.75rem",
-                          backgroundColor: "#fee2e2",
-                          border: "1px solid #fecaca",
-                          borderRadius: "0.5rem",
-                          fontSize: "0.875rem",
-                          color: "#dc2626",
-                        }}
-                      >
-                        {urlError}
-                      </div>
-                    )}
-
-                    {/* URL Success */}
-                    {requirementsUrl &&
-                      requirementsSummary &&
-                      !processingUrl && (
-                        <div
-                          style={{
-                            marginTop: "0.5rem",
-                            padding: "0.75rem",
-                            backgroundColor: "#d1fae5",
-                            border: "1px solid #86efac",
-                            borderRadius: "0.5rem",
-                            fontSize: "0.875rem",
-                            color: "#065f46",
-                          }}
-                        >
-                          <div
-                            style={{ fontWeight: 600, marginBottom: "0.25rem" }}
-                          >
-                            ✓ Website content fetched and summarized
-                          </div>
-                          <div style={{ fontSize: "0.8125rem", opacity: 0.8 }}>
-                            URL:{" "}
-                            <a
-                              href={requirementsUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              style={{
-                                color: "#059669",
-                                textDecoration: "underline",
-                              }}
-                            >
-                              {requirementsUrl}
-                            </a>
-                          </div>
-                        </div>
-                      )}
-                  </div>
-                </div>
-
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "center",
-                    gap: "1rem",
-                    marginTop: "2rem",
-                  }}
-                >
-                  {/* Check if topics have been generated (either in edit mode or after generating topics) */}
-                  {(() => {
-                    // If topicsV2 has any topics, it means topics have been generated
-                    // This is simpler and more reliable than checking question status
-                    const hasGeneratedTopics = topicsV2 && topicsV2.length > 0;
-
-                    return isEditMode || hasGeneratedTopics ? (
-                      <>
-                        {/* Show Next button if in edit mode or if topics have been generated */}
-                        <button
-                          type="button"
-                          onClick={() => {
-                            // Navigate to Station 2 (Configure Topics)
-                            setCurrentStation(2);
-                          }}
-                          className="btn-primary"
-                          style={{ minWidth: "200px" }}
-                        >
-                          Next
-                        </button>
-                      </>
-                    ) : (
-                      <>
-                        <button
-                          type="button"
-                          onClick={handleGenerateTopicsUnified}
-                          className="btn-primary"
-                          disabled={
-                            loading ||
-                            generatingFromCsv ||
-                            // Must have at least one source: requirements text/URL, selected skills, or CSV
-                            (!requirementsText.trim() &&
-                              !requirementsSummary &&
-                              selectedSkills.length === 0 &&
-                              csvData.length === 0)
+                    >
+                      {topicCards
+                        .filter((card) => {
+                          // Preserving existing filter logic
+                          const cardLower = card.toLowerCase().trim();
+                          const unsupportedFrameworks = [
+                            "django",
+                            "flask",
+                            "fastapi",
+                            "react",
+                            "angular",
+                            "vue",
+                            "next",
+                            "nextjs",
+                            "express",
+                            "spring",
+                            "hibernate",
+                            "laravel",
+                            "symfony",
+                            "rails",
+                            "ruby on rails",
+                            "asp.net",
+                            "dotnet",
+                            ".net",
+                            "tensorflow",
+                            "pytorch",
+                            "keras",
+                            "scikit-learn",
+                            "scikit",
+                            "pandas",
+                            "numpy",
+                            "matplotlib",
+                            "seaborn",
+                            "jupyter",
+                            "jupyter notebook",
+                            "selenium",
+                            "cypress",
+                            "jest",
+                            "mocha",
+                            "junit",
+                            "pytest",
+                            "unittest",
+                            "maven",
+                            "gradle",
+                            "npm",
+                            "yarn",
+                            "webpack",
+                            "babel",
+                            "gulp",
+                            "grunt",
+                          ];
+                          for (const framework of unsupportedFrameworks) {
+                            if (
+                              cardLower === framework ||
+                              cardLower.startsWith(framework + " ")
+                            )
+                              return false;
                           }
-                          style={{ minWidth: "200px" }}
-                        >
-                          {loading || generatingFromCsv
-                            ? "Generating Topics..."
-                            : "Generate Topics"}
-                        </button>
-                        {!requirementsText.trim() &&
-                          !requirementsSummary &&
-                          selectedSkills.length === 0 &&
-                          csvData.length === 0 && (
-                            <div
-                              style={{
-                                fontSize: "0.875rem",
-                                color: "#dc2626",
-                                marginTop: "0.5rem",
-                                textAlign: "center",
-                                width: "100%",
-                              }}
-                            >
-                              Please provide at least one of the following:
-                              requirements text/URL, selected skills, or CSV
-                              upload
-                            </div>
-                          )}
-                        {(selectedSkills.length > 0 || csvData.length > 0) && (
-                          <div
+                          return true;
+                        })
+                        .map((card) => (
+                          <button
+                            key={card}
+                            type="button"
+                            onClick={() => handleCardClick(card)}
                             style={{
+                              padding: "0.5rem 1rem",
+                              border: `1px solid ${selectedSkills.includes(card) ? "#10b981" : "#e2e8f0"}`,
+                              borderRadius: "2rem", // Pill shape
+                              backgroundColor: selectedSkills.includes(card)
+                                ? "#ecfdf5"
+                                : "#ffffff",
+                              color: selectedSkills.includes(card)
+                                ? "#047857"
+                                : "#4b5563",
+                              cursor: "pointer",
                               fontSize: "0.875rem",
-                              color: "#64748b",
-                              marginTop: "0.5rem",
-                              textAlign: "center",
-                              width: "100%",
-                              fontStyle: "italic",
+                              fontWeight: selectedSkills.includes(card)
+                                ? 600
+                                : 400,
+                              transition: "all 0.2s",
                             }}
                           >
-                            {(() => {
-                              const roleCount = selectedSkills.filter((s) =>
-                                topicCards.includes(s),
-                              ).length;
-                              const manualCount = selectedSkills.filter(
-                                (s) => !topicCards.includes(s),
-                              ).length;
-                              const csvCount = csvData.length;
-                              const parts = [];
-                              if (roleCount > 0)
-                                parts.push(`${roleCount} role-based`);
-                              if (manualCount > 0)
-                                parts.push(`${manualCount} manual`);
-                              if (csvCount > 0) parts.push(`${csvCount} CSV`);
-                              return `Will generate topics for: ${parts.join(", ")} skill${parts.length > 1 ? "s" : ""}`;
-                            })()}
-                          </div>
-                        )}
-                      </>
-                    );
-                  })()}
+                            {card} {selectedSkills.includes(card) && "✓"}
+                          </button>
+                        ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Continue Button (Bottom Navigation) */}
+                <div style={{ marginTop: "2rem" }}>
+                  <button
+  type="button"
+  onClick={handleGenerateTopicsUnified} 
+  disabled={loading || selectedSkills.length === 0}
+  style={{
+    width: "100%",
+    maxWidth: "200px",
+    padding: "1rem 2rem",
+    backgroundColor: "#6EE7B7", 
+    color: "#064e3b",
+    fontSize: "1.125rem",
+    fontWeight: 700,
+    border: "none",
+    borderRadius: "0.75rem",
+    cursor: loading || selectedSkills.length === 0 ? "not-allowed" : "pointer",
+    boxShadow: "0 4px 6px -1px rgba(16, 185, 129, 0.2)",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: "0.5rem",
+    opacity: loading ? 0.7 : 1,
+  }}
+>
+  {loading ? "Generating..." : (
+    <>
+      Continue <ArrowRight size={20} />
+    </>
+  )}
+</button>
+
+                  {/* Press Enter hint */}
+                  <div
+                    style={{
+                      marginTop: "1rem",
+                      textAlign: "left",
+                      color: "#10b981",
+                      fontSize: "0.875rem",
+                      paddingLeft: "0.5rem",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "0.25rem",
+                    }}
+                  >
+                    Press Enter <span style={{ fontSize: "1rem" }}>↵</span>
+                  </div>
                 </div>
               </div>
             )}
 
             {/* Station 2: Configure Topics (NEW V2 IMPLEMENTATION) */}
+
             {currentStation === 2 && (
-              <div>
+              <div
+                style={{
+                  maxWidth: "800px",
+                  margin: "0 auto",
+                  fontFamily:
+                    "-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', Roboto, sans-serif",
+                }}
+              >
+                {/* Step Indicator */}
                 <div
                   style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "center",
+                    color: "#10b981",
+                    fontWeight: 700,
+                    fontSize: "0.875rem",
                     marginBottom: "1rem",
+                    letterSpacing: "0.05em",
                   }}
                 >
-                  <div style={{ flex: 1 }}>
-                    <h1
-                      style={{
-                        marginBottom: "0.5rem",
-                        fontSize: "2rem",
-                        color: "#1a1625",
-                        fontWeight: 700,
-                      }}
-                    >
-                      Configure Topics
-                    </h1>
-                    <p
-                      style={{
-                        color: "#6b6678",
-                        marginBottom: "1rem",
-                        fontSize: "1rem",
-                      }}
-                    >
-                      Configure question type, difficulty, and number of
-                      questions for each topic. You can also add your own
-                      topics.
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={handleBackToDashboard}
-                    className="btn-secondary"
-                    style={{
-                      marginLeft: "1rem",
-                      whiteSpace: "nowrap",
-                      padding: "0.75rem 1.5rem",
-                      fontSize: "0.875rem",
-                    }}
-                  >
-                    Back to Dashboard
-                  </button>
+                  STEP 2 OF 6
                 </div>
 
-                {/* Error Display */}
+                {/* Main Heading */}
+                <h1
+                  style={{
+                    fontSize: "2.5rem",
+                    fontWeight: 800,
+                    color: "#1E5A3B",
+                    marginBottom: "2rem",
+                    lineHeight: 1.2,
+                  }}
+                >
+                  Which skills do you want to assess?
+                </h1>
+
+                {/* Main Input Field */}
+                <div style={{ marginBottom: "1rem" }}>
+                  <input
+                    type="text"
+                    value={customTopicInputV2}
+                    onChange={(e) => setCustomTopicInputV2(e.target.value)}
+                    onKeyPress={(e) => {
+                      if (e.key === "Enter") {
+                        handleAddCustomTopicV2(true, undefined, e);
+                      }
+                    }}
+                    placeholder="e.g., React, TypeScript, Node.js, System Design..."
+                    disabled={loading || addingTopic}
+                    style={{
+                      width: "100%",
+                      padding: "1.25rem 1.5rem",
+                      fontSize: "1.125rem",
+                      border: "2px solid #C9F4D4", // Mint 100
+                      borderRadius: "1rem",
+                      outline: "none",
+                      color: "#1E5A3B", // Primary Text
+                      backgroundColor: "#ffffff",
+                      transition: "all 0.2s ease",
+                      boxShadow: "0 2px 4px rgba(0,0,0,0.02)",
+                    }}
+                    onFocus={(e) => {
+                      e.target.style.borderColor = "#10b981";
+                      e.target.style.boxShadow =
+                        "0 0 0 4px rgba(201, 244, 212, 0.4)";
+                    }}
+                    onBlur={(e) => {
+                      e.target.style.borderColor = "#C9F4D4";
+                      e.target.style.boxShadow = "none";
+                    }}
+                  />
+                </div>
+
+                {/* Helper Text */}
+                <div
+                  style={{
+                    color: "#2D7A52",
+                    fontSize: "0.95rem",
+                    fontWeight: 600,
+                    marginBottom: "2rem",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "0.5rem",
+                  }}
+                >
+                  <span> <Lightbulb/></span> Add at least 2 skills (press Enter after each)
+                </div>
+
+                {/* Active Skills Display (Chips) */}
+                {topicsV2 && topicsV2.length > 0 && (
+                  <div
+                    style={{
+                      marginBottom: "3rem",
+                      display: "flex",
+                      flexWrap: "wrap",
+                      gap: "0.75rem",
+                    }}
+                  >
+                    {topicsV2.map((topic) => (
+                      <div
+                        key={topic.id}
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: "0.5rem",
+                          padding: "0.6rem 1.25rem",
+                          backgroundColor: "#EBFAFD", // Mint 50
+                          border: "1.5px solid #C9F4D4", // Mint 100
+                          borderRadius: "2rem",
+                          color: "#1E5A3B", // Primary Text
+                          fontWeight: 700,
+                          fontSize: "0.9rem",
+                          transition: "transform 0.2s ease",
+                        }}
+                      >
+                        <span>{topic.label}</span>
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveTopicV2(topic.id)}
+                          disabled={topic.locked}
+                          style={{
+                            background: "none",
+                            border: "none",
+                            color: "#10b981",
+                            cursor: "pointer",
+                            padding: "0 0.25rem",
+                            fontSize: "1.2rem",
+                            fontWeight: 800,
+                            display: "flex",
+                            alignItems: "center",
+                            lineHeight: 1,
+                          }}
+                        >
+                          ×
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Continue Button */}
+                <div style={{ marginTop: "2rem" }}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      // Immediately move to Station 3 as requested
+                      setCurrentStation(3);
+                      // Note: Logic to handle topic finalization/question generation
+                      // should still run in the background if necessary, but the UI triggers station 3.
+                    }}
+                    disabled={topicsV2 && topicsV2.length < 1}
+                    style={{
+                      width: "100%",
+                      maxWidth: "220px",
+                      padding: "1.1rem 2.5rem",
+                      backgroundColor: "#C9F4D4", // Mint 100 Primary Button
+                      color: "#1E5A3B", // Primary Text
+                      fontSize: "1.125rem",
+                      fontWeight: 800,
+                      border: "none",
+                      borderRadius: "1rem",
+                      cursor:
+                        topicsV2 && topicsV2.length < 1
+                          ? "not-allowed"
+                          : "pointer",
+                      boxShadow: "0 10px 15px -3px rgba(201, 244, 212, 0.4)",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: "0.75rem",
+                      transition: "all 0.2s ease",
+                    }}
+                    onMouseEnter={(e) => {
+                      if (topicsV2.length > 0)
+                        e.currentTarget.style.backgroundColor = "#B0EFD0"; // Mint 200 Hover
+                    }}
+                    onMouseLeave={(e) => {
+                      if (topicsV2.length > 0)
+                        e.currentTarget.style.backgroundColor = "#C9F4D4";
+                    }}
+                  >
+                    Continue <ArrowRight/>
+                  </button>
+
+                  <div
+                    style={{
+                      marginTop: "1.25rem",
+                      color: "#10b981",
+                      fontSize: "0.875rem",
+                      fontWeight: 700,
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "0.3rem",
+                    }}
+                  >
+                    Press Enter ↵
+                  </div>
+                </div>
+
+                {/* Error Toast */}
                 {error && (
                   <div
                     style={{
-                      padding: "1rem",
-                      backgroundColor: "#fee2e2",
-                      border: "1px solid #fecaca",
-                      borderRadius: "0.5rem",
-                      color: "#dc2626",
-                      marginBottom: "1.5rem",
-                    }}
-                  >
-                    {error}
-                  </div>
-                )}
-
-                {/* Toast Message */}
-                {toastMessage && (
-                  <div
-                    style={{
-                      position: "fixed",
-                      top: "2rem",
-                      right: "2rem",
-                      padding: "1rem 1.5rem",
-                      backgroundColor: "#fef3c7",
-                      border: "1px solid #fbbf24",
-                      borderRadius: "0.5rem",
-                      color: "#92400e",
-                      fontSize: "0.875rem",
-                      fontWeight: 500,
-                      zIndex: 2000,
-                      boxShadow: "0 4px 6px rgba(0, 0, 0, 0.1)",
-                      animation: "fadeIn 0.3s ease-in",
-                    }}
-                  >
-                    {toastMessage}
-                  </div>
-                )}
-
-                {/* Topics Table (Multi-Row V2) */}
-                <div style={{ overflowX: "auto", marginBottom: "1rem" }}>
-                  <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                    <thead>
-                      <tr style={{ backgroundColor: "#f8fafc" }}>
-                        <th
-                          style={{
-                            padding: "1rem",
-                            textAlign: "left",
-                            borderBottom: "2px solid #e2e8f0",
-                            fontWeight: 600,
-                            color: "#1e293b",
-                          }}
-                        >
-                          Topic
-                        </th>
-                        <th
-                          style={{
-                            padding: "1rem",
-                            textAlign: "left",
-                            borderBottom: "2px solid #e2e8f0",
-                            fontWeight: 600,
-                            color: "#1e293b",
-                          }}
-                        >
-                          Question Type
-                        </th>
-                        <th
-                          style={{
-                            padding: "1rem",
-                            textAlign: "left",
-                            borderBottom: "2px solid #e2e8f0",
-                            fontWeight: 600,
-                            color: "#1e293b",
-                          }}
-                        >
-                          Difficulty
-                        </th>
-                        <th
-                          style={{
-                            padding: "1rem",
-                            textAlign: "left",
-                            borderBottom: "2px solid #e2e8f0",
-                            fontWeight: 600,
-                            color: "#1e293b",
-                          }}
-                        >
-                          Questions Count
-                        </th>
-                        <th
-                          style={{
-                            padding: "1rem",
-                            textAlign: "left",
-                            borderBottom: "2px solid #e2e8f0",
-                            fontWeight: 600,
-                            color: "#1e293b",
-                          }}
-                        >
-                          Additional Requirements
-                        </th>
-                        <th
-                          style={{
-                            padding: "1rem",
-                            textAlign: "left",
-                            borderBottom: "2px solid #e2e8f0",
-                            fontWeight: 600,
-                            color: "#1e293b",
-                          }}
-                        >
-                          Actions
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {(() => {
-                        // 🔍 DEBUG: Log before rendering
-                        if (topicsV2 && topicsV2.length > 0) {
-                          console.log(
-                            "🔍 DEBUG: Rendering Configure Topics table:",
-                            {
-                              topicsV2Count: topicsV2.length,
-                              topicInputValues: topicInputValues,
-                              topicInputValuesKeys:
-                                Object.keys(topicInputValues),
-                              sampleTopic: topicsV2[0]
-                                ? {
-                                    id: topicsV2[0].id,
-                                    label: topicsV2[0].label,
-                                    hasQuestionRows: !!topicsV2[0].questionRows,
-                                    questionRowsCount:
-                                      topicsV2[0].questionRows?.length || 0,
-                                    firstRow: topicsV2[0].questionRows?.[0]
-                                      ? {
-                                          rowId:
-                                            topicsV2[0].questionRows[0].rowId,
-                                          questionType:
-                                            topicsV2[0].questionRows[0]
-                                              .questionType,
-                                          difficulty:
-                                            topicsV2[0].questionRows[0]
-                                              .difficulty,
-                                        }
-                                      : null,
-                                    inputValue:
-                                      topicInputValues[topicsV2[0].id],
-                                    computedValue:
-                                      topicInputValues[topicsV2[0].id] ??
-                                      topicsV2[0].label ??
-                                      "",
-                                  }
-                                : null,
-                            },
-                          );
-                        }
-                        return null;
-                      })()}
-                      {topicsV2 && topicsV2.length > 0 ? (
-                        topicsV2.flatMap((topic) => {
-                          // 🔍 DEBUG: Log each topic being rendered
-                          const topicInputValue =
-                            topicInputValues[topic.id] ?? topic.label ?? "";
-                          console.log(
-                            `🔍 DEBUG: Rendering topic ${topic.id}:`,
-                            {
-                              topicId: topic.id,
-                              topicLabel: topic.label,
-                              topicInputValue: topicInputValue,
-                              topicInputValuesKey: topicInputValues[topic.id],
-                              questionRowsCount:
-                                topic.questionRows?.length || 0,
-                            },
-                          );
-
-                          const canRegenerate =
-                            !topic.locked && !fullTopicRegenLocked;
-                          const canAddRow =
-                            !topic.locked && !allQuestionsGenerated;
-
-                          return topic.questionRows.map((row, rowIndex) => {
-                            // 🔍 DEBUG: Log each row being rendered
-                            console.log(
-                              `🔍 DEBUG: Rendering row ${row.rowId} for topic ${topic.id}:`,
-                              {
-                                rowId: row.rowId,
-                                questionType: row.questionType,
-                                questionTypeValue: row.questionType || "MCQ",
-                                difficulty: row.difficulty,
-                                questionsCount: row.questionsCount,
-                              },
-                            );
-                            const isFirstRow = rowIndex === 0;
-                            const canPreview = !allQuestionsGenerated; // Allow preview even if locked (to view existing questions)
-                            // Restrict question types for aptitude/communication/logical_reasoning
-                            // Use allowedQuestionTypes if available (for soft skills), otherwise determine from category
-                            const isSpecialCategory =
-                              topic.category &&
-                              [
-                                "aptitude",
-                                "communication",
-                                "logical_reasoning",
-                              ].includes(topic.category);
-
-                            // Determine available question types based on topic relevance
-                            let questionTypes: string[];
-                            if (
-                              topic.allowedQuestionTypes &&
-                              topic.allowedQuestionTypes.length > 0
-                            ) {
-                              questionTypes = topic.allowedQuestionTypes; // Use allowedQuestionTypes if defined
-                            } else if (isSpecialCategory) {
-                              questionTypes = ["MCQ", "Subjective"]; // Soft skills only
-                            } else {
-                              // Base types available for all technical topics
-                              const baseTypes = [
-                                "MCQ",
-                                "Subjective",
-                                "PseudoCode",
-                              ];
-
-                              // Add SQL only if topic is SQL-related
-                              const isSqlRelated = isTopicSqlRelated(
-                                topic.label,
-                              );
-
-                              // Add AIML only if topic is AIML-related
-                              const isAimlRelated = isTopicAimlRelated(
-                                topic.label,
-                              );
-
-                              // Add Coding ONLY if ALL conditions are met:
-                              // 1. Topic supports coding (coding_supported !== false)
-                              // 2. Row can use Judge0 (canUseJudge0 === true)
-                              // 3. Topic is NOT SQL-related (SQL topics use SQL type, not Coding)
-                              // 4. Topic is NOT AIML-related (AIML topics use AIML type, not Coding)
-                              // 5. Topic is NOT web-related (web topics don't support Judge0 execution)
-                              // 6. Topic mentions a Judge0-supported language (JavaScript, TypeScript, Java, Python, C++, C#, C, Go, Rust, Kotlin)
-                              // 7. Topic is DSA/algorithmic (sorting, searching, trees, graphs, etc.)
-                              const isWebRelated = isTopicWebRelated(
-                                topic.label,
-                              );
-                              const isCodingCompatible = isTopicCodingSupported(
-                                topic.label,
-                              );
-                              const supportsCoding =
-                                topic.coding_supported !== false &&
-                                row.canUseJudge0 &&
-                                !isSqlRelated &&
-                                !isAimlRelated &&
-                                !isWebRelated &&
-                                isCodingCompatible;
-
-                              questionTypes = [
-                                ...baseTypes,
-                                ...(isSqlRelated ? ["SQL"] : []),
-                                ...(isAimlRelated ? ["AIML"] : []),
-                                ...(supportsCoding ? ["Coding"] : []),
-                              ];
-                            }
-
-                            // ⭐ CRITICAL FIX: If row already has a questionType that's not in available options, add it
-                            // This ensures the select dropdown can display the current value even if it's not normally available
-                            // This is ESSENTIAL because the questionType from database might not match the calculated available options
-                            if (
-                              row.questionType &&
-                              !questionTypes.includes(row.questionType)
-                            ) {
-                              questionTypes = [
-                                ...questionTypes,
-                                row.questionType,
-                              ];
-                              console.log(
-                                `🔍 DEBUG: Added missing questionType "${row.questionType}" to available options for topic ${topic.id}, row ${row.rowId}`,
-                              );
-                            }
-
-                            // ⭐ CRITICAL FIX: Also check if questionType is undefined/null and set a default
-                            // But ONLY if it's truly missing - don't override existing values
-                            if (!row.questionType) {
-                              // Don't set default here - let it be handled by the select value binding
-                              // This ensures we preserve the actual questionType from database
-                            }
-
-                            return [
-                              <tr
-                                key={`${topic.id}-${row.rowId}-${topicInputValues[topic.id] || topic.label || ""}-${row.questionType || "MCQ"}`}
-                                style={{ borderBottom: "1px solid #e2e8f0" }}
-                              >
-                                <td
-                                  style={{
-                                    padding: "1rem",
-                                    verticalAlign: "top",
-                                  }}
-                                >
-                                  {isFirstRow && (
-                                    <>
-                                      {(() => {
-                                        // Check if this is a custom topic with generated questions
-                                        const isCustomTopic =
-                                          topic.questionRows.length === 1 &&
-                                          topic.questionRows[0]
-                                            .questionsCount === 1 &&
-                                          topic.questionRows.some((row) => {
-                                            const rowStatus = row.status;
-                                            const isGeneratedOrCompleted =
-                                              rowStatus === "generated" ||
-                                              rowStatus === "completed";
-                                            return (
-                                              row.questions &&
-                                              row.questions.length > 0 &&
-                                              isGeneratedOrCompleted
-                                            );
-                                          });
-                                        const isCustomTopicDisabled =
-                                          isCustomTopic;
-
-                                        return (
-                                          <button
-                                            type="button"
-                                            onClick={() =>
-                                              handleRegenerateTopicV2(topic.id)
-                                            }
-                                            disabled={
-                                              !canRegenerate ||
-                                              generatingRowId !== null ||
-                                              isCustomTopicDisabled
-                                            }
-                                            title={
-                                              isCustomTopicDisabled
-                                                ? "Custom topics cannot be regenerated. Use Preview on the question row to regenerate."
-                                                : !canRegenerate
-                                                  ? "Topic regeneration is locked"
-                                                  : "Regenerate this topic"
-                                            }
-                                            style={{
-                                              marginBottom: "0.5rem",
-                                              padding: "0.375rem 0.75rem",
-                                              background:
-                                                canRegenerate &&
-                                                !isCustomTopicDisabled
-                                                  ? "#3b82f6"
-                                                  : "#94a3b8",
-                                              border: "none",
-                                              color: "#ffffff",
-                                              cursor:
-                                                canRegenerate &&
-                                                !isCustomTopicDisabled &&
-                                                generatingRowId === null
-                                                  ? "pointer"
-                                                  : "not-allowed",
-                                              fontSize: "0.75rem",
-                                              fontWeight: 500,
-                                              borderRadius: "0.375rem",
-                                              opacity:
-                                                canRegenerate &&
-                                                !isCustomTopicDisabled &&
-                                                generatingRowId === null
-                                                  ? 1
-                                                  : 0.6,
-                                            }}
-                                          >
-                                            Regenerate Topic
-                                          </button>
-                                        );
-                                      })()}
-                                      <div style={{ position: "relative" }}>
-                                        <label
-                                          htmlFor={`topic-input-${topic.id}`}
-                                          className="sr-only"
-                                        >
-                                          Topic Name
-                                        </label>
-                                        <input
-                                          id={`topic-input-${topic.id}`}
-                                          name={`topic-input-${topic.id}`}
-                                          type="text"
-                                          value={(() => {
-                                            const computedValue =
-                                              topicInputValues[topic.id] ??
-                                              topic.label ??
-                                              "";
-                                            // 🔍 DEBUG: Log the exact value being set in the input
-                                            if (topic.id === topicsV2[0]?.id) {
-                                              console.log(
-                                                `🔍 DEBUG: Input field value for ${topic.id}:`,
-                                                {
-                                                  topicId: topic.id,
-                                                  topicInputValuesKey:
-                                                    topicInputValues[topic.id],
-                                                  topicLabel: topic.label,
-                                                  computedValue: computedValue,
-                                                  valueType:
-                                                    typeof computedValue,
-                                                  valueLength:
-                                                    computedValue?.length,
-                                                },
-                                              );
-                                            }
-                                            return computedValue;
-                                          })()}
-                                          onChange={(e) =>
-                                            handleTopicNameChange(
-                                              topic.id,
-                                              e.target.value,
-                                            )
-                                          }
-                                          onFocus={() => {
-                                            const specialCategories = [
-                                              "aptitude",
-                                              "communication",
-                                              "logical_reasoning",
-                                            ] as const;
-                                            if (
-                                              topic.category &&
-                                              specialCategories.includes(
-                                                topic.category as any,
-                                              ) &&
-                                              topic.label.length >= 2
-                                            ) {
-                                              setShowingSuggestionsFor(
-                                                topic.id,
-                                              );
-                                              fetchTopicSuggestions(
-                                                topic.label,
-                                                topic.category,
-                                              );
-                                            }
-                                          }}
-                                          onBlur={() => {
-                                            // Delay hiding suggestions to allow clicking
-                                            setTimeout(
-                                              () =>
-                                                setShowingSuggestionsFor(null),
-                                              200,
-                                            );
-                                          }}
-                                          placeholder="Enter topic name"
-                                          disabled={topic.locked}
-                                          style={{
-                                            width: "100%",
-                                            padding: "0.5rem",
-                                            border: "1px solid #e2e8f0",
-                                            borderRadius: "0.5rem",
-                                            fontSize: "0.875rem",
-                                            color: "#1e293b", // ⭐ CRITICAL FIX: Explicit text color
-                                            backgroundColor: topic.locked
-                                              ? "#f1f5f9"
-                                              : "#ffffff",
-                                            cursor: topic.locked
-                                              ? "not-allowed"
-                                              : "text",
-                                            opacity: topic.locked ? 0.6 : 1,
-                                          }}
-                                        />
-
-                                        {/* Suggestions Dropdown */}
-                                        {showingSuggestionsFor === topic.id &&
-                                          topicSuggestions.length > 0 &&
-                                          !topic.locked && (
-                                            <div
-                                              style={{
-                                                position: "absolute",
-                                                top: "100%",
-                                                left: 0,
-                                                right: 0,
-                                                marginTop: "0.25rem",
-                                                backgroundColor: "#ffffff",
-                                                border: "1px solid #e2e8f0",
-                                                borderRadius: "0.5rem",
-                                                boxShadow:
-                                                  "0 4px 6px rgba(0, 0, 0, 0.1)",
-                                                zIndex: 1000,
-                                                maxHeight: "200px",
-                                                overflowY: "auto",
-                                              }}
-                                            >
-                                              {topicSuggestions.map(
-                                                (suggestion, idx) => (
-                                                  <div
-                                                    key={idx}
-                                                    onClick={() => {
-                                                      handleTopicNameChange(
-                                                        topic.id,
-                                                        suggestion.value,
-                                                      );
-                                                      setShowingSuggestionsFor(
-                                                        null,
-                                                      );
-                                                      setTopicSuggestions([]);
-                                                    }}
-                                                    style={{
-                                                      padding: "0.75rem",
-                                                      cursor: "pointer",
-                                                      borderBottom:
-                                                        idx <
-                                                        topicSuggestions.length -
-                                                          1
-                                                          ? "1px solid #f1f5f9"
-                                                          : "none",
-                                                      fontSize: "0.875rem",
-                                                      color: "#1e293b",
-                                                    }}
-                                                    onMouseEnter={(e) => {
-                                                      e.currentTarget.style.backgroundColor =
-                                                        "#f8fafc";
-                                                    }}
-                                                    onMouseLeave={(e) => {
-                                                      e.currentTarget.style.backgroundColor =
-                                                        "#ffffff";
-                                                    }}
-                                                  >
-                                                    {suggestion.label}
-                                                  </div>
-                                                ),
-                                              )}
-                                            </div>
-                                          )}
-                                      </div>
-                                    </>
-                                  )}
-                                </td>
-                                <td style={{ padding: "1rem" }}>
-                                  <div
-                                    style={{
-                                      display: "flex",
-                                      gap: "0.5rem",
-                                      alignItems: "center",
-                                    }}
-                                  >
-                                    <label
-                                      htmlFor={`question-type-${topic.id}-${row.rowId}`}
-                                      className="sr-only"
-                                    >
-                                      Question Type
-                                    </label>
-                                    <select
-                                      id={`question-type-${topic.id}-${row.rowId}`}
-                                      name={`question-type-${topic.id}-${row.rowId}`}
-                                      value={(() => {
-                                        const currentQuestionType =
-                                          row.questionType || "MCQ";
-                                        return String(currentQuestionType);
-                                      })()}
-                                      onChange={(e) => {
-                                        const newType = e.target.value as
-                                          | "MCQ"
-                                          | "Subjective"
-                                          | "PseudoCode"
-                                          | "Coding"
-                                          | "SQL"
-                                          | "AIML";
-                                        handleQuestionTypeChangeFromDropdown(
-                                          topic.id,
-                                          row.rowId,
-                                          newType,
-                                        );
-                                      }}
-                                      disabled={row.locked}
-                                      style={{
-                                        flex: 1,
-                                        padding: "0.5rem",
-                                        border: "1px solid #e2e8f0",
-                                        borderRadius: "0.5rem",
-                                        fontSize: "0.875rem",
-                                        color: "#1e293b",
-                                        backgroundColor: row.locked
-                                          ? "#f1f5f9"
-                                          : "#ffffff",
-                                        cursor: row.locked
-                                          ? "not-allowed"
-                                          : "pointer",
-                                        opacity: row.locked ? 0.6 : 1,
-                                      }}
-                                    >
-                                      {(() => {
-                                        // Get relevant question types based on topic content
-                                        const relevantTypes =
-                                          getRelevantQuestionTypes(
-                                            topic.label || "",
-                                          );
-
-                                        return relevantTypes.map((type) => {
-                                          // Additional check: disable Coding if topic doesn't support it
-                                          const isCodingDisabled =
-                                            type === "Coding" &&
-                                            topic.category === "technical" &&
-                                            topic.coding_supported === false;
-
-                                          return (
-                                            <option
-                                              key={type}
-                                              value={type}
-                                              disabled={isCodingDisabled}
-                                              style={{
-                                                color: isCodingDisabled
-                                                  ? "#94a3b8"
-                                                  : "#1e293b",
-                                              }}
-                                            >
-                                              {type}
-                                              {isCodingDisabled
-                                                ? " (Not supported)"
-                                                : ""}
-                                            </option>
-                                          );
-                                        });
-                                      })()}
-                                    </select>
-                                    {canAddRow && isFirstRow && (
-                                      <button
-                                        type="button"
-                                        onClick={() =>
-                                          handleAddQuestionRow(topic.id)
-                                        }
-                                        title="Add question type row"
-                                        style={{
-                                          padding: "0.5rem",
-                                          background: "none",
-                                          border: "1px solid #10b981",
-                                          color: "#10b981",
-                                          cursor: "pointer",
-                                          fontSize: "1.25rem",
-                                          fontWeight: 600,
-                                          borderRadius: "0.25rem",
-                                          width: "32px",
-                                          height: "32px",
-                                          display: "flex",
-                                          alignItems: "center",
-                                          justifyContent: "center",
-                                        }}
-                                      >
-                                        +
-                                      </button>
-                                    )}
-                                    {topic.questionRows.length > 1 && (
-                                      <button
-                                        type="button"
-                                        onClick={() =>
-                                          handleRemoveQuestionRow(
-                                            topic.id,
-                                            row.rowId,
-                                          )
-                                        }
-                                        disabled={row.locked}
-                                        title="Remove this question type row"
-                                        style={{
-                                          padding: "0.5rem",
-                                          background: "none",
-                                          border: "1px solid #ef4444",
-                                          color: "#ef4444",
-                                          cursor: row.locked
-                                            ? "not-allowed"
-                                            : "pointer",
-                                          fontSize: "1.25rem",
-                                          fontWeight: 600,
-                                          borderRadius: "0.25rem",
-                                          width: "32px",
-                                          height: "32px",
-                                          display: "flex",
-                                          alignItems: "center",
-                                          justifyContent: "center",
-                                          opacity: row.locked ? 0.5 : 1,
-                                        }}
-                                      >
-                                        −
-                                      </button>
-                                    )}
-                                  </div>
-                                </td>
-                                <td style={{ padding: "1rem" }}>
-                                  <label
-                                    htmlFor={`difficulty-${topic.id}-${row.rowId}`}
-                                    className="sr-only"
-                                  >
-                                    Difficulty Level
-                                  </label>
-                                  <select
-                                    id={`difficulty-${topic.id}-${row.rowId}`}
-                                    name={`difficulty-${topic.id}-${row.rowId}`}
-                                    value={row.difficulty}
-                                    onChange={(e) =>
-                                      handleUpdateRow(
-                                        topic.id,
-                                        row.rowId,
-                                        "difficulty",
-                                        e.target.value,
-                                      )
-                                    }
-                                    disabled={row.locked}
-                                    style={{
-                                      width: "100%",
-                                      padding: "0.5rem",
-                                      border: "1px solid #e2e8f0",
-                                      borderRadius: "0.5rem",
-                                      fontSize: "0.875rem",
-                                      backgroundColor: row.locked
-                                        ? "#f1f5f9"
-                                        : "#ffffff",
-                                      cursor: row.locked
-                                        ? "not-allowed"
-                                        : "pointer",
-                                      opacity: row.locked ? 0.6 : 1,
-                                    }}
-                                  >
-                                    {["Easy", "Medium", "Hard"].map((level) => (
-                                      <option key={level} value={level}>
-                                        {level}
-                                      </option>
-                                    ))}
-                                  </select>
-                                </td>
-                                <td style={{ padding: "1rem" }}>
-                                  <label
-                                    htmlFor={`questions-count-${topic.id}-${row.rowId}`}
-                                    className="sr-only"
-                                  >
-                                    Questions Count
-                                  </label>
-                                  <input
-                                    id={`questions-count-${topic.id}-${row.rowId}`}
-                                    name={`questions-count-${topic.id}-${row.rowId}`}
-                                    type="number"
-                                    min="1"
-                                    max="20"
-                                    value={row.questionsCount}
-                                    onChange={(e) =>
-                                      handleUpdateRow(
-                                        topic.id,
-                                        row.rowId,
-                                        "questionsCount",
-                                        parseInt(e.target.value) || 1,
-                                      )
-                                    }
-                                    disabled={row.locked}
-                                    style={{
-                                      width: "100%",
-                                      padding: "0.5rem",
-                                      border: "1px solid #e2e8f0",
-                                      borderRadius: "0.5rem",
-                                      fontSize: "0.875rem",
-                                      backgroundColor: row.locked
-                                        ? "#f1f5f9"
-                                        : "#ffffff",
-                                      cursor: row.locked
-                                        ? "not-allowed"
-                                        : "text",
-                                      opacity: row.locked ? 0.6 : 1,
-                                    }}
-                                  />
-                                </td>
-                                <td
-                                  style={{
-                                    padding: "1rem",
-                                    verticalAlign: "top",
-                                  }}
-                                >
-                                  <label
-                                    htmlFor={`additional-requirements-${topic.id}-${row.rowId}`}
-                                    className="sr-only"
-                                  >
-                                    Additional Requirements
-                                  </label>
-                                  <textarea
-                                    id={`additional-requirements-${topic.id}-${row.rowId}`}
-                                    name={`additional-requirements-${topic.id}-${row.rowId}`}
-                                    value={row.additionalRequirements || ""}
-                                    onChange={(e) =>
-                                      handleUpdateRow(
-                                        topic.id,
-                                        row.rowId,
-                                        "additionalRequirements",
-                                        e.target.value,
-                                      )
-                                    }
-                                    disabled={row.locked}
-                                    placeholder="Optional: Add requirements..."
-                                    style={{
-                                      width: "100%",
-                                      minHeight: "60px",
-                                      padding: "0.5rem",
-                                      border: "1px solid #e2e8f0",
-                                      borderRadius: "0.5rem",
-                                      fontSize: "0.875rem",
-                                      fontFamily: "inherit",
-                                      backgroundColor: row.locked
-                                        ? "#f1f5f9"
-                                        : "#ffffff",
-                                      cursor: row.locked
-                                        ? "not-allowed"
-                                        : "text",
-                                      opacity: row.locked ? 0.6 : 1,
-                                      resize: "vertical",
-                                    }}
-                                  />
-                                </td>
-                                <td style={{ padding: "1rem" }}>
-                                  <div
-                                    style={{
-                                      display: "flex",
-                                      gap: "0.5rem",
-                                      flexDirection: "column",
-                                    }}
-                                  >
-                                    {/* Preview button removed */}
-                                    {isFirstRow && (
-                                      <button
-                                        type="button"
-                                        onClick={() =>
-                                          handleRemoveTopicV2(topic.id)
-                                        }
-                                        disabled={topic.locked}
-                                        title="Remove topic"
-                                        style={{
-                                          padding: "0.5rem 1rem",
-                                          background: "none",
-                                          border: "1px solid #ef4444",
-                                          color: "#ef4444",
-                                          cursor: topic.locked
-                                            ? "not-allowed"
-                                            : "pointer",
-                                          fontSize: "0.75rem",
-                                          fontWeight: 500,
-                                          borderRadius: "0.375rem",
-                                          opacity: topic.locked ? 0.5 : 1,
-                                        }}
-                                      >
-                                        Remove Topic
-                                      </button>
-                                    )}
-                                  </div>
-                                </td>
-                              </tr>,
-                            ];
-                          });
-                        })
-                      ) : (
-                        <tr>
-                          <td
-                            colSpan={6}
-                            style={{
-                              padding: "2rem",
-                              textAlign: "center",
-                              color: "#64748b",
-                            }}
-                          >
-                            {loadingDraft ? (
-                              "Loading topics..."
-                            ) : isEditMode && assessmentId ? (
-                              <div>
-                                <p>Topics are being loaded...</p>
-                                <p
-                                  style={{
-                                    fontSize: "0.875rem",
-                                    marginTop: "0.5rem",
-                                    color: "#64748b",
-                                  }}
-                                >
-                                  If topics don't appear, please refresh the
-                                  page.
-                                </p>
-                              </div>
-                            ) : (
-                              "No topics configured yet. Please generate topics from Station 1 or add a custom topic below."
-                            )}
-                          </td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-
-                {/* Custom Topic Input (V2) with Category Selection */}
-                <div
-                  style={{
-                    marginTop: "2rem",
-                    padding: "1.5rem",
-                    backgroundColor: "#f8fafc",
-                    borderRadius: "0.75rem",
-                    border: "1px solid #e2e8f0",
-                  }}
-                >
-                  <label
-                    style={{
-                      display: "block",
-                      marginBottom: "0.75rem",
+                      marginTop: "1.5rem",
+                      color: "#1E5A3B",
+                      fontSize: "0.95rem",
                       fontWeight: 600,
-                      color: "#1e293b",
+                      backgroundColor: "#fffbeb", // Warning Yellow
+                      padding: "1rem 1.5rem",
+                      borderRadius: "0.75rem",
+                      border: "1px solid #fcd34d",
                     }}
                   >
-                    Add Custom Topic
-                  </label>
-
-                  {/* Soft Skill Category Selection Tabs */}
-                  <div
-                    style={{
-                      display: "flex",
-                      gap: "0.75rem",
-                      marginBottom: "1rem",
-                      flexWrap: "wrap",
-                      alignItems: "center",
-                    }}
-                  >
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setSelectedCategoryForNewTopic("aptitude");
-                        setShowTechnicalInput(false);
-                      }}
-                      style={{
-                        padding: "0.5rem 1rem",
-                        background:
-                          selectedCategoryForNewTopic === "aptitude"
-                            ? "#3b82f6"
-                            : "#ffffff",
-                        border: `2px solid ${selectedCategoryForNewTopic === "aptitude" ? "#3b82f6" : "#e2e8f0"}`,
-                        color:
-                          selectedCategoryForNewTopic === "aptitude"
-                            ? "#ffffff"
-                            : "#1e293b",
-                        cursor: "pointer",
-                        fontSize: "0.875rem",
-                        fontWeight: 500,
-                        borderRadius: "0.5rem",
-                        transition: "all 0.2s",
-                      }}
-                    >
-                      Aptitude
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setSelectedCategoryForNewTopic("communication");
-                        setShowTechnicalInput(false);
-                      }}
-                      style={{
-                        padding: "0.5rem 1rem",
-                        background:
-                          selectedCategoryForNewTopic === "communication"
-                            ? "#3b82f6"
-                            : "#ffffff",
-                        border: `2px solid ${selectedCategoryForNewTopic === "communication" ? "#3b82f6" : "#e2e8f0"}`,
-                        color:
-                          selectedCategoryForNewTopic === "communication"
-                            ? "#ffffff"
-                            : "#1e293b",
-                        cursor: "pointer",
-                        fontSize: "0.875rem",
-                        fontWeight: 500,
-                        borderRadius: "0.5rem",
-                        transition: "all 0.2s",
-                      }}
-                    >
-                      Communication
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setSelectedCategoryForNewTopic("logical_reasoning");
-                        setShowTechnicalInput(false);
-                      }}
-                      style={{
-                        padding: "0.5rem 1rem",
-                        background:
-                          selectedCategoryForNewTopic === "logical_reasoning"
-                            ? "#3b82f6"
-                            : "#ffffff",
-                        border: `2px solid ${selectedCategoryForNewTopic === "logical_reasoning" ? "#3b82f6" : "#e2e8f0"}`,
-                        color:
-                          selectedCategoryForNewTopic === "logical_reasoning"
-                            ? "#ffffff"
-                            : "#1e293b",
-                        cursor: "pointer",
-                        fontSize: "0.875rem",
-                        fontWeight: 500,
-                        borderRadius: "0.5rem",
-                        transition: "all 0.2s",
-                      }}
-                    >
-                      Logical Reasoning
-                    </button>
-
-                    {/* Separate Technical Skill Button */}
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setShowTechnicalInput(true);
-                        setSelectedCategoryForNewTopic(null);
-                        setCustomTopicInputV2("");
-                        setShowAiSuggestions(false);
-                        setAiTopicSuggestions([]);
-                        setSuggestionsFetched(false); // Reset fetched flag
-                      }}
-                      style={{
-                        padding: "0.5rem 1rem",
-                        background: showTechnicalInput ? "#10b981" : "#ffffff",
-                        border: `2px solid ${showTechnicalInput ? "#10b981" : "#e2e8f0"}`,
-                        color: showTechnicalInput ? "#ffffff" : "#1e293b",
-                        cursor: "pointer",
-                        fontSize: "0.875rem",
-                        fontWeight: 500,
-                        borderRadius: "0.5rem",
-                        transition: "all 0.2s",
-                        marginLeft: "auto",
-                      }}
-                    >
-                      Add Technical Skill
-                    </button>
+                    ⚠️ {error}
                   </div>
-
-                  {/* Soft Skill Input Area (shown when a soft skill tab is selected) */}
-                  {!showTechnicalInput && selectedCategoryForNewTopic && (
-                    <div
-                      style={{
-                        position: "relative",
-                        display: "flex",
-                        gap: "0.5rem",
-                      }}
-                    >
-                      <div
-                        ref={suggestionsContainerRef}
-                        style={{ flex: 1, position: "relative" }}
-                      >
-                        <input
-                          ref={customTopicInputRef}
-                          type="text"
-                          value={customTopicInputV2}
-                          onChange={(e) => {
-                            const value = e.target.value;
-                            setCustomTopicInputV2(value);
-
-                            // Reset fetched flag when input is cleared or too short
-                            if (!value.trim() || value.trim().length < 2) {
-                              setSuggestionsFetched(false);
-                              setShowAiSuggestions(false);
-                              setAiTopicSuggestions([]);
-                            } else {
-                              // Reset fetched flag when input changes to allow refetching
-                              setSuggestionsFetched(false);
-                            }
-
-                            // Fetch AI-powered suggestions ONLY for soft skills (with debouncing)
-                            if (
-                              selectedCategoryForNewTopic &&
-                              value.trim().length >= 2
-                            ) {
-                              fetchAiTopicSuggestions(
-                                value,
-                                selectedCategoryForNewTopic,
-                                false,
-                              );
-                            }
-                          }}
-                          onFocus={() => {
-                            // Show suggestions when field is focused - fetch even with empty input
-                            console.log("onFocus triggered", {
-                              input: customTopicInputV2,
-                              category: selectedCategoryForNewTopic,
-                              length: customTopicInputV2.trim().length,
-                            }); // Debug
-
-                            if (selectedCategoryForNewTopic) {
-                              console.log(
-                                "onFocus: Calling fetchAiTopicSuggestions with forceFetch=true",
-                              ); // Debug
-                              setSuggestionsFetched(false); // Reset to allow fetching
-                              // Use the input value, or empty string to get general suggestions for the category
-                              const queryToUse =
-                                customTopicInputV2.trim() || "";
-                              fetchAiTopicSuggestions(
-                                queryToUse,
-                                selectedCategoryForNewTopic,
-                                true,
-                              );
-                            } else {
-                              console.log(
-                                "onFocus: Not fetching - no category selected",
-                              ); // Debug
-                            }
-                          }}
-                          onBlur={(e) => {
-                            // Don't handle blur here - let the outside click handler manage closing
-                            // This prevents premature closing when clicking suggestions
-                          }}
-                          onKeyPress={(e) => {
-                            if (e.key === "Enter") {
-                              handleAddCustomTopicV2(false);
-                              setShowAiSuggestions(false);
-                            }
-                          }}
-                          placeholder={
-                            selectedCategoryForNewTopic === "aptitude"
-                              ? "Enter aptitude topic name…"
-                              : selectedCategoryForNewTopic === "communication"
-                                ? "Enter communication topic name…"
-                                : "Enter logical reasoning topic name…"
-                          }
-                          disabled={loading}
-                          style={{
-                            width: "100%",
-                            padding: "0.75rem",
-                            border: "1px solid #e2e8f0",
-                            borderRadius: "0.5rem",
-                            fontSize: "0.875rem",
-                            backgroundColor: "#ffffff",
-                            cursor: "text",
-                            opacity: loading ? 0.6 : 1,
-                          }}
-                        />
-
-                        {/* AI-Powered Suggestions Dropdown (ONLY for soft skills) */}
-                        {showAiSuggestions &&
-                          (aiTopicSuggestions.length > 0 ||
-                            loadingAiSuggestions) && (
-                            <div
-                              data-suggestions-dropdown
-                              style={{
-                                position: "absolute",
-                                top: "100%",
-                                left: 0,
-                                right: 0,
-                                marginTop: "0.25rem",
-                                backgroundColor: "#ffffff",
-                                border: "1px solid #e2e8f0",
-                                borderRadius: "0.5rem",
-                                boxShadow: "0 4px 6px rgba(0, 0, 0, 0.1)",
-                                zIndex: 1000,
-                                maxHeight: "300px",
-                                overflowY: "auto",
-                              }}
-                            >
-                              {loadingAiSuggestions ? (
-                                <div
-                                  style={{
-                                    padding: "1rem",
-                                    textAlign: "center",
-                                    color: "#64748b",
-                                    fontSize: "0.875rem",
-                                  }}
-                                >
-                                  Generating suggestions...
-                                </div>
-                              ) : aiTopicSuggestions.length > 0 ? (
-                                aiTopicSuggestions.map((suggestion, idx) => {
-                                  // Highlight matching text
-                                  const query =
-                                    customTopicInputV2.toLowerCase();
-                                  const suggestionLower =
-                                    suggestion.toLowerCase();
-                                  const matchIndex =
-                                    suggestionLower.indexOf(query);
-
-                                  return (
-                                    <div
-                                      key={idx}
-                                      onMouseDown={(e) => {
-                                        // Prevent input blur when clicking suggestion
-                                        e.preventDefault();
-                                      }}
-                                      onClick={(e) => {
-                                        e.preventDefault();
-                                        e.stopPropagation();
-                                        console.log(
-                                          "Suggestion item clicked:",
-                                          suggestion,
-                                        ); // Debug
-                                        handleSuggestionClick(suggestion);
-                                      }}
-                                      style={{
-                                        padding: "0.75rem",
-                                        cursor: "pointer",
-                                        borderBottom:
-                                          idx < aiTopicSuggestions.length - 1
-                                            ? "1px solid #f1f5f9"
-                                            : "none",
-                                        fontSize: "0.875rem",
-                                        color: "#1e293b",
-                                      }}
-                                      onMouseEnter={(e) => {
-                                        e.currentTarget.style.backgroundColor =
-                                          "#f8fafc";
-                                      }}
-                                      onMouseLeave={(e) => {
-                                        e.currentTarget.style.backgroundColor =
-                                          "#ffffff";
-                                      }}
-                                    >
-                                      {matchIndex >= 0 && query.length > 0 ? (
-                                        <>
-                                          {suggestion.substring(0, matchIndex)}
-                                          <strong style={{ color: "#3b82f6" }}>
-                                            {suggestion.substring(
-                                              matchIndex,
-                                              matchIndex + query.length,
-                                            )}
-                                          </strong>
-                                          {suggestion.substring(
-                                            matchIndex + query.length,
-                                          )}
-                                        </>
-                                      ) : (
-                                        suggestion
-                                      )}
-                                    </div>
-                                  );
-                                })
-                              ) : (
-                                <div
-                                  style={{
-                                    padding: "1rem",
-                                    textAlign: "center",
-                                    color: "#64748b",
-                                    fontSize: "0.875rem",
-                                  }}
-                                >
-                                  No suggestions found
-                                </div>
-                              )}
-                            </div>
-                          )}
-                      </div>
-                      <button
-                        type="button"
-                        onClick={handleAddSoftSkillTopic}
-                        disabled={
-                          loading ||
-                          !customTopicInputV2.trim() ||
-                          addingTopic ||
-                          validatingTopic
-                        }
-                        style={{
-                          padding: "0.75rem 1.5rem",
-                          background:
-                            loading ||
-                            !customTopicInputV2.trim() ||
-                            addingTopic ||
-                            validatingTopic
-                              ? "#94a3b8"
-                              : "#10b981",
-                          border: "none",
-                          color: "#ffffff",
-                          cursor:
-                            loading ||
-                            !customTopicInputV2.trim() ||
-                            addingTopic ||
-                            validatingTopic
-                              ? "not-allowed"
-                              : "pointer",
-                          fontSize: "0.875rem",
-                          fontWeight: 500,
-                          borderRadius: "0.5rem",
-                          whiteSpace: "nowrap",
-                        }}
-                      >
-                        {addingTopic
-                          ? "Adding..."
-                          : validatingTopic
-                            ? "Validating..."
-                            : selectedCategoryForNewTopic === "aptitude"
-                              ? "Add Aptitude Topic"
-                              : selectedCategoryForNewTopic === "communication"
-                                ? "Add Communication Topic"
-                                : "Add Logical Reasoning Topic"}
-                      </button>
-                    </div>
-                  )}
-
-                  {/* Technical Input Area (shown when "Add Technical Skill" is clicked) */}
-                  {showTechnicalInput && (
-                    <div
-                      style={{
-                        display: "flex",
-                        gap: "0.5rem",
-                        flexDirection: "column",
-                      }}
-                    >
-                      <div style={{ display: "flex", gap: "0.5rem" }}>
-                        <input
-                          type="text"
-                          value={customTopicInputV2}
-                          onChange={(e) => {
-                            setCustomTopicInputV2(e.target.value);
-                            // NO AI suggestions for technical topics
-                            setShowAiSuggestions(false);
-                            setAiTopicSuggestions([]);
-                          }}
-                          onKeyPress={(e) => {
-                            if (e.key === "Enter") {
-                              handleAddCustomTopicV2(true);
-                            }
-                          }}
-                          placeholder="Enter technical topic name…"
-                          disabled={loading}
-                          style={{
-                            flex: 1,
-                            padding: "0.75rem",
-                            border: "1px solid #e2e8f0",
-                            borderRadius: "0.5rem",
-                            fontSize: "0.875rem",
-                            backgroundColor: "#ffffff",
-                            cursor: "text",
-                            opacity: loading ? 0.6 : 1,
-                          }}
-                        />
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            handleAddCustomTopicV2(true, undefined, e);
-                          }}
-                          disabled={
-                            loading || !customTopicInputV2.trim() || addingTopic
-                          }
-                          style={{
-                            padding: "0.75rem 1.5rem",
-                            background:
-                              loading ||
-                              !customTopicInputV2.trim() ||
-                              addingTopic
-                                ? "#94a3b8"
-                                : "#10b981",
-                            border: "none",
-                            color: "#ffffff",
-                            cursor:
-                              loading ||
-                              !customTopicInputV2.trim() ||
-                              addingTopic
-                                ? "not-allowed"
-                                : "pointer",
-                            fontSize: "0.875rem",
-                            fontWeight: 500,
-                            borderRadius: "0.5rem",
-                            whiteSpace: "nowrap",
-                          }}
-                        >
-                          {addingTopic ? "Adding..." : "Add Technical Topic"}
-                        </button>
-                      </div>
-                      <div
-                        style={{
-                          fontSize: "0.8125rem",
-                          color: "#64748b",
-                          marginTop: "0.25rem",
-                        }}
-                      >
-                        Add a specific technical topic. Technical topics do not
-                        show suggestions.
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Message when no category is selected */}
-                  {!showTechnicalInput && !selectedCategoryForNewTopic && (
-                    <div
-                      style={{
-                        padding: "1rem",
-                        textAlign: "center",
-                        color: "#64748b",
-                        fontSize: "0.875rem",
-                        backgroundColor: "#f1f5f9",
-                        borderRadius: "0.5rem",
-                      }}
-                    >
-                      Select a soft skill category above or click "Add Technical
-                      Skill" to add a topic.
-                    </div>
-                  )}
-                </div>
-
-                {/* Regenerate All Topics Button (V2) */}
-                <div
-                  style={{ display: "flex", gap: "1rem", marginTop: "1.5rem" }}
-                >
-                  <button
-                    type="button"
-                    onClick={handleRegenerateAllTopicsV2}
-                    disabled={
-                      fullTopicRegenLocked ||
-                      allQuestionsGenerated ||
-                      loading ||
-                      !assessmentId
-                    }
-                    className="btn-secondary"
-                    style={{
-                      flex: 1,
-                      opacity:
-                        fullTopicRegenLocked ||
-                        allQuestionsGenerated ||
-                        loading ||
-                        !assessmentId
-                          ? 0.5
-                          : 1,
-                    }}
-                  >
-                    {loading ? "Regenerating..." : "Regenerate All Topics"}
-                  </button>
-                </div>
-
-                <div
-                  style={{ display: "flex", gap: "1rem", marginTop: "2rem" }}
-                >
-                  <button
-                    type="button"
-                    onClick={() => setCurrentStation(1)}
-                    className="btn-secondary"
-                    style={{ flex: 1 }}
-                  >
-                    Back
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleNextToReviewQuestions}
-                    className="btn-primary"
-                    style={{
-                      flex: 1,
-                      opacity: generatingAllQuestions ? 0.6 : 1,
-                      cursor: generatingAllQuestions
-                        ? "not-allowed"
-                        : "pointer",
-                    }}
-                    disabled={generatingAllQuestions}
-                    title={
-                      generatingAllQuestions
-                        ? "Generating questions..."
-                        : "Generate questions and proceed to Review Questions"
-                    }
-                  >
-                    {generatingAllQuestions
-                      ? "Generating Questions..."
-                      : "Next → Review Questions"}
-                  </button>
-                </div>
+                )}
               </div>
             )}
-
             {/* Preview modals removed */}
 
             {/* Station 3: Review Questions */}
+
             {currentStation === 3 && (
-              <div>
+              <div
+                style={{
+                  maxWidth: "800px",
+                  margin: "0 auto",
+                  fontFamily: "Inter, sans-serif",
+                }}
+              >
+                {/* Step Indicator */}
                 <div
                   style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "center",
+                    color: "#10b981",
+                    fontWeight: 600,
+                    fontSize: "0.875rem",
                     marginBottom: "1rem",
+                    letterSpacing: "0.05em",
                   }}
                 >
-                  <div style={{ flex: 1 }}>
-                    <h1
-                      style={{
-                        marginBottom: "0.5rem",
-                        fontSize: "2rem",
-                        color: "#1a1625",
-                        fontWeight: 700,
-                      }}
-                    >
-                      Review Questions
-                    </h1>
-                    <p
-                      style={{
-                        color: "#6b6678",
-                        marginBottom: "2rem",
-                        fontSize: "1rem",
-                      }}
-                    >
-                      Review questions grouped by type and set time for each
-                      question type
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={handleBackToDashboard}
-                    className="btn-secondary"
-                    style={{
-                      marginLeft: "1rem",
-                      whiteSpace: "nowrap",
-                      padding: "0.75rem 1.5rem",
-                      fontSize: "0.875rem",
-                    }}
-                  >
-                    Back to Dashboard
-                  </button>
+                  STEP 3 OF 6
                 </div>
 
-                {/* Toggle for Per-Section Timers */}
-                <div
+                {/* Main Heading */}
+                <h1
                   style={{
-                    marginBottom: "2rem",
-                    padding: "1.5rem",
-                    backgroundColor: "#f8fafc",
-                    borderRadius: "0.75rem",
-                    border: "2px solid #e2e8f0",
+                    fontSize: "2.5rem",
+                    fontWeight: 800,
+                    color: "#064e3b",
+                    marginBottom: "2.5rem",
+                    lineHeight: 1.2,
                   }}
                 >
-                  <label
+                  What experience level are you looking for?
+                </h1>
+
+                {/* Experience Selection UI */}
+                <div style={{ marginBottom: "3rem" }}>
+                  {/* Labels for Slider */}
+                  <div
                     style={{
                       display: "flex",
-                      alignItems: "center",
-                      gap: "0.75rem",
-                      cursor: "pointer",
-                    }}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={enablePerSectionTimers}
-                      onChange={(e) =>
-                        setEnablePerSectionTimers(e.target.checked)
-                      }
-                      style={{
-                        width: "20px",
-                        height: "20px",
-                        cursor: "pointer",
-                      }}
-                    />
-                    <div>
-                      <div
-                        style={{
-                          fontWeight: 600,
-                          color: "#1e293b",
-                          fontSize: "1rem",
-                        }}
-                      >
-                        Enable Per-Section Timer
-                      </div>
-                      <div
-                        style={{
-                          fontSize: "0.875rem",
-                          color: "#64748b",
-                          marginTop: "0.25rem",
-                        }}
-                      >
-                        Each section will have its own timer. Sections will be
-                        locked when their timer expires.
-                      </div>
-                    </div>
-                  </label>
-                </div>
-
-                {(() => {
-                  // Extract all questions from topicsV2
-                  const allReviewQuestions: Array<{
-                    question: any;
-                    questionType: string;
-                    difficulty: string;
-                    topicId: string;
-                    rowId: string;
-                    questionIndex: number;
-                    topicLabel: string;
-                    uniqueId: string;
-                  }> = [];
-
-                  // Aggregate questions from ALL topics including:
-                  // - System-generated topics
-                  // - Custom-added topics
-                  // - Topics previewed individually
-                  // - Topics that participated in preview-all
-                  topicsV2.forEach((topic) => {
-                    topic.questionRows.forEach((row) => {
-                      // Include questions if they exist and status is "generated" or "completed"
-                      // "completed" status is used for custom topics generated via row preview
-                      const rowStatus = row.status;
-                      const isGeneratedOrCompleted =
-                        rowStatus === "generated" || rowStatus === "completed";
-                      if (
-                        row.questions &&
-                        row.questions.length > 0 &&
-                        isGeneratedOrCompleted
-                      ) {
-                        row.questions.forEach((question, qIdx) => {
-                          allReviewQuestions.push({
-                            question,
-                            questionType: row.questionType,
-                            difficulty: row.difficulty,
-                            topicId: topic.id,
-                            rowId: row.rowId,
-                            questionIndex: qIdx,
-                            topicLabel: topic.label,
-                            uniqueId: `${topic.id}_${row.rowId}_${qIdx}`,
-                          });
-                        });
-                      }
-                    });
-                  });
-
-                  if (allReviewQuestions.length === 0) {
-                    return (
-                      <div
-                        style={{
-                          textAlign: "center",
-                          padding: "3rem",
-                          color: "#64748b",
-                        }}
-                      >
-                        <p>No questions generated yet.</p>
-                        <p
-                          style={{ fontSize: "0.875rem", marginTop: "0.5rem" }}
-                        >
-                          Generate questions from the Configure Topics page
-                          (Station 2).
-                        </p>
-                      </div>
-                    );
-                  }
-
-                  // Group questions by type
-                  const questionsByType: {
-                    MCQ: typeof allReviewQuestions;
-                    Subjective: typeof allReviewQuestions;
-                    PseudoCode: typeof allReviewQuestions;
-                    Coding: typeof allReviewQuestions;
-                    SQL: typeof allReviewQuestions;
-                    AIML: typeof allReviewQuestions;
-                  } = {
-                    MCQ: [],
-                    Subjective: [],
-                    PseudoCode: [],
-                    Coding: [],
-                    SQL: [],
-                    AIML: [],
-                  };
-
-                  allReviewQuestions.forEach((q) => {
-                    const type = q.questionType as keyof typeof questionsByType;
-                    // Unknown types are ignored, but SQL/AIML must be supported to avoid dropping them.
-                    questionsByType[type]?.push(q);
-                  });
-
-                  // Calculate AI estimated total time (sum of all question times)
-                  const totalAiEstimatedTime = allReviewQuestions.reduce(
-                    (total, q) => {
-                      const baseTime = getBaseTimePerQuestion(q.questionType);
-                      const multiplier = getDifficultyMultiplier(q.difficulty);
-                      let questionTime = baseTime * multiplier;
-
-                      // Cap MCQ questions at 40 seconds maximum
-                      if (q.questionType === "MCQ" && questionTime > 40) {
-                        questionTime = 40;
-                      }
-
-                      return total + questionTime;
-                    },
-                    0,
-                  );
-                  const totalAiEstimatedMinutes = Math.ceil(
-                    totalAiEstimatedTime / 60,
-                  );
-
-                  return (
-                    <div style={{ marginBottom: "2rem" }}>
-                      <div
-                        style={{
-                          marginBottom: "1.5rem",
-                          padding: "1.5rem",
-                          backgroundColor: "#f8fafc",
-                          borderRadius: "0.75rem",
-                          border: "1px solid #e2e8f0",
-                        }}
-                      >
-                        <div style={{ marginBottom: "1rem" }}>
-                          <h3
-                            style={{
-                              margin: 0,
-                              marginBottom: "0.5rem",
-                              fontSize: "1.125rem",
-                              color: "#1a1625",
-                              fontWeight: 600,
-                            }}
-                          >
-                            AI Estimated Total Time
-                          </h3>
-                          <p
-                            style={{
-                              margin: 0,
-                              fontSize: "1.5rem",
-                              color: "#3b82f6",
-                              fontWeight: 700,
-                            }}
-                          >
-                            {formatTime(totalAiEstimatedMinutes)}
-                          </p>
-                          <p
-                            style={{
-                              margin: "0.5rem 0 0 0",
-                              fontSize: "0.875rem",
-                              color: "#64748b",
-                            }}
-                          >
-                            Based on question types and difficulty levels
-                          </p>
-                        </div>
-                      </div>
-
-                      {/* Question Type Sections */}
-                      {(
-                        [
-                          "MCQ",
-                          "Subjective",
-                          "PseudoCode",
-                          "Coding",
-                          "SQL",
-                          "AIML",
-                        ] as const
-                      ).map((questionType) => {
-                        const typeQuestions =
-                          questionsByType[questionType] || [];
-                        if (typeQuestions.length === 0) return null;
-
-                        const sectionTimer = sectionTimers[questionType];
-
-                        return (
-                          <div
-                            key={questionType}
-                            style={{ marginBottom: "2rem" }}
-                          >
-                            <div
-                              style={{
-                                display: "flex",
-                                justifyContent: "space-between",
-                                alignItems: "center",
-                                marginBottom: "1rem",
-                                padding: "1rem",
-                                backgroundColor: "#f8fafc",
-                                borderRadius: "0.5rem",
-                                border: "1px solid #e2e8f0",
-                              }}
-                            >
-                              <div>
-                                <h3
-                                  style={{
-                                    margin: 0,
-                                    fontSize: "1.25rem",
-                                    color: "#1a1625",
-                                    fontWeight: 700,
-                                  }}
-                                >
-                                  {questionType} Questions
-                                </h3>
-                                <p
-                                  style={{
-                                    margin: "0.25rem 0 0 0",
-                                    fontSize: "0.875rem",
-                                    color: "#64748b",
-                                  }}
-                                >
-                                  {typeQuestions.length} question
-                                  {typeQuestions.length !== 1 ? "s" : ""}
-                                  {enablePerSectionTimers &&
-                                    sectionTimer > 0 &&
-                                    ` • Timer: ${sectionTimer} minutes`}
-                                </p>
-                              </div>
-                              {enablePerSectionTimers && (
-                                <div
-                                  style={{
-                                    display: "flex",
-                                    alignItems: "center",
-                                    gap: "0.75rem",
-                                  }}
-                                >
-                                  <label
-                                    style={{
-                                      display: "flex",
-                                      alignItems: "center",
-                                      gap: "0.5rem",
-                                      fontSize: "0.875rem",
-                                      color: "#1e293b",
-                                      fontWeight: 600,
-                                    }}
-                                  >
-                                    Timer (min):
-                                    <input
-                                      type="number"
-                                      min="1"
-                                      value={sectionTimer || 0}
-                                      onChange={(e) => {
-                                        const newValue =
-                                          parseInt(e.target.value) || 0;
-                                        setSectionTimers((prev) => ({
-                                          ...prev,
-                                          [questionType]: newValue,
-                                        }));
-                                      }}
-                                      style={{
-                                        width: "80px",
-                                        padding: "0.5rem",
-                                        border: "1px solid #e2e8f0",
-                                        borderRadius: "0.5rem",
-                                        fontSize: "0.875rem",
-                                      }}
-                                    />
-                                  </label>
-                                </div>
-                              )}
-                            </div>
-
-                            {/* Questions Table for this type */}
-                            <div
-                              style={{
-                                overflowX: "auto",
-                                marginBottom: "1.5rem",
-                              }}
-                            >
-                              <table
-                                style={{
-                                  width: "100%",
-                                  borderCollapse: "collapse",
-                                  backgroundColor: "#ffffff",
-                                  borderRadius: "0.5rem",
-                                  overflow: "hidden",
-                                  border: "1px solid #e2e8f0",
-                                }}
-                              >
-                                <thead>
-                                  <tr style={{ backgroundColor: "#f8fafc" }}>
-                                    <th
-                                      style={{
-                                        padding: "1rem",
-                                        textAlign: "left",
-                                        borderBottom: "2px solid #e2e8f0",
-                                        fontWeight: 600,
-                                        color: "#1e293b",
-                                      }}
-                                    >
-                                      Question
-                                    </th>
-                                    <th
-                                      style={{
-                                        padding: "1rem",
-                                        textAlign: "left",
-                                        borderBottom: "2px solid #e2e8f0",
-                                        fontWeight: 600,
-                                        color: "#1e293b",
-                                        width: "100px",
-                                      }}
-                                    >
-                                      Difficulty
-                                    </th>
-                                    <th
-                                      style={{
-                                        padding: "1rem",
-                                        textAlign: "center",
-                                        borderBottom: "2px solid #e2e8f0",
-                                        fontWeight: 600,
-                                        color: "#1e293b",
-                                        width: "100px",
-                                      }}
-                                    >
-                                      Score
-                                    </th>
-                                    <th
-                                      style={{
-                                        padding: "1rem",
-                                        textAlign: "center",
-                                        borderBottom: "2px solid #e2e8f0",
-                                        fontWeight: 600,
-                                        color: "#1e293b",
-                                        width: "150px",
-                                      }}
-                                    >
-                                      Actions
-                                    </th>
-                                  </tr>
-                                </thead>
-                                <tbody>
-                                  {typeQuestions.map((qData, idx) => {
-                                    const questionText = getQuestionText(
-                                      qData.question,
-                                      questionType,
-                                    );
-                                    const { truncated, isTruncated } =
-                                      truncateText(questionText, 80);
-                                    const questionId = qData.uniqueId;
-
-                                    return (
-                                      <tr
-                                        key={questionId}
-                                        style={{
-                                          borderBottom: "1px solid #e2e8f0",
-                                        }}
-                                      >
-                                        <td
-                                          style={{
-                                            padding: "1rem",
-                                            maxWidth: "500px",
-                                          }}
-                                        >
-                                          <div
-                                            style={{
-                                              marginBottom: "0.5rem",
-                                              display: "flex",
-                                              gap: "0.5rem",
-                                              flexWrap: "wrap",
-                                            }}
-                                          >
-                                            <span
-                                              style={{
-                                                backgroundColor: "#6953a3",
-                                                color: "#ffffff",
-                                                padding: "0.25rem 0.75rem",
-                                                borderRadius: "9999px",
-                                                fontSize: "0.75rem",
-                                                fontWeight: 700,
-                                              }}
-                                            >
-                                              Q{idx + 1}
-                                            </span>
-                                          </div>
-                                          <div
-                                            style={{
-                                              fontSize: "0.875rem",
-                                              color: "#1e293b",
-                                              lineHeight: "1.6",
-                                              marginBottom: "0.5rem",
-                                            }}
-                                          >
-                                            {truncated}
-                                            {isTruncated && (
-                                              <button
-                                                type="button"
-                                                onClick={() =>
-                                                  setExpandedQuestionId(
-                                                    questionId,
-                                                  )
-                                                }
-                                                style={{
-                                                  marginLeft: "0.5rem",
-                                                  background: "none",
-                                                  border: "none",
-                                                  color: "#3b82f6",
-                                                  cursor: "pointer",
-                                                  textDecoration: "underline",
-                                                  fontSize: "0.875rem",
-                                                }}
-                                              >
-                                                Read more
-                                              </button>
-                                            )}
-                                          </div>
-                                          <span
-                                            style={{
-                                              fontSize: "0.75rem",
-                                              color: "#64748b",
-                                              display: "block",
-                                            }}
-                                          >
-                                            Topic: {qData.topicLabel}
-                                          </span>
-                                        </td>
-                                        <td style={{ padding: "1rem" }}>
-                                          <span
-                                            style={{
-                                              backgroundColor:
-                                                qData.difficulty === "Easy"
-                                                  ? "#d1fae5"
-                                                  : qData.difficulty ===
-                                                      "Medium"
-                                                    ? "#fef3c7"
-                                                    : "#fee2e2",
-                                              color:
-                                                qData.difficulty === "Easy"
-                                                  ? "#065f46"
-                                                  : qData.difficulty ===
-                                                      "Medium"
-                                                    ? "#92400e"
-                                                    : "#991b1b",
-                                              padding: "0.25rem 0.75rem",
-                                              borderRadius: "9999px",
-                                              fontSize: "0.75rem",
-                                              fontWeight: 500,
-                                            }}
-                                          >
-                                            {qData.difficulty}
-                                          </span>
-                                        </td>
-                                        <td
-                                          style={{
-                                            padding: "1rem",
-                                            textAlign: "center",
-                                          }}
-                                        >
-                                          <span
-                                            style={{
-                                              fontSize: "1rem",
-                                              fontWeight: 600,
-                                              color: "#1e293b",
-                                              display: "inline-block",
-                                              padding: "0.25rem 0.75rem",
-                                              backgroundColor: "#f1f5f9",
-                                              borderRadius: "0.375rem",
-                                            }}
-                                          >
-                                            {scoringRules[
-                                              questionType as keyof typeof scoringRules
-                                            ] || 0}{" "}
-                                            mark
-                                            {scoringRules[
-                                              questionType as keyof typeof scoringRules
-                                            ] !== 1
-                                              ? "s"
-                                              : ""}
-                                          </span>
-                                        </td>
-                                        <td
-                                          style={{
-                                            padding: "1rem",
-                                            textAlign: "center",
-                                          }}
-                                        >
-                                          <div
-                                            style={{
-                                              display: "flex",
-                                              gap: "0.5rem",
-                                              justifyContent: "center",
-                                              flexWrap: "wrap",
-                                            }}
-                                          >
-                                            <button
-                                              type="button"
-                                              onClick={() => {
-                                                setExpandedQuestionId(
-                                                  questionId,
-                                                );
-                                                setEditingReviewQuestion({
-                                                  ...qData,
-                                                  questionType,
-                                                });
-                                              }}
-                                              style={{
-                                                padding: "0.25rem 0.75rem",
-                                                background: "#3b82f6",
-                                                border: "none",
-                                                color: "#ffffff",
-                                                cursor: "pointer",
-                                                fontSize: "0.75rem",
-                                                borderRadius: "0.375rem",
-                                              }}
-                                              title="Edit question"
-                                            >
-                                              Edit
-                                            </button>
-                                            <button
-                                              type="button"
-                                              onClick={() => {
-                                                setRegeneratingQuestionId(
-                                                  questionId,
-                                                );
-                                                setRegenerateQuestionFeedback(
-                                                  "",
-                                                );
-                                              }}
-                                              style={{
-                                                padding: "0.25rem 0.75rem",
-                                                background: "#10b981",
-                                                border: "none",
-                                                color: "#ffffff",
-                                                cursor: "pointer",
-                                                fontSize: "0.75rem",
-                                                borderRadius: "0.375rem",
-                                              }}
-                                              title="Regenerate question"
-                                            >
-                                              Regenerate
-                                            </button>
-                                            <button
-                                              type="button"
-                                              onClick={() => {
-                                                if (
-                                                  confirm(
-                                                    "Are you sure you want to remove this question?",
-                                                  )
-                                                ) {
-                                                  handleRemoveQuestionInReview(
-                                                    qData.topicId,
-                                                    qData.rowId,
-                                                    qData.questionIndex,
-                                                  );
-                                                }
-                                              }}
-                                              style={{
-                                                padding: "0.25rem 0.75rem",
-                                                background: "#ef4444",
-                                                border: "none",
-                                                color: "#ffffff",
-                                                cursor: "pointer",
-                                                fontSize: "0.75rem",
-                                                borderRadius: "0.375rem",
-                                              }}
-                                              title="Remove question"
-                                            >
-                                              Remove
-                                            </button>
-                                          </div>
-                                        </td>
-                                      </tr>
-                                    );
-                                  })}
-                                </tbody>
-                              </table>
-                            </div>
-                          </div>
-                        );
-                      })}
-
-                      {/* Total Summary */}
-                      <div
-                        style={{
-                          display: "flex",
-                          justifyContent: "space-between",
-                          alignItems: "center",
-                          padding: "1rem 1.5rem",
-                          backgroundColor: "#f8fafc",
-                          borderRadius: "0.5rem",
-                          border: "1px solid #e2e8f0",
-                          marginTop: "1rem",
-                        }}
-                      >
-                        <div>
-                          <span
-                            style={{
-                              color: "#64748b",
-                              fontSize: "0.875rem",
-                              marginRight: "0.5rem",
-                            }}
-                          >
-                            Total Questions:
-                          </span>
-                          <span
-                            style={{
-                              color: "#1e293b",
-                              fontSize: "1.125rem",
-                              fontWeight: 700,
-                            }}
-                          >
-                            {allReviewQuestions.length}
-                          </span>
-                        </div>
-                        {enablePerSectionTimers &&
-                          (() => {
-                            const totalSectionTime = Object.values(
-                              sectionTimers,
-                            ).reduce((sum, time) => sum + time, 0);
-                            return totalSectionTime > 0 ? (
-                              <div>
-                                <span
-                                  style={{
-                                    color: "#64748b",
-                                    fontSize: "0.875rem",
-                                    marginRight: "0.5rem",
-                                  }}
-                                >
-                                  Total Time (All Sections):
-                                </span>
-                                <span
-                                  style={{
-                                    color: "#1e293b",
-                                    fontSize: "1.125rem",
-                                    fontWeight: 700,
-                                  }}
-                                >
-                                  {totalSectionTime} minutes
-                                </span>
-                              </div>
-                            ) : null;
-                          })()}
-                      </div>
-                    </div>
-                  );
-                })()}
-
-                {/* Read More / Edit Question Modal */}
-                {expandedQuestionId &&
-                  (() => {
-                    const qData = (() => {
-                      for (const topic of topicsV2) {
-                        for (const row of topic.questionRows) {
-                          if (row.questions && row.questions.length > 0) {
-                            for (let i = 0; i < row.questions.length; i++) {
-                              const id = `${topic.id}_${row.rowId}_${i}`;
-                              if (id === expandedQuestionId) {
-                                return {
-                                  question: row.questions[i],
-                                  questionType: row.questionType,
-                                  difficulty: row.difficulty,
-                                  topicId: topic.id,
-                                  rowId: row.rowId,
-                                  questionIndex: i,
-                                  topicLabel: topic.label,
-                                };
-                              }
-                            }
-                          }
-                        }
-                      }
-                      return null;
-                    })();
-
-                    if (!qData) return null;
-
-                    const isEditing =
-                      editingReviewQuestion &&
-                      editingReviewQuestion.uniqueId === expandedQuestionId;
-
-                    return (
-                      <div
-                        style={{
-                          position: "fixed",
-                          top: 0,
-                          left: 0,
-                          right: 0,
-                          bottom: 0,
-                          backgroundColor: "rgba(0, 0, 0, 0.5)",
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          zIndex: 1000,
-                          padding: "2rem",
-                        }}
-                        onClick={(e) => {
-                          if (e.target === e.currentTarget) {
-                            setExpandedQuestionId(null);
-                            setEditingReviewQuestion(null);
-                          }
-                        }}
-                      >
-                        <div
-                          style={{
-                            backgroundColor: "#ffffff",
-                            borderRadius: "0.75rem",
-                            padding: "2rem",
-                            maxWidth: "800px",
-                            maxHeight: "90vh",
-                            overflow: "auto",
-                            width: "100%",
-                            boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.1)",
-                          }}
-                        >
-                          <div
-                            style={{
-                              display: "flex",
-                              justifyContent: "space-between",
-                              alignItems: "center",
-                              marginBottom: "1.5rem",
-                            }}
-                          >
-                            <h2
-                              style={{
-                                margin: 0,
-                                fontSize: "1.5rem",
-                                color: "#1a1625",
-                                fontWeight: 700,
-                              }}
-                            >
-                              {qData.topicLabel} - {qData.questionType}
-                            </h2>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setExpandedQuestionId(null);
-                                setEditingReviewQuestion(null);
-                              }}
-                              style={{
-                                background: "none",
-                                border: "none",
-                                fontSize: "1.5rem",
-                                cursor: "pointer",
-                                color: "#64748b",
-                                padding: "0.25rem 0.5rem",
-                              }}
-                            >
-                              ×
-                            </button>
-                          </div>
-
-                          <div style={{ marginBottom: "1.5rem" }}>
-                            {renderQuestionByType(
-                              isEditing
-                                ? editingReviewQuestion.question
-                                : qData.question,
-                              qData.questionType,
-                              isEditing,
-                              isEditing
-                                ? (value: string) => {
-                                    try {
-                                      const parsed = JSON.parse(value);
-                                      setEditingReviewQuestion({
-                                        ...editingReviewQuestion,
-                                        question: parsed,
-                                      });
-                                    } catch {}
-                                  }
-                                : undefined,
-                            )}
-                          </div>
-
-                          <div
-                            style={{
-                              display: "flex",
-                              gap: "0.5rem",
-                              justifyContent: "flex-end",
-                            }}
-                          >
-                            {!isEditing && (
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setEditingReviewQuestion({
-                                    ...qData,
-                                    uniqueId: expandedQuestionId,
-                                  });
-                                }}
-                                style={{
-                                  padding: "0.5rem 1rem",
-                                  background: "#10b981",
-                                  border: "none",
-                                  color: "#ffffff",
-                                  cursor: "pointer",
-                                  borderRadius: "0.375rem",
-                                  fontSize: "0.875rem",
-                                }}
-                              >
-                                Edit Question
-                              </button>
-                            )}
-                            {isEditing && (
-                              <>
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setEditingReviewQuestion(null);
-                                  }}
-                                  style={{
-                                    padding: "0.5rem 1rem",
-                                    background: "#94a3b8",
-                                    border: "none",
-                                    color: "#ffffff",
-                                    cursor: "pointer",
-                                    borderRadius: "0.375rem",
-                                    fontSize: "0.875rem",
-                                  }}
-                                >
-                                  Cancel
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={async () => {
-                                    if (!assessmentId || !editingReviewQuestion)
-                                      return;
-                                    try {
-                                      const response =
-                                        await updateSingleQuestionMutation.mutateAsync(
-                                          {
-                                            assessmentId: assessmentId || "",
-                                            questionId:
-                                              (qData as any).questionId ||
-                                              (qData as any).uniqueId ||
-                                              "",
-                                            topicId: qData.topicId,
-                                            rowId: qData.rowId,
-                                            questionIndex: qData.questionIndex,
-                                            question:
-                                              editingReviewQuestion.question,
-                                          },
-                                        );
-                                      if (response?.success) {
-                                        const updatedRow = response.data?.row;
-                                        setTopicsV2((prev) =>
-                                          prev.map((t) => {
-                                            if (t.id === qData.topicId) {
-                                              return {
-                                                ...t,
-                                                questionRows:
-                                                  t.questionRows.map((r) =>
-                                                    r.rowId === qData.rowId
-                                                      ? updatedRow
-                                                      : r,
-                                                  ),
-                                              };
-                                            }
-                                            return t;
-                                          }),
-                                        );
-                                        setEditingReviewQuestion(null);
-                                      }
-                                    } catch (err: any) {
-                                      console.error(
-                                        "Error updating question:",
-                                        err,
-                                      );
-                                      setError(
-                                        err.response?.data?.message ||
-                                          err.message ||
-                                          "Failed to update question",
-                                      );
-                                    }
-                                  }}
-                                  style={{
-                                    padding: "0.5rem 1rem",
-                                    background: "#3b82f6",
-                                    border: "none",
-                                    color: "#ffffff",
-                                    cursor: "pointer",
-                                    borderRadius: "0.375rem",
-                                    fontSize: "0.875rem",
-                                  }}
-                                >
-                                  Save
-                                </button>
-                              </>
-                            )}
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setExpandedQuestionId(null);
-                                setEditingReviewQuestion(null);
-                              }}
-                              style={{
-                                padding: "0.5rem 1rem",
-                                background: "#64748b",
-                                border: "none",
-                                color: "#ffffff",
-                                cursor: "pointer",
-                                borderRadius: "0.375rem",
-                                fontSize: "0.875rem",
-                              }}
-                            >
-                              Close
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })()}
-
-                {/* Regenerate Question Modal */}
-                {regeneratingQuestionId &&
-                  (() => {
-                    const qData = (() => {
-                      for (const topic of topicsV2) {
-                        for (const row of topic.questionRows) {
-                          if (row.questions && row.questions.length > 0) {
-                            for (let i = 0; i < row.questions.length; i++) {
-                              const id = `${topic.id}_${row.rowId}_${i}`;
-                              if (id === regeneratingQuestionId) {
-                                return {
-                                  question: row.questions[i],
-                                  questionType: row.questionType,
-                                  difficulty: row.difficulty,
-                                  topicId: topic.id,
-                                  rowId: row.rowId,
-                                  questionIndex: i,
-                                  topicLabel: topic.label,
-                                  additionalRequirements:
-                                    row.additionalRequirements,
-                                };
-                              }
-                            }
-                          }
-                        }
-                      }
-                      return null;
-                    })();
-
-                    if (!qData) return null;
-
-                    const questionText = getQuestionText(
-                      qData.question,
-                      qData.questionType,
-                    );
-
-                    return (
-                      <div
-                        style={{
-                          position: "fixed",
-                          top: 0,
-                          left: 0,
-                          right: 0,
-                          bottom: 0,
-                          backgroundColor: "rgba(0, 0, 0, 0.5)",
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          zIndex: 1000,
-                          padding: "2rem",
-                        }}
-                        onClick={(e) => {
-                          if (e.target === e.currentTarget) {
-                            setRegeneratingQuestionId(null);
-                            setRegenerateQuestionFeedback("");
-                          }
-                        }}
-                      >
-                        <div
-                          style={{
-                            backgroundColor: "#ffffff",
-                            borderRadius: "0.75rem",
-                            padding: "2rem",
-                            maxWidth: "700px",
-                            maxHeight: "90vh",
-                            overflow: "auto",
-                            width: "100%",
-                            boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.1)",
-                          }}
-                        >
-                          <div style={{ marginBottom: "1.5rem" }}>
-                            <h2
-                              style={{
-                                margin: 0,
-                                fontSize: "1.5rem",
-                                color: "#1a1625",
-                                fontWeight: 700,
-                              }}
-                            >
-                              Regenerate Question
-                            </h2>
-                            <p
-                              style={{
-                                margin: "0.5rem 0 0 0",
-                                fontSize: "0.875rem",
-                                color: "#64748b",
-                              }}
-                            >
-                              {qData.topicLabel} - {qData.questionType}
-                            </p>
-                          </div>
-
-                          <div style={{ marginBottom: "1.5rem" }}>
-                            <label
-                              style={{
-                                display: "block",
-                                marginBottom: "0.5rem",
-                                fontWeight: 600,
-                                color: "#1e293b",
-                                fontSize: "0.875rem",
-                              }}
-                            >
-                              Current Question (Read-only):
-                            </label>
-                            <div
-                              style={{
-                                padding: "1rem",
-                                backgroundColor: "#f8fafc",
-                                border: "1px solid #e2e8f0",
-                                borderRadius: "0.5rem",
-                                fontSize: "0.875rem",
-                                color: "#1e293b",
-                                maxHeight: "200px",
-                                overflow: "auto",
-                              }}
-                            >
-                              {renderQuestionByType(
-                                qData.question,
-                                qData.questionType,
-                                false,
-                              )}
-                            </div>
-                          </div>
-
-                          <div style={{ marginBottom: "1.5rem" }}>
-                            <label
-                              style={{
-                                display: "block",
-                                marginBottom: "0.5rem",
-                                fontWeight: 600,
-                                color: "#1e293b",
-                                fontSize: "0.875rem",
-                              }}
-                            >
-                              Provide feedback to improve this question
-                              (optional):
-                            </label>
-                            <textarea
-                              value={regenerateQuestionFeedback}
-                              onChange={(e) =>
-                                setRegenerateQuestionFeedback(e.target.value)
-                              }
-                              placeholder="E.g., Make it more scenario-based, add more context, increase difficulty..."
-                              style={{
-                                width: "100%",
-                                minHeight: "100px",
-                                padding: "0.75rem",
-                                border: "1px solid #e2e8f0",
-                                borderRadius: "0.5rem",
-                                fontSize: "0.875rem",
-                                fontFamily: "inherit",
-                                resize: "vertical",
-                              }}
-                            />
-                          </div>
-
-                          <div
-                            style={{
-                              display: "flex",
-                              gap: "0.5rem",
-                              justifyContent: "flex-end",
-                            }}
-                          >
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setRegeneratingQuestionId(null);
-                                setRegenerateQuestionFeedback("");
-                              }}
-                              style={{
-                                padding: "0.5rem 1rem",
-                                background: "#94a3b8",
-                                border: "none",
-                                color: "#ffffff",
-                                cursor: "pointer",
-                                borderRadius: "0.375rem",
-                                fontSize: "0.875rem",
-                              }}
-                            >
-                              Cancel
-                            </button>
-                            <button
-                              type="button"
-                              onClick={handleRegenerateQuestion}
-                              style={{
-                                padding: "0.5rem 1rem",
-                                background: "#10b981",
-                                border: "none",
-                                color: "#ffffff",
-                                cursor: "pointer",
-                                borderRadius: "0.375rem",
-                                fontSize: "0.875rem",
-                              }}
-                            >
-                              Regenerate
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })()}
-
-                {/* Pass Percentage Setting */}
-                <div
-                  style={{
-                    marginTop: "2rem",
-                    padding: "1.5rem",
-                    backgroundColor: "#f8fafc",
-                    borderRadius: "0.75rem",
-                    border: "2px solid #e2e8f0",
-                  }}
-                >
-                  <h3
-                    style={{
+                      justifyContent: "space-between",
                       marginBottom: "1rem",
-                      fontSize: "1.125rem",
-                      color: "#1a1625",
-                      fontWeight: 600,
                     }}
                   >
-                    Pass Percentage
-                  </h3>
-                  <div style={{ marginBottom: "1rem" }}>
-                    <label
+                    {[
+                      { label: "Junior", years: "0-2 yrs" },
+                      { label: "Mid-Level", years: "3-5 yrs" },
+                      { label: "Senior", years: "6-10 yrs" },
+                      { label: "Lead", years: "10+ yrs" },
+                    ].map((item, idx) => (
+                      <div key={idx} style={{ textAlign: "center", flex: 1 }}>
+                        <div
+                          style={{
+                            fontWeight: 700,
+                            color: "#064e3b",
+                            fontSize: "1rem",
+                          }}
+                        >
+                          {item.label}
+                        </div>
+                        <div
+                          style={{
+                            color: "#10b981",
+                            fontSize: "0.875rem",
+                            fontWeight: 500,
+                          }}
+                        >
+                          {item.years}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Experience Slider Container */}
+                  <div
+                    style={{
+                      position: "relative",
+                      padding: "0 12.5%",
+                      marginBottom: "3rem",
+                    }}
+                  >
+                    <div
                       style={{
-                        display: "block",
-                        marginBottom: "0.5rem",
-                        fontWeight: 600,
-                        color: "#1e293b",
-                        fontSize: "0.875rem",
+                        height: "6px",
+                        backgroundColor: "#ecfdf5",
+                        borderRadius: "3px",
+                        width: "100%",
+                        position: "relative",
                       }}
                     >
-                      Pass Percentage (%)
-                    </label>
-                    <input
-                      type="number"
-                      min="1"
-                      max="100"
-                      value={passPercentage}
-                      onChange={(e) => {
-                        const value = parseInt(e.target.value) || 60;
-                        const clampedValue = Math.min(100, Math.max(1, value));
-                        setPassPercentage(clampedValue);
-                      }}
-                      placeholder="Enter pass percentage (e.g., 60)"
-                      style={{
-                        width: "200px",
-                        padding: "0.75rem",
-                        border: "1px solid #e2e8f0",
-                        borderRadius: "0.5rem",
-                        fontSize: "1rem",
-                      }}
-                    />
-                    <p
-                      style={{
-                        fontSize: "0.875rem",
-                        color: "#64748b",
-                        marginTop: "0.5rem",
-                      }}
-                    >
-                      Candidates need to score at least {passPercentage}% to
-                      pass the assessment.
-                    </p>
+                      {/* Progress track width moves based on which card is selected via experienceMin */}
+                      <div
+                        style={{
+                          position: "absolute",
+                          left: "0%",
+                          width:
+                            experienceMin <= 2
+                              ? "0%"
+                              : experienceMin <= 5
+                                ? "33.33%"
+                                : experienceMin <= 10
+                                  ? "66.66%"
+                                  : "100%",
+                          height: "100%",
+                          backgroundColor: "#6ee7b7",
+                          borderRadius: "3px",
+                          transition: "width 0.3s ease",
+                        }}
+                      />
+
+                      {/* Static Slider Points */}
+                      {[0, 1, 2, 3].map((point) => (
+                        <div
+                          key={point}
+                          style={{
+                            position: "absolute",
+                            left: `${point * 33.33}%`,
+                            top: "50%",
+                            transform: "translate(-50%, -50%)",
+                            width: "10px",
+                            height: "10px",
+                            backgroundColor:
+                              (point === 0 && experienceMin <= 2) ||
+                              (point === 1 &&
+                                experienceMin >= 3 &&
+                                experienceMin <= 5) ||
+                              (point === 2 &&
+                                experienceMin >= 6 &&
+                                experienceMin <= 10) ||
+                              (point === 3 && experienceMin > 10)
+                                ? "#6ee7b7"
+                                : "#d1fae5",
+                            borderRadius: "50%",
+                            zIndex: 1,
+                          }}
+                        />
+                      ))}
+
+                      {/* Slider Handle handle position moves based on experienceMin state */}
+                      <div
+                        style={{
+                          position: "absolute",
+                          left:
+                            experienceMin <= 2
+                              ? "0%"
+                              : experienceMin <= 5
+                                ? "33.33%"
+                                : experienceMin <= 10
+                                  ? "66.66%"
+                                  : "100%",
+                          top: "50%",
+                          transform: "translate(-50%, -50%)",
+                          width: "24px",
+                          height: "24px",
+                          backgroundColor: "#6ee7b7",
+                          borderRadius: "50%",
+                          border: "4px solid #ffffff",
+                          boxShadow: "0 4px 6px rgba(0,0,0,0.1)",
+                          cursor: "pointer",
+                          transition: "left 0.3s ease",
+                          zIndex: 2,
+                        }}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Experience Option Cards - Clicking these updates the global experience state */}
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "1fr 1fr 1fr 1fr",
+                      gap: "1rem",
+                      marginBottom: "2.5rem",
+                    }}
+                  >
+                    {[
+                      {
+                        label: "Junior",
+                        years: "0-2 yrs",
+                        min: 0,
+                        max: 2,
+                        key: "junior",
+                      },
+                      {
+                        label: "Mid-Level",
+                        years: "3-5 yrs",
+                        min: 3,
+                        max: 5,
+                        key: "mid",
+                      },
+                      {
+                        label: "Senior",
+                        years: "6-10 yrs",
+                        min: 6,
+                        max: 10,
+                        key: "senior",
+                      },
+                      {
+                        label: "Lead",
+                        years: "10+ yrs",
+                        min: 11,
+                        max: 20,
+                        key: "lead",
+                      },
+                    ].map((level) => {
+                      // Highlight card based on existing experienceMin state
+                      const isSelected = experienceMin === level.min;
+
+                      return (
+                        <div
+                          key={level.key}
+                          onClick={() => {
+                            setExperienceMin(level.min);
+                            setExperienceMax(level.max);
+                            setError(null);
+                          }}
+                          style={{
+                            padding: "1.5rem 1rem",
+                            borderRadius: "1rem",
+                            border: isSelected
+                              ? "3px solid #6ee7b7"
+                              : "1px solid #a7f3d0",
+                            backgroundColor: "#ffffff",
+                            textAlign: "center",
+                            cursor: "pointer",
+                            boxShadow: isSelected
+                              ? "0 10px 15px -3px rgba(110, 231, 183, 0.2)"
+                              : "none",
+                            transform: isSelected ? "scale(1.02)" : "scale(1)",
+                            transition: "all 0.2s ease",
+                          }}
+                        >
+                          <div
+                            style={{
+                              fontWeight: 800,
+                              color: "#064e3b",
+                              fontSize: "1.125rem",
+                              marginBottom: "0.25rem",
+                            }}
+                          >
+                            {level.label}
+                          </div>
+                          <div
+                            style={{
+                              color: "#10b981",
+                              fontSize: "0.95rem",
+                              fontWeight: 500,
+                            }}
+                          >
+                            {level.years}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Selected Result Box - Displays summary based on experienceMin */}
+                  <div
+                    style={{
+                      padding: "1.25rem 1.5rem",
+                      backgroundColor: "#f0fdf4",
+                      border: "1px solid #a7f3d0",
+                      borderRadius: "0.75rem",
+                      color: "#0f766e",
+                      fontWeight: 500,
+                      fontSize: "1rem",
+                    }}
+                  >
+                    Selected:{" "}
+                    <span style={{ fontWeight: 700 }}>
+                      {experienceMin === 0
+                        ? "Junior (0-2 years)"
+                        : experienceMin === 3
+                          ? "Mid-Level (3-5 years)"
+                          : experienceMin === 6
+                            ? "Senior (6-10 years)"
+                            : "Lead (10+ years)"}
+                    </span>
                   </div>
                 </div>
 
-                {/* Navigation Buttons */}
-                <div
-                  style={{
-                    marginTop: "2rem",
-                    paddingTop: "2rem",
-                    borderTop: "2px solid #e2e8f0",
-                    display: "flex",
-                    gap: "1rem",
-                  }}
-                >
+                {/* Continue Button */}
+                <div style={{ marginTop: "3rem" }}>
                   <button
                     type="button"
-                    onClick={() => {
-                      setHasVisitedReviewStation(true);
-                      setCurrentStation(2);
+                    onClick={() => setCurrentStation(4)}
+                    style={{
+                      width: "100%",
+                      maxWidth: "200px",
+                      padding: "1rem 2rem",
+                      backgroundColor: "#6ee7b7",
+                      color: "#064e3b",
+                      fontSize: "1.125rem",
+                      fontWeight: 700,
+                      border: "none",
+                      borderRadius: "0.75rem",
+                      cursor: "pointer",
+                      boxShadow: "0 4px 6px -1px rgba(16, 185, 129, 0.2)",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: "0.5rem",
                     }}
-                    className="btn-secondary"
-                    style={{ flex: 1 }}
                   >
-                    Back
+                    Continue <ArrowRight/>
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setCurrentStation(4);
+
+                  <div
+                    style={{
+                      marginTop: "1rem",
+                      textAlign: "left",
+                      color: "#10b981",
+                      fontSize: "0.875rem",
+                      paddingLeft: "0.5rem",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "0.25rem",
                     }}
-                    className="btn-primary"
-                    style={{ flex: 1 }}
                   >
-                    Next
-                  </button>
+                    Press Enter <span style={{ fontSize: "1rem" }}>↵</span>
+                  </div>
                 </div>
               </div>
             )}
 
             {/* Station 4: Schedule Exam */}
             {currentStation === 4 && (
-              <div>
-                <div
+  <div
+    style={{
+      maxWidth: "800px",
+      margin: "0 auto",
+      fontFamily: "'Inter', sans-serif",
+    }}
+  >
+    <div
+      style={{
+        color: "#10b981",
+        fontWeight: 700,
+        fontSize: "0.875rem",
+        marginBottom: "1rem",
+      }}
+    >
+      STEP 4 OF 6
+    </div>
+    <h1
+      style={{
+        fontSize: "2.5rem",
+        fontWeight: 800,
+        color: "#064e3b",
+        marginBottom: "2rem",
+      }}
+    >
+      Configure topics and question types
+    </h1>
+
+    {/* Info and Add Button */}
+    <div
+      style={{
+        display: "flex",
+        gap: "1rem",
+        marginBottom: "2rem",
+        alignItems: "center",
+      }}
+    >
+      <div
+        style={{
+          flex: 1,
+          padding: "0.75rem 1.25rem",
+          backgroundColor: "#fffbeb",
+          border: "1px solid #fcd34d",
+          borderRadius: "0.5rem",
+          color: "#92400e",
+          fontSize: "0.875rem",
+          fontWeight: 500,
+        }}
+      >
+        ✨ AI generated these topics based on your skills
+      </div>
+      <button
+        onClick={() => setShowCustomTopicModal(true)}
+        style={{
+          padding: "0.75rem 1.25rem",
+          border: "1px dashed #10b981",
+          borderRadius: "0.5rem",
+          color: "#065f46",
+          fontWeight: 600,
+          cursor: "pointer",
+          backgroundColor: "#fff",
+        }}
+      >
+        + Add Custom Topic
+      </button>
+    </div>
+
+    {/* Topics List */}
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        gap: "1.5rem",
+        marginBottom: "3rem",
+      }}
+    >
+      {topicsV2.map((topic) => {
+        const totalQs = topic.questionRows.reduce(
+          (sum, row) => sum + (typeof row.questionsCount === 'number' ? row.questionsCount : parseInt(String(row.questionsCount)) || 0),
+          0,
+        );
+
+        return (
+          <div
+            key={topic.id}
+            style={{
+              padding: "1.5rem",
+              border: "1px solid #a7f3d0",
+              borderRadius: "1.25rem",
+              backgroundColor: "#ffffff",
+              boxShadow: "0 2px 4px rgba(0,0,0,0.02)",
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                marginBottom: "1.5rem",
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "0.75rem",
+                }}
+              >
+                <span style={{ fontSize: "1.75rem" }}>⚡</span>
+                <h3
                   style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                    marginBottom: "1rem",
+                    fontSize: "1.35rem",
+                    fontWeight: 800,
+                    color: "#064e3b",
+                    margin: 0,
                   }}
                 >
-                  <div style={{ flex: 1 }}>
-                    <h1
-                      style={{
-                        marginBottom: "0.5rem",
-                        fontSize: "2rem",
-                        color: "#1a1625",
-                        fontWeight: 700,
-                      }}
-                    >
-                      Schedule Exam
-                    </h1>
-                    <p
-                      style={{
-                        color: "#6b6678",
-                        marginBottom: "2rem",
-                        fontSize: "1rem",
-                      }}
-                    >
-                      Configure exam timing and duration settings
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={handleBackToDashboard}
-                    className="btn-secondary"
-                    style={{
-                      marginLeft: "1rem",
-                      whiteSpace: "nowrap",
-                      padding: "0.75rem 1.5rem",
-                      fontSize: "0.875rem",
-                    }}
-                  >
-                    Back to Dashboard
-                  </button>
-                </div>
-
-                {/* Exam Mode Selection */}
-                <div
+                  {topic.label}
+                </h3>
+              </div>
+              <div style={{ display: "flex", gap: "10px" }}>
+                <button
                   style={{
-                    marginBottom: "2rem",
-                    padding: "1.5rem",
-                    border: "1px solid #e2e8f0",
-                    borderRadius: "0.5rem",
+                    background: "none",
+                    border: "none",
+                    color: "#94a3b8",
+                    cursor: "pointer",
                   }}
                 >
-                  <h3
-                    style={{
-                      marginBottom: "1rem",
-                      color: "#1e293b",
-                      fontSize: "1.125rem",
-                      fontWeight: 600,
-                    }}
-                  >
-                    Exam Mode
-                  </h3>
-                  <p
-                    style={{
-                      marginBottom: "1rem",
-                      color: "#64748b",
-                      fontSize: "0.875rem",
-                    }}
-                  >
-                    Choose how the exam timing works.
-                  </p>
-                  <div
-                    style={{
-                      display: "flex",
-                      gap: "1rem",
-                      marginBottom: "1rem",
-                    }}
-                  >
-                    <label
-                      style={{
-                        flex: 1,
-                        padding: "1rem",
-                        border:
-                          examMode === "strict"
-                            ? "2px solid #10b981"
-                            : "1px solid #e2e8f0",
-                        borderRadius: "0.5rem",
-                        cursor: "pointer",
-                        backgroundColor:
-                          examMode === "strict" ? "#f0fdf4" : "#ffffff",
-                      }}
-                    >
-                      <input
-                        type="radio"
-                        name="examMode"
-                        value="strict"
-                        checked={examMode === "strict"}
-                        onChange={(e) =>
-                          setExamMode(e.target.value as "strict" | "flexible")
-                        }
-                        style={{ marginRight: "0.5rem" }}
-                      />
-                      <strong style={{ color: "#1e293b" }}>
-                        Strict Window
-                      </strong>
-                      <p
-                        style={{
-                          margin: "0.5rem 0 0 0",
-                          fontSize: "0.875rem",
-                          color: "#64748b",
-                        }}
-                      >
-                        Assessment starts at a fixed time. Candidates can access
-                        before start time for pre-checks.
-                      </p>
-                    </label>
-                    <label
-                      style={{
-                        flex: 1,
-                        padding: "1rem",
-                        border:
-                          examMode === "flexible"
-                            ? "2px solid #10b981"
-                            : "1px solid #e2e8f0",
-                        borderRadius: "0.5rem",
-                        cursor: "pointer",
-                        backgroundColor:
-                          examMode === "flexible" ? "#f0fdf4" : "#ffffff",
-                      }}
-                    >
-                      <input
-                        type="radio"
-                        name="examMode"
-                        value="flexible"
-                        checked={examMode === "flexible"}
-                        onChange={(e) =>
-                          setExamMode(e.target.value as "strict" | "flexible")
-                        }
-                        style={{ marginRight: "0.5rem" }}
-                      />
-                      <strong style={{ color: "#1e293b" }}>
-                        Flexible Window
-                      </strong>
-                      <p
-                        style={{
-                          margin: "0.5rem 0 0 0",
-                          fontSize: "0.875rem",
-                          color: "#64748b",
-                        }}
-                      >
-                        Candidates can start anytime within the schedule window.
-                        Each candidate gets the full duration from when they
-                        start.
-                      </p>
-                    </label>
-                  </div>
-
-                  {/* Schedule Times */}
-                  <div
-                    style={{
-                      display: "flex",
-                      flexDirection: "column",
-                      gap: "1rem",
-                      marginTop: "1.5rem",
-                    }}
-                  >
-                    {examMode === "strict" ? (
-                      <>
-                        {/* Strict Mode: Start Time + Duration */}
-                        <div
-                          style={{
-                            display: "flex",
-                            gap: "1rem",
-                            flexWrap: "wrap",
-                          }}
-                        >
-                          <div style={{ flex: 1, minWidth: "200px" }}>
-                            <label
-                              style={{
-                                display: "block",
-                                marginBottom: "0.5rem",
-                                fontWeight: 600,
-                                color: "#1e293b",
-                              }}
-                            >
-                              Start Time (IST){" "}
-                              <span style={{ color: "#ef4444" }}>*</span>
-                            </label>
-                            <input
-                              type="datetime-local"
-                              value={startTime}
-                              onChange={(e) => setStartTime(e.target.value)}
-                              required
-                              style={{
-                                width: "100%",
-                                padding: "0.75rem",
-                                border: "1px solid #e2e8f0",
-                                borderRadius: "0.5rem",
-                              }}
-                            />
-                            <p
-                              style={{
-                                fontSize: "0.875rem",
-                                color: "#64748b",
-                                marginTop: "0.5rem",
-                              }}
-                            >
-                              Indian Standard Time (IST) - UTC+5:30
-                            </p>
-                          </div>
-                          <div style={{ flex: 1, minWidth: "200px" }}>
-                            <label
-                              style={{
-                                display: "block",
-                                marginBottom: "0.5rem",
-                                fontWeight: 600,
-                                color: "#1e293b",
-                              }}
-                            >
-                              Duration (minutes){" "}
-                              <span style={{ color: "#ef4444" }}>*</span>
-                            </label>
-                            {enablePerSectionTimers ? (
-                              (() => {
-                                const totalSectionTime = Object.values(
-                                  sectionTimers,
-                                ).reduce((sum, time) => sum + time, 0);
-                                return (
-                                  <div>
-                                    <input
-                                      type="number"
-                                      value={
-                                        totalSectionTime > 0
-                                          ? totalSectionTime
-                                          : duration
-                                      }
-                                      readOnly
-                                      disabled
-                                      placeholder="Auto-calculated"
-                                      min={1}
-                                      required
-                                      style={{
-                                        width: "100%",
-                                        padding: "0.75rem",
-                                        border: "1px solid #e2e8f0",
-                                        borderRadius: "0.5rem",
-                                        backgroundColor: "#f1f5f9",
-                                        cursor: "not-allowed",
-                                        color: "#64748b",
-                                      }}
-                                    />
-                                    <p
-                                      style={{
-                                        fontSize: "0.875rem",
-                                        color: "#64748b",
-                                        marginTop: "0.5rem",
-                                      }}
-                                    >
-                                      Auto-calculated from section timers in
-                                      Review Questions. Total:{" "}
-                                      {totalSectionTime} minutes
-                                    </p>
-                                  </div>
-                                );
-                              })()
-                            ) : (
-                              <input
-                                type="number"
-                                value={duration}
-                                onChange={(e) => setDuration(e.target.value)}
-                                placeholder="e.g., 80"
-                                min={1}
-                                required
-                                style={{
-                                  width: "100%",
-                                  padding: "0.75rem",
-                                  border: "1px solid #e2e8f0",
-                                  borderRadius: "0.5rem",
-                                }}
-                              />
-                            )}
-                          </div>
-                        </div>
-                        {startTime && duration && (
-                          <div
-                            style={{
-                              padding: "0.75rem",
-                              backgroundColor: "#f0fdf4",
-                              borderRadius: "0.5rem",
-                              fontSize: "0.875rem",
-                              color: "#059669",
-                            }}
-                          >
-                            <strong>Assessment will end at:</strong>{" "}
-                            {new Date(
-                              new Date(startTime).getTime() +
-                                parseInt(duration || "0") * 60000,
-                            ).toLocaleString()}
-                          </div>
-                        )}
-                      </>
-                    ) : (
-                      <>
-                        {/* Flexible Mode: Start Time + End Time + Duration */}
-                        <div
-                          style={{
-                            display: "flex",
-                            gap: "1rem",
-                            flexWrap: "wrap",
-                          }}
-                        >
-                          <div style={{ flex: 1, minWidth: "200px" }}>
-                            <label
-                              style={{
-                                display: "block",
-                                marginBottom: "0.5rem",
-                                fontWeight: 600,
-                                color: "#1e293b",
-                              }}
-                            >
-                              Schedule Start Time (IST){" "}
-                              <span style={{ color: "#ef4444" }}>*</span>
-                            </label>
-                            <input
-                              type="datetime-local"
-                              value={startTime}
-                              onChange={(e) => setStartTime(e.target.value)}
-                              required
-                              style={{
-                                width: "100%",
-                                padding: "0.75rem",
-                                border: "1px solid #e2e8f0",
-                                borderRadius: "0.5rem",
-                              }}
-                            />
-                            <p
-                              style={{
-                                fontSize: "0.875rem",
-                                color: "#64748b",
-                                marginTop: "0.5rem",
-                              }}
-                            >
-                              Indian Standard Time (IST) - UTC+5:30
-                            </p>
-                          </div>
-                          <div style={{ flex: 1, minWidth: "200px" }}>
-                            <label
-                              style={{
-                                display: "block",
-                                marginBottom: "0.5rem",
-                                fontWeight: 600,
-                                color: "#1e293b",
-                              }}
-                            >
-                              Schedule End Time (IST){" "}
-                              <span style={{ color: "#ef4444" }}>*</span>
-                            </label>
-                            <input
-                              type="datetime-local"
-                              value={endTime}
-                              onChange={(e) => setEndTime(e.target.value)}
-                              required
-                              style={{
-                                width: "100%",
-                                padding: "0.75rem",
-                                border: `1px solid ${startTime && endTime && new Date(endTime) <= new Date(startTime) ? "#ef4444" : "#e2e8f0"}`,
-                                borderRadius: "0.5rem",
-                              }}
-                            />
-                            <p
-                              style={{
-                                fontSize: "0.875rem",
-                                color: "#64748b",
-                                marginTop: "0.5rem",
-                              }}
-                            >
-                              Indian Standard Time (IST) - UTC+5:30
-                            </p>
-                            {startTime &&
-                              endTime &&
-                              new Date(endTime) <= new Date(startTime) && (
-                                <p
-                                  style={{
-                                    fontSize: "0.875rem",
-                                    color: "#dc2626",
-                                    marginTop: "0.5rem",
-                                    fontWeight: 600,
-                                  }}
-                                >
-                                  ⚠️ Please choose an end time greater than the
-                                  start time
-                                </p>
-                              )}
-                          </div>
-                        </div>
-                        <div style={{ flex: 1, minWidth: "200px" }}>
-                          <label
-                            style={{
-                              display: "block",
-                              marginBottom: "0.5rem",
-                              fontWeight: 600,
-                              color: "#1e293b",
-                            }}
-                          >
-                            Duration (minutes){" "}
-                            <span style={{ color: "#ef4444" }}>*</span>
-                          </label>
-                          {enablePerSectionTimers ? (
-                            (() => {
-                              const totalSectionTime = Object.values(
-                                sectionTimers,
-                              ).reduce((sum, time) => sum + time, 0);
-                              return (
-                                <div>
-                                  <input
-                                    type="number"
-                                    value={
-                                      totalSectionTime > 0
-                                        ? totalSectionTime
-                                        : duration
-                                    }
-                                    readOnly
-                                    disabled
-                                    placeholder="Auto-calculated"
-                                    min={1}
-                                    required
-                                    style={{
-                                      width: "100%",
-                                      maxWidth: "300px",
-                                      padding: "0.75rem",
-                                      border: "1px solid #e2e8f0",
-                                      borderRadius: "0.5rem",
-                                      backgroundColor: "#f1f5f9",
-                                      cursor: "not-allowed",
-                                      color: "#64748b",
-                                    }}
-                                  />
-                                  <p
-                                    style={{
-                                      marginTop: "0.5rem",
-                                      fontSize: "0.875rem",
-                                      color: "#64748b",
-                                    }}
-                                  >
-                                    Auto-calculated from section timers in
-                                    Review Questions. Total: {totalSectionTime}{" "}
-                                    minutes
-                                  </p>
-                                  <p
-                                    style={{
-                                      marginTop: "0.25rem",
-                                      fontSize: "0.875rem",
-                                      color: "#64748b",
-                                    }}
-                                  >
-                                    Candidates can start the assessment anytime
-                                    between the schedule start and end times.
-                                    Once started, they have this duration to
-                                    complete the assessment.
-                                  </p>
-                                </div>
-                              );
-                            })()
-                          ) : (
-                            <>
-                              <input
-                                type="number"
-                                value={duration}
-                                onChange={(e) => setDuration(e.target.value)}
-                                placeholder="e.g., 70"
-                                min={1}
-                                required
-                                style={{
-                                  width: "100%",
-                                  maxWidth: "300px",
-                                  padding: "0.75rem",
-                                  border: "1px solid #e2e8f0",
-                                  borderRadius: "0.5rem",
-                                }}
-                              />
-                              <p
-                                style={{
-                                  marginTop: "0.5rem",
-                                  fontSize: "0.875rem",
-                                  color: "#64748b",
-                                }}
-                              >
-                                Candidates can start the assessment anytime
-                                between the schedule start and end times. Once
-                                started, they have this duration to complete the
-                                assessment.
-                              </p>
-                            </>
-                          )}
-                        </div>
-                      </>
-                    )}
-                  </div>
-                </div>
-
-                {/* Validation Warning: Section Timers vs Duration */}
-                {enablePerSectionTimers &&
-                  duration &&
-                  parseInt(duration) > 0 &&
-                  (() => {
-                    const totalSectionTime = Object.values(
-                      sectionTimers,
-                    ).reduce((sum, time) => sum + time, 0);
-                    const examDuration = parseInt(duration);
-                    const exceedsDuration = totalSectionTime > examDuration;
-
-                    if (exceedsDuration) {
-                      return (
-                        <div
-                          style={{
-                            marginTop: "1.5rem",
-                            padding: "1rem",
-                            backgroundColor: "#fef2f2",
-                            border: "2px solid #ef4444",
-                            borderRadius: "0.5rem",
-                          }}
-                        >
-                          <div
-                            style={{
-                              display: "flex",
-                              alignItems: "center",
-                              gap: "0.5rem",
-                              marginBottom: "0.5rem",
-                            }}
-                          >
-                            <span style={{ fontSize: "1.25rem" }}>⚠️</span>
-                            <strong style={{ color: "#dc2626" }}>
-                              Section Timers Exceed Exam Duration
-                            </strong>
-                          </div>
-                          <div
-                            style={{
-                              fontSize: "0.875rem",
-                              color: "#64748b",
-                              marginLeft: "1.75rem",
-                            }}
-                          >
-                            <div>
-                              Total Section Time:{" "}
-                              <strong>{totalSectionTime} minutes</strong>
-                            </div>
-                            <div>
-                              Exam Duration:{" "}
-                              <strong>{examDuration} minutes</strong>
-                            </div>
-                            <div
-                              style={{
-                                marginTop: "0.5rem",
-                                fontWeight: 600,
-                                color: "#dc2626",
-                              }}
-                            >
-                              ⚠️ Total section timers ({totalSectionTime}{" "}
-                              minutes) exceed the exam duration ({examDuration}{" "}
-                              minutes). Please increase the exam duration or
-                              reduce section timers in Review Questions.
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    }
-                    return null;
-                  })()}
-
-                {/* Proctoring Settings */}
-                <div
+                  ⋮
+                </button>
+                <button
+                  onClick={() => handleRemoveTopicV2(topic.id)}
                   style={{
-                    marginTop: "2rem",
-                    padding: "1.5rem",
-                    backgroundColor: "#f8fafc",
-                    borderRadius: "0.75rem",
-                    border: "2px solid #e2e8f0",
+                    background: "none",
+                    border: "none",
+                    color: "#ef4444",
+                    cursor: "pointer",
+                    fontSize: "1.25rem",
                   }}
                 >
-                  <h3
-                    style={{
-                      marginBottom: "1rem",
-                      fontSize: "1.125rem",
-                      color: "#1a1625",
-                      fontWeight: 600,
-                    }}
-                  >
-                    Proctoring Settings
-                  </h3>
+                  ×
+                </button>
+              </div>
+            </div>
 
-                  {/* AI Proctoring Checkbox */}
-                  <label
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "0.5rem",
-                      cursor: "pointer",
-                      fontSize: "0.875rem",
-                      color: "#1e293b",
-                    }}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={proctoringSettings.aiProctoringEnabled}
-                      onChange={(e) => {
-                        const checked = e.target.checked;
-                        setProctoringSettings((prev) => ({
-                          ...prev,
-                          aiProctoringEnabled: checked,
-                          faceMismatchEnabled: checked
-                            ? prev.faceMismatchEnabled
-                            : false, // Disable face mismatch if AI Proctoring is disabled
-                        }));
-                      }}
-                      style={{
-                        width: "18px",
-                        height: "18px",
-                        cursor: "pointer",
-                      }}
-                    />
-                    <span>
-                      Enable AI Proctoring (camera-based: no face, multiple
-                      faces, gaze away)
-                    </span>
-                  </label>
+            <div style={{ marginBottom: "1.5rem" }}>
+              <p
+                style={{
+                  fontSize: "0.875rem",
+                  fontWeight: 700,
+                  color: "#0f766e",
+                  marginBottom: "1rem",
+                }}
+              >
+                Select question types:
+              </p>
+              <div
+                style={{
+                  display: "flex",
+                  flexWrap: "wrap",
+                  gap: "0.75rem",
+                }}
+              >
+                {["MCQ", "Coding", "Subjective", "Pseudo Code"].map((type) => {
+                  const rowType = type === "Pseudo Code" ? "PseudoCode" : type;
+                  const row = topic.questionRows.find((r) => r.questionType === rowType);
+                  const isSelected = !!row;
 
-                  {/* Face Mismatch Detection Sub-checkbox (only visible when AI Proctoring is enabled) */}
-                  {proctoringSettings.aiProctoringEnabled && (
+                  return (
                     <label
+                      key={type}
                       style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "0.5rem",
+                        display: "inline-flex", // 🟢 Fixed Alignment
+                        alignItems: "center",   // 🟢 Vertically Centers All Elements
+                        gap: "0.6rem",
+                        padding: "0.6rem 1rem",
+                        border: `1.5px solid ${isSelected ? "#10b981" : "#e2e8f0"}`,
+                        borderRadius: "0.75rem",
+                        backgroundColor: isSelected ? "#ecfdf5" : "#ffffff",
                         cursor: "pointer",
-                        fontSize: "0.875rem",
-                        color: "#1e293b",
-                        marginTop: "0.5rem",
-                        marginLeft: "2rem",
+                        transition: "all 0.2s ease",
+                        lineHeight: "1",        // 🟢 Ensures no text offset
                       }}
                     >
                       <input
                         type="checkbox"
-                        checked={proctoringSettings.faceMismatchEnabled}
-                        onChange={(e) => {
-                          setProctoringSettings((prev) => ({
-                            ...prev,
-                            faceMismatchEnabled: e.target.checked,
-                          }));
-                        }}
+                        checked={isSelected}
+                        onChange={() =>
+                          handleToggleQuestionType(topic.id, rowType)
+                        }
                         style={{
-                          width: "18px",
-                          height: "18px",
-                          cursor: "pointer",
+                          width: "16px",
+                          height: "16px",
+                          margin: 0,             // 🟢 Resets browser margin
+                          accentColor: "#10b981",
                         }}
                       />
-                      <span>
-                        Enable Face Mismatch Detection (detects if candidate's
-                        face changes during assessment)
+                      <span
+                        style={{
+                          fontSize: "0.9rem",
+                          fontWeight: 600,
+                          color: isSelected ? "#064e3b" : "#64748b",
+                          userSelect: "none",
+                        }}
+                      >
+                        {type}
                       </span>
+
+                      {isSelected && (
+                        <div
+                          style={{
+                            marginLeft: "6px",
+                            backgroundColor: "#d1fae5",
+                            borderRadius: "8px",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            height: "28px",      // 🟢 Balanced height
+                            width: "40px",       // 🟢 Balanced width
+                            boxShadow: "inset 0 1px 2px rgba(0,0,0,0.05)",
+                          }}
+                        >
+                          <input
+                            type="text"
+                            inputMode="numeric"
+                            value={row.questionsCount}
+                            onChange={(e) => {
+                              const val = e.target.value.replace(/\D/g, "");
+                              handleUpdateRow(
+                                topic.id,
+                                row.rowId,
+                                "questionsCount",
+                                parseInt(val) || 0
+                              );
+                            }}
+                            style={{
+                              width: "100%",
+                              border: "none",
+                              textAlign: "center",
+                              fontWeight: "900",
+                              outline: "none",
+                              backgroundColor: "transparent",
+                              color: "#064e3b",
+                              fontSize: "0.85rem",
+                            }}
+                          />
+                        </div>
+                      )}
                     </label>
-                  )}
+                  );
+                })}
+              </div>
+            </div>
 
-                  {/* Live Proctoring Checkbox */}
-                  <label
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "0.5rem",
-                      cursor: "pointer",
-                      fontSize: "0.875rem",
-                      color: "#1e293b",
-                      marginTop: "1rem",
-                    }}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={proctoringSettings.liveProctoringEnabled}
-                      onChange={(e) => {
-                        setProctoringSettings((prev) => ({
-                          ...prev,
-                          liveProctoringEnabled: e.target.checked,
-                        }));
-                      }}
-                      style={{
-                        width: "18px",
-                        height: "18px",
-                        cursor: "pointer",
-                      }}
-                    />
-                    <span>Live Proctoring (webcam + screen streaming)</span>
-                  </label>
-                </div>
-
-                {/* Candidate Requirements */}
-                <div
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                paddingTop: "1.25rem",
+                borderTop: "1px solid #f1f5f9",
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "0.6rem",
+                }}
+              >
+                <span
                   style={{
-                    marginTop: "2rem",
-                    padding: "1.5rem",
-                    backgroundColor: "#f8fafc",
-                    borderRadius: "0.75rem",
-                    border: "2px solid #e2e8f0",
+                    fontSize: "0.875rem",
+                    color: "#64748b",
+                    fontWeight: 500,
                   }}
                 >
-                  <h3
+                  Difficulty:
+                </span>
+                <select
+                  value={topic.questionRows[0]?.difficulty || "Medium"}
+                  onChange={(e) =>
+                    handleUpdateRow(
+                      topic.id,
+                      topic.questionRows[0]?.rowId,
+                      "difficulty",
+                      e.target.value
+                    )
+                  }
+                  style={{
+                    padding: "0.4rem 0.6rem",
+                    borderRadius: "0.5rem",
+                    border: "1px solid #e2e8f0",
+                    backgroundColor: "#fff",
+                    fontWeight: 600,
+                    color: "#1e293b",
+                    outline: "none",
+                  }}
+                >
+                  <option value="Easy">Easy</option>
+                  <option value="Medium">Medium</option>
+                  <option value="Hard">Hard</option>
+                </select>
+              </div>
+              <div
+                style={{
+                  fontWeight: 800,
+                  color: "#064e3b",
+                  fontSize: "0.95rem",
+                }}
+              >
+                Total: {totalQs} questions
+              </div>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+
+    {/* Summary Bar */}
+    {(() => {
+      const totalQuestions = topicsV2.reduce(
+        (acc, t) =>
+          acc +
+          t.questionRows.reduce(
+            (sum, r) => sum + (typeof r.questionsCount === 'number' ? r.questionsCount : parseInt(String(r.questionsCount)) || 0),
+            0,
+          ),
+        0,
+      );
+
+      const totalSeconds = topicsV2.reduce((acc, topic) => {
+        return (
+          acc +
+          topic.questionRows.reduce((rowAcc, row) => {
+            const count = (row.questionsCount) || 0;
+            const baseTime = getBaseTimePerQuestion(row.questionType);
+            const multiplier = getDifficultyMultiplier(row.difficulty);
+            return rowAcc + count * baseTime * multiplier;
+          }, 0)
+        );
+      }, 0);
+
+      const totalMinutes = Math.ceil(totalSeconds / 60);
+
+      return (
+        <div
+          style={{
+            padding: "1.25rem 2rem",
+            backgroundColor: "#ecfdf5",
+            border: "1px solid #6ee7b7",
+            borderRadius: "1rem",
+            display: "flex",
+            alignItems: "center",
+            gap: "1rem",
+            marginBottom: "2.5rem",
+          }}
+        >
+          <span
+            style={{
+              fontWeight: 700,
+              color: "#065f46",
+              display: "flex",
+              alignItems: "center",
+              gap: "0.5rem",
+            }}
+          >
+            <BookOpen size={18} strokeWidth={2.5} /> {topicsV2.length} topics
+          </span>
+          <span style={{ color: "#6ee7b7", fontSize: "1.2rem" }}>•</span>
+          <span
+            style={{
+              fontWeight: 700,
+              color: "#065f46",
+              display: "flex",
+              alignItems: "center",
+              gap: "0.5rem",
+            }}
+          >
+            <FileText size={18} strokeWidth={2.5} /> {totalQuestions} questions
+          </span>
+          <span style={{ color: "#6ee7b7", fontSize: "1.2rem" }}>•</span>
+          <span
+            style={{
+              fontWeight: 700,
+              color: "#065f46",
+              display: "flex",
+              alignItems: "center",
+              gap: "0.5rem",
+            }}
+          >
+            <Clock size={18} strokeWidth={2.5} /> ~{formatTime(totalMinutes)}
+          </span>
+        </div>
+      );
+    })()}
+
+    <button
+      onClick={() => setCurrentStation(5)}
+      style={{
+        width: "220px",
+        padding: "1.1rem 2rem",
+        backgroundColor: "#6EE7B7",
+        color: "#064e3b",
+        fontSize: "1.125rem",
+        fontWeight: 800,
+        border: "none",
+        borderRadius: "1rem",
+        cursor: "pointer",
+        boxShadow: "0 10px 15px -3px rgba(128, 237, 153, 0.3)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: "0.5rem",
+      }}
+    >
+      Continue <ArrowRight size={20} strokeWidth={2.5} />
+    </button>
+  </div>
+)}
+
+            {/* --- ADD THIS MODAL COMPONENT HERE --- */}
+            {showCustomTopicModal && (
+              <div
+                style={{
+                  position: "fixed",
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  backgroundColor: "rgba(0, 0, 0, 0.5)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  zIndex: 1000,
+                  fontFamily: "'Inter', sans-serif",
+                }}
+              >
+                <div
+                  style={{
+                    backgroundColor: "#ffffff",
+                    padding: "2rem",
+                    borderRadius: "1.5rem",
+                    width: "100%",
+                    maxWidth: "450px",
+                    boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.1)",
+                  }}
+                >
+                  <h2
                     style={{
-                      marginBottom: "1rem",
-                      fontSize: "1.125rem",
-                      color: "#1a1625",
-                      fontWeight: 600,
+                      color: "#064e3b",
+                      marginBottom: "1.5rem",
+                      fontWeight: 800,
                     }}
                   >
-                    Candidate Requirements
-                  </h3>
+                    Add Custom Topic
+                  </h2>
 
-                  <div>
+                  <div style={{ marginBottom: "1.5rem" }}>
                     <label
                       style={{
                         display: "block",
-                        marginBottom: "0.75rem",
-                        fontWeight: 600,
-                        color: "#1e293b",
+                        color: "#0f766e",
+                        fontWeight: 700,
+                        marginBottom: "0.5rem",
                         fontSize: "0.875rem",
                       }}
                     >
-                      Required Information
+                      Topic Name
                     </label>
-                    <div style={{ display: "grid", gap: "0.75rem" }}>
-                      <label
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: "0.5rem",
-                          cursor: "pointer",
-                        }}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={candidateRequirements.requireEmail}
-                          onChange={(e) =>
-                            setCandidateRequirements((prev) => ({
-                              ...prev,
-                              requireEmail: e.target.checked,
-                            }))
-                          }
-                          style={{
-                            width: "18px",
-                            height: "18px",
-                            cursor: "pointer",
-                          }}
-                        />
-                        <span
-                          style={{ fontSize: "0.875rem", color: "#1e293b" }}
-                        >
-                          Require Email
-                        </span>
-                      </label>
-                      <label
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: "0.5rem",
-                          cursor: "pointer",
-                        }}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={candidateRequirements.requireName}
-                          onChange={(e) =>
-                            setCandidateRequirements((prev) => ({
-                              ...prev,
-                              requireName: e.target.checked,
-                            }))
-                          }
-                          style={{
-                            width: "18px",
-                            height: "18px",
-                            cursor: "pointer",
-                          }}
-                        />
-                        <span
-                          style={{ fontSize: "0.875rem", color: "#1e293b" }}
-                        >
-                          Require Name
-                        </span>
-                      </label>
-                      <label
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: "0.5rem",
-                          cursor: "pointer",
-                        }}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={candidateRequirements.requirePhone}
-                          onChange={(e) =>
-                            setCandidateRequirements((prev) => ({
-                              ...prev,
-                              requirePhone: e.target.checked,
-                            }))
-                          }
-                          style={{
-                            width: "18px",
-                            height: "18px",
-                            cursor: "pointer",
-                          }}
-                        />
-                        <span
-                          style={{ fontSize: "0.875rem", color: "#1e293b" }}
-                        >
-                          Require Phone Number
-                        </span>
-                      </label>
-                      <label
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: "0.5rem",
-                          cursor: "pointer",
-                        }}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={candidateRequirements.requireResume}
-                          onChange={(e) =>
-                            setCandidateRequirements((prev) => ({
-                              ...prev,
-                              requireResume: e.target.checked,
-                            }))
-                          }
-                          style={{
-                            width: "18px",
-                            height: "18px",
-                            cursor: "pointer",
-                          }}
-                        />
-                        <span
-                          style={{ fontSize: "0.875rem", color: "#1e293b" }}
-                        >
-                          Require Resume Upload
-                        </span>
-                      </label>
-                    </div>
+                    <input
+                      type="text"
+                      value={customTopicInput} // Ensure this state exists in your component
+                      onChange={(e) => setCustomTopicInput(e.target.value)}
+                      placeholder="e.g. Advanced System Design"
+                      style={{
+                        width: "100%",
+                        padding: "0.75rem 1rem",
+                        borderRadius: "0.75rem",
+                        border: "2px solid #a7f3d0",
+                        outline: "none",
+                        fontSize: "1rem",
+                      }}
+                    />
                   </div>
-                </div>
 
-                <div
-                  style={{ display: "flex", gap: "1rem", marginTop: "2rem" }}
-                >
-                  <button
-                    type="button"
-                    onClick={() => setCurrentStation(3)}
-                    className="btn-secondary"
-                    style={{ flex: 1 }}
-                  >
-                    Back
-                  </button>
-                  <button
-                    type="button"
-                    onClick={async () => {
-                      // Validation based on exam mode
-                      if (examMode === "strict") {
-                        if (!startTime || !duration) {
-                          setError("Please set start time and duration");
-                          return;
-                        }
-                        if (parseInt(duration) < 1) {
-                          setError("Duration must be at least 1 minute");
-                          return;
-                        }
-                      } else {
-                        // Flexible mode
-                        if (!startTime || !endTime || !duration) {
-                          setError(
-                            "Please set start time, end time, and duration",
-                          );
-                          return;
-                        }
-                        if (new Date(startTime) >= new Date(endTime)) {
-                          setError("End time must be after start time");
-                          return;
-                        }
-                        if (parseInt(duration) < 1) {
-                          setError("Duration must be at least 1 minute");
-                          return;
-                        }
-                      }
-
-                      // Validate section timers if enabled
-                      if (enablePerSectionTimers) {
-                        const totalSectionTime = Object.values(
-                          sectionTimers,
-                        ).reduce((sum, time) => sum + time, 0);
-                        const examDuration = parseInt(duration);
-                        if (totalSectionTime > examDuration) {
-                          setError(
-                            `Total section timers (${totalSectionTime} minutes) exceed the exam duration (${examDuration} minutes). Please increase the exam duration or reduce section timers.`,
-                          );
-                          return;
-                        }
-                      }
-
-                      // Save schedule to draft
-                      try {
-                        if (assessmentId) {
-                          const scheduleData: any = {
-                            startTime:
-                              examMode === "strict" ? startTime : startTime,
-                            duration: parseInt(duration),
-                            examMode,
-                            visibilityMode,
-                            candidateRequirements,
-                            proctoringSettings,
-                          };
-
-                          // Only include endTime for flexible mode
-                          if (examMode === "flexible" && endTime) {
-                            scheduleData.endTime = endTime;
-                          }
-
-                          await updateDraftMutation.mutateAsync({
-                            assessmentId,
-                            schedule: scheduleData,
-                          });
-                        }
-                      } catch (err: any) {
-                        console.error("Error saving schedule:", err);
-                        setError(
-                          err.response?.data?.message ||
-                            "Failed to save schedule",
-                        );
-                        return;
-                      }
-
-                      setError(null);
-                      setCurrentStation(5);
+                  <div
+                    style={{
+                      display: "flex",
+                      gap: "1rem",
+                      justifyContent: "flex-end",
                     }}
-                    className="btn-primary"
-                    style={{ flex: 1 }}
                   >
-                    Next
-                  </button>
+                    <button
+                      onClick={() => setShowCustomTopicModal(false)}
+                      style={{
+                        padding: "0.75rem 1.5rem",
+                        borderRadius: "0.75rem",
+                        border: "none",
+                        backgroundColor: "#f1f5f9",
+                        color: "#64748b",
+                        fontWeight: 700,
+                        cursor: "pointer",
+                      }}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={() => {
+                        handleAddCustomTopicV2(true); // Your existing add function
+                        setShowCustomTopicModal(false);
+                      }}
+                      style={{
+                        padding: "0.75rem 1.5rem",
+                        borderRadius: "0.75rem",
+                        border: "none",
+                        backgroundColor: "#6ee7b7",
+                        color: "#064e3b",
+                        fontWeight: 800,
+                        cursor: "pointer",
+                      }}
+                    >
+                      Add Topic
+                    </button>
+                  </div>
                 </div>
               </div>
             )}
-
             {/* Station 5: Add Candidates */}
             {currentStation === 5 && (
-              <div>
+              <div
+                style={{
+                  maxWidth: "800px",
+                  margin: "0 auto",
+                  fontFamily:
+                    "-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', Roboto, sans-serif",
+                }}
+              >
                 <div
                   style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "center",
+                    color: "#10b981",
+                    fontWeight: 700,
+                    fontSize: "0.875rem",
                     marginBottom: "1rem",
                   }}
                 >
-                  <div style={{ flex: 1 }}>
-                    <h1
-                      style={{
-                        marginBottom: "0.5rem",
-                        fontSize: "2rem",
-                        color: "#1a1625",
-                        fontWeight: 700,
-                      }}
-                    >
-                      Add Candidates
-                    </h1>
-                    <p
-                      style={{
-                        color: "#6b6678",
-                        marginBottom: "2rem",
-                        fontSize: "1rem",
-                      }}
-                    >
-                      Configure exam access mode and add candidates who will
-                      take this assessment.
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={handleBackToDashboard}
-                    className="btn-secondary"
-                    style={{
-                      marginLeft: "1rem",
-                      whiteSpace: "nowrap",
-                      padding: "0.75rem 1.5rem",
-                      fontSize: "0.875rem",
-                    }}
-                  >
-                    Back to Dashboard
-                  </button>
+                  STEP 5 OF 6
                 </div>
-
-                {/* Access Mode Selection */}
-                <div
+                <h1
                   style={{
-                    marginBottom: "2rem",
-                    padding: "1.5rem",
-                    backgroundColor: "#f8fafc",
-                    borderRadius: "0.75rem",
-                    border: "2px solid #e2e8f0",
+                    fontSize: "2.5rem",
+                    fontWeight: 800,
+                    color: "#1E5A3B",
+                    marginBottom: "0.5rem",
                   }}
                 >
-                  <label
+                  Schedule Assessment Availability
+                </h1>
+                <p
+                  style={{
+                    color: "#2D7A52",
+                    marginBottom: "2rem",
+                    fontSize: "1.125rem",
+                    fontWeight: 500,
+                  }}
+                >
+                  Choose when candidates can take this assessment
+                </p>
+
+                {/* Section 1: Assessment Availability Selection */}
+                <div
+                  style={{
+                    padding: "1.5rem",
+                    backgroundColor: "#ffffff",
+                    border: "1.5px solid #C9F4D4",
+                    borderRadius: "1.25rem",
+                    marginBottom: "1.5rem",
+                  }}
+                >
+                  <h2
                     style={{
-                      display: "block",
-                      marginBottom: "1rem",
-                      fontWeight: 600,
-                      color: "#1e293b",
-                      fontSize: "1.125rem",
+                      fontSize: "1.25rem",
+                      fontWeight: 800,
+                      color: "#1E5A3B",
+                      marginBottom: "1.5rem",
                     }}
                   >
-                    Exam Access Mode
-                  </label>
+                    Assessment Availability
+                  </h2>
                   <div
                     style={{
                       display: "flex",
@@ -16564,1253 +12302,797 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
                       gap: "1rem",
                     }}
                   >
-                    {(() => {
-                      const currentAccessMode: "public" | "private" =
-                        accessMode;
-                      const isPublic = currentAccessMode === "public";
-                      return (
-                        <label
+                    {[
+                      {
+                        id: "flexible",
+                        label: "Available Immediately (Default)",
+                        sub: "Candidates can start as soon as they receive invite",
+                      },
+                      {
+                        id: "scheduled",
+                        label: "Schedule Specific Window",
+                        sub: "Set start and end dates/times",
+                      },
+                      {
+                        id: "custom",
+                        label: "Custom Schedule Per Candidate",
+                        sub: "Set individual time slots (configure in next step)",
+                      },
+                    ].map((mode) => (
+                      <label
+                        key={mode.id}
+                        style={{
+                          display: "flex",
+                          alignItems: "flex-start",
+                          gap: "1rem",
+                          padding: "1.25rem",
+                          backgroundColor:
+                            examMode === mode.id ? "#EBFAFD" : "#ffffff",
+                          border: `2px solid ${examMode === mode.id ? "#C9F4D4" : "#EBFAFD"}`,
+                          borderRadius: "1rem",
+                          cursor: "pointer",
+                          transition: "0.2s ease",
+                        }}
+                      >
+                        <input
+                          type="radio"
+                          name="examMode"
+                          value={mode.id}
+                          checked={examMode === mode.id}
+                          onChange={(e) => setExamMode(e.target.value as any)}
                           style={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: "0.75rem",
-                            cursor: "pointer",
-                            padding: "1rem",
-                            backgroundColor: isPublic ? "#eff6ff" : "#ffffff",
-                            borderRadius: "0.5rem",
-                            border: `2px solid ${isPublic ? "#3b82f6" : "#e2e8f0"}`,
+                            marginTop: "4px",
+                            accentColor: "#10b981",
+                            width: "20px",
+                            height: "20px",
                           }}
-                        >
-                          <input
-                            type="radio"
-                            name="accessMode"
-                            value="public"
-                            checked={isPublic}
-                            onChange={(e) => {
-                              setAccessMode("public");
-                              if (assessmentId) {
-                                updateDraftMutation.mutate(
-                                  {
-                                    assessmentId,
-                                    accessMode: "public",
-                                  },
-                                  {
-                                    onError: (err) =>
-                                      console.error(
-                                        "Error updating access mode:",
-                                        err,
-                                      ),
-                                  },
-                                );
-                              }
-                            }}
-                            style={{
-                              width: "18px",
-                              height: "18px",
-                              cursor: "pointer",
-                            }}
-                          />
-                          <div style={{ flex: 1 }}>
-                            <div
-                              style={{
-                                fontWeight: 600,
-                                color: "#1e293b",
-                                marginBottom: "0.25rem",
-                              }}
-                            >
-                              Public Exam Link
-                            </div>
-                            <div
-                              style={{ fontSize: "0.875rem", color: "#64748b" }}
-                            >
-                              Anyone with the link can access. Candidate enters
-                              name + email when starting the exam.
-                            </div>
+                        />
+                        <div>
+                          <div style={{ fontWeight: 700, color: "#1E5A3B" }}>
+                            {mode.label}
                           </div>
-                        </label>
-                      );
-                    })()}
-                    {(() => {
-                      const currentAccessMode: "public" | "private" =
-                        accessMode;
-                      const isPrivate = currentAccessMode === "private";
-                      return (
-                        <label
-                          style={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: "0.75rem",
-                            cursor: "pointer",
-                            padding: "1rem",
-                            backgroundColor: isPrivate ? "#eff6ff" : "#ffffff",
-                            borderRadius: "0.5rem",
-                            border: `2px solid ${isPrivate ? "#3b82f6" : "#e2e8f0"}`,
-                          }}
-                        >
-                          <input
-                            type="radio"
-                            name="accessMode"
-                            value="private"
-                            checked={isPrivate}
-                            onChange={(e) => {
-                              setAccessMode("private");
-                              if (assessmentId) {
-                                updateDraftMutation.mutate(
-                                  {
-                                    assessmentId,
-                                    accessMode: "private",
-                                  },
-                                  {
-                                    onError: (err) =>
-                                      console.error(
-                                        "Error updating access mode:",
-                                        err,
-                                      ),
-                                  },
-                                );
-                              }
-                            }}
-                            style={{
-                              width: "18px",
-                              height: "18px",
-                              cursor: "pointer",
-                            }}
-                          />
-                          <div style={{ flex: 1 }}>
-                            <div
-                              style={{
-                                fontWeight: 600,
-                                color: "#1e293b",
-                                marginBottom: "0.25rem",
-                              }}
-                            >
-                              Private Candidate Access
-                            </div>
-                            <div
-                              style={{ fontSize: "0.875rem", color: "#64748b" }}
-                            >
-                              Only pre-added candidates may access. Exact name
-                              and email match required.
-                            </div>
+                          <div
+                            style={{ fontSize: "0.875rem", color: "#4A9A6A" }}
+                          >
+                            {mode.sub}
                           </div>
-                        </label>
-                      );
-                    })()}
+                        </div>
+                      </label>
+                    ))}
                   </div>
                 </div>
 
-                {/* Private Mode: Candidate Management */}
-                {(() => {
-                  const currentAccessMode: "public" | "private" = accessMode;
-                  return currentAccessMode === "private" ? (
-                    <>
-                      <div style={{ marginBottom: "2rem" }}>
-                        <label
-                          style={{
-                            display: "block",
-                            marginBottom: "0.75rem",
-                            fontWeight: 600,
-                            color: "#1e293b",
-                          }}
-                        >
-                          Bulk Upload (CSV)
-                        </label>
-                        <div
-                          style={{
-                            marginBottom: "1.5rem",
-                            padding: "1rem",
-                            backgroundColor: "#f8fafc",
-                            borderRadius: "0.5rem",
-                            border: "1px solid #e2e8f0",
-                          }}
-                        >
-                          <p
-                            style={{
-                              margin: "0 0 0.75rem 0",
-                              fontSize: "0.875rem",
-                              color: "#64748b",
-                            }}
-                          >
-                            Upload a CSV file with columns:{" "}
-                            <strong>name</strong> and <strong>email</strong>
-                          </p>
-                          {(() => {
-                            const currentAccessMode: "public" | "private" =
-                              accessMode;
-                            const isPublicMode = currentAccessMode === "public";
-                            return (
-                              <>
-                                <input
-                                  type="file"
-                                  accept=".csv"
-                                  onChange={handleCsvUpload}
-                                  disabled={uploadingCsv || isPublicMode}
-                                  style={{ display: "none" }}
-                                  id="csv-upload-input"
-                                />
-                                <label
-                                  htmlFor="csv-upload-input"
-                                  style={{
-                                    display: "inline-block",
-                                    padding: "0.75rem 1.5rem",
-                                    backgroundColor:
-                                      uploadingCsv || isPublicMode
-                                        ? "#94a3b8"
-                                        : "#3b82f6",
-                                    color: "#ffffff",
-                                    borderRadius: "0.5rem",
-                                    cursor:
-                                      uploadingCsv || isPublicMode
-                                        ? "not-allowed"
-                                        : "pointer",
-                                    fontSize: "0.875rem",
-                                    fontWeight: 600,
-                                    transition: "background-color 0.2s",
-                                    opacity: isPublicMode ? 0.6 : 1,
-                                  }}
-                                >
-                                  {uploadingCsv
-                                    ? "Uploading..."
-                                    : "Choose CSV File"}
-                                </label>
-                              </>
-                            );
-                          })()}
-                          {uploadingCsv && (
-                            <span
-                              style={{
-                                marginLeft: "0.75rem",
-                                fontSize: "0.875rem",
-                                color: "#64748b",
-                              }}
-                            >
-                              Processing CSV file...
-                            </span>
-                          )}
-                          {(() => {
-                            const currentAccessMode: "public" | "private" =
-                              accessMode;
-                            return currentAccessMode === "public" ? (
-                              <p
-                                style={{
-                                  marginTop: "0.5rem",
-                                  fontSize: "0.875rem",
-                                  color: "#64748b",
-                                  fontStyle: "italic",
-                                }}
-                              >
-                                Bulk upload is disabled in Public mode
-                              </p>
-                            ) : null;
-                          })()}
-                        </div>
-                      </div>
-
+                {/* Section 2: Assessment Window */}
+                <div
+                  style={{
+                    padding: "1.5rem",
+                    backgroundColor: "#ffffff",
+                    border: "1.5px solid #C9F4D4",
+                    borderRadius: "1.25rem",
+                    marginBottom: "1.5rem",
+                  }}
+                >
+                  <h2
+                    style={{
+                      fontSize: "1.25rem",
+                      fontWeight: 800,
+                      color: "#1E5A3B",
+                      marginBottom: "1.5rem",
+                    }}
+                  >
+                    Assessment Window
+                  </h2>
+                  <div style={{ display: "grid", gap: "1.5rem" }}>
+                    <div>
                       <label
                         style={{
                           display: "block",
-                          marginBottom: "0.75rem",
-                          fontWeight: 600,
-                          color: "#1e293b",
-                        }}
-                      >
-                        Add Candidate (Manual)
-                      </label>
-                      {(() => {
-                        const currentAccessMode: "public" | "private" =
-                          accessMode;
-                        const isPublicMode = currentAccessMode === "public";
-                        // Hide Add Candidate section after finalization
-                        if (isFinalized) {
-                          return null;
-                        }
-                        return (
-                          <>
-                            <div
-                              style={{
-                                display: "grid",
-                                gridTemplateColumns: "1fr 1fr auto",
-                                gap: "0.5rem",
-                                marginBottom: "1rem",
-                              }}
-                            >
-                              <div>
-                                <input
-                                  type="text"
-                                  value={candidateName}
-                                  onChange={(e) => {
-                                    setCandidateName(e.target.value);
-                                    setEmailValidationError(null);
-                                  }}
-                                  onKeyPress={(e) => {
-                                    if (e.key === "Enter") {
-                                      e.preventDefault();
-                                      handleAddCandidate();
-                                    }
-                                  }}
-                                  placeholder="Full Name"
-                                  disabled={isPublicMode}
-                                  style={{
-                                    width: "100%",
-                                    padding: "0.75rem",
-                                    border: "1px solid #e2e8f0",
-                                    borderRadius: "0.5rem",
-                                    fontSize: "1rem",
-                                    opacity: isPublicMode ? 0.6 : 1,
-                                    cursor: isPublicMode
-                                      ? "not-allowed"
-                                      : "text",
-                                  }}
-                                />
-                              </div>
-                              <div>
-                                <input
-                                  type="email"
-                                  value={candidateEmail}
-                                  onChange={(e) => {
-                                    setCandidateEmail(e.target.value);
-                                    // Real-time email validation
-                                    const email = e.target.value.trim();
-                                    if (email && !validateEmail(email)) {
-                                      setEmailValidationError(
-                                        "Invalid email format",
-                                      );
-                                    } else {
-                                      setEmailValidationError(null);
-                                    }
-                                  }}
-                                  onKeyPress={(e) => {
-                                    if (e.key === "Enter") {
-                                      e.preventDefault();
-                                      handleAddCandidate();
-                                    }
-                                  }}
-                                  placeholder="Email Address"
-                                  disabled={isPublicMode}
-                                  style={{
-                                    width: "100%",
-                                    padding: "0.75rem",
-                                    border: `1px solid ${emailValidationError ? "#ef4444" : "#e2e8f0"}`,
-                                    borderRadius: "0.5rem",
-                                    fontSize: "1rem",
-                                    opacity: isPublicMode ? 0.6 : 1,
-                                    cursor: isPublicMode
-                                      ? "not-allowed"
-                                      : "text",
-                                  }}
-                                />
-                                {emailValidationError && (
-                                  <p
-                                    style={{
-                                      marginTop: "0.25rem",
-                                      fontSize: "0.75rem",
-                                      color: "#ef4444",
-                                    }}
-                                  >
-                                    {emailValidationError}
-                                  </p>
-                                )}
-                              </div>
-                              <button
-                                type="button"
-                                onClick={handleAddCandidate}
-                                className="btn-secondary"
-                                disabled={
-                                  isPublicMode ||
-                                  !candidateEmail.trim() ||
-                                  !candidateName.trim() ||
-                                  !!emailValidationError
-                                }
-                                style={{
-                                  marginTop: 0,
-                                  whiteSpace: "nowrap",
-                                  padding: "0.75rem 1.5rem",
-                                  opacity:
-                                    isPublicMode ||
-                                    !candidateEmail.trim() ||
-                                    !candidateName.trim() ||
-                                    !!emailValidationError
-                                      ? 0.6
-                                      : 1,
-                                  cursor:
-                                    isPublicMode ||
-                                    !candidateEmail.trim() ||
-                                    !candidateName.trim() ||
-                                    !!emailValidationError
-                                      ? "not-allowed"
-                                      : "pointer",
-                                }}
-                              >
-                                Add
-                              </button>
-                            </div>
-                            {isPublicMode && (
-                              <p
-                                style={{
-                                  fontSize: "0.875rem",
-                                  color: "#64748b",
-                                  fontStyle: "italic",
-                                }}
-                              >
-                                Manual candidate addition is disabled in Public
-                                mode
-                              </p>
-                            )}
-                          </>
-                        );
-                      })()}
-                    </>
-                  ) : null;
-                })()}
-
-                {/* Public Mode: Show public link info */}
-                {(() => {
-                  const currentAccessMode: "public" | "private" = accessMode;
-                  return currentAccessMode === "public" ? (
-                    <div
-                      style={{
-                        marginBottom: "2rem",
-                        padding: "1.5rem",
-                        backgroundColor: "#f0fdf4",
-                        borderRadius: "0.75rem",
-                        border: "2px solid #10b981",
-                      }}
-                    >
-                      <div
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: "0.5rem",
+                          fontSize: "0.875rem",
+                          fontWeight: 700,
+                          color: "#2D7A52",
                           marginBottom: "0.5rem",
                         }}
                       >
-                        <span style={{ fontSize: "1.25rem" }}>ℹ️</span>
-                        <strong style={{ color: "#059669" }}>
-                          Public Exam Mode
-                        </strong>
-                      </div>
-                      <div
-                        style={{
-                          fontSize: "0.875rem",
-                          color: "#64748b",
-                          marginLeft: "1.75rem",
-                        }}
-                      >
-                        <div>
-                          Anyone with the exam link can access the assessment.
-                        </div>
-                        <div style={{ marginTop: "0.5rem" }}>
-                          Candidates will enter their name and email when
-                          starting the exam. Email format will be validated.
-                        </div>
-                      </div>
-                    </div>
-                  ) : null;
-                })()}
-
-                {candidates.length > 0 && (
-                  <div style={{ marginBottom: "2rem" }}>
-                    <label
-                      style={{
-                        display: "block",
-                        marginBottom: "0.75rem",
-                        fontWeight: 600,
-                        color: "#1e293b",
-                      }}
-                    >
-                      Added Candidates ({candidates.length})
-                    </label>
-                    <div
-                      style={{
-                        border: "1px solid #e2e8f0",
-                        borderRadius: "0.75rem",
-                        overflow: "hidden",
-                      }}
-                    >
-                      <table
-                        style={{ width: "100%", borderCollapse: "collapse" }}
-                      >
-                        <thead>
-                          <tr style={{ backgroundColor: "#f8fafc" }}>
-                            <th
-                              style={{
-                                padding: "1rem",
-                                textAlign: "left",
-                                borderBottom: "1px solid #e2e8f0",
-                                fontWeight: 600,
-                                color: "#1e293b",
-                              }}
-                            >
-                              Email
-                            </th>
-                            <th
-                              style={{
-                                padding: "1rem",
-                                textAlign: "left",
-                                borderBottom: "1px solid #e2e8f0",
-                                fontWeight: 600,
-                                color: "#1e293b",
-                              }}
-                            >
-                              Name
-                            </th>
-                            {accessMode === "private" && (
-                              <th
-                                style={{
-                                  padding: "1rem",
-                                  textAlign: "left",
-                                  borderBottom: "1px solid #e2e8f0",
-                                  fontWeight: 600,
-                                  color: "#1e293b",
-                                }}
-                              >
-                                Status
-                              </th>
-                            )}
-                            {accessMode === "private" && (
-                              <th
-                                style={{
-                                  padding: "1rem",
-                                  textAlign: "left",
-                                  borderBottom: "1px solid #e2e8f0",
-                                  fontWeight: 600,
-                                  color: "#1e293b",
-                                }}
-                              >
-                                Actions
-                              </th>
-                            )}
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {candidates.map((candidate, index) => (
-                            <tr
-                              key={index}
-                              style={{ borderBottom: "1px solid #e2e8f0" }}
-                            >
-                              <td style={{ padding: "1rem" }}>
-                                {candidate.email}
-                              </td>
-                              <td style={{ padding: "1rem" }}>
-                                {candidate.name}
-                              </td>
-                              {accessMode === "private" && (
-                                <td style={{ padding: "1rem" }}>
-                                  {candidate.invited ? (
-                                    <span
-                                      style={{
-                                        fontSize: "0.875rem",
-                                        color: "#10b981",
-                                        fontWeight: 600,
-                                      }}
-                                    >
-                                      ✓ Invited
-                                    </span>
-                                  ) : (
-                                    <span
-                                      style={{
-                                        fontSize: "0.875rem",
-                                        color: "#64748b",
-                                      }}
-                                    >
-                                      Pending
-                                    </span>
-                                  )}
-                                </td>
-                              )}
-                              {accessMode === "private" && (
-                                <td
-                                  style={{
-                                    padding: "1rem",
-                                    display: "flex",
-                                    gap: "0.5rem",
-                                  }}
-                                >
-                                  {candidate.invited && (
-                                    <button
-                                      type="button"
-                                      onClick={async () => {
-                                        if (!assessmentId || !assessmentUrl)
-                                          return;
-                                        try {
-                                          const response =
-                                            await sendInvitationsMutation.mutateAsync(
-                                              {
-                                                assessmentId:
-                                                  assessmentId || "",
-                                                candidates: [
-                                                  {
-                                                    email: candidate.email,
-                                                    name: candidate.name,
-                                                  },
-                                                ],
-                                                examUrl: assessmentUrl,
-                                                template: invitationTemplate,
-                                                forceResend: true, // Allow resending to already-invited candidates
-                                              },
-                                            );
-                                          if (response?.success) {
-                                            // Update invite timestamp
-                                            const updatedCandidates =
-                                              candidates.map((c) =>
-                                                c.email.toLowerCase() ===
-                                                candidate.email.toLowerCase()
-                                                  ? {
-                                                      ...c,
-                                                      inviteSentAt:
-                                                        new Date().toISOString(),
-                                                    }
-                                                  : c,
-                                              );
-                                            setCandidates(updatedCandidates);
-                                            alert(
-                                              "Invitation resent successfully",
-                                            );
-                                          }
-                                        } catch (err: any) {
-                                          setError(
-                                            "Failed to resend invitation",
-                                          );
-                                        }
-                                      }}
-                                      style={{
-                                        background: "none",
-                                        border: "1px solid #3b82f6",
-                                        color: "#3b82f6",
-                                        cursor: "pointer",
-                                        fontSize: "0.875rem",
-                                        padding: "0.25rem 0.75rem",
-                                        borderRadius: "0.375rem",
-                                      }}
-                                    >
-                                      Resend
-                                    </button>
-                                  )}
-                                  <button
-                                    type="button"
-                                    onClick={() =>
-                                      handleRemoveCandidate(candidate.email)
-                                    }
-                                    style={{
-                                      background: "none",
-                                      border: "none",
-                                      color: "#ef4444",
-                                      cursor: "pointer",
-                                      fontSize: "0.875rem",
-                                    }}
-                                  >
-                                    Remove
-                                  </button>
-                                </td>
-                              )}
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                )}
-
-                {/* Generate URL Section - Hide after finalization */}
-                {!isFinalized && !assessmentUrl && (
-                  <div style={{ marginBottom: "2rem" }}>
-                    <button
-                      type="button"
-                      onClick={handleGenerateUrl}
-                      className="btn-primary"
-                      disabled={
-                        accessMode === "private" && candidates.length === 0
-                      }
-                      style={{ width: "100%" }}
-                    >
-                      Generate Assessment URL
-                    </button>
-                    {accessMode === "private" && candidates.length === 0 && (
-                      <p
-                        style={{
-                          marginTop: "0.5rem",
-                          fontSize: "0.875rem",
-                          color: "#64748b",
-                          textAlign: "center",
-                        }}
-                      >
-                        Please add at least one candidate to generate the URL
-                      </p>
-                    )}
-                  </div>
-                )}
-
-                {/* Assessment URL Display - Hide after finalization */}
-                {!isFinalized &&
-                  assessmentUrl &&
-                  (() => {
-                    const currentAccessMode: "public" | "private" = accessMode;
-                    const isPublic = currentAccessMode === "public";
-                    return (
-                      <div
-                        style={{
-                          marginBottom: "2rem",
-                          padding: "1.5rem",
-                          backgroundColor: "#f8fafc",
-                          borderRadius: "0.75rem",
-                          border: "1px solid #e2e8f0",
-                        }}
-                      >
-                        <label
-                          style={{
-                            display: "block",
-                            marginBottom: "0.75rem",
-                            fontWeight: 600,
-                            color: "#1e293b",
-                          }}
-                        >
-                          {isPublic ? "Public Exam Link" : "Assessment URL"}
-                        </label>
-                        <div style={{ display: "flex", gap: "0.5rem" }}>
-                          <input
-                            type="text"
-                            value={assessmentUrl}
-                            readOnly
-                            style={{
-                              flex: 1,
-                              padding: "0.75rem",
-                              border: "1px solid #e2e8f0",
-                              borderRadius: "0.5rem",
-                              fontSize: "1rem",
-                              backgroundColor: "#ffffff",
-                            }}
-                          />
-                          <button
-                            type="button"
-                            onClick={handleCopyUrl}
-                            className="btn-secondary"
-                            style={{
-                              marginTop: 0,
-                              whiteSpace: "nowrap",
-                              padding: "0.75rem 1.5rem",
-                            }}
-                          >
-                            Copy URL
-                          </button>
-                        </div>
-                        <p
-                          style={{
-                            fontSize: "0.875rem",
-                            color: "#64748b",
-                            marginTop: "0.5rem",
-                          }}
-                        >
-                          {isPublic
-                            ? "Share this public link. Anyone with the link can access the assessment."
-                            : "Share this URL with all candidates. They will use it to access the assessment."}
-                        </p>
-                      </div>
-                    );
-                  })()}
-
-                {/* Email Invitation Template (Private Mode Only) */}
-                {accessMode === "private" &&
-                  assessmentUrl &&
-                  candidates.length > 0 && (
-                    <div
-                      style={{
-                        marginBottom: "2rem",
-                        padding: "1.5rem",
-                        backgroundColor: "#f8fafc",
-                        borderRadius: "0.75rem",
-                        border: "2px solid #e2e8f0",
-                      }}
-                    >
-                      <div
-                        style={{
-                          display: "flex",
-                          justifyContent: "space-between",
-                          alignItems: "center",
-                          marginBottom: "1rem",
-                        }}
-                      >
-                        <label
-                          style={{
-                            fontWeight: 600,
-                            color: "#1e293b",
-                            fontSize: "1.125rem",
-                          }}
-                        >
-                          Email Invitation Template
-                        </label>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setShowEmailTemplate(!showEmailTemplate)
-                          }
-                          className="btn-secondary"
-                          style={{
-                            padding: "0.5rem 1rem",
-                            fontSize: "0.875rem",
-                          }}
-                        >
-                          {showEmailTemplate
-                            ? "Hide Template"
-                            : "Configure Template"}
-                        </button>
-                      </div>
-
-                      {showEmailTemplate && (
+                        Start Date & Time:
+                      </label>
+                      <div style={{ display: "flex", gap: "0.5rem" }}>
                         <div
                           style={{
+                            flex: 1,
+                            position: "relative",
                             display: "flex",
-                            flexDirection: "column",
-                            gap: "1rem",
+                            alignItems: "center",
                           }}
                         >
-                          <div>
-                            <label
-                              style={{
-                                display: "block",
-                                marginBottom: "0.5rem",
-                                fontWeight: 600,
-                                color: "#1e293b",
-                                fontSize: "0.875rem",
-                              }}
-                            >
-                              Company Logo URL (optional)
-                            </label>
-                            <input
-                              type="url"
-                              value={invitationTemplate.logoUrl}
-                              onChange={(e) =>
-                                setInvitationTemplate({
-                                  ...invitationTemplate,
-                                  logoUrl: e.target.value,
-                                })
-                              }
-                              placeholder="https://example.com/logo.png"
-                              style={{
-                                width: "100%",
-                                padding: "0.75rem",
-                                border: "1px solid #e2e8f0",
-                                borderRadius: "0.5rem",
-                                fontSize: "1rem",
-                              }}
-                            />
-                          </div>
-                          <div>
-                            <label
-                              style={{
-                                display: "block",
-                                marginBottom: "0.5rem",
-                                fontWeight: 600,
-                                color: "#1e293b",
-                                fontSize: "0.875rem",
-                              }}
-                            >
-                              Company Name (optional)
-                            </label>
-                            <input
-                              type="text"
-                              value={invitationTemplate.companyName}
-                              onChange={(e) =>
-                                setInvitationTemplate({
-                                  ...invitationTemplate,
-                                  companyName: e.target.value,
-                                })
-                              }
-                              placeholder="Your Company Name"
-                              style={{
-                                width: "100%",
-                                padding: "0.75rem",
-                                border: "1px solid #e2e8f0",
-                                borderRadius: "0.5rem",
-                                fontSize: "1rem",
-                              }}
-                            />
-                          </div>
-                          <div>
-                            <label
-                              style={{
-                                display: "block",
-                                marginBottom: "0.5rem",
-                                fontWeight: 600,
-                                color: "#1e293b",
-                                fontSize: "0.875rem",
-                              }}
-                            >
-                              Custom Message
-                            </label>
-                            <textarea
-                              value={invitationTemplate.message}
-                              onChange={(e) =>
-                                setInvitationTemplate({
-                                  ...invitationTemplate,
-                                  message: e.target.value,
-                                })
-                              }
-                              placeholder="You have been invited to take an assessment..."
-                              rows={4}
-                              style={{
-                                width: "100%",
-                                padding: "0.75rem",
-                                border: "1px solid #e2e8f0",
-                                borderRadius: "0.5rem",
-                                fontSize: "1rem",
-                                fontFamily: "inherit",
-                              }}
-                            />
-                            <p
-                              style={{
-                                marginTop: "0.25rem",
-                                fontSize: "0.75rem",
-                                color: "#64748b",
-                              }}
-                            >
-                              Available placeholders: {"{{candidate_name}}"},{" "}
-                              {"{{candidate_email}}"}, {"{{exam_url}}"},{" "}
-                              {"{{company_name}}"}
-                            </p>
-                          </div>
-                          <div>
-                            <label
-                              style={{
-                                display: "block",
-                                marginBottom: "0.5rem",
-                                fontWeight: 600,
-                                color: "#1e293b",
-                                fontSize: "0.875rem",
-                              }}
-                            >
-                              Footer Message (optional)
-                            </label>
-                            <input
-                              type="text"
-                              value={invitationTemplate.footer}
-                              onChange={(e) =>
-                                setInvitationTemplate({
-                                  ...invitationTemplate,
-                                  footer: e.target.value,
-                                })
-                              }
-                              placeholder="Thank you for your participation"
-                              style={{
-                                width: "100%",
-                                padding: "0.75rem",
-                                border: "1px solid #e2e8f0",
-                                borderRadius: "0.5rem",
-                                fontSize: "1rem",
-                              }}
-                            />
-                          </div>
-                          <button
-                            type="button"
-                            onClick={async () => {
-                              // Save template to draft
-                              if (assessmentId) {
-                                try {
-                                  await updateDraftMutation.mutateAsync({
-                                    assessmentId,
-                                    invitationTemplate: invitationTemplate,
-                                  });
-                                  setError(null);
-                                } catch (err: any) {
-                                  setError("Failed to save template");
-                                }
-                              }
-                            }}
-                            className="btn-secondary"
-                            style={{
-                              alignSelf: "flex-start",
-                              padding: "0.75rem 1.5rem",
-                            }}
-                          >
-                            Save Template
-                          </button>
-
-                          {/* Send Invitations Button - Moved inside Email Invitation Template card */}
-                          <button
-                            type="button"
-                            onClick={async () => {
-                              if (!assessmentId || !assessmentUrl) {
-                                setError("Assessment URL not generated");
-                                return;
-                              }
-                              setError(null);
-                              try {
-                                // Only send to candidates who haven't been invited yet
-                                const candidatesToInvite = candidates.filter(
-                                  (c) => !c.invited,
-                                );
-
-                                if (candidatesToInvite.length === 0) {
-                                  alert(
-                                    "All candidates have already been sent invitations.",
-                                  );
-                                  return;
-                                }
-
-                                const response =
-                                  await sendInvitationsMutation.mutateAsync({
-                                    assessmentId: assessmentId || "",
-                                    candidates: candidatesToInvite.map((c) => ({
-                                      email: c.email,
-                                      name: c.name,
-                                    })),
-                                    template: invitationTemplate,
-                                  });
-                                if (response?.success) {
-                                  setError(null);
-                                  const data = response.data || {};
-                                  const sentCount = data.sentCount || 0;
-                                  const skippedCount = data.skippedCount || 0;
-
-                                  // Update candidates with invite status (only for newly sent)
-                                  const sentEmails = new Set(
-                                    candidatesToInvite
-                                      .filter((_, idx) => idx < sentCount)
-                                      .map((c) => c.email.toLowerCase()),
-                                  );
-
-                                  const updatedCandidates = candidates.map(
-                                    (c) => {
-                                      if (
-                                        sentEmails.has(c.email.toLowerCase())
-                                      ) {
-                                        return {
-                                          ...c,
-                                          invited: true,
-                                          inviteSentAt:
-                                            new Date().toISOString(),
-                                        };
-                                      }
-                                      return c;
-                                    },
-                                  );
-                                  setCandidates(updatedCandidates);
-
-                                  let message = `Invitations sent successfully to ${sentCount} candidate(s)`;
-                                  if (skippedCount > 0) {
-                                    message += `. ${skippedCount} candidate(s) already invited (skipped)`;
-                                  }
-                                  alert(message);
-                                }
-                              } catch (err: any) {
-                                setError(
-                                  err.response?.data?.message ||
-                                    "Failed to send invitations",
-                                );
-                              }
-                            }}
-                            className="btn-primary"
-                            disabled={candidates.length === 0}
+                          <span style={{ position: "absolute", left: "12px" }}>
+                            📅
+                          </span>
+                          <input
+                            type="datetime-local"
+                            value={startTime}
+                            onChange={(e) => setStartTime(e.target.value)}
                             style={{
                               width: "100%",
-                              padding: "0.75rem 1.5rem",
+                              padding: "0.75rem 1rem 0.75rem 2.5rem",
+                              border: "1.5px solid #C9F4D4",
+                              borderRadius: "0.75rem",
+                              outline: "none",
                               fontSize: "1rem",
-                              marginTop: "0.5rem",
+                              color: "#1E5A3B",
+                              fontWeight: 600,
                             }}
-                          >
-                            Send Invitations via Email
-                          </button>
+                          />
                         </div>
-                      )}
+                        <div
+                          style={{
+                            padding: "0.75rem",
+                            backgroundColor: "#ffffff",
+                            border: "1.5px solid #C9F4D4",
+                            borderRadius: "0.75rem",
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "0.5rem",
+                            color: "#2D7A52",
+                            fontSize: "0.875rem",
+                            fontWeight: 600,
+                          }}
+                        >
+                          🌐 IST +05:30
+                        </div>
+                      </div>
                     </div>
-                  )}
+                    <div>
+                      <label
+                        style={{
+                          display: "block",
+                          fontSize: "0.875rem",
+                          fontWeight: 700,
+                          color: "#2D7A52",
+                          marginBottom: "0.5rem",
+                        }}
+                      >
+                        End Date & Time:
+                      </label>
+                      <div style={{ display: "flex", gap: "0.5rem" }}>
+                        <div
+                          style={{
+                            flex: 1,
+                            position: "relative",
+                            display: "flex",
+                            alignItems: "center",
+                          }}
+                        >
+                          <span style={{ position: "absolute", left: "12px" }}>
+                            📅
+                          </span>
+                          <input
+                            type="datetime-local"
+                            value={endTime}
+                            onChange={(e) => setEndTime(e.target.value)}
+                            disabled={examMode === "flexible" || examMode === "custom"}
+                            style={{
+                              width: "100%",
+                              padding: "0.75rem 1rem 0.75rem 2.5rem",
+                              border: "1.5px solid #C9F4D4",
+                              borderRadius: "0.75rem",
+                              outline: "none",
+                              opacity: examMode !== "scheduled" ? 0.5 : 1,
+                              fontSize: "1rem",
+                              color: "#1E5A3B",
+                              fontWeight: 600,
+                            }}
+                          />
+                        </div>
+                        <div
+                          style={{
+                            padding: "0.75rem",
+                            backgroundColor: "#ffffff",
+                            border: "1.5px solid #C9F4D4",
+                            borderRadius: "0.75rem",
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "0.5rem",
+                            color: "#2D7A52",
+                            fontSize: "0.875rem",
+                            fontWeight: 600,
+                          }}
+                        >
+                          🌐 IST +05:30
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
 
+                {/* Section 3: Time Zone Handling */}
                 <div
-                  style={{ display: "flex", gap: "1rem", marginTop: "2rem" }}
+                  style={{
+                    padding: "1.5rem",
+                    backgroundColor: "#ffffff",
+                    border: "1.5px solid #C9F4D4",
+                    borderRadius: "1.25rem",
+                    marginBottom: "1.5rem",
+                  }}
                 >
+                  <h2
+                    style={{
+                      fontSize: "1.25rem",
+                      fontWeight: 800,
+                      color: "#1E5A3B",
+                      marginBottom: "1.5rem",
+                    }}
+                  >
+                    Time Zone Handling
+                  </h2>
+                  <div
+                    style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: "1rem",
+                    }}
+                  >
+                    <label
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "0.75rem",
+                        padding: "1rem",
+                        border: "1.5px solid #EBFAFD",
+                        borderRadius: "0.75rem",
+                        cursor: "pointer",
+                      }}
+                    >
+                      <input
+                        type="radio"
+                        name="tz"
+                        style={{
+                          accentColor: "#10b981",
+                          width: "18px",
+                          height: "18px",
+                        }}
+                      />
+                      <span style={{ fontWeight: 700, color: "#1E5A3B" }}>
+                        Organization timezone (IST +05:30)
+                      </span>
+                    </label>
+                    <label
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "0.75rem",
+                        padding: "1rem",
+                        border: "1.5px solid #C9F4D4",
+                        backgroundColor: "#EBFAFD",
+                        borderRadius: "0.75rem",
+                        cursor: "pointer",
+                      }}
+                    >
+                      <input
+                        type="radio"
+                        name="tz"
+                        defaultChecked
+                        style={{
+                          accentColor: "#10b981",
+                          width: "18px",
+                          height: "18px",
+                        }}
+                      />
+                      <span style={{ fontWeight: 700, color: "#1E5A3B" }}>
+                        Candidate's local timezone (Auto-detect)
+                      </span>
+                    </label>
+                  </div>
+                  <div
+                    style={{
+                      marginTop: "1rem",
+                      padding: "0.75rem",
+                      backgroundColor: "#EBFAFD",
+                      borderRadius: "0.5rem",
+                      color: "#2D7A52",
+                      fontSize: "0.875rem",
+                      display: "flex",
+                      gap: "0.5rem",
+                      fontWeight: 600,
+                    }}
+                  >
+                    <span style={{ color: "#3b82f6" }}>ℹ️</span> Candidates will
+                    see times in their local timezone
+                  </div>
+                </div>
+
+                {/* Candidate Email Preview */}
+                <div
+                  style={{
+                    padding: "1.5rem",
+                    backgroundColor: "#ffffff",
+                    border: "1.5px solid #C9F4D4",
+                    borderRadius: "1.25rem",
+                    marginBottom: "3rem",
+                  }}
+                >
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "0.5rem",
+                      marginBottom: "1rem",
+                      color: "#1E5A3B",
+                    }}
+                  >
+                    <span style={{ fontSize: "1.25rem" }}>✉️</span>
+                    <h2
+                      style={{
+                        fontSize: "1.25rem",
+                        fontWeight: 800,
+                        margin: 0,
+                      }}
+                    >
+                      Candidate Email Preview
+                    </h2>
+                  </div>
+                  <div
+                    style={{
+                      padding: "1.5rem",
+                      border: "1.5px dashed #C9F4D4",
+                      borderRadius: "1rem",
+                      color: "#2D7A52",
+                      lineHeight: 1.6,
+                      backgroundColor: "#ffffff",
+                    }}
+                  >
+                    You have been invited to take the{" "}
+                    <strong>
+                      {jobDesignation
+                        ? `${jobDesignation} Assessment`
+                        : "Full Stack Developer Assessment"}
+                    </strong>
+                    .<br />
+                    Available from:{" "}
+                    <strong>
+                      {startTime
+                        ? new Date(startTime).toLocaleString("en-IN", {
+                            dateStyle: "medium",
+                            timeStyle: "short",
+                          }) + " IST"
+                        : "Feb 17, 2026, 9:00 AM IST"}
+                    </strong>
+                    <br />
+                    Duration: <strong>{duration} minutes</strong>
+                    <br />
+                    <br />
+                    <div
+                      style={{
+                        padding: "0.75rem 1.5rem",
+                        backgroundColor: "#C9F4D4",
+                        borderRadius: "0.5rem",
+                        display: "inline-block",
+                        fontWeight: 700,
+                        color: "#1E5A3B",
+                      }}
+                    >
+                      Start Assessment
+                    </div>
+                  </div>
+                </div>
+
+                <div style={{ display: "flex", gap: "1rem" }}>
                   <button
-                    type="button"
                     onClick={() => setCurrentStation(4)}
-                    className="btn-secondary"
-                    style={{ flex: 1 }}
+                    style={{
+                      padding: "1.1rem 2.5rem",
+                      border: "1.5px solid #C9F4D4",
+                      borderRadius: "1rem",
+                      backgroundColor: "#ffffff",
+                      color: "#1E5A3B",
+                      fontWeight: 800,
+                      cursor: "pointer",
+                    }}
                   >
                     Back
                   </button>
                   <button
-                    type="button"
-                    onClick={async () => {
-                      if (!assessmentUrl) {
-                        setError("Please generate the assessment URL first");
-                        return;
-                      }
-                      // Only require candidates in private mode
-                      if (accessMode === "private" && candidates.length === 0) {
-                        setError(
-                          "Please add at least one candidate for private access mode",
-                        );
-                        return;
-                      }
-                      setError(null);
-                      setLoading(true);
-                      try {
-                        if (assessmentId) {
-                          // Normalize datetime strings to ISO format with seconds and timezone
-                          // Same normalization as in handleGenerateUrl
-                          const normalizeDateTime = (dt: string): string => {
-                            if (!dt) return dt;
-
-                            // If format is YYYY-MM-DDTHH:MM (missing seconds), add :00
-                            if (dt.match(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/)) {
-                              // Parse as IST (UTC+5:30) and convert to UTC ISO string
-                              // datetime-local input is in local timezone, but we treat it as IST
-                              // Create a date object assuming IST timezone
-                              const dtWithSeconds = dt + ":00";
-                              // Create date assuming IST (UTC+5:30)
-                              const istDate = new Date(
-                                dtWithSeconds + "+05:30",
-                              );
-
-                              if (!isNaN(istDate.getTime())) {
-                                // Convert to ISO string (UTC)
-                                return istDate.toISOString();
-                              } else {
-                                // Fallback: just add seconds and Z
-                                return dt + ":00Z";
-                              }
-                            }
-
-                            // If already has seconds but no timezone, add Z
-                            if (
-                              dt.match(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/)
-                            ) {
-                              return dt + "Z";
-                            }
-
-                            return dt;
-                          };
-
-                          // Prepare schedule data with normalized times
-                          const scheduleData: any = {
-                            examMode,
-                            duration: parseInt(duration || "0"),
-                          };
-
-                          // Add startTime if provided (normalized to UTC)
-                          if (startTime) {
-                            scheduleData.startTime =
-                              normalizeDateTime(startTime);
-                          }
-
-                          // Only include endTime based on exam mode (normalized to UTC)
-                          if (examMode === "flexible" && endTime) {
-                            scheduleData.endTime = normalizeDateTime(endTime);
-                          }
-
-                          // Include section timers if enabled
-                          if (enablePerSectionTimers) {
-                            scheduleData.enablePerSectionTimers = true;
-                            scheduleData.sectionTimers = sectionTimers;
-                          }
-
-                          // Save final state and mark as complete
-                          await updateScheduleAndCandidatesMutation.mutateAsync(
-                            {
-                              assessmentId,
-                              ...scheduleData,
-                              candidates:
-                                accessMode === "private" ? candidates : [],
-                              assessmentUrl: assessmentUrl,
-                              token: assessmentUrl.split("/").pop() || "",
-                              accessMode: accessMode,
-                              invitationTemplate:
-                                accessMode === "private"
-                                  ? invitationTemplate
-                                  : undefined,
-                              complete: true, // Mark as complete to set status = "active"
-                            },
-                          );
-
-                          // Auto-send invitations if not sent manually (private mode only)
-                          if (
-                            accessMode === "private" &&
-                            candidates.length > 0
-                          ) {
-                            const candidatesNotInvited = candidates.filter(
-                              (c) => !c.invited,
-                            );
-                            if (candidatesNotInvited.length > 0) {
-                              try {
-                                // Use default template if no custom template configured
-                                const templateToUse =
-                                  invitationTemplate.logoUrl ||
-                                  invitationTemplate.companyName ||
-                                  invitationTemplate.message ||
-                                  invitationTemplate.footer
-                                    ? invitationTemplate
-                                    : {
-                                        logoUrl: "",
-                                        companyName: "",
-                                        message:
-                                          "You have been invited to take an assessment. Please click the link below to start.",
-                                        footer: "",
-                                        sentBy: "AI Assessment Platform",
-                                      };
-
-                                await sendInvitationsMutation.mutateAsync({
-                                  assessmentId: assessmentId || "",
-                                  candidates: candidatesNotInvited.map((c) => ({
-                                    email: c.email,
-                                    name: c.name,
-                                  })),
-                                  template: templateToUse,
-                                });
-
-                                // Update local state
-                                const updatedCandidates = candidates.map(
-                                  (c) => {
-                                    if (
-                                      candidatesNotInvited.some(
-                                        (ni) =>
-                                          ni.email.toLowerCase() ===
-                                          c.email.toLowerCase(),
-                                      )
-                                    ) {
-                                      return {
-                                        ...c,
-                                        invited: true,
-                                        inviteSentAt: new Date().toISOString(),
-                                      };
-                                    }
-                                    return c;
-                                  },
-                                );
-                                setCandidates(updatedCandidates);
-                              } catch (inviteErr: any) {
-                                // Log error but don't block finalization
-                                console.error(
-                                  "Error auto-sending invitations:",
-                                  inviteErr,
-                                );
-                                // Continue with finalization even if invitations fail
-                              }
-                            }
-                          }
-                        }
-                        // Force refresh dashboard by navigating with a timestamp query to bypass cache
-                        router.push("/dashboard?refresh=" + Date.now());
-                      } catch (err: any) {
-                        setError("Failed to save. Please try again.");
-                      } finally {
-                        setLoading(false);
-                      }
+                    onClick={() => setCurrentStation(6)}
+                    style={{
+                      flex: 1,
+                      padding: "1.1rem",
+                      backgroundColor: "#C9F4D4",
+                      color: "#1E5A3B",
+                      fontSize: "1.125rem",
+                      fontWeight: 800,
+                      border: "none",
+                      borderRadius: "1rem",
+                      cursor: "pointer",
+                      boxShadow: "0 10px 15px -3px rgba(201, 244, 212, 0.4)",
                     }}
-                    className="btn-primary"
-                    disabled={(() => {
-                      const currentAccessMode: "public" | "private" =
-                        accessMode;
-                      return (
-                        !assessmentUrl ||
-                        (currentAccessMode === "private" &&
-                          candidates.length === 0) ||
-                        loading
-                      );
-                    })()}
-                    style={{ flex: 1 }}
                   >
-                    {loading ? "Completing..." : "Complete Assessment"}
+                    Continue to Add Candidates →
                   </button>
                 </div>
               </div>
             )}
+
+            {/* Station 6: */}
+            {currentStation === 6 && (
+  <div style={{ maxWidth: "800px", margin: "0 auto", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', Roboto, sans-serif" }}>
+    
+    {/* PHASE 1: Add Candidates View */}
+    {!isCrafting && !showFinalReview && (
+      <>
+        <div style={{ color: "#10b981", fontWeight: 700, fontSize: "0.875rem", marginBottom: "1rem" }}>
+          STEP 6 OF 6 <span style={{ marginLeft: "8px" }}> Final Step!</span>
+        </div>
+        <h1 style={{ fontSize: "2.8rem", fontWeight: 800, color: "#1E5A3B", marginBottom: "0.5rem" }}>Add Candidates</h1>
+        <p style={{ color: "#2D7A52", marginBottom: "2.5rem", fontSize: "1.125rem", fontWeight: 500 }}>
+          Choose how you want to add candidates:
+        </p>
+
+        {/* Tab Selection */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1.5rem", marginBottom: "2.5rem" }}>
+          <div
+            onClick={() => setActiveCandidateTab("individual")}
+            style={{
+              padding: "1.5rem",
+              border: `2px solid ${activeCandidateTab === "individual" ? "#10b981" : "#EBFAFD"}`,
+              borderRadius: "1.25rem",
+              backgroundColor: activeCandidateTab === "individual" ? "#EBFAFD" : "#ffffff",
+              cursor: "pointer",
+              transition: "0.3s ease",
+            }}
+          >
+            <div style={{ width: '48px', height: '48px', backgroundColor: '#C9F4D4', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '1rem' }}>
+              <User size={24} color="#1E5A3B" />
+            </div>
+            <div style={{ fontWeight: 800, color: "#1E5A3B", fontSize: "1.15rem" }}>Add Individual</div>
+            {activeCandidateTab === "individual" && <div style={{ fontSize: "0.75rem", color: "#10b981", fontWeight: 800, marginTop: "4px" }}>Selected</div>}
+          </div>
+
+          <div
+            onClick={() => setActiveCandidateTab("bulk")}
+            style={{
+              padding: "1.5rem",
+              border: `2px solid ${activeCandidateTab === "bulk" ? "#10b981" : "#EBFAFD"}`,
+              borderRadius: "1.25rem",
+              backgroundColor: activeCandidateTab === "bulk" ? "#EBFAFD" : "#ffffff",
+              cursor: "pointer",
+              transition: "0.3s ease",
+            }}
+          >
+            <div style={{ width: '48px', height: '48px', backgroundColor: '#C9F4D4', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '1rem' }}>
+              <FileText size={24} color="#1E5A3B" />
+            </div>
+            <div style={{ fontWeight: 800, color: "#1E5A3B", fontSize: "1.15rem" }}>Bulk Upload</div>
+            {activeCandidateTab === "bulk" && <div style={{ fontSize: "0.75rem", color: "#10b981", fontWeight: 800, marginTop: "4px" }}>Selected</div>}
+          </div>
+        </div>
+
+        {/* Input Forms */}
+        {activeCandidateTab === "individual" ? (
+          <div style={{ padding: "2.5rem", backgroundColor: "#ffffff", border: "1.5px solid #C9F4D4", borderRadius: "1.5rem", marginBottom: "2.5rem" }}>
+            <h2 style={{ fontSize: "1.25rem", fontWeight: 800, color: "#1E5A3B", marginBottom: "1.5rem" }}>Candidate Information</h2>
+            <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
+              <div style={{ display: 'grid', gap: '0.5rem' }}>
+                <label style={{ fontSize: '0.9rem', fontWeight: 700, color: '#1E5A3B' }}>Name </label>
+                <input type="text" value={candidateName} onChange={(e) => setCandidateName(e.target.value)} placeholder="John Doe" style={{ width: "100%", padding: "1rem", border: "1.5px solid #C9F4D4", borderRadius: "0.75rem", outline: "none" }} />
+              </div>
+              <div style={{ display: 'grid', gap: '0.5rem' }}>
+                <label style={{ fontSize: '0.9rem', fontWeight: 700, color: '#1E5A3B' }}>Email </label>
+                <input type="email" value={candidateEmail} onChange={(e) => setCandidateEmail(e.target.value)} placeholder="john.doe@example.com" style={{ width: "100%", padding: "1rem", border: "1.5px solid #C9F4D4", borderRadius: "0.75rem", outline: "none" }} />
+              </div>
+              <button onClick={handleAddCandidate} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', padding: "1rem", border: "1.5px dashed #C9F4D4", borderRadius: "0.75rem", backgroundColor: "#ffffff", color: "#10b981", fontWeight: 700, cursor: "pointer" }}>
+                <Plus size={18} /> Add Another Candidate
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div style={{ padding: "4rem 2rem", backgroundColor: "#ffffff", border: "2px dashed #C9F4D4", borderRadius: "1.5rem", marginBottom: "2.5rem", textAlign: "center" }}>
+            <FileType size={48} color="#10b981" style={{ marginBottom: '1.5rem' }} />
+            <h2 style={{ fontSize: "1.5rem", fontWeight: 800, color: "#1E5A3B" }}>Drag & drop CSV or Excel file here</h2>
+            <p style={{ color: "#4A9A6A", fontWeight: 600, margin: '0.5rem 0 1.5rem' }}>or click to browse</p>
+            <button onClick={() => document.getElementById("csv-upload-input")?.click()} style={{ padding: "0.8rem 2.5rem", backgroundColor: "#10b981", color: "#ffffff", border: "none", borderRadius: "0.75rem", fontWeight: 800, cursor: "pointer" }}>Browse Files</button>
+            <input type="file" id="csv-upload-input" accept=".csv, .xlsx, .xls" onChange={handleCsvUpload} style={{ display: "none" }} />
+          </div>
+        )}
+
+        {/* Added Candidates List */}
+        <div style={{ marginBottom: "3rem" }}>
+          <h3 style={{ fontSize: "1.2rem", fontWeight: 800, color: "#1E5A3B", marginBottom: "1rem" }}>Added Candidates ({candidates.length})</h3>
+          {candidates.length === 0 ? (
+            <div 
+              style={{ 
+                padding: "4rem", 
+                border: "1.5px dashed #C9F4D4", 
+                borderRadius: "1.5rem", 
+                backgroundColor: "#ffffff",
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                justifyContent: "center",
+                textAlign: "center" 
+              }}
+            >
+              <Sparkles size={48} color="#6ee7b7" style={{ marginBottom: '1rem' }} />
+              <p style={{ color: "#2D7A52", fontWeight: 700, margin: 0 }}>
+                No candidates added yet
+              </p>
+            </div>
+          ) : (
+            <div style={{ display: "grid", gap: "0.75rem" }}>
+              {candidates.map((c, i) => (
+                <div key={i} style={{ display: "flex", alignItems: "center", gap: "1rem", padding: "1rem", backgroundColor: "#ffffff", border: "1.5px solid #C9F4D4", borderRadius: "1rem" }}>
+                  <div style={{ width: "45px", height: "45px", backgroundColor: "#C9F4D4", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, color: "#1E5A3B" }}>{c.name.charAt(0).toUpperCase()}</div>
+                  <div style={{ flex: 1 }}><div style={{ fontWeight: 800, color: "#1E5A3B" }}>{c.name}</div><div style={{ fontSize: "0.85rem", color: "#4A9A6A" }}>{c.email}</div></div>
+                  <button onClick={() => handleRemoveCandidate(c.email)} style={{ background: "none", border: "none", color: "#ef4444", cursor: "pointer" }}><X size={20} /></button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <button 
+          onClick={handleStartCrafting}
+          style={{ width: "100%", padding: "1.25rem", backgroundColor: "#10b981", color: "#ffffff", fontSize: "1.25rem", fontWeight: 900, border: "none", borderRadius: "1rem", cursor: "pointer", boxShadow: "0 10px 25px rgba(16, 185, 129, 0.3)", display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px' }}
+        >
+          Review Assessment <ChevronRight size={24} />
+        </button>
+      </>
+    )}
+
+    {/* PHASE 2: AI Crafting Overlay */}
+    {isCrafting && (
+      <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "#EBFAFD", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", zIndex: 9999 }}>
+        <div style={{ width: "140px", height: "140px", backgroundColor: "#C9F4D4", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: "3rem", fontSize: "4rem", boxShadow: "0 0 50px rgba(201, 244, 212, 0.6)" }}>✨</div>
+        <h1 style={{ color: "#1E5A3B", fontSize: "2.8rem", fontWeight: 800, marginBottom: "2.5rem" }}>AI is Crafting Your Assessment</h1>
+        <div style={{ width: "400px", height: "12px", backgroundColor: "#ffffff", borderRadius: "6px", marginBottom: "1.5rem", overflow: "hidden", border: "1px solid #C9F4D4" }}>
+          <div style={{ width: `${craftingProgress}%`, height: "100%", backgroundColor: "#10b981", transition: "width 0.3s ease-out" }} />
+        </div>
+        <div style={{ color: "#1E5A3B", fontWeight: 800, fontSize: "2rem", marginBottom: "3rem" }}>{craftingProgress}%</div>
+        
+        <div style={{ display: 'grid', gap: '1rem', textAlign: 'left' }}>
+          {[
+            { label: 'Analyzing job requirements', done: craftingProgress > 25 },
+            { label: 'Generating MCQ questions', done: craftingProgress > 50 },
+            { label: 'Creating coding challenges', done: craftingProgress > 75 },
+            { label: 'Finalizing assessment', done: craftingProgress > 90 }
+          ].map((step, idx) => (
+            <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '1rem', color: step.done ? '#1E5A3B' : '#4A9A6A', opacity: step.done ? 1 : 0.6 }}>
+              <CheckCircle2 size={20} color={step.done ? "#10b981" : "#cbd5e1"} />
+              <span style={{ fontWeight: 600, fontSize: '1.1rem' }}>{step.label}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    )}
+
+    {/* PHASE 3: Final Review Card */}
+    {showFinalReview && (() => {
+    
+    const totalQuestionsCount = topicsV2.reduce(
+        (acc, t) => acc + t.questionRows.reduce(
+            (sum, r) => sum + (typeof r.questionsCount === 'number' ? r.questionsCount : parseInt(String(r.questionsCount)) || 0),
+            0,
+        ),
+        0,
+    );
+
+    const totalSeconds = topicsV2.reduce((acc, topic) => {
+        return (
+            acc +
+            topic.questionRows.reduce((rowAcc, row) => {
+                const count = (typeof row.questionsCount === 'number' ? row.questionsCount : parseInt(String(row.questionsCount)) || 0);
+                
+                // Uses the same helper functions defined in your component for Station 4
+                const baseTime = getBaseTimePerQuestion(row.questionType);
+                const multiplier = getDifficultyMultiplier(row.difficulty);
+                
+                return rowAcc + count * baseTime * multiplier;
+            }, 0)
+        );
+    }, 0);
+
+    const calculatedMinutes = Math.ceil(totalSeconds / 60);
+
+    const displayUrl = assessmentUrl && !assessmentUrl.includes('/null/') 
+        ? assessmentUrl 
+        : "Generating secure link...";
+
+                  function normalizeDateTime(startTime: string): any {
+                    throw new Error("Function not implemented.");
+                  }
+
+    return (
+        <div style={{ paddingBottom: '5rem' }}>
+            <div style={{ textAlign: "center", marginBottom: "3.5rem" }}>
+                <div style={{ width: '80px', height: '80px', backgroundColor: '#ecfdf5', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1.5rem' }}>
+                    <Sparkles size={40} color="#10b981" />
+                </div>
+                <h1 style={{ fontSize: "2.8rem", fontWeight: 800, color: "#1E5A3B", marginBottom: "0.5rem" }}>Almost There!</h1>
+                <p style={{ color: "#2D7A52", fontSize: "1.125rem", fontWeight: 500 }}>Review your assessment before we generate questions</p>
+            </div>
+
+            {/* Dynamic Summary Card */}
+            <div style={{ padding: "3rem", backgroundColor: "#ffffff", border: "1.5px solid #C9F4D4", borderRadius: "2rem", marginBottom: "2rem", boxShadow: "0 20px 40px rgba(0,0,0,0.03)" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "1rem", marginBottom: "2.5rem" }}>
+                    <FileText size={32} color="#10b981" />
+                    <h2 style={{ fontSize: "1.85rem", fontWeight: 800, color: "#1E5A3B", margin: 0 }}>{finalTitle || jobDesignation || "Assessment Summary"}</h2>
+                </div>
+                
+                <div style={{ display: "grid", gap: "1.5rem", color: "#1E5A3B", fontSize: "1.05rem" }}>
+                    <div style={{ display: "flex", alignItems: "center" }}>
+                        <span style={{ width: "150px", fontWeight: 700 }}>Skills:</span>
+                        <div style={{ display: "flex", gap: "0.5rem" }}>
+                            {selectedSkills.map(s => <span key={s} style={{ padding: "0.3rem 0.9rem", border: "1px solid #C9F4D4", borderRadius: "100px", fontSize: "0.85rem", fontWeight: 700 }}>{s}</span>)}
+                        </div>
+                    </div>
+                    <p style={{ margin: 0 }}><strong>Experience:</strong> <span style={{ color: "#2D7A52" }}>{"Junior (0-2 years)"}</span></p>
+                    <div style={{ display: "flex", alignItems: "flex-start" }}>
+                        <span style={{ width: "150px", fontWeight: 700 }}>Topics:</span>
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: "0.6rem", flex: 1 }}>
+                            {topicsV2.map(t => <span key={t.id} style={{ padding: "0.4rem 0.9rem", backgroundColor: "#EBFAFD", border: '1px solid #C9F4D4', borderRadius: "8px", fontSize: "0.85rem", fontWeight: 700, display: 'flex', alignItems: 'center', gap: '6px' }}>📝 {t.label}</span>)}
+                        </div>
+                    </div>
+                    
+                    {/* Synchronized Totals */}
+                    <p style={{ margin: 0 }}><strong>Total Questions:</strong> <span style={{ fontWeight: 800 }}>{totalQuestionsCount}</span></p>
+                    
+                    {/* FIXED: Uses formatTime helper to show identical format as Station 4 */}
+                    <p style={{ margin: 0 }}><strong>Estimated Duration:</strong> <span style={{ color: "#2D7A52", fontWeight: 700 }}>~{formatTime(calculatedMinutes)}</span></p>
+
+                    {/* Link Field */}
+                    <div style={{ marginTop: "1rem", padding: "1.5rem", backgroundColor: "#EBFAFD", borderRadius: "1rem", border: "1.5px solid #C9F4D4" }}>
+                        <label style={{ display: "block", fontSize: "0.875rem", fontWeight: 800, marginBottom: "0.75rem", color: '#1E5A3B' }}>Assessment Link</label>
+                        <div style={{ display: "flex", gap: "0.5rem" }}>
+                            <input readOnly value={displayUrl} style={{ flex: 1, padding: "0.75rem", border: "1.5px solid #C9F4D4", borderRadius: "0.6rem", fontSize: "0.95rem", outline: 'none', backgroundColor: '#ffffff', color: displayUrl.includes('Generating') ? '#94a3b8' : '#1E5A3B' }} />
+                           <button 
+    onClick={handleCopyUrl} 
+    disabled={displayUrl.includes('Generating')} 
+    style={{ 
+        padding: "0.75rem 1.5rem", 
+        // 🟢 Dynamic background color: Green if copied, Dark Green if original
+        backgroundColor: isUrlCopied ? "#10b981" : "#1E5A3B", 
+        color: "#ffffff", 
+        border: "none", 
+        borderRadius: "0.6rem", 
+        cursor: "pointer", 
+        fontWeight: 700, 
+        display: 'flex', 
+        alignItems: 'center', 
+        gap: '8px', 
+        opacity: displayUrl.includes('Generating') ? 0.5 : 1,
+        transition: "all 0.3s ease" // Smooth transition between states
+    }}
+>
+    {isUrlCopied ? (
+        <>
+            <Check size={16} /> Copied
+        </>
+    ) : (
+        <>
+            <Copy size={16} /> Copy
+        </>
+    )}
+</button>
+                        </div>
+                    </div>
+
+                    <button onClick={() => setCurrentStation(4)} style={{ width: 'fit-content', display: 'flex', alignItems: 'center', gap: '8px', marginTop: '1rem', padding: '0.6rem 1.2rem', border: '1.5px solid #C9F4D4', borderRadius: '10px', backgroundColor: '#ffffff', color: '#10b981', fontWeight: 800, cursor: 'pointer' }}>
+                        <Edit3 size={16} /> Edit
+                    </button>
+                </div>
+            </div>
+
+
+{/* --- Candidate Details Section --- */}
+{candidates.length > 0 && (
+    <div style={{ marginBottom: "2rem" }}>
+        <h3 style={{ fontSize: "1.25rem", fontWeight: 800, color: "#1E5A3B", marginBottom: "1rem", display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <User size={24} color="#10b981" /> Added Candidates ({candidates.length})
+        </h3>
+        <div style={{ 
+            display: "grid", 
+            gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", 
+            gap: "1rem",
+            maxHeight: "300px", 
+            overflowY: "auto",
+            padding: "0.5rem"
+        }}>
+            {candidates.map((c, i) => (
+                <div key={i} style={{ 
+                    display: "flex", 
+                    alignItems: "center", 
+                    gap: "1rem", 
+                    padding: "1rem", 
+                    backgroundColor: "#ffffff", 
+                    border: "1.5px solid #C9F4D4", 
+                    borderRadius: "1rem",
+                    boxShadow: "0 4px 6px rgba(0,0,0,0.02)"
+                }}>
+                    <div style={{ 
+                        width: "45px", 
+                        height: "45px", 
+                        backgroundColor: "#C9F4D4", 
+                        borderRadius: "50%", 
+                        display: "flex", 
+                        alignItems: "center", 
+                        justifyContent: "center", 
+                        fontWeight: 800, 
+                        color: "#1E5A3B",
+                        fontSize: "1.1rem"
+                    }}>
+                        {c.name.charAt(0).toUpperCase()}
+                    </div>
+                    <div style={{ flex: 1, overflow: 'hidden' }}>
+                        <div style={{ fontWeight: 800, color: "#1E5A3B", whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            {c.name}
+                        </div>
+                        <div style={{ fontSize: "0.85rem", color: "#4A9A6A", whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            {c.email}
+                        </div>
+                    </div>
+                    {/* Status Badge to match theme */}
+                    <div style={{ 
+                        padding: "4px 8px", 
+                        backgroundColor: "#EBFAFD", 
+                        borderRadius: "6px", 
+                        fontSize: "0.7rem", 
+                        fontWeight: 700, 
+                        color: "#10b981",
+                        border: "1px solid #C9F4D4"
+                    }}>
+                        READY
+                    </div>
+                </div>
+            ))}
+        </div>
+    </div>
+)}
+
+
+
+            {/* AI Warning Box */}
+            <div style={{ padding: "1.5rem", backgroundColor: "#fffbeb", border: "1px solid #fcd34d", borderRadius: "1.25rem", color: "#1E5A3B", marginBottom: "2.5rem" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginBottom: "1rem" }}>
+                    <Sparkles size={20} color="#b45309" />
+                    <strong style={{ fontSize: "1.15rem" }}>AI will generate:</strong>
+                </div>
+                <ul style={{ listStyle: "none", padding: 0, margin: 0, fontWeight: 600, display: "grid", gap: "0.6rem" }}>
+                    <li>• {totalQuestionsCount} questions across {topicsV2.length} topics configured</li>
+                    <li>• Estimated time: ~{formatTime(calculatedMinutes)}</li>
+                    <li>• Questions will be generated based on your configuration</li>
+                </ul>
+            </div>
+
+            {/* Navigation Buttons */}
+            <div style={{ display: "flex", gap: "1.5rem", justifyContent: 'center' }}>
+                <button onClick={() => setShowFinalReview(false)} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: "1rem 2rem", border: "1.5px solid #E2E8F0", borderRadius: "1rem", backgroundColor: "#ffffff", color: "#1E5A3B", fontWeight: 800 }}>
+                    <ArrowLeft size={20} /> Back to Edit
+                </button>
+                <button 
+                    onClick={async () => {
+                        setLoading(true);
+                        if (assessmentId) {
+                            await updateScheduleAndCandidatesMutation.mutateAsync({ 
+                                assessmentId, 
+                                examMode, 
+                                duration: calculatedMinutes, 
+                                startTime: startTime ? normalizeDateTime(startTime) : undefined, 
+                                endTime: endTime ? normalizeDateTime(endTime) : undefined, 
+                                candidates: accessMode === "private" ? candidates : [], 
+                                complete: true, 
+                                accessMode 
+                            });
+                            router.push("/dashboard?refresh=" + Date.now());
+                        }
+                    }}
+                    style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: "1rem 2.5rem", backgroundColor: "#10b981", color: "#ffffff", fontSize: "1.1rem", fontWeight: 900, border: "none", borderRadius: "1rem", cursor: "pointer", boxShadow: "0 10px 20px rgba(16, 185, 129, 0.2)" }}
+                >
+                    Continue to Candidates <ChevronRight size={20} />
+                </button>
+            </div>
+        </div>
+    );
+})()}
+  </div>
+)}
           </div>
         </div>
 
@@ -17827,6 +13109,152 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
             }
           }
         `}</style>
+
+        {/* AI Crafting Overlay */}
+        {isCrafting && (
+          <div
+            style={{
+              position: "fixed",
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              backgroundColor: "#EBFAFD", // Mint 50
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              justifyContent: "center",
+              zIndex: 9999,
+              fontFamily: "-apple-system, sans-serif",
+            }}
+          >
+            {/* Central Brand Badge */}
+            <div
+              style={{
+                width: "120px",
+                height: "120px",
+                backgroundColor: "#C9F4D4", // Mint 100
+                borderRadius: "50%",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                marginBottom: "2rem",
+                fontSize: "3rem",
+              }}
+            >
+              ✨
+            </div>
+
+            <h1
+              style={{
+                color: "#1E5A3B",
+                fontSize: "2.5rem",
+                fontWeight: 800,
+                marginBottom: "2rem",
+              }}
+            >
+              AI is Crafting Your Assessment
+            </h1>
+
+            {/* Animated Progress Bar */}
+            <div
+              style={{
+                width: "300px",
+                height: "8px",
+                backgroundColor: "#ffffff",
+                borderRadius: "4px",
+                marginBottom: "1rem",
+                overflow: "hidden",
+              }}
+            >
+              <div
+                style={{
+                  width: `${craftingProgress}%`,
+                  height: "100%",
+                  backgroundColor: "#10b981",
+                  transition: "width 0.3s ease",
+                }}
+              />
+            </div>
+
+            <div
+              style={{
+                color: "#1E5A3B",
+                fontWeight: 700,
+                fontSize: "1.5rem",
+                marginBottom: "3rem",
+              }}
+            >
+              {craftingProgress}%
+            </div>
+
+            {/* Task Checklist */}
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                gap: "1rem",
+                textAlign: "left",
+                width: "fit-content",
+              }}
+            >
+              {[
+                {
+                  label: "Analyzing job requirements",
+                  done: craftingProgress > 20,
+                },
+                {
+                  label: "Generating MCQ questions",
+                  done: craftingProgress > 45,
+                },
+                {
+                  label: "Creating coding challenges",
+                  done: craftingProgress > 75,
+                },
+                { label: "Finalizing assessment", done: craftingProgress > 90 },
+              ].map((item, idx) => (
+                <div
+                  key={idx}
+                  style={{ display: "flex", alignItems: "center", gap: "1rem" }}
+                >
+                  <div
+                    style={{
+                      width: "24px",
+                      height: "24px",
+                      borderRadius: "50%",
+                      border: `2px solid ${item.done ? "#10b981" : "#fcd34d"}`,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      color: item.done ? "#10b981" : "#fcd34d",
+                    }}
+                  >
+                    {item.done ? "✓" : "○"}
+                  </div>
+                  <span
+                    style={{
+                      color: item.done ? "#1E5A3B" : "#2D7A52", // Text colors from Brand Book
+                      fontWeight: item.done ? 700 : 500,
+                    }}
+                  >
+                    {item.label}
+                  </span>
+                </div>
+              ))}
+            </div>
+
+            <p
+              style={{
+                marginTop: "4rem",
+                color: "#2D7A52",
+                fontSize: "1rem",
+                fontWeight: 500,
+              }}
+            >
+              This usually takes 30-60 seconds...
+            </p>
+          </div>
+        )}
       </div>
     </>
   );
