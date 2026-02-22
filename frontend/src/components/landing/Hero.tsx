@@ -81,7 +81,7 @@ export default function Hero() {
     transparent 70%)`
 
   const handleScheduleDemo = () => {
-    router.push('/auth/signin')
+    router.push('/auth/signup')
   }
 
   const handleLogin = () => {
