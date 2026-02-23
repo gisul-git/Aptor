@@ -45,6 +45,8 @@ PROCTOR_EVENT_TYPES = {
     "USB_STORAGE_DETECTED",
     "USB_KEYBOARD_DETECTED",
     "USB_NETWORK_DETECTED",
+    # Admin flagging events
+    "ADMIN_FLAGGED",
 }
 
 # Human-readable labels for event types
@@ -86,6 +88,8 @@ EVENT_TYPE_LABELS: Dict[str, str] = {
     "USB_STORAGE_DETECTED": "USB storage device detected",
     "USB_KEYBOARD_DETECTED": "USB keyboard detected",
     "USB_NETWORK_DETECTED": "USB network adapter detected",
+    # Admin flagging events
+    "ADMIN_FLAGGED": "Flagged by admin",
 }
 
 
