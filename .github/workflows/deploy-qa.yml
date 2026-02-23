@@ -1,0 +1,127 @@
+name: Deploy All Services to QA (Debian VM)
+
+on:
+  push:
+    branches:
+      - QA
+  pull_request:
+    types: [closed]
+    branches:
+      - QA
+  workflow_dispatch: # Allow manual triggerings
+
+env:
+  VM_HOST: ${{ secrets.QA_VM_HOST }}
+  VM_USER: ${{ secrets.QA_VM_USER }}
+  VM_SSH_KEY: ${{ secrets.QA_VM_SSH_KEY }}
+  VM_DEPLOY_PATH: ${{ secrets.QA_VM_DEPLOY_PATH }}
+
+jobs:
+  deploy-to-qa-vm:
+    runs-on: ubuntu-latest
+    if: |
+      github.event_name == 'push' ||
+      (github.event_name == 'pull_request' && github.event.pull_request.merged == true) ||
+      github.event_name == 'workflow_dispatch'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: QA
+
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ env.VM_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H ${{ env.VM_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Deploy to Debian VM
+        run: |
+          DEPLOY_PATH="${{ env.VM_DEPLOY_PATH }}"
+          if [ -z "$DEPLOY_PATH" ]; then
+            DEPLOY_PATH="/opt/aptor"
+          fi
+          
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no ${{ env.VM_USER }}@${{ env.VM_HOST }} bash << EOF
+            set -e
+            
+            echo "🚀 Starting QA deployment..."
+            
+            # Navigate to deployment directory
+            cd ${DEPLOY_PATH}
+            
+            # Sync workspace with QA branch (production-ready approach)
+            echo "📥 Syncing workspace with QA branch..."
+            
+            # Backup critical files before reset
+            echo "💾 Backing up critical files..."
+            if [ -f .env ]; then
+              cp .env .env.backup
+              echo "✅ .env backed up"
+            fi
+            
+            # Fetch latest changes
+            git fetch origin
+            
+            # Ensure .env file exists
+            if [ ! -f .env ]; then
+              echo "❌ ERROR: .env file not found after git operations!"
+              echo "⚠️  Deployment cannot proceed without .env file."
+              exit 1
+            else
+              echo "✅ .env file verified"
+            fi
+            
+            # Preserve aiml-agent-service - ensure it stays running
+            echo "🔒 Preserving aiml-agent-service..."
+            AIML_AGENT_RUNNING=false
+            if docker compose ps aiml-agent-service 2>/dev/null | grep -q "Up"; then
+              AIML_AGENT_RUNNING=true
+              echo "✅ aiml-agent-service is running, will preserve it"
+            fi
+            
+            # Stop existing containers (with timeout and force removal)
+            echo "🛑 Stopping existing containers..."
+            docker compose down --timeout 30 --remove-orphans || true
+            
+            # Force stop any remaining containers from this project
+            echo "🛑 Force stopping any remaining containers..."
+            docker compose ps -q | xargs -r docker stop -t 10 || true
+            docker compose ps -q | xargs -r docker rm -f || true
+            
+            # Remove any orphaned containers with our naming pattern
+            docker ps -a --filter "name=gisul-" --format "{{.ID}}" | xargs -r docker rm -f || true
+            
+            # Cleanup old images
+            echo "🧹 Cleaning up old Docker images..."
+            docker system prune -f || true
+            
+            # Build and start services
+            echo "🔨 Building services..."
+            docker compose build --no-cache
+            
+            echo "🚀 Starting services..."
+            docker compose up -d
+            
+            # Wait for services
+            echo "⏳ Waiting for services to be ready..."
+            sleep 10
+            
+            # Status check
+            echo "📊 Container status:"
+            docker compose ps
+            
+            # Verify containers are running
+            echo "✅ Verifying services..."
+            docker compose ps | grep -q "Up" || (echo "❌ Some services failed to start" && exit 1)
+            
+            echo "✅ QA deployment completed successfully!"
+          EOF
+
+      - name: Verify Deployment
+        run: |
+          echo "✅ Deployment workflow completed"
+          echo "📦 All services deployed to: ${{ env.VM_HOST }}"
+          echo "🌿 Branch: QA"

@@ -1,0 +1,17 @@
+version: '3.8'
+
+services:
+  aiml-agent:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: aiml-agent-service
+    ports:
+      - "8889:8889"
+    volumes:
+      # Mount uploads directory to persist uploaded files
+      - ./uploads:/app/agent/uploads
+    restart: unless-stopped
+    environment:
+      - PYTHONPATH=/app
+
