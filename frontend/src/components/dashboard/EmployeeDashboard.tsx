@@ -20,7 +20,6 @@ import {
   AlertCircle,
   Building2,
 } from "lucide-react"
-import { PieChart, Pie, Cell, ResponsiveContainer } from "recharts"
 import { useRouter } from "next/router"
 import { useSession } from "next-auth/react"
 import { useUserProfile } from "@/hooks/auth"
@@ -360,23 +359,54 @@ export function EmployeeDashboard() {
 
           <div className="flex items-center justify-center mb-6">
             <div className="relative w-48 h-48">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={skillDistributionData}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={60}
-                    outerRadius={80}
-                    paddingAngle={5}
-                    dataKey="value"
-                  >
-                    {skillDistributionData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={entry.color} />
-                    ))}
-                  </Pie>
-                </PieChart>
-              </ResponsiveContainer>
+              {/* Custom SVG Donut Chart */}
+              <svg className="w-48 h-48" viewBox="0 0 200 200">
+                {(() => {
+                  let currentAngle = -90;
+                  const total = skillDistributionData.reduce((sum: number, d: any) => sum + d.value, 0);
+                  
+                  return skillDistributionData.map((entry: any, index: number) => {
+                    const sliceAngle = (entry.value / total) * 360;
+                    const startAngle = currentAngle;
+                    const endAngle = currentAngle + sliceAngle;
+                    const radius = 80;
+                    const innerRadius = 60;
+
+                    // Convert angle to radians and calculate coordinates
+                    const startRad = (startAngle * Math.PI) / 180;
+                    const endRad = (endAngle * Math.PI) / 180;
+                    const x1 = 100 + radius * Math.cos(startRad);
+                    const y1 = 100 + radius * Math.sin(startRad);
+                    const x2 = 100 + radius * Math.cos(endRad);
+                    const y2 = 100 + radius * Math.sin(endRad);
+                    const x1Inner = 100 + innerRadius * Math.cos(startRad);
+                    const y1Inner = 100 + innerRadius * Math.sin(startRad);
+                    const x2Inner = 100 + innerRadius * Math.cos(endRad);
+                    const y2Inner = 100 + innerRadius * Math.sin(endRad);
+
+                    const largeArc = sliceAngle > 180 ? 1 : 0;
+                    const pathData = `
+                      M ${x1} ${y1}
+                      A ${radius} ${radius} 0 ${largeArc} 1 ${x2} ${y2}
+                      L ${x2Inner} ${y2Inner}
+                      A ${innerRadius} ${innerRadius} 0 ${largeArc} 0 ${x1Inner} ${y1Inner}
+                      Z
+                    `;
+
+                    currentAngle = endAngle;
+
+                    return (
+                      <path
+                        key={`slice-${index}`}
+                        d={pathData}
+                        fill={entry.color}
+                        stroke="#fff"
+                        strokeWidth="2"
+                      />
+                    );
+                  });
+                })()}
+              </svg>
 
               <div className="absolute inset-0 flex flex-col items-center justify-center">
                 <div className="text-3xl font-black text-gray-900">{totalEmployees}</div>

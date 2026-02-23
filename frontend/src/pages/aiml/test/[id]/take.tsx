@@ -10,6 +10,7 @@ import { useAIMLTestForCandidate, useSubmitAIMLAnswer, useSubmitAIMLTest } from 
 import { useUniversalProctoring, CandidateLiveService, resolveUserIdForProctoring, type ProctoringViolation } from '@/universal-proctoring'
 import WebcamPreview from '../../../../components/WebcamPreview'
 import { ViolationToast, pushViolationToast } from '@/components/ViolationToast'
+import { Timer } from 'lucide-react';
 
 // Fullscreen Lock imports
 import { FullscreenLockOverlay } from "@/components/FullscreenLockOverlay";
@@ -1415,44 +1416,43 @@ export default function AIMLTestTakePage() {
           </div>
           
           <div className="flex items-center gap-4">
-            {/* Timer - Show GLOBAL or PER_QUESTION timer */}
-            {test.timer_mode === 'PER_QUESTION' && currentQuestion && examStarted ? (
-              (() => {
-                const questionTime = timer.questionTimeRemaining[currentQuestion.id] || 0
-                return questionTime > 0 ? (
-                  <div className={`px-4 py-2 rounded-lg font-mono text-lg font-semibold ${
-                    questionTime < 60 
-                      ? 'bg-red-100 text-red-700' 
-                      : questionTime < 180 
-                        ? 'bg-amber-100 text-amber-700' 
-                        : 'bg-emerald-100 text-emerald-700'
-                  }`}>
-                    ⏱️ Q{currentQuestionIndex + 1}: {Math.floor(questionTime / 60)}:{String(questionTime % 60).padStart(2, '0')}
-                  </div>
-                ) : null
-              })()
-            ) : (
-              timeRemaining !== null && !isNaN(timeRemaining) && timeRemaining >= 0 && (
-                (() => {
-                  const displayTime = `${Math.floor(timeRemaining / 60)}:${String(timeRemaining % 60).padStart(2, '0')}`
-                  // Use key prop with timeRemaining to force React to re-render when value changes
-                  return (
-                    <div 
-                      key={`timer-${timeRemaining}`}
-                      className={`px-4 py-2 rounded-lg font-mono text-lg font-semibold ${
-                        timeRemaining < 300 
-                          ? 'bg-red-100 text-red-700' 
-                          : timeRemaining < 600 
-                            ? 'bg-amber-100 text-amber-700' 
-                            : 'bg-emerald-100 text-emerald-700'
-                      }`}
-                    >
-                      ⏱️ {displayTime}
-                    </div>
-                  )
-                })()
-              )
-            )}
+            {/* Timer */}
+{test.timer_mode === 'PER_QUESTION' && currentQuestion && examStarted ? (
+  (() => {
+    const questionTime = timer.questionTimeRemaining[currentQuestion.id] || 0;
+    return questionTime > 0 ? (
+      <div className={`px-4 py-1.5 rounded text-sm font-mono font-bold flex items-center gap-2 border ${
+        questionTime < 60 ? 'bg-red-50 text-red-700 border-red-200' : 
+        questionTime < 180 ? 'bg-amber-50 text-amber-700 border-amber-200' : 
+        'bg-[#F0F9F4] text-[#00684A] border-[#E1F2E9]'
+      }`}>
+        <Timer className="w-4 h-4 opacity-70" strokeWidth={2.5} />
+        {Math.floor(questionTime / 60)}:{String(questionTime % 60).padStart(2, '0')}
+      </div>
+    ) : null;
+  })()
+) : (
+  timeRemaining !== null && !isNaN(timeRemaining) && timeRemaining >= 0 && (
+    (() => {
+      const displayTime = `${Math.floor(timeRemaining / 60)}:${String(timeRemaining % 60).padStart(2, '0')}`;
+      return (
+        <div 
+          key={`timer-${timeRemaining}`}
+          className={`px-4 py-1.5 rounded text-sm font-mono font-bold flex items-center gap-2 border ${
+            timeRemaining < 300 ? 'bg-red-50 text-red-700 border-red-200' : 
+            timeRemaining < 600 ? 'bg-amber-50 text-amber-700 border-amber-200' : 
+            'bg-gray-50 text-gray-700 border-gray-200'
+          }`}
+          title="Total Time Remaining"
+        >
+          <Timer className="w-4 h-4 opacity-70" strokeWidth={2.5} />
+          {displayTime}
+        </div>
+      );
+    })()
+  )
+)}
+            
             
             {examStarted && (() => {
               // Check if all questions have been submitted
