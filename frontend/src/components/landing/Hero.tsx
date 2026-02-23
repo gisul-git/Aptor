@@ -81,7 +81,7 @@ export default function Hero() {
     transparent 70%)`
 
   const handleScheduleDemo = () => {
-    router.push('/auth/signup')
+    router.push('/schedule-demo')
   }
 
   const handleLogin = () => {
@@ -196,7 +196,8 @@ export default function Hero() {
           </motion.button>
 
           {/* Secondary CTA: Login */}
-          <motion.button
+          {/* Temporarily disabled - login button commented out */}
+          {/* <motion.button
             type="button"
             onClick={handleLogin}
             whileHover={prefersReducedMotion ? undefined : { scale: 1.05, y: -2 }}
@@ -207,7 +208,7 @@ export default function Hero() {
           >
             Login
             <ArrowRight className="w-5 h-5 ml-2" aria-hidden="true" />
-          </motion.button>
+          </motion.button> */}
         </motion.div>
 
         {/* Trust indicators */}
