@@ -120,7 +120,7 @@ export const generateNotificationEmail = (demoRequest: IDemoRequest): { subject:
     </head>
     <body>
       <div class="header">
-        <h1>🎁 New Demo Request Received</h1>
+        <h1>New Demo Request Received</h1>
       </div>
       
       <div class="content">
@@ -278,7 +278,7 @@ export const generateConfirmationEmail = (demoRequest: IDemoRequest): { subject:
     </head>
     <body>
       <div class="header">
-        <h1>✅ Demo Request Confirmed</h1>
+        <h1>Demo Request Confirmed</h1>
       </div>
       
       <div class="content">
@@ -287,7 +287,7 @@ export const generateConfirmationEmail = (demoRequest: IDemoRequest): { subject:
         <p>Thank you for requesting a demo of Aaptor! We've received your request and our team will reach out to you within 24 hours to schedule your personalized demo.</p>
         
         <div class="highlight">
-          <strong>🎁 What's Next?</strong>
+          <strong>What's Next?</strong>
           <p>During your demo, you'll receive <strong>free platform credits</strong> to:</p>
           <ul>
             <li>Create custom questions for any competency</li>
