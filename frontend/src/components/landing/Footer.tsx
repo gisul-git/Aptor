@@ -17,7 +17,7 @@ export default function Footer() {
         <div className="grid md:grid-cols-4 gap-6 mb-12 pb-12 border-b border-white/10">
           <div className="text-center md:text-left">
             <div className="text-2xl font-bold text-mint-200 mb-2">256-bit</div>
-            <div className="text-sm text-mint-100/80">SSL Encryptionvij</div>
+            <div className="text-sm text-mint-100/80">SSL Encryption</div>
           </div>
           <div className="text-center md:text-left">
             <div className="text-2xl font-bold text-mint-200 mb-2">HIPAA</div>
