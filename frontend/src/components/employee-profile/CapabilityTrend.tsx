@@ -137,6 +137,7 @@ const CapabilityTrend = () => {
           </div>
 
           <div className="h-[200px] w-full">
+            {/* @ts-ignore - recharts ResponsiveContainer type conflict with React 18 */}
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={data} margin={{ top: 10, right: 10, left: -25, bottom: 0 }}>
                 <defs>

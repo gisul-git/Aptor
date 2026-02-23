@@ -27,6 +27,7 @@ export function MiniChartCard() {
         <CardContent className="p-6 h-full flex flex-col">
           <p className="text-sm font-medium text-text-secondary mb-4">30-Day Trend</p>
           <div className="flex-1 min-h-[120px]">
+            {/* @ts-ignore - recharts ResponsiveContainer type conflict with React 18 */}
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={chartData}>
                 <defs>
