@@ -1,8 +1,10 @@
 /**
  * Employee Set Password Page
- * 
+ *
  * Allows employees to set their password using temporary password from welcome email
  * Accessed via: /auth/set-password?aaptorId=AAP0010001
+ *
+ * Redirect and links use NEXTAUTH_URL from .env (frontend domain, e.g. https://aaptor.com).
  */
 
 import { useState, useEffect } from 'react';
@@ -10,6 +12,7 @@ import { useRouter } from 'next/router';
 import axios from 'axios';
 import Link from 'next/link';
 import fastApiClient from '../../lib/fastapi';
+import { getFrontendBaseUrl } from '../../lib/app-url';
 import { Lock, CheckCircle, AlertCircle, Eye, EyeOff } from 'lucide-react';
 
 export default function SetPasswordPage() {
@@ -86,9 +89,14 @@ export default function SetPasswordPage() {
 
       if (response.data?.success) {
         setSuccess(true);
-        // Redirect to login page after 2 seconds
+        const loginPath = `/auth/employee-login?aaptorId=${encodeURIComponent(aaptorId)}`;
+        const loginUrl = `${getFrontendBaseUrl()}${loginPath}`;
         setTimeout(() => {
-          router.push(`/auth/employee-login?aaptorId=${encodeURIComponent(aaptorId)}`);
+          if (typeof window !== 'undefined') {
+            window.location.href = loginUrl;
+          } else {
+            router.push(loginPath);
+          }
         }, 2000);
       }
     } catch (err: any) {
@@ -466,7 +474,7 @@ export default function SetPasswordPage() {
               color: '#6b6678',
             }}>
               Already set your password?{' '}
-              <Link href={`/auth/employee-login${aaptorId ? `?aaptorId=${encodeURIComponent(aaptorId as string)}` : ''}`} style={{
+              <Link href={`${getFrontendBaseUrl()}/auth/employee-login${aaptorId ? `?aaptorId=${encodeURIComponent(aaptorId as string)}` : ''}`} style={{
                 color: '#2D7A52',
                 fontWeight: 600,
                 textDecoration: 'none',
