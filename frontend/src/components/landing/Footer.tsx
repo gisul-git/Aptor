@@ -13,7 +13,7 @@ export default function Footer() {
   return (
     <footer className="bg-text-primary text-white py-16">
       <div className="max-w-7xl mx-auto px-6 lg:px-8">
-        {/* Trust Indicators */}
+        {/* Trust Indicatorss */}
         <div className="grid md:grid-cols-4 gap-6 mb-12 pb-12 border-b border-white/10">
           <div className="text-center md:text-left">
             <div className="text-2xl font-bold text-mint-200 mb-2">256-bit</div>
