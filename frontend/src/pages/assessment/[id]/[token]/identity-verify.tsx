@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/router";
 import { getSession } from "next-auth/react";
+import { Check, X, Clock } from "lucide-react"; // <-- Added Lucide icons here
 import IdentityVerification from "@/proctoring/components/IdentityVerification";
 import { getGateContext } from "@/lib/gateContext";
 import { useAssessmentFull } from "@/hooks/api/useAssessments";
@@ -703,7 +704,7 @@ export default function IdentityVerificationPage() {
                   fontWeight: 600,
                   marginRight: "1rem"
                 }}>
-                  {steps[0].status === "passed" ? "✓" : steps[0].status === "failed" ? "✗" : "1"}
+                  {steps[0].status === "passed" ? <Check size={16} strokeWidth={3} /> : steps[0].status === "failed" ? <X size={16} strokeWidth={3} /> : "1"}
                 </div>
                 <h3 style={{ fontSize: "1.25rem", fontWeight: 600, color: "#00684A" }}>
                   {steps[0].title}
@@ -753,8 +754,8 @@ export default function IdentityVerificationPage() {
               border: `1px solid ${steps[1].status === "passed" ? "#E1F2E9" : steps[1].status === "failed" ? "#fecaca" : "#D1D5DB"}`,
               borderRadius: "0.5rem",
               padding: "1.5rem",
-              backgroundColor: steps[0].status === "passed" ? "#E1F2E9" : 
-                 steps[0].status === "failed" ? "#fef2f2" : "#F0F9F4"
+              backgroundColor: steps[1].status === "passed" ? "#E1F2E9" : 
+                 steps[1].status === "failed" ? "#fef2f2" : "#F0F9F4"
             }}>
               <div style={{ display: "flex", alignItems: "center", marginBottom: "1rem" }}>
                 <div style={{
@@ -770,7 +771,7 @@ export default function IdentityVerificationPage() {
                   fontWeight: 600,
                   marginRight: "1rem"
                 }}>
-                  {steps[1].status === "passed" ? "✓" : steps[1].status === "failed" ? "✗" : "2"}
+                  {steps[1].status === "passed" ? <Check size={16} strokeWidth={3} /> : steps[1].status === "failed" ? <X size={16} strokeWidth={3} /> : "2"}
                 </div>
                 <h3 style={{ fontSize: "1.25rem", fontWeight: 600, color: "#00684A" }}>
                   {steps[1].title}
@@ -860,8 +861,8 @@ export default function IdentityVerificationPage() {
               border: `1px solid ${steps[2].status === "passed" ? "#E1F2E9" : steps[2].status === "failed" ? "#fecaca" : "#D1D5DB"}`,
               borderRadius: "0.5rem",
               padding: "1.5rem",
-              backgroundColor: steps[0].status === "passed" ? "#E1F2E9" : 
-                 steps[0].status === "failed" ? "#fef2f2" : "#F0F9F4"
+              backgroundColor: steps[2].status === "passed" ? "#E1F2E9" : 
+                 steps[2].status === "failed" ? "#fef2f2" : "#F0F9F4"
             }}>
               <div style={{ display: "flex", alignItems: "center", marginBottom: "1rem" }}>
                 <div style={{
@@ -877,7 +878,7 @@ export default function IdentityVerificationPage() {
                   fontWeight: 600,
                   marginRight: "1rem"
                 }}>
-                  {steps[2].status === "passed" ? "✓" : steps[2].status === "failed" ? "✗" : "3"}
+                  {steps[2].status === "passed" ? <Check size={16} strokeWidth={3} /> : steps[2].status === "failed" ? <X size={16} strokeWidth={3} /> : "3"}
                 </div>
                 <h3 style={{ fontSize: "1.25rem", fontWeight: 600, color: "#00684A" }}>
                   {steps[2].title}
@@ -1034,19 +1035,7 @@ export default function IdentityVerificationPage() {
                   margin: "0 auto 1.5rem",
                 }}
               >
-                <svg
-                  style={{ width: "2rem", height: "2rem", color: "#f59e0b" }}
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
-                  />
-                </svg>
+                <Clock style={{ width: "2rem", height: "2rem", color: "#f59e0b" }} strokeWidth={2} />
               </div>
               
               <h2

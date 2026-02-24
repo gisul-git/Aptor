@@ -53,7 +53,11 @@ const moreTabs: NavigationTab[] = [
   { id: "settings", label: "Settings", href: "/dashboard/settings" },
 ]
 
-export function FloatingTabs() {
+interface FloatingTabsProps {
+  alwaysVisible?: boolean
+}
+
+export function FloatingTabs({ alwaysVisible = false }: FloatingTabsProps) {
   const router = useRouter()
   const pathname = router.pathname
   const isScrolled = useScrollTrigger(200)
@@ -69,11 +73,13 @@ export function FloatingTabs() {
     return pathname.startsWith(href)
   }
 
+  const shouldShow = alwaysVisible || isScrolled
+
   return (
     <AnimatePresence>
-      {isScrolled && (
+      {shouldShow && (
         <motion.div
-          initial={{ opacity: 0, y: -20 }}
+          initial={alwaysVisible ? { opacity: 1, y: 0 } : { opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: -20 }}
           transition={{ type: "spring", stiffness: 300, damping: 30 }}

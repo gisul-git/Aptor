@@ -19,7 +19,7 @@ import {
   Repeat,
 } from 'lucide-react';
 
-export default function ApterJourney() {
+export default function AaptorJourney() {
   const [activeStep, setActiveStep] = useState(0);
 
   const steps = [
@@ -147,7 +147,7 @@ export default function ApterJourney() {
   const currentStep = steps[activeStep];
 
   return (
-    <section className="relative py-20 md:py-32 px-4 md:px-8 bg-gradient-to-b from-white via-[#F8FDF9] to-[#E8F9F0] overflow-hidden">
+    <section className="relative py-16 sm:py-20 md:py-32 px-4 sm:px-6 md:px-8 lg:px-12 bg-gradient-to-b from-white via-[#F8FDF9] to-[#E8F9F0] overflow-hidden">
       <div className="absolute inset-0 -z-10">
         <div className="absolute top-1/4 left-1/4 w-[420px] h-[420px] bg-[#C9F4D4]/25 rounded-full blur-3xl" />
         <div className="absolute bottom-1/4 right-1/4 w-[420px] h-[420px] bg-[#9DE8B0]/20 rounded-full blur-3xl" />
@@ -162,7 +162,7 @@ export default function ApterJourney() {
           transition={{ duration: 0.6 }}
         >
           <h2 className="text-3xl md:text-4xl lg:text-5xl font-bold text-[#2D5F4A] mb-4">
-            How APTER Transforms Your Workforce
+            How AAPTOR Transforms Your Workforce
           </h2>
           <p className="text-base md:text-lg text-[#5A8B70] max-w-3xl mx-auto">
             From assessment to continuous growth - a complete capability building lifecycle

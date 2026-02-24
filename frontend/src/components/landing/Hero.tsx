@@ -81,7 +81,7 @@ export default function Hero() {
     transparent 70%)`
 
   const handleScheduleDemo = () => {
-    router.push('/auth/signin')
+    router.push('/schedule-demo')
   }
 
   const handleLogin = () => {
@@ -90,7 +90,7 @@ export default function Hero() {
 
   return (
     <motion.section
-      className="relative min-h-[calc(100vh-80px)] mt-20 flex flex-col items-center justify-center px-6 md:px-12 lg:px-16 pt-20 pb-0 md:pt-32 md:pb-10 overflow-hidden"
+      className="relative min-h-[calc(100vh-80px)] mt-20 flex flex-col items-center justify-center px-4 sm:px-6 md:px-12 lg:px-16 pt-16 sm:pt-20 md:pt-32 pb-8 sm:pb-0 md:pb-10 overflow-hidden"
       variants={heroVariants}
       initial="hidden"
       animate="visible"
@@ -196,7 +196,8 @@ export default function Hero() {
           </motion.button>
 
           {/* Secondary CTA: Login */}
-          <motion.button
+          {/* Temporarily disabled - login button commented out */}
+          {/* <motion.button
             type="button"
             onClick={handleLogin}
             whileHover={prefersReducedMotion ? undefined : { scale: 1.05, y: -2 }}
@@ -207,7 +208,7 @@ export default function Hero() {
           >
             Login
             <ArrowRight className="w-5 h-5 ml-2" aria-hidden="true" />
-          </motion.button>
+          </motion.button> */}
         </motion.div>
 
         {/* Trust indicators */}

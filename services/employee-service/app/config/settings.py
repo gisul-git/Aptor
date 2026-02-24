@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     jwt_secret: str = "change-me"
     jwt_algorithm: str = "HS256"
     cors_origins: str = "http://localhost:3000,https://gisul-ai-assessment.vercel.app"
+    # Frontend base URL for emails (set-password link). Set NEXT_PUBLIC_APP_URL in production to your deployed domain.
     next_public_app_url: str = "http://localhost:3000"
     
     # Email settings
