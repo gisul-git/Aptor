@@ -11,7 +11,7 @@ import {
   Station4AddCandidates,
   Station5Schedule,
 } from "../../components/custom-mcq";
-
+import { ArrowLeft, ArrowRight, ClipboardList, UploadCloud, Edit3, Users, Calendar } from "lucide-react";
 interface CreateCustomMCQPageProps {
   session: any;
 }
@@ -46,13 +46,12 @@ export default function CreateCustomMCQPage({ session }: CreateCustomMCQPageProp
   }, [assessmentId]);
 
   const stations = [
-    { id: 1, name: "Assessment Information", icon: "📋" },
-    { id: 2, name: "Upload CSV", icon: "📤" },
-    { id: 3, name: "Review & Edit", icon: "✏️" },
-    { id: 4, name: "Add Candidates", icon: "👥" },
-    { id: 5, name: "Schedule", icon: "📅" },
-  ];
-
+  { id: 1, name: "Assessment Information", icon: ClipboardList },
+  { id: 2, name: "Upload CSV", icon: UploadCloud },
+  { id: 3, name: "Review & Edit", icon: Edit3 },
+  { id: 4, name: "Add Candidates", icon: Users },
+  { id: 5, name: "Schedule", icon: Calendar },
+];
   // Track if we've already determined edit vs create mode (to prevent re-running when URL updates after draft creation)
   const hasDeterminedEditModeRef = useRef(false);
   
@@ -509,104 +508,78 @@ export default function CreateCustomMCQPage({ session }: CreateCustomMCQPageProp
         </div>
 
         {/* Metro Station Navigation */}
+        <div className="relative flex justify-between items-center mb-8 md:mb-12 p-4 md:p-8 bg-white/50 backdrop-blur-md rounded-2xl md:rounded-[2rem] border-2 border-[#C9F4D4]/30 shadow-[0_8px_30px_rgb(0,0,0,0.04)] overflow-hidden">
+  
+  {/* Modernized Connection Line Background */}
+  <div className="absolute top-[38%] md:top-[44%] left-[10%] right-[10%] h-[2px] md:h-[3px] bg-slate-100 z-0" />
+  
+  {/* Dynamic Active Progress Line */}
+  <div 
+    className="absolute top-[38%] md:top-[44%] left-[10%] h-[2px] md:h-[3px] bg-[#0A5F38] transition-all duration-500 ease-in-out z-0"
+    style={{ width: `${(currentStation - 1) * (100 / (stations.length - 1)) - 5}%` }} 
+  />
+
+  {stations.map((station, idx) => {
+    const isActive = currentStation === station.id;
+    const isCompleted = currentStation > station.id;
+    const isAccessible = currentStation >= station.id || isCompleted;
+    const Icon = station.icon;
+
+    return (
+      <div
+        key={station.id}
+        className={`relative z-10 flex flex-col items-center flex-1 transition-all duration-300 ${
+          isAccessible ? "cursor-pointer group" : "cursor-not-allowed opacity-60"
+        }`}
+        onClick={() => isAccessible && setCurrentStation(station.id)}
+      >
+        {/* Icon Circle - Scaled for mobile */}
         <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            marginBottom: "3rem",
-            padding: "1.5rem",
-            backgroundColor: "#E8FAF0",
-            borderRadius: "0.75rem",
-            border: "1px solid #A8E8BC",
-            position: "relative",
-          }}
+          className={`
+            w-10 h-10 md:w-14 md:h-14 rounded-xl md:rounded-2xl flex items-center justify-center mb-2 md:mb-3 border-2 md:border-4 transition-all duration-500
+            ${isActive 
+              ? "bg-[#0A5F38] border-[#C9F4D4] text-white shadow-lg shadow-[#0A5F38]/20 scale-110" 
+              : isCompleted 
+                ? "bg-[#C9F4D4] border-white text-[#0A5F38]" 
+                : "bg-white border-slate-100 text-slate-400"
+            }
+          `}
         >
-          {/* Connection Line */}
-          <div
-            style={{
-              position: "absolute",
-              top: "50%",
-              left: "5%",
-              right: "5%",
-              height: "3px",
-              backgroundColor: currentStation > 1 ? "#2D7A52" : "#A8E8BC",
-              zIndex: 0,
-            }}
-          />
-
-          {stations.map((station, idx) => {
-            const isActive = currentStation === station.id;
-            const isCompleted = currentStation > station.id;
-            const isAccessible = currentStation >= station.id || isCompleted;
-
-            return (
-              <div
-                key={station.id}
-                style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  alignItems: "center",
-                  position: "relative",
-                  zIndex: 1,
-                  cursor: isAccessible ? "pointer" : "not-allowed",
-                  flex: 1,
-                }}
-                onClick={() => {
-                  if (isAccessible) {
-                    setCurrentStation(station.id);
-                  }
-                }}
-              >
-                <div
-                  style={{
-                    width: "60px",
-                    height: "60px",
-                    borderRadius: "50%",
-                    backgroundColor: isActive
-                      ? "#2D7A52"
-                      : isCompleted
-                      ? "#10b981"
-                      : "#A8E8BC",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    fontSize: "1.5rem",
-                    color: "#ffffff",
-                    marginBottom: "0.5rem",
-                    border: "3px solid #ffffff",
-                    boxShadow: isActive ? "0 0 0 3px #C9F4D4" : "none",
-                    transition: "all 0.3s ease",
-                  }}
-                >
-                  {isCompleted && !isActive ? "✓" : station.icon}
-                </div>
-                <div
-                  style={{
-                    fontSize: "0.875rem",
-                    fontWeight: isActive ? 600 : 400,
-                    color: isActive ? "#1E5A3B" : isCompleted ? "#2D7A52" : "#4A9A6A",
-                    textAlign: "center",
-                  }}
-                >
-                  {station.name}
-                </div>
-                {isActive && (
-                  <div
-                    style={{
-                      fontSize: "0.75rem",
-                      color: "#2D7A52",
-                      marginTop: "0.25rem",
-                      fontWeight: 500,
-                    }}
-                  >
-                    Current
-                  </div>
-                )}
-              </div>
-            );
-          })}
+          {isCompleted && !isActive ? (
+            <div className="animate-in zoom-in duration-300">
+              <svg className="w-4 h-4 md:w-6 md:h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={4}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+              </svg>
+            </div>
+          ) : (
+            <Icon className="w-5 h-5 md:w-6 md:h-6" strokeWidth={isActive ? 2.5 : 2} />
+          )}
         </div>
+
+        {/* Label - Hidden on very small screens, shown as abbreviated or small text on others */}
+        <div className="flex flex-col items-center max-w-[60px] md:max-w-none">
+          <span className={`
+            text-[9px] md:text-[11px] font-black uppercase tracking-tighter md:tracking-widest transition-colors duration-300 text-center
+            ${isActive ? "text-[#0A5F38]" : isCompleted ? "text-slate-600" : "text-slate-400"}
+            ${!isActive ? "hidden sm:block" : "block"} 
+          `}>
+            {station.name}
+          </span>
+          
+          {/* Active Indicator Pulse */}
+          {isActive && (
+            <div className="flex items-center gap-1 mt-0.5 md:mt-1 animate-pulse">
+              <div className="w-1 h-1 md:w-1.5 md:h-1.5 rounded-full bg-[#0A5F38]" />
+              <span className="text-[7px] md:text-[9px] font-bold text-[#0A5F38] uppercase tracking-tighter">
+                Active
+              </span>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  })}
+</div>
 
         {/* Error Message */}
         {error && (
@@ -685,78 +658,11 @@ export default function CreateCustomMCQPage({ session }: CreateCustomMCQPageProp
               cursor: currentStation === 1 ? "not-allowed" : "pointer",
             }}
           >
-            ← Previous
+            <ArrowLeft size={20}/> Previous
           </button>
 
           {/* Back to Dashboard Button - Always Visible */}
-          {currentStation !== 5 && (
-          <button
-            type="button"
-            onClick={async () => {
-              // Don't save draft if assessment was just activated
-              if (isActivatedRef.current) {
-                router.push("/dashboard?refresh=true");
-                return;
-              }
-
-              // Check if assessment is already active - don't overwrite
-              if (assessmentId) {
-                try {
-                  const current = await customMCQApi.getAssessment(assessmentId);
-                  if (current && current.status === 'active') {
-                    // Assessment is already active, don't save as draft
-                    router.push("/dashboard?refresh=true");
-                    return;
-                  }
-                } catch (e) {
-                  // If we can't check, proceed with save
-                }
-              }
-
-              // Save draft before navigating away
-              if (saveTimeoutRef.current) {
-                clearTimeout(saveTimeoutRef.current);
-              }
-              try {
-                const draftData: any = {
-                  title: assessmentData.title || "",
-                  description: assessmentData.description || "",
-                  questions: assessmentData.questions || [],
-                  candidates: assessmentData.candidates || [],
-                  accessMode: assessmentData.accessMode || "private",
-                  examMode: assessmentData.examMode || "strict",
-                  startTime: assessmentData.startTime,
-                  endTime: assessmentData.endTime,
-                  duration: assessmentData.duration,
-                  passPercentage: assessmentData.passPercentage || 50,
-                  status: "draft",
-                  currentStation: currentStation,
-                  proctoringSettings: (assessmentData as any).proctoringSettings,
-                  schedule: (assessmentData as any).schedule, // Include schedule with candidateRequirements
-                };
-
-                if (assessmentId) {
-                  await customMCQApi.updateAssessment(assessmentId, draftData);
-                } else if (assessmentData.title || (assessmentData.questions && assessmentData.questions.length > 0)) {
-                  const result = await customMCQApi.createAssessment(draftData);
-                  setAssessmentId(result.assessmentId);
-                }
-              } catch (err) {
-                console.error("Error saving draft before navigation:", err);
-              }
-              router.push("/dashboard?refresh=true");
-            }}
-            className="btn-secondary"
-            style={{
-              padding: "0.75rem 1.5rem",
-              backgroundColor: "#ffffff",
-              color: "#2D7A52",
-              border: "1px solid #A8E8BC",
-            }}
-          >
-            ← Back to Dashboard
-          </button>
-          )}
+          
 
           {currentStation < 5 ? (
             <button
@@ -770,7 +676,7 @@ export default function CreateCustomMCQPage({ session }: CreateCustomMCQPageProp
                 cursor: canProceedToNext() ? "pointer" : "not-allowed",
               }}
             >
-              Next →
+              Next <ArrowRight size={20}/>
             </button>
           ) : (
             <div />

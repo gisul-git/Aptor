@@ -112,6 +112,7 @@ export function HeroMetricCard({ value, label, trend, icon: Icon = FileText }: H
 
           {/* Sparkline */}
           <div className="flex-1 min-h-[100px] mb-4">
+            {/* @ts-ignore - recharts ResponsiveContainer type conflict with React 18 */}
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={sparklineData}>
                 <defs>

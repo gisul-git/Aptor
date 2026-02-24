@@ -8,41 +8,64 @@
 @tailwind utilities;
 
 :root {
-  /* Mint Cream Theme - Primary Colors */
-  --mint-50: #E8FAF0; /* Backgrounds, subtle sections */
-  --mint-100: #C9F4D4; /* PRIMARY BRAND COLOR - Cards, buttons, main elements */
-  --mint-200: #B0EFC0; /* Hover states, interactions */
-  --mint-300: #9DE8B0; /* Active/pressed states */
-  --mint-400: #A8E8BC; /* Borders, dividers */
-  
-  /* Mint Cream Theme - Text Colors */
-  --text-primary: #1E5A3B; /* Body text, headings - WCAG AAA compliant (8.2:1) */
-  --text-secondary: #2D7A52; /* Subheadings, labels - WCAG AA compliant (5.8:1) */
-  --text-subtle: #4A9A6A; /* Captions, metadata - Large text only (3.5:1) */
-  
-  /* Mint Cream Theme - Complementary Colors */
-  --blush-pink: #FFE5EC; /* Romantic, gentle accent */
-  --butter-yellow: #FFFEC0; /* Warm, cheerful highlights */
-  --powder-blue: #D4E4F7; /* Cool, professional balance */
-  --warm-beige: #F5F1E8; /* Natural, earthy grounding */
-  
-  /* Background & Surface Colors */
-  --background: #ffffff; /* Main background - white for clean look */
+  /* Primary & secondary (brand) */
+  --primary: #0A5F38;        /* Deep forest green */
+  --secondary: #047857;      /* Emerald green */
+  --accent: #2DD4BF;
+  --brand-primary: #0A5F38;
+  --brand-secondary: #88B89D; /* Sage green */
+  --brand-accent: #0D9488;
+
+  /* Text */
+  --text-primary: #065F46;
+  --text-secondary: #047857;
+  --text-subtle: #059669;
+
+  /* Mint (legacy) */
+  --mint-50: #F5FFFA;
+  --mint-100: #C9F4D4;
+  --mint-200: #80EFC0;
+  --mint-300: #9DE8B0;
+  --mint-400: #6AE8BC;
+  --mint-500: #10B981;
+  --mint-600: #059669;
+
+  /* Forest (green scale) */
+  --forest-50: #ECFDF5;
+  --forest-100: #D1FAE5;
+  --forest-200: #A7F3D0;
+  --forest-300: #6EE7B7;
+  --forest-400: #34D399;
+  --forest-500: #10B981;
+  --forest-600: #059669;
+  --forest-700: #047857;
+  --forest-800: #065F46;
+  --forest-900: #064E3B;
+
+  /* Complementary */
+  --blush-pink: #FFE5EC;
+  --butter-yellow: #FFFEC0;
+  --powder-blue: #D4E4F7;
+  --warm-beige: #F5F1E8;
+
+  /* Background & surface */
+  --background: #ffffff;
   --surface: #ffffff;
   --surface-elevated: #ffffff;
-  --background-subtle: var(--mint-50); /* Subtle sections */
-  
-  /* Border Colors */
+  --background-subtle: var(--mint-50);
+
+  /* Border */
   --border: var(--mint-400);
   --border-light: var(--mint-50);
-  
-  /* Status Colors (preserved for alerts, notifications) */
+
+  /* Semantic */
   --success: #10b981;
   --error: #ef4444;
   --warning: #f59e0b;
   --info: #3b82f6;
-  
-  /* Legacy support (deprecated - use Mint Cream colors instead) */
+  --destructive: #EF4444;
+
+  /* Legacy aliases */
   --brand-purple: var(--mint-100);
   --brand-purple-dark: var(--mint-200);
   --brand-purple-light: var(--mint-300);
@@ -51,6 +74,10 @@
 
 * {
   box-sizing: border-box;
+}
+
+.pt-24 {
+  padding-top: 8rem;
 }
 
 html,
@@ -297,6 +324,14 @@ button {
   max-width: 90%;
   width: 90%;
   margin: 0 auto;
+  padding: 2rem 1.5rem;
+}
+
+/* Assessments page: 30px vertical margin for alignment */
+.assessments-container {
+  max-width: 90%;
+  width: 90%;
+  margin: 30px auto;
   padding: 2rem 1.5rem;
 }
 

@@ -124,6 +124,7 @@ export class AdminLiveService {
 
   // Guards
   private isStarting: boolean = false;
+  private ownsConnection: boolean = false; // Track if this instance owns the connection
 
   // State
   private state: AdminLiveState = { ...INITIAL_ADMIN_LIVE_STATE };
@@ -181,6 +182,7 @@ export class AdminLiveService {
    * Used when reusing a connection to restore candidate state.
    * 
    * Production-level: Handles multiple video tracks per user (webcam + screen).
+   * Also subscribes to remote users that aren't subscribed yet.
    */
   private async rebuildCandidateStreamsFromRemoteUsers(): Promise<void> {
     if (!this.client) {
@@ -194,6 +196,27 @@ export class AdminLiveService {
     this.candidateStreams.clear();
     this.uidToSessionId.clear();
     this.sessionIdToUid.clear();
+
+    // First, subscribe to any remote users that aren't subscribed yet
+    const usersToSubscribe: UID[] = [];
+    for (const remoteUser of this.client.remoteUsers) {
+      // Check if user has video but no videoTrack (not subscribed)
+      if (remoteUser.hasVideo && !remoteUser.videoTrack) {
+        usersToSubscribe.push(remoteUser.uid);
+      }
+    }
+
+    // Subscribe to users that need subscription
+    for (const uid of usersToSubscribe) {
+      try {
+        this.log(`Subscribing to remote user ${uid} during rebuild...`);
+        await this.client.subscribe(uid, "video");
+        this.log(`✅ Subscribed to remote user ${uid}`);
+      } catch (error) {
+        this.log(`⚠️ Failed to subscribe to ${uid} during rebuild:`, error);
+        // Continue with other users even if one fails
+      }
+    }
 
     // Group remoteUsers by UID (in case same user has multiple tracks)
     const usersByUid = new Map<UID, typeof this.client.remoteUsers>();
@@ -225,6 +248,10 @@ export class AdminLiveService {
       for (const remoteUser of remoteUsers) {
         const videoTrack = remoteUser.videoTrack as IRemoteVideoTrack | undefined;
         if (!videoTrack) {
+          // If user has video but no track, try subscribing (might have failed above)
+          if (remoteUser.hasVideo) {
+            this.log(`⚠️ User ${uid} has video but no track, subscription may have failed`);
+          }
           continue;
         }
 
@@ -444,6 +471,7 @@ export class AdminLiveService {
         
         this.client = existingConnection.client;
         this.setupClientCallbacks();
+        this.ownsConnection = false; // We're reusing, not owning
         
         // 🔥 PRODUCTION FIX: Rebuild candidateStreams from existing client's remoteUsers
         await this.rebuildCandidateStreamsFromRemoteUsers();
@@ -473,6 +501,7 @@ export class AdminLiveService {
           this.log("✅ Pending connection completed, reusing...");
           this.client = nowExisting.client;
           this.setupClientCallbacks();
+          this.ownsConnection = false; // We're reusing, not owning
           
           // 🔥 PRODUCTION FIX: Rebuild candidateStreams from existing client's remoteUsers
           await this.rebuildCandidateStreamsFromRemoteUsers();
@@ -517,6 +546,7 @@ export class AdminLiveService {
             timestamp: Date.now(),
             isActive: true,
           });
+          this.ownsConnection = true; // We own this connection
           this.log("✅ Stored as global connection");
 
           return true;
@@ -549,19 +579,21 @@ export class AdminLiveService {
 
   /**
    * Stop monitoring.
+   * Only disconnects if this instance owns the connection.
    */
   async stopMonitoring(): Promise<void> {
-    this.log("✅ Stopping admin monitoring...");
+    this.log(`✅ Stopping admin monitoring... (ownsConnection: ${this.ownsConnection})`);
 
-    // Cleanup remote tracks
+    // Cleanup remote tracks (always do this, even if reusing)
     this.remoteTracks.forEach((tracks) => {
       tracks.webcam?.stop();
       tracks.screen?.stop();
     });
     this.remoteTracks.clear();
 
-    // Leave Agora channel and cleanup client
-    if (this.client) {
+    // Only leave channel if we own the connection
+    // If we're reusing a connection, don't disconnect it (other instances might be using it)
+    if (this.client && this.ownsConnection) {
       try {
         // Remove all event listeners before leaving
         this.client.removeAllListeners();
@@ -578,6 +610,12 @@ export class AdminLiveService {
         this.log("Error leaving channel", error);
       }
       this.client = null;
+      this.ownsConnection = false;
+    } else if (this.client && !this.ownsConnection) {
+      // Just remove our callbacks, don't disconnect shared connection
+      this.client.removeAllListeners();
+      this.client = null;
+      this.log("🔗 Removed callbacks from shared connection (not disconnecting)");
     }
 
     // Clear mappings
@@ -967,50 +1005,33 @@ export class AdminLiveService {
         // Continue without snapshot
       }
 
-      // Map frontend severity to backend severity enum
-      // Backend expects: "info", "warning", "critical"
-      const severityMap: Record<'low' | 'medium' | 'high', 'info' | 'warning' | 'critical'> = {
-        low: 'warning',
-        medium: 'warning',
-        high: 'critical',
-      };
-      const backendSeverity = severityMap[severity];
-
-      // Prepare log payload
-      const logPayload = {
+      // Prepare payload for /api/proctor/record (same endpoint as AI proctoring violations)
+      // This ensures flags appear in analytics page alongside AI violations
+      const payload = {
+        userId: candidateEmail, // Use candidateEmail directly (analytics filters by metadata.candidateEmail too)
         assessmentId: this.config.assessmentId,
-        candidateId: candidateId,
-        candidateEmail: candidateEmail,
-        eventType: 'LIVE_PROCTORING_FLAGGED',
-        severity: backendSeverity,
+        eventType: 'ADMIN_FLAGGED',
         timestamp: new Date().toISOString(),
-        meta: {
+        metadata: {
           reason: reason,
+          severity: severity, // 'low' | 'medium' | 'high'
           candidateName: candidateName,
+          candidateEmail: candidateEmail, // For analytics filtering
           flagType: 'admin_flag',
-          severity: severity, // Keep original severity in metadata
-          ...(snapshotBase64 && {
-            evidence: {
-              type: 'image',
-              format: 'jpeg',
-              data: snapshotBase64,
-            },
-          }),
+          source: 'live-proctor',
         },
-        source: 'live-proctor',
-        snapshotRef: null,
-        recordingRef: null,
-        createdBy: null,
+        snapshotBase64: snapshotBase64 || null,
       };
 
-      // Send to backend
-      const response = await fetch(LIVE_PROCTORING_ENDPOINTS.proctoringLog(), {
+      // Send to /api/proctor/record (same endpoint as AI proctoring violations)
+      // This saves to proctor_events collection, which analytics page reads from
+      const response = await fetch('/api/proctor/record', {
         method: 'POST',
         credentials: 'include',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(logPayload),
+        body: JSON.stringify(payload),
       });
 
       if (!response.ok) {

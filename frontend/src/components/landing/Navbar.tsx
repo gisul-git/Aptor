@@ -60,7 +60,7 @@ export default function Navbar() {
 
   return (
     <header className="fixed top-0 left-0 right-0 z-50">
-      <div className="max-w-[1250px] mx-auto p-3 md:p-5 transition-all duration-300 ease-in-out">
+      <div className="max-w-[1250px] mx-auto px-4 sm:px-6 md:px-8 lg:px-12 py-3 md:py-5 transition-all duration-300 ease-in-out">
         <div
           className={`flex items-center justify-between transition-all duration-300 ease-in-out ${
             scrolled
@@ -117,7 +117,7 @@ export default function Navbar() {
 
             {/* Schedule a Demo CTA */}
             <button
-              onClick={() => router.push('/auth/signin')}
+              onClick={() => router.push('/schedule-demo')}
               className="hidden md:inline-flex items-center rounded-full bg-[#C9F4D4] text-[#1E5A3B] text-sm font-semibold pl-5 pr-1 py-1.5 shadow-[0_10px_30px_rgba(157,232,176,0.35)] border border-[#9DE8B0] hover:bg-[#B0EFC0] transition-colors duration-200"
             >
               <span className="mr-3">Schedule a Demo</span>
@@ -166,7 +166,7 @@ export default function Navbar() {
                 <button
                   onClick={() => {
                     setIsOpen(false)
-                    router.push('/auth/signin')
+                    router.push('/schedule-demo')
                   }}
                   className="block w-full px-4 py-2 rounded-full bg-[#C9F4D4] text-[#1E5A3B] text-sm font-semibold shadow-[0_10px_30px_rgba(157,232,176,0.35)] border border-[#9DE8B0] flex items-center justify-center gap-2 hover:bg-[#B0EFC0] transition-colors"
                 >
