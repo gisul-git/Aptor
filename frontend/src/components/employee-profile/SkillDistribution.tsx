@@ -76,6 +76,7 @@ const SkillDistribution = () => {
 
       {/* Radar Chart */}
       <div className="h-[320px] w-full mb-6 relative -ml-2">
+        {/* @ts-ignore - recharts ResponsiveContainer type conflict with React 18 */}
         <ResponsiveContainer width="100%" height="100%">
           <RadarChart cx="50%" cy="50%" outerRadius="75%" data={RADAR_DATA}>
             <PolarGrid stroke="#E2E8F0" strokeDasharray="3 3" />

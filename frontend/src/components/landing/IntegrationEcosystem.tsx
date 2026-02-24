@@ -115,7 +115,7 @@ export default function IntegrationEcosystem() {
   };
 
   return (
-    <section className="relative py-20 md:py-32 px-4 md:px-8 bg-gradient-to-b from-[#E8F9F0] via-white to-[#F8FDF9] overflow-hidden">
+    <section className="relative py-16 sm:py-20 md:py-32 px-4 sm:px-6 md:px-8 lg:px-12 bg-gradient-to-b from-[#E8F9F0] via-white to-[#F8FDF9] overflow-hidden">
       {/* Background washes */}
       <div className="pointer-events-none absolute inset-0 -z-10">
         <div className="absolute top-10 right-16 h-80 w-80 rounded-full bg-[#C9F4D4]/30 blur-3xl" />

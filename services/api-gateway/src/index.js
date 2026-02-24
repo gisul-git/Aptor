@@ -23,6 +23,7 @@ const SERVICES = {
   users: process.env.USER_SERVICE_URL || 'http://localhost:3006',
   superAdmin: process.env.SUPER_ADMIN_SERVICE_URL || 'http://localhost:3007',
   employee: process.env.EMPLOYEE_SERVICE_URL || 'http://localhost:4005',
+  demo: process.env.DEMO_SERVICE_URL || 'http://localhost:3008',
   aimlAgent: process.env.AIML_AGENT_SERVICE_URL || 'http://aiml-agent-service:8889',
 };
 
@@ -86,7 +87,8 @@ async function verifyToken(req, res, next) {
     '/api/v1/aiml/candidate', 
     '/api/v1/dsa/assessment',
     '/api/v1/assessments/start-session', 
-    '/api/v1/assessment', 
+    '/api/v1/assessment',
+    '/api/v1/demo/schedule', // Demo request form - public 
   ];
 
   let pathToCheck = (req.originalUrl || req.url || req.path || '').split('?')[0];
@@ -695,7 +697,7 @@ app.use(
   })
 );
 
-// Route: DSA Services
+// Route: DSA Service
 app.use(
   '/api/v1/dsa',
   createProxyMiddleware({
@@ -861,6 +863,15 @@ app.use(
   createProxyMiddleware({
     ...proxyOptions,
     target: SERVICES.employee,
+  })
+);
+
+// Route: Demo Service
+app.use(
+  '/api/v1/demo',
+  createProxyMiddleware({
+    ...proxyOptions,
+    target: SERVICES.demo,
   })
 );
 

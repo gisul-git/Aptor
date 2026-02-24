@@ -44,6 +44,7 @@ export function PerformanceDistributionCard() {
         <CardContent className="p-8">
           {/* Chart */}
           <div className="h-[280px] mb-6">
+            {/* @ts-ignore - recharts ResponsiveContainer type conflict with React 18 */}
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={chartData} margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
                 <defs>

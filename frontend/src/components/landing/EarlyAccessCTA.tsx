@@ -158,7 +158,7 @@ export default function EarlyAccessCTA() {
   ];
 
   return (
-    <section className="relative py-20 md:py-32 px-4 md:px-8 bg-gradient-to-br from-[#1E5A3B] via-[#2D7A52] to-[#1E5A3B] overflow-hidden">
+    <section className="relative py-16 sm:py-20 md:py-32 px-4 sm:px-6 md:px-8 lg:px-12 bg-gradient-to-br from-[#1E5A3B] via-[#2D7A52] to-[#1E5A3B] overflow-hidden">
       {/* Animated Background Particles */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         {Array.from({ length: 20 }).map((_, i) => (
