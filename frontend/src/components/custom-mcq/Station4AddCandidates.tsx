@@ -186,7 +186,7 @@ export default function Station4AddCandidates({ assessmentData, updateAssessment
         <section className="bg-white p-8 rounded-[2rem] border-2 border-slate-100 shadow-sm transition-all hover:shadow-md">
           <div className="flex items-center gap-2 mb-6">
             <UserPlus size={20} className="text-[#1E5A3B]" />
-            <h3 className="text-xl font-bold text-gray-800 tracking-tight uppercase text-xs tracking-widest opacity-60">Add Candidate Manually</h3>
+            <h3 className="text-xl font-bold text-gray-800  uppercase  tracking-widest opacity-60">Add Candidate Manually</h3>
           </div>
           <div className="flex flex-col md:flex-row gap-4">
             <div className="relative flex-1 group">
@@ -225,11 +225,11 @@ export default function Station4AddCandidates({ assessmentData, updateAssessment
         <section className="bg-slate-50 p-8 rounded-[2rem] border-2 border-dashed border-slate-200 group transition-all hover:border-[#10b981]">
           <div className="flex items-center gap-2 mb-2">
             <UploadCloud size={20} className="text-[#1E5A3B]" />
-            <h3 className="text-xl font-bold text-gray-800 tracking-tight uppercase text-xs tracking-widest opacity-60">Bulk Upload from CSV</h3>
+            <h3 className="text-xl font-bold text-gray-800 tracking-tight uppercase  opacity-60">Bulk Upload from CSV</h3>
           </div>
           <p className="mb-6 text-slate-500 text-sm font-medium leading-relaxed">
             Upload a CSV file with columns: <strong className="text-slate-800">name, email</strong>
-            <br />
+            <br/>
             <span className="text-xs opacity-70 italic flex items-center gap-1 mt-1">
               <Info size={12} /> Note: If you have an Excel file, please export it as CSV format first (File → Save As → CSV)
             </span>
