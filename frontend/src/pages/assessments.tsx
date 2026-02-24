@@ -419,18 +419,15 @@ export default function AssessmentsPage({ session: serverSession }: AssessmentsP
 
 
   return (
-    <div style={{ backgroundColor: "#ffffff", minHeight: "100vh" }}>
+    <div className="min-h-screen bg-gradient-to-br from-mint-50/90 via-white to-forest-50/70 relative overflow-hidden">
+      {/* Soft decorative blobs - mint cream ambience */}
+      <div className="pointer-events-none absolute -top-40 -right-40 w-[500px] h-[500px] rounded-full bg-mint-100/40 blur-3xl" aria-hidden />
+      <div className="pointer-events-none absolute top-1/3 -left-32 w-[400px] h-[400px] rounded-full bg-forest-100/30 blur-3xl" aria-hidden />
+      <div className="pointer-events-none absolute bottom-20 right-1/4 w-[300px] h-[300px] rounded-full bg-mint-200/25 blur-3xl" aria-hidden />
       <FloatingTopBar />
       <FloatingTabs />
-      <div className="container" style={{ paddingTop: "6rem" }}>
-        {loading ? (
-          <div className="card">
-            <div style={{ textAlign: "center", padding: "3rem" }}>
-              <div className="spinner" style={{ fontSize: "2rem", marginBottom: "1rem" }}>⟳</div>
-              <p style={{ color: "#2D7A52" }}>Loading assessments...</p>
-            </div>
-          </div>
-        ) : (error || uiError) ? (
+      <div className="assessments-container relative z-10" style={{ paddingTop: "6rem" }}>
+        {(error || uiError) ? (
           <div className="card">
             <div className="alert alert-error">{error || uiError}</div>
             <button 
@@ -469,6 +466,7 @@ export default function AssessmentsPage({ session: serverSession }: AssessmentsP
               });
               setOpenMenuId(null);
             }}
+            isLoading={loading}
           />
         )}
       </div>

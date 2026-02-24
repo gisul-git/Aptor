@@ -1,7 +1,8 @@
 /**
  * Employee Login Page
- * 
- * Allows employees to login with Aaptor ID/Email and password
+ *
+ * Allows employees to login with Aaptor ID/Email and password.
+ * Links use NEXTAUTH_URL from .env (frontend domain) when set.
  */
 
 import { useState, useEffect } from 'react';
@@ -9,6 +10,7 @@ import { useRouter } from 'next/router';
 import axios from 'axios';
 import Link from 'next/link';
 import fastApiClient from '../../lib/fastapi';
+import { getFrontendBaseUrl } from '../../lib/app-url';
 import { LogIn, AlertCircle, Eye, EyeOff, User } from 'lucide-react';
 
 export default function EmployeeLoginPage() {
@@ -324,7 +326,7 @@ export default function EmployeeLoginPage() {
               color: '#6b6678',
             }}>
               Need to set your password?{' '}
-              <Link href={`/auth/set-password${aaptorId ? `?aaptorId=${encodeURIComponent(aaptorId)}` : ''}`} style={{
+              <Link href={`${getFrontendBaseUrl()}/auth/set-password${aaptorId ? `?aaptorId=${encodeURIComponent(aaptorId)}` : ''}`} style={{
                 color: '#2D7A52',
                 fontWeight: 600,
                 textDecoration: 'none',
