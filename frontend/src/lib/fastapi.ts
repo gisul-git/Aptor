@@ -8,12 +8,29 @@ const getBaseURL = (): string => {
   if (typeof window === 'undefined') {
     return process.env.API_GATEWAY_URL || 'http://api-gateway:80';
   }
-  // Client-side: use external URL or empty for relative URLs (Next.js proxy)
-  return process.env.NEXT_PUBLIC_API_URL || '';
+  // Client-side: use external URL or current origin for API calls
+  // NEXT_PUBLIC_API_URL is a build-time variable, so it should be available
+  // If not set, use current origin (same domain) so requests go through the same domain
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL;
+  if (apiUrl) {
+    return apiUrl;
+  }
+  // Fallback: use current origin (for production, this ensures requests go to the same domain)
+  // This will make requests go to https://qa.aaptor.com/api/... which should be handled by API Gateway
+  if (typeof window !== 'undefined') {
+    return window.location.origin;
+  }
+  return '';
 };
 
+const baseURL = getBaseURL();
+// Log baseURL in development to help debug
+if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
+  console.log('🔵 [FastAPI Client] Base URL:', baseURL, 'NEXT_PUBLIC_API_URL:', process.env.NEXT_PUBLIC_API_URL);
+}
+
 const fastApiClient = axios.create({
-  baseURL: getBaseURL(),
+  baseURL: baseURL,
   headers: {
     "Content-Type": "application/json",
   },
