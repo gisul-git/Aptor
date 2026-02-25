@@ -40,42 +40,103 @@ export default function SuperAdminMFAPage() {
     setLoading(true);
 
     try {
+      console.log("🔐 [MFA] Starting MFA verification for:", email);
+      console.log("🔐 [MFA] FastAPI Client baseURL:", fastApiClient.defaults.baseURL);
+      
       // Verify MFA code - use fastApiClient to hit backend directly
       const response = await fastApiClient.post("/api/v1/super-admin/verify-mfa", {
         email,
         code,
       });
 
+      console.log("🔐 [MFA] API Response received:", {
+        status: response?.status,
+        statusText: response?.statusText,
+        data: response?.data,
+        headers: response?.headers,
+      });
+
       const responseData = response.data;
-      const data = responseData?.data;
       
-      if (!data || !data.token || !data.user) {
-        setError("Invalid response from server");
+      // Check multiple possible response structures
+      const data = responseData?.data ?? responseData;
+      const token = data?.token ?? responseData?.token;
+      const refreshToken = data?.refreshToken ?? responseData?.refreshToken;
+      const user = data?.user ?? responseData?.user;
+      
+      console.log("🔐 [MFA] Parsed response:", {
+        hasData: !!data,
+        hasToken: !!token,
+        hasRefreshToken: !!refreshToken,
+        hasUser: !!user,
+        userEmail: user?.email,
+      });
+      
+      if (!token || !user) {
+        console.error("🔴 [MFA] Invalid response structure:", {
+          responseData,
+          data,
+          token: !!token,
+          user: !!user,
+        });
+        setError("Invalid response from server. Please try again.");
         setLoading(false);
         return;
       }
 
+      console.log("🔐 [MFA] MFA verified successfully, signing in with NextAuth");
+      
       // Sign in with NextAuth using the MFA-verified token
       const result = await signIn("credentials", {
         redirect: false,
-        email: data.user.email,
+        email: user.email,
         password: "", // Not needed for MFA flow
-        mfaToken: data.token,
-        refreshToken: data.refreshToken,
+        mfaToken: token,
+        refreshToken: refreshToken,
         callbackUrl: "/super-admin/dashboard",
       });
 
+      console.log("🔐 [MFA] NextAuth signIn result:", result);
+
       if (result?.error) {
+        console.error("🔴 [MFA] NextAuth signIn error:", result.error);
         setError(result.error);
         setLoading(false);
         return;
       }
 
+      if (!result?.ok) {
+        console.error("🔴 [MFA] NextAuth signIn failed:", result);
+        setError("Failed to sign in. Please try again.");
+        setLoading(false);
+        return;
+      }
+
+      console.log("🔐 [MFA] Sign in successful, redirecting to dashboard");
       // Redirect to dashboard
       window.location.href = "/super-admin/dashboard";
     } catch (err: any) {
-      const errorMessage = err?.response?.data?.detail || err?.response?.data?.message || err?.message || "MFA verification failed";
-      setError(errorMessage);
+      console.error("🔴 [MFA] Error during MFA verification:", {
+        error: err,
+        message: err?.message,
+        response: err?.response?.data,
+        status: err?.response?.status,
+        code: err?.code,
+        baseURL: fastApiClient.defaults.baseURL,
+      });
+      
+      // Check for network/CORS errors
+      if (err?.code === "ECONNREFUSED" || err?.code === "ENOTFOUND" || err?.message?.includes("Network Error")) {
+        setError("Cannot connect to server. Please check your connection and try again.");
+      } else if (err?.response?.status === 401) {
+        setError("Invalid MFA code. Please try again.");
+      } else if (err?.response?.status === 400) {
+        const errorDetail = err?.response?.data?.detail || err?.response?.data?.message || "Invalid request";
+        setError(errorDetail);
+      } else {
+        const errorMessage = err?.response?.data?.detail || err?.response?.data?.message || err?.message || "MFA verification failed. Please try again.";
+        setError(errorMessage);
+      }
       setLoading(false);
     }
   };
