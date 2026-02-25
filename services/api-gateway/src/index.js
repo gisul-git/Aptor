@@ -21,7 +21,7 @@ const SERVICES = {
   dsa: process.env.DSA_SERVICE_URL || 'http://localhost:3004',
   proctoring: process.env.PROCTORING_SERVICE_URL || 'http://localhost:3005',
   users: process.env.USER_SERVICE_URL || 'http://localhost:3006',
-  superAdmin: process.env.SUPER_ADMIN_SERVICE_URL || 'http://localhost:3007',
+  superAdmin: process.env.SUPER_ADMIN_SERVICE_URL || 'http://localhost:3006',
   employee: process.env.EMPLOYEE_SERVICE_URL || 'http://localhost:4005',
   demo: process.env.DEMO_SERVICE_URL || 'http://localhost:3008',
   aimlAgent: process.env.AIML_AGENT_SERVICE_URL || 'http://aiml-agent-service:8889',
@@ -415,7 +415,7 @@ const proxyOptions = {
       targetServiceUrl = SERVICES.auth;
     } else if (path.includes('/api/v1/super-admin')) {
       serviceName = 'Super Admin Service';
-      targetHost = 'localhost:3007';
+      targetHost = 'localhost:3006';
       targetServiceUrl = SERVICES.superAdmin;
     } else if (path.includes('/api/v1/employees')) {
       serviceName = 'Employee Service';
