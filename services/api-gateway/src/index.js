@@ -849,11 +849,53 @@ app.use(
 );
 
 // Route: Super Admin endpoints
+console.log('🔵 [API Gateway] Setting up super-admin service proxy:', {
+  route: '/api/v1/super-admin',
+  target: SERVICES.superAdmin,
+});
+
 app.use(
   '/api/v1/super-admin',
+  (req, res, next) => {
+    console.log('🟡 [API Gateway] Super Admin service route matched:', {
+      method: req.method,
+      url: req.url,
+      originalUrl: req.originalUrl,
+      path: req.path,
+      target: SERVICES.superAdmin,
+      timestamp: new Date().toISOString(),
+    });
+    next();
+  },
   createProxyMiddleware({
     ...proxyOptions,
     target: SERVICES.superAdmin, // Super Admin Service
+    logLevel: 'debug',
+    logProvider: () => ({
+      log: (msg) => console.log('🟡 [HPM-SuperAdmin]', msg),
+      debug: (msg) => console.log('🔵 [HPM-SuperAdmin]', msg),
+      info: (msg) => console.log('🟢 [HPM-SuperAdmin]', msg),
+      warn: (msg) => console.warn('🟠 [HPM-SuperAdmin]', msg),
+      error: (msg) => console.error('🔴 [HPM-SuperAdmin]', msg),
+    }),
+    onError: (err, req, res) => {
+      console.error('🔴 [API Gateway] Super Admin service error:', {
+        error: err.message,
+        code: err.code,
+        url: req.url,
+        originalUrl: req.originalUrl,
+        target: SERVICES.superAdmin,
+      });
+      // Return error response
+      if (!res.headersSent) {
+        res.status(503).json({
+          success: false,
+          message: 'Super Admin Service unavailable',
+          detail: err.message,
+          service: 'Super Admin Service',
+        });
+      }
+    },
   })
 );
 
