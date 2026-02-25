@@ -201,21 +201,56 @@ export const WEBRTC_CONFIG: RTCConfiguration = {
 // API Endpoints
 // ============================================================================
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:80"; // API Gateway
+/**
+ * Get API Gateway base URL for WebSocket connections.
+ * WebSockets need absolute URLs, so we construct from window.location or use env var.
+ */
+function getApiBaseUrl(): string {
+  // Client-side: construct from current origin or use env var
+  if (typeof window !== 'undefined') {
+    // Use env var if available (set at build time or runtime)
+    if (process.env.NEXT_PUBLIC_API_URL) {
+      return process.env.NEXT_PUBLIC_API_URL;
+    }
+    // Fallback: construct from current origin
+    // In production, API Gateway is typically on the same host but different port
+    // or behind the same domain via reverse proxy
+    const origin = window.location.origin;
+    const protocol = window.location.protocol;
+    const hostname = window.location.hostname;
+    
+    // For production (HTTPS), use same hostname with port 80 or no port
+    // For local dev, replace port 3000 with 80
+    if (origin.includes(':3000')) {
+      return origin.replace(':3000', ':80');
+    }
+    // If no port specified and on HTTPS, assume API Gateway is on same host
+    // (behind reverse proxy) or use port 80
+    if (protocol === 'https:') {
+      // Try to use same hostname (API Gateway might be behind reverse proxy)
+      return `${protocol}//${hostname}`;
+    }
+    // HTTP: use port 80
+    return `${protocol}//${hostname}:80`;
+  }
+  // Server-side: use env var or default
+  return process.env.NEXT_PUBLIC_API_URL || process.env.API_GATEWAY_URL || 'http://localhost:80';
+}
 
 export const LIVE_PROCTORING_ENDPOINTS = {
-  /** Create a new live proctoring session */
-  startSession: `${API_URL}/api/v1/proctor/live/start-session`,
-  /** End a live proctoring session */
+  /** Create a new live proctoring session - uses relative URL for Next.js proxy */
+  startSession: '/api/v1/proctor/live/start-session',
+  /** End a live proctoring session - uses relative URL for Next.js proxy */
   endSession: (sessionId: string) =>
-    `${API_URL}/api/v1/proctor/live/end-session/${sessionId}`,
-  /** Get Agora token for live proctoring */
-  agoraToken: () => `${API_URL}/api/v1/proctor/agora/get-token`,
-  /** Log proctoring event */
-  proctoringLog: () => `${API_URL}/api/v1/proctoring/log`,
-  /** WebSocket URL for candidate */
+    `/api/v1/proctor/live/end-session/${sessionId}`,
+  /** Get Agora token for live proctoring - uses relative URL for Next.js proxy */
+  agoraToken: () => '/api/v1/proctor/agora/get-token',
+  /** Log proctoring event - uses relative URL for Next.js proxy */
+  proctoringLog: () => '/api/v1/proctoring/log',
+  /** WebSocket URL for candidate - needs absolute URL */
   candidateWs: (sessionId: string, candidateId: string) => {
-    const wsBase = API_URL.replace("http://", "ws://").replace(
+    const apiBase = getApiBaseUrl();
+    const wsBase = apiBase.replace("http://", "ws://").replace(
       "https://",
       "wss://"
     );
@@ -223,9 +258,10 @@ export const LIVE_PROCTORING_ENDPOINTS = {
       candidateId
     )}`;
   },
-  /** WebSocket URL for admin */
+  /** WebSocket URL for admin - needs absolute URL */
   adminWs: (assessmentId: string) => {
-    const wsBase = API_URL.replace("http://", "ws://").replace(
+    const apiBase = getApiBaseUrl();
+    const wsBase = apiBase.replace("http://", "ws://").replace(
       "https://",
       "wss://"
     );
