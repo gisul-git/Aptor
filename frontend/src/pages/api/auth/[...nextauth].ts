@@ -45,21 +45,33 @@ export const authOptions: NextAuthOptions = {
       async authorize(credentials) {
         // If mfaToken is provided, this is a post-MFA login
         if (credentials?.mfaToken) {
+          console.log("🔐 [Credentials] MFA token provided, verifying token");
           try {
-            // Verify the token is valid by getting user info
-            const userResponse = await fastApiClient.get("/api/v1/users/me", {
+            // Verify the token is valid by getting user info from super-admin service
+            // Use super-admin service's /me endpoint instead of users service
+            const userResponse = await fastApiClient.get("/api/v1/super-admin/me", {
               headers: {
                 Authorization: `Bearer ${credentials.mfaToken}`,
               },
             });
             
-            const userData = userResponse.data?.data;
+            console.log("🔐 [Credentials] MFA token verification response:", {
+              status: userResponse?.status,
+              data: userResponse?.data,
+              baseURL: fastApiClient.defaults.baseURL,
+            });
+            
+            const userData = userResponse.data?.data ?? userResponse.data;
             if (!userData || userData.role !== "super_admin") {
+              console.error("🔴 [Credentials] MFA token verification failed: Invalid user data or role", {
+                hasUserData: !!userData,
+                role: userData?.role,
+              });
               return null;
             }
 
             const backendUser: BackendUser = {
-              id: userData.id,
+              id: userData.id || userData._id,
               name: userData.name,
               email: userData.email,
               role: userData.role,
@@ -69,9 +81,18 @@ export const authOptions: NextAuthOptions = {
               token: credentials.mfaToken,
               refreshToken: (credentials as any).refreshToken || "",
             } as BackendUser;
+            
+            console.log("🔐 [Credentials] MFA token verified successfully, returning user");
             return backendUser;
-          } catch (err) {
-            console.error("MFA token verification failed:", err);
+          } catch (err: any) {
+            console.error("🔴 [Credentials] MFA token verification failed:", {
+              error: err,
+              message: err?.message,
+              response: err?.response?.data,
+              status: err?.response?.status,
+              code: err?.code,
+              baseURL: fastApiClient.defaults.baseURL,
+            });
             return null;
           }
         }
