@@ -1158,14 +1158,17 @@ export class AdminLiveService {
       const candidateEmail = candidateInfo?.candidateEmail || candidateId;
       const candidateName = candidateInfo?.candidateName;
 
-      // Capture snapshot from webcam stream if available
-      let snapshotBase64: string | null = null;
-      try {
-        const candidateInfo = this.candidateStreams.get(candidateId);
-        const webcamStream = candidateInfo?.webcamStream;
-        if (webcamStream && typeof window !== 'undefined') {
+      // Capture snapshots from both webcam and screen streams if available
+      let snapshotBase64: string | null = null; // Primary snapshot (webcam) for backward compatibility
+      const evidenceArray: Array<{ type: string; format: string; data: string }> = [];
+      
+      // Helper function to capture snapshot from a stream
+      const captureSnapshot = async (stream: MediaStream | null, type: 'webcam' | 'screen'): Promise<string | null> => {
+        if (!stream || typeof window === 'undefined') return null;
+        
+        try {
           const videoElement = document.createElement('video');
-          videoElement.srcObject = webcamStream;
+          videoElement.srcObject = stream;
           videoElement.play();
           
           await new Promise((resolve) => setTimeout(resolve, 200)); // Wait for video to load
@@ -1177,13 +1180,39 @@ export class AdminLiveService {
             const ctx = canvas.getContext('2d');
             if (ctx && videoElement.videoWidth > 0 && videoElement.videoHeight > 0) {
               ctx.drawImage(videoElement, 0, 0);
-              snapshotBase64 = canvas.toDataURL('image/jpeg', 0.8).split(',')[1];
+              const base64Data = canvas.toDataURL('image/jpeg', 0.8).split(',')[1];
+              return base64Data;
             }
           }
+        } catch (error) {
+          this.log(`Failed to capture ${type} snapshot:`, error);
+        }
+        return null;
+      };
+      
+      // Capture webcam snapshot
+      try {
+        const webcamStream = candidateInfo?.webcamStream;
+        const webcamBase64 = await captureSnapshot(webcamStream, 'webcam');
+        if (webcamBase64) {
+          snapshotBase64 = webcamBase64; // Keep for backward compatibility
+          evidenceArray.push({ type: 'webcam', format: 'jpeg', data: webcamBase64 });
         }
       } catch (snapshotError) {
-        this.log('Failed to capture snapshot for flag:', snapshotError);
+        this.log('Failed to capture webcam snapshot for flag:', snapshotError);
         // Continue without snapshot
+      }
+      
+      // Capture screen snapshot
+      try {
+        const screenStream = candidateInfo?.screenStream;
+        const screenBase64 = await captureSnapshot(screenStream, 'screen');
+        if (screenBase64) {
+          evidenceArray.push({ type: 'screen', format: 'jpeg', data: screenBase64 });
+        }
+      } catch (snapshotError) {
+        this.log('Failed to capture screen snapshot for flag:', snapshotError);
+        // Continue without screen snapshot
       }
 
       // Prepare payload for /api/proctor/record (same endpoint as AI proctoring violations)
@@ -1205,8 +1234,10 @@ export class AdminLiveService {
           candidateEmail: candidateEmail, // For analytics filtering (backup)
           flagType: 'admin_flag',
           source: 'live-proctor',
+          // Store both webcam and screen snapshots in evidence array for dual display
+          ...(evidenceArray.length > 0 && { evidence: evidenceArray }),
         },
-        snapshotBase64: snapshotBase64 || null,
+        snapshotBase64: snapshotBase64 || null, // Keep for backward compatibility (webcam as primary)
       };
 
       // Send to /api/proctor/record (same endpoint as AI proctoring violations)

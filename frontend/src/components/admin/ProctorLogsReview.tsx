@@ -18,7 +18,11 @@ interface ProctorLog {
     type: string;
     format?: string;
     data?: string;
-  };
+  } | Array<{
+    type: string;
+    format?: string;
+    data?: string;
+  }>; // Can be single object or array for dual snapshots
 }
 
 interface ProctorLogsReviewProps {
@@ -34,14 +38,40 @@ interface ProctorLogsReviewProps {
 const extractSnapshot = (log: ProctorLog): string | null => {
   if (!log) return null;
 
-  // New format: evidence field
-  if (log.evidence?.type === "image" && log.evidence.data) {
-    const format = log.evidence.format || "jpeg";
-    // Check if already has data URI prefix
-    if (log.evidence.data.startsWith("data:")) {
-      return log.evidence.data;
+  // New format: evidence field (can be object or array)
+  if (log.evidence) {
+    // Check if evidence is an array (dual snapshots)
+    if (Array.isArray(log.evidence) && log.evidence.length > 0) {
+      // Return first snapshot (webcam) for backward compatibility
+      const firstEvidence = log.evidence[0];
+      if (firstEvidence.data) {
+        const format = firstEvidence.format || "jpeg";
+        if (firstEvidence.data.startsWith("data:")) {
+          return firstEvidence.data;
+        }
+        return `data:image/${format};base64,${firstEvidence.data}`;
+      }
     }
-    return `data:image/${format};base64,${log.evidence.data}`;
+    // Single evidence object
+    else if (!Array.isArray(log.evidence) && log.evidence.type === "image" && log.evidence.data) {
+      const format = log.evidence.format || "jpeg";
+      if (log.evidence.data.startsWith("data:")) {
+        return log.evidence.data;
+      }
+      return `data:image/${format};base64,${log.evidence.data}`;
+    }
+  }
+
+  // Check metadata.evidence (for ADMIN_FLAGGED with dual snapshots stored in metadata)
+  if (log.metadata?.evidence && Array.isArray(log.metadata.evidence) && log.metadata.evidence.length > 0) {
+    const firstEvidence = log.metadata.evidence[0];
+    if (firstEvidence.data) {
+      const format = firstEvidence.format || "jpeg";
+      if (firstEvidence.data.startsWith("data:")) {
+        return firstEvidence.data;
+      }
+      return `data:image/${format};base64,${firstEvidence.data}`;
+    }
   }
 
   // Legacy format: snapshotBase64
@@ -53,6 +83,71 @@ const extractSnapshot = (log: ProctorLog): string | null => {
   }
 
   return null;
+};
+
+/**
+ * Extract all evidence snapshots from log (for dual display)
+ * @param log Proctor log entry
+ * @returns Array of evidence items with data URIs
+ */
+const extractAllEvidence = (log: ProctorLog): Array<{ type: string; data: string }> => {
+  if (!log) return [];
+
+  const evidenceList: Array<{ type: string; data: string }> = [];
+
+  // Check metadata.evidence (for ADMIN_FLAGGED with dual snapshots)
+  if (log.metadata?.evidence && Array.isArray(log.metadata.evidence)) {
+    log.metadata.evidence.forEach((item: any) => {
+      if (item.data) {
+        const format = item.format || "jpeg";
+        let dataUri: string;
+        if (item.data.startsWith("data:")) {
+          dataUri = item.data;
+        } else {
+          dataUri = `data:image/${format};base64,${item.data}`;
+        }
+        evidenceList.push({ type: item.type || 'unknown', data: dataUri });
+      }
+    });
+  }
+  // Check top-level evidence field (array format)
+  else if (log.evidence && Array.isArray(log.evidence)) {
+    log.evidence.forEach((item) => {
+      if (item.data) {
+        const format = item.format || "jpeg";
+        let dataUri: string;
+        if (item.data.startsWith("data:")) {
+          dataUri = item.data;
+        } else {
+          dataUri = `data:image/${format};base64,${item.data}`;
+        }
+        evidenceList.push({ type: item.type || 'unknown', data: dataUri });
+      }
+    });
+  }
+  // Single evidence object
+  else if (log.evidence && !Array.isArray(log.evidence) && log.evidence.data) {
+    const format = log.evidence.format || "jpeg";
+    let dataUri: string;
+    if (log.evidence.data.startsWith("data:")) {
+      dataUri = log.evidence.data;
+    } else {
+      dataUri = `data:image/${format};base64,${log.evidence.data}`;
+    }
+    evidenceList.push({ type: log.evidence.type || 'image', data: dataUri });
+  }
+  // Fallback to legacy snapshotBase64
+  else if (log.snapshotBase64) {
+    let dataUri: string;
+    if (log.snapshotBase64.startsWith("data:")) {
+      dataUri = log.snapshotBase64;
+    } else {
+      dataUri = `data:image/jpeg;base64,${log.snapshotBase64}`;
+    }
+    evidenceList.push({ type: 'webcam', data: dataUri }); // Assume webcam for legacy
+  }
+
+  return evidenceList;
 };
 
 type TabType = 
@@ -70,7 +165,7 @@ const TAB_CONFIG: Record<TabType, { label: string; icon: string; eventTypes: str
   VISUAL_EVIDENCE: {
     label: "📸 Visual Evidence",
     icon: "📸",
-    eventTypes: ["GAZE_AWAY", "NO_FACE_DETECTED", "MULTIPLE_FACES_DETECTED", "FACE_MISMATCH"],
+    eventTypes: ["GAZE_AWAY", "NO_FACE_DETECTED", "MULTIPLE_FACES_DETECTED", "FACE_MISMATCH", "ADMIN_FLAGGED"],
   },
   FULLSCREEN_EXIT: {
     label: "⛔ Fullscreen Violations",
@@ -321,6 +416,147 @@ export const ProctorLogsReview: React.FC<ProctorLogsReviewProps> = ({ logs, cand
             >
               {filteredLogs.map((log, index) => {
                 const severityStyle = getSeverityStyle(log.severity);
+                const allEvidence = extractAllEvidence(log);
+                const isAdminFlagged = log.eventType === 'ADMIN_FLAGGED';
+                const hasDualEvidence = isAdminFlagged && allEvidence.length >= 2;
+                const reason = log.metadata?.reason;
+                
+                // For ADMIN_FLAGGED with dual evidence, show both; otherwise show single snapshot
+                if (hasDualEvidence) {
+                  const webcamEvidence = allEvidence.find(e => e.type === 'webcam');
+                  const screenEvidence = allEvidence.find(e => e.type === 'screen');
+                  
+                  return (
+                    <div
+                      key={log._id || index}
+                      onClick={() => setSelectedImage(log)}
+                      style={{
+                        cursor: "pointer",
+                        border: "1px solid #e2e8f0",
+                        borderRadius: "0.5rem",
+                        overflow: "hidden",
+                        backgroundColor: "#ffffff",
+                        transition: "transform 0.2s, box-shadow 0.2s",
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.transform = "translateY(-2px)";
+                        e.currentTarget.style.boxShadow = "0 4px 6px rgba(0, 0, 0, 0.1)";
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.transform = "translateY(0)";
+                        e.currentTarget.style.boxShadow = "none";
+                      }}
+                    >
+                      {/* Dual snapshot display: side-by-side */}
+                      <div style={{ display: "flex", width: "100%", height: "150px" }}>
+                        {/* Webcam snapshot */}
+                        <div style={{ flex: 1, position: "relative", borderRight: "1px solid #e2e8f0" }}>
+                          {webcamEvidence ? (
+                            <>
+                              <div style={{ 
+                                position: "absolute", 
+                                top: "4px", 
+                                left: "4px", 
+                                backgroundColor: "rgba(0, 0, 0, 0.6)", 
+                                color: "#ffffff", 
+                                padding: "2px 6px", 
+                                borderRadius: "4px", 
+                                fontSize: "0.625rem", 
+                                fontWeight: 600,
+                                zIndex: 1
+                              }}>
+                                WEBCAM
+                              </div>
+                              <img
+                                src={webcamEvidence.data}
+                                alt="Webcam"
+                                style={{
+                                  width: "100%",
+                                  height: "100%",
+                                  objectFit: "cover",
+                                  backgroundColor: "#f1f5f9",
+                                }}
+                              />
+                            </>
+                          ) : (
+                            <div style={{ width: "100%", height: "100%", backgroundColor: "#f1f5f9", display: "flex", alignItems: "center", justifyContent: "center", color: "#94a3b8", fontSize: "0.75rem" }}>
+                              No Webcam
+                            </div>
+                          )}
+                        </div>
+                        {/* Screen snapshot */}
+                        <div style={{ flex: 1, position: "relative" }}>
+                          {screenEvidence ? (
+                            <>
+                              <div style={{ 
+                                position: "absolute", 
+                                top: "4px", 
+                                left: "4px", 
+                                backgroundColor: "rgba(0, 0, 0, 0.6)", 
+                                color: "#ffffff", 
+                                padding: "2px 6px", 
+                                borderRadius: "4px", 
+                                fontSize: "0.625rem", 
+                                fontWeight: 600,
+                                zIndex: 1
+                              }}>
+                                SCREEN
+                              </div>
+                              <img
+                                src={screenEvidence.data}
+                                alt="Screen"
+                                style={{
+                                  width: "100%",
+                                  height: "100%",
+                                  objectFit: "cover",
+                                  backgroundColor: "#f1f5f9",
+                                }}
+                              />
+                            </>
+                          ) : (
+                            <div style={{ width: "100%", height: "100%", backgroundColor: "#f1f5f9", display: "flex", alignItems: "center", justifyContent: "center", color: "#94a3b8", fontSize: "0.75rem" }}>
+                              No Screen
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                      <div style={{ padding: "0.75rem" }}>
+                        <div
+                          style={{
+                            fontSize: "0.875rem",
+                            fontWeight: 600,
+                            color: severityStyle.color,
+                            marginBottom: "0.25rem",
+                          }}
+                        >
+                          {log.eventType.replace(/_/g, " ")}
+                        </div>
+                        {/* Show reason for ADMIN_FLAGGED events */}
+                        {reason && (
+                          <div style={{ 
+                            fontSize: "0.75rem", 
+                            color: "#475569", 
+                            marginBottom: "0.25rem",
+                            lineHeight: "1.4",
+                            maxHeight: "2.8em",
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            display: "-webkit-box",
+                            WebkitLineClamp: 2,
+                            WebkitBoxOrient: "vertical"
+                          }}>
+                            {reason}
+                          </div>
+                        )}
+                        <div style={{ fontSize: "0.75rem", color: "#64748b" }}>
+                          {formatTimestamp(log.timestamp)}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                }
+                
+                // Single snapshot display (existing behavior for other events or single evidence)
                 const snapshot = extractSnapshot(log);
                 if (!snapshot) return null; // Safety check
                 
@@ -366,6 +602,23 @@ export const ProctorLogsReview: React.FC<ProctorLogsReviewProps> = ({ logs, cand
                       >
                         {log.eventType.replace(/_/g, " ")}
                       </div>
+                      {/* Show reason for ADMIN_FLAGGED events even with single snapshot */}
+                      {isAdminFlagged && reason && (
+                        <div style={{ 
+                          fontSize: "0.75rem", 
+                          color: "#475569", 
+                          marginBottom: "0.25rem",
+                          lineHeight: "1.4",
+                          maxHeight: "2.8em",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          display: "-webkit-box",
+                          WebkitLineClamp: 2,
+                          WebkitBoxOrient: "vertical"
+                        }}>
+                          {reason}
+                        </div>
+                      )}
                       <div style={{ fontSize: "0.75rem", color: "#64748b" }}>
                         {formatTimestamp(log.timestamp)}
                       </div>
