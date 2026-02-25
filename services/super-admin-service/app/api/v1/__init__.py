@@ -1,2 +1,2 @@
-"""API v1 Packages."""
+"""API v1 Package."""
 
