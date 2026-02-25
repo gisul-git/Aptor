@@ -64,7 +64,22 @@ jobs:
             
             # Fetch and checkout latest changes - handle local changes
             echo "🔄 Updating code from repository..."
-            git fetch origin
+            
+            # Clean up stale Git refs to prevent locking errors
+            echo "🧹 Cleaning up stale Git references..."
+            git remote prune origin || true
+            rm -rf .git/refs/remotes/origin/* || true
+            
+            # Fetch with prune to clean up stale refs
+            echo "📥 Fetching latest changes..."
+            git fetch origin --prune --force || {
+              echo "⚠️  Fetch with prune failed, trying regular fetch..."
+              git fetch origin || {
+                echo "⚠️  Regular fetch failed, cleaning refs and retrying..."
+                rm -rf .git/refs/remotes/origin/* || true
+                git fetch origin
+              }
+            }
             
             # Stash or discard local changes to allow pull
             if [ -n "$(git status --porcelain)" ]; then
@@ -77,8 +92,10 @@ jobs:
             git reset --hard origin/QA || {
               echo "⚠️  Reset failed, trying pull..."
               git pull origin QA --no-edit || {
-                echo "⚠️  Pull failed, forcing reset..."
-                git fetch origin
+                echo "⚠️  Pull failed, cleaning refs and forcing reset..."
+                git remote prune origin || true
+                rm -rf .git/refs/remotes/origin/* || true
+                git fetch origin --prune --force
                 git reset --hard origin/QA
               }
             }
