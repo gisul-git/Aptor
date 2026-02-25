@@ -109,11 +109,11 @@ export const authOptions: NextAuthOptions = {
 
           // Check if MFA is required for super_admin (support nested or top-level flags)
           const requireMfa = data?.require_mfa ?? respData?.require_mfa;
-          if (requireMfa) {
-            // Return null instead of throwing - let frontend handle MFA redirect
-            // This prevents NextAuth from showing an error
-            console.log("🔐 [Credentials] MFA required for user, returning null to let frontend handle it");
-            return null;
+          if (requireMfa === true) {
+            // Throw a specific error that the frontend can catch and handle
+            // This prevents NextAuth from showing a generic "CredentialsSignin" error
+            console.log("🔐 [Credentials] MFA required for user, throwing MFARequired error");
+            throw new Error("MFA_REQUIRED");
           }
           
           // Accept token either as `token` or `accessToken` and user either as `user` or top-level fields
@@ -158,10 +158,13 @@ export const authOptions: NextAuthOptions = {
 
           return backendUser;
         } catch (error: any) {
-          // Check if MFA is required - if so, return null silently
-          if (error?.response?.data?.data?.require_mfa || error?.response?.data?.require_mfa) {
-            console.log("🔐 [Credentials] Error response indicates MFA required, returning null");
-            return null; // Return null for MFA - frontend will handle redirect
+          // Check if MFA is required - if so, throw specific error
+          const requireMfaFromError = error?.response?.data?.data?.require_mfa || 
+                                     error?.response?.data?.require_mfa ||
+                                     error?.message === "MFA_REQUIRED";
+          if (requireMfaFromError === true || error?.message === "MFA_REQUIRED") {
+            console.log("🔐 [Credentials] Error response indicates MFA required, throwing MFARequired error");
+            throw new Error("MFA_REQUIRED");
           }
 
           // Check for connection errors (backend not running)
