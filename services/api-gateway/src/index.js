@@ -21,7 +21,7 @@ const SERVICES = {
   dsa: process.env.DSA_SERVICE_URL || 'http://localhost:3004',
   proctoring: process.env.PROCTORING_SERVICE_URL || 'http://localhost:3005',
   users: process.env.USER_SERVICE_URL || 'http://localhost:3006',
-  superAdmin: process.env.SUPER_ADMIN_SERVICE_URL || 'http://localhost:3007',
+  superAdmin: process.env.SUPER_ADMIN_SERVICE_URL || 'http://localhost:3006',
   employee: process.env.EMPLOYEE_SERVICE_URL || 'http://localhost:4005',
   demo: process.env.DEMO_SERVICE_URL || 'http://localhost:3008',
   aimlAgent: process.env.AIML_AGENT_SERVICE_URL || 'http://aiml-agent-service:8889',
@@ -415,7 +415,7 @@ const proxyOptions = {
       targetServiceUrl = SERVICES.auth;
     } else if (path.includes('/api/v1/super-admin')) {
       serviceName = 'Super Admin Service';
-      targetHost = 'localhost:3007';
+      targetHost = 'localhost:3006';
       targetServiceUrl = SERVICES.superAdmin;
     } else if (path.includes('/api/v1/employees')) {
       serviceName = 'Employee Service';
@@ -849,11 +849,53 @@ app.use(
 );
 
 // Route: Super Admin endpoints
+console.log('🔵 [API Gateway] Setting up super-admin service proxy:', {
+  route: '/api/v1/super-admin',
+  target: SERVICES.superAdmin,
+});
+
 app.use(
   '/api/v1/super-admin',
+  (req, res, next) => {
+    console.log('🟡 [API Gateway] Super Admin service route matched:', {
+      method: req.method,
+      url: req.url,
+      originalUrl: req.originalUrl,
+      path: req.path,
+      target: SERVICES.superAdmin,
+      timestamp: new Date().toISOString(),
+    });
+    next();
+  },
   createProxyMiddleware({
     ...proxyOptions,
     target: SERVICES.superAdmin, // Super Admin Service
+    logLevel: 'debug',
+    logProvider: () => ({
+      log: (msg) => console.log('🟡 [HPM-SuperAdmin]', msg),
+      debug: (msg) => console.log('🔵 [HPM-SuperAdmin]', msg),
+      info: (msg) => console.log('🟢 [HPM-SuperAdmin]', msg),
+      warn: (msg) => console.warn('🟠 [HPM-SuperAdmin]', msg),
+      error: (msg) => console.error('🔴 [HPM-SuperAdmin]', msg),
+    }),
+    onError: (err, req, res) => {
+      console.error('🔴 [API Gateway] Super Admin service error:', {
+        error: err.message,
+        code: err.code,
+        url: req.url,
+        originalUrl: req.originalUrl,
+        target: SERVICES.superAdmin,
+      });
+      // Return error response
+      if (!res.headersSent) {
+        res.status(503).json({
+          success: false,
+          message: 'Super Admin Service unavailable',
+          detail: err.message,
+          service: 'Super Admin Service',
+        });
+      }
+    },
   })
 );
 
