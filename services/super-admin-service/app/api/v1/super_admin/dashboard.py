@@ -1,4 +1,4 @@
-"""Dashboard endpoints for Super Admin."""
+"""Dashboard endpoints for Super Admins."""
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends
