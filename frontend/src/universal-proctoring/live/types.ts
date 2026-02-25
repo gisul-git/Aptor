@@ -243,8 +243,8 @@ export const LIVE_PROCTORING_ENDPOINTS = {
   /** End a live proctoring session - uses relative URL for Next.js proxy */
   endSession: (sessionId: string) =>
     `/api/v1/proctor/live/end-session/${sessionId}`,
-  /** Get Agora token for live proctoring - uses relative URL for Next.js proxy */
-  agoraToken: () => '/api/v1/proctor/agora/get-token',
+  /** Get Agora token for live proctoring - uses Next.js API route */
+  agoraToken: () => '/api/proctor/agora/get-token',
   /** Log proctoring event - uses relative URL for Next.js proxy */
   proctoringLog: () => '/api/v1/proctoring/log',
   /** WebSocket URL for candidate - needs absolute URL */
