@@ -26,7 +26,7 @@ export default function AIMLMainPage() {
         <div style={{ marginBottom: "2rem" }}>
           <button
             type="button"
-            onClick={() => router.push("/dashboard")}
+            onClick={() => router.push("/competency")}
             style={{
               display: "flex",
               alignItems: "center",

@@ -304,7 +304,7 @@ export default function CreateAIMLCompetencyPage() {
 
   return (
     <div style={{ backgroundColor: "#FAFCFB", minHeight: "100vh", fontFamily: "system-ui, -apple-system, sans-serif" }}>
-      <div style={{ maxWidth: "1100px", margin: "0 auto", padding: "3rem 1.5rem" }}>
+      <div style={{ maxWidth: "1200px", margin: "0 auto", padding: "3rem 1.5rem" }}>
         
         {/* Back Button */}
         <div style={{ marginBottom: "2rem" }}>
