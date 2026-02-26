@@ -34,6 +34,15 @@ const VALID_EVENT_TYPES = new Set([
   "PROCTOR_SESSION_STARTED",
   "PROCTOR_SESSION_VIEWING",
   "PROCTOR_SESSION_ENDED",
+  // Activity pattern events
+  "RAPID_CLICKING",
+  "COPY_PASTE_DETECTED",
+  "EXCESSIVE_MOUSE_MOVEMENT",
+  "PROLONGED_INACTIVITY",
+  "SUSPICIOUS_KEYBOARD_PATTERN",
+  "EXCESSIVE_SCROLLING",
+  // Monaco editor paste detection
+  "COPY_PASTE_CONTENT",
 ]);
 
 interface ViolationPayload {

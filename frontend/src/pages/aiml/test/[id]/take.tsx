@@ -16,6 +16,8 @@ import { Timer } from 'lucide-react';
 import { FullscreenLockOverlay } from "@/components/FullscreenLockOverlay";
 import { useFullscreenLock } from "@/hooks/proctoring/useFullscreenLock";
 import { useAITimer } from "@/hooks/useAITimer";
+// Activity Pattern Proctor imports
+import { useActivityPatternProctor } from "@/hooks/proctoring/useActivityPatternProctor";
 
 const AIMLCompetencyNotebook = dynamic(
   () => import('../../../../components/aiml/competency/AIMLCompetencyNotebook'),
@@ -247,6 +249,24 @@ export default function AIMLTestTakePage() {
     onWarning: handleUniversalWarning,
     debug: debugMode,
   })
+
+  // Activity Pattern Proctor - monitors mouse, keyboard, scroll patterns
+  useActivityPatternProctor({
+    userId: userId || '',
+    assessmentId: testId || '',
+    onViolation: (violation) => {
+      console.log('[AIML Take] Activity pattern violation:', violation);
+      handleUniversalViolation({
+        eventType: violation.eventType,
+        timestamp: violation.timestamp,
+        assessmentId: violation.assessmentId,
+        userId: violation.userId,
+        metadata: violation.metadata,
+      });
+    },
+    enabled: !!userId && !!testId && !submitted, // Only enable when test is active
+    copyPasteThreshold: 20, // Lower threshold for easier detection (default: 50)
+  });
 
   // Unlock fullscreen when test is submitted
   useEffect(() => {
@@ -1611,6 +1631,17 @@ export default function AIMLTestTakePage() {
             sessionId={`test_${testId}_user_${userId}_q_${currentQuestion.id}`}
             onCodeChange={handleCodeChange}
             onOutputChange={handleOutputChange}
+            userId={userId || ''}
+            assessmentId={testId || ''}
+            onPasteViolation={(violation) => {
+              handleUniversalViolation({
+                eventType: violation.eventType,
+                timestamp: violation.timestamp,
+                assessmentId: violation.assessmentId,
+                userId: violation.userId,
+                metadata: violation.metadata,
+              });
+            }}
             onSubmit={handleSubmitQuestion}
             showSubmit={true}
             readOnly={expiredQuestions.has(currentQuestion.id)}

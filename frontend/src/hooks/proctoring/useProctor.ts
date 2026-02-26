@@ -93,12 +93,16 @@ export function useProctor({
   }, [debugMode]);
 
   // Check if event should be recorded (debouncing)
+  // FOCUS_LOST events get a longer throttle to prevent rapid duplicate events
   const shouldRecordEvent = useCallback((eventType: string): boolean => {
     const now = Date.now();
     const lastTime = lastEventTimeRef.current[eventType] || 0;
     
-    if (now - lastTime < DEBOUNCE_MS) {
-      debugLog(`Debounced ${eventType} (last: ${now - lastTime}ms ago)`);
+    // Use longer throttle for FOCUS_LOST events (2 seconds instead of 1)
+    const throttleMs = eventType === 'FOCUS_LOST' ? 2000 : DEBOUNCE_MS;
+    
+    if (now - lastTime < throttleMs) {
+      debugLog(`Debounced ${eventType} (last: ${now - lastTime}ms ago, throttle: ${throttleMs}ms)`);
       return false;
     }
     

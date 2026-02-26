@@ -194,7 +194,8 @@ export default function App({ Component, pageProps }: AppProps) {
                   if (typeof window !== 'undefined') {
                     window.MonacoEnvironment = {
                       getWorkerUrl: function(moduleId, label) {
-                        var baseUrl = 'https://unpkg.com/monaco-editor@0.55.1/esm/vs';
+                        // Use jsdelivr CDN - better CORS support for workers
+                        var baseUrl = 'https://cdn.jsdelivr.net/npm/monaco-editor@0.55.1/esm/vs';
                         if (label === 'json') return baseUrl + '/language/json/json.worker.js';
                         if (label === 'css' || label === 'scss' || label === 'less') return baseUrl + '/language/css/css.worker.js';
                         if (label === 'html' || label === 'handlebars' || label === 'razor') return baseUrl + '/language/html/html.worker.js';
@@ -210,7 +211,7 @@ export default function App({ Component, pageProps }: AppProps) {
                       if (window.require && typeof window.require.config === 'function') {
                         try {
                           window.require.config({
-                            paths: { vs: 'https://unpkg.com/monaco-editor@0.55.1/min/vs' }
+                            paths: { vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.55.1/min/vs' }
                           });
                           clearInterval(checkInterval);
                         } catch(e) {}
