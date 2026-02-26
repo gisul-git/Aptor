@@ -41,7 +41,6 @@ services:
       - NEXTAUTH_URL=${NEXTAUTH_URL:-https://qa.aaptor.com}
       - NEXTAUTH_SECRET=${NEXTAUTH_SECRET}
       - NEXT_PUBLIC_API_URL=https://qa.aaptor.com
-      - NEXT_PUBLIC_AIML_AGENT_URL=${NEXT_PUBLIC_AIML_AGENT_URL}
       - API_GATEWAY_URL=http://api-gateway:80
       - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
       - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
@@ -73,7 +72,6 @@ services:
       - SUPER_ADMIN_SERVICE_URL=http://super-admin-service:3006
       - CORS_ORIGINS=${CORS_ORIGINS:-https://qa.aaptor.com,http://frontend:3000,http://localhost:3000,http://localhost:3001}
       - EMPLOYEE_SERVICE_URL=${EMPLOYEE_SERVICE_URL:-http://employee-service:4005}
-      - AIML_AGENT_SERVICE_URL=${AIML_AGENT_SERVICE_URL:-http://aiml-agent-service:8889}
     depends_on:
       - auth-service
     networks:
@@ -98,7 +96,6 @@ services:
       - JWT_RSA_PRIVATE_KEY_PATH=${JWT_RSA_PRIVATE_KEY_PATH}
       - JWT_RSA_PUBLIC_KEY_PATH=${JWT_RSA_PUBLIC_KEY_PATH}
       - CORS_ORIGINS=${CORS_ORIGINS:-https://qa.aaptor.com,http://localhost:3000,http://frontend:3000}
-      - FRONTEND_URL=${FRONTEND_URL:-https://qa.aaptor.com}
       - EMAIL_PROVIDER=${EMAIL_PROVIDER:-sendgrid}
       - SENDGRID_API_KEY=${SENDGRID_API_KEY}
       - SENDGRID_FROM_EMAIL=${SENDGRID_FROM_EMAIL}
@@ -185,7 +182,6 @@ services:
       - MONGO_URI=${MONGO_URI}
       - MONGO_DB=aiml_db
       - REDIS_URL=redis://redis:6379/0
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
       - CORS_ORIGINS=${CORS_ORIGINS:-https://qa.aaptor.com,http://localhost:3000,http://frontend:3000}
       - EMAIL_PROVIDER=${EMAIL_PROVIDER:-sendgrid}
       - SENDGRID_API_KEY=${SENDGRID_API_KEY}
@@ -197,7 +193,6 @@ services:
       - AWS_EMAIL_SOURCE=${AWS_EMAIL_SOURCE}
       - AZURE_COMM_CONNECTION_STRING=${AZURE_COMM_CONNECTION_STRING}
       - AZURE_COMM_SENDER_ADDRESS=${AZURE_COMM_SENDER_ADDRESS}
-      - AIML_AGENT_SERVICE_URL=${AIML_AGENT_SERVICE_URL:-http://aiml-agent-service:8889}
     depends_on:
       - redis
       - aiml-agent-service

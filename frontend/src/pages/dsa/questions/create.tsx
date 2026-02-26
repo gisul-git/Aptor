@@ -9,7 +9,11 @@ import { Input } from '../../../components/dsa/ui/input'
 import { Textarea } from '../../../components/dsa/ui/textarea'
 import { Checkbox } from '../../../components/dsa/ui/checkbox'
 import dsaApi from '../../../lib/dsa/api'
-import { Sparkles, Loader2, Code, Database, Table2 } from 'lucide-react'
+import { 
+  ArrowLeft, Sparkles, Loader2, Code, Database, Table2, 
+  Settings, AlignLeft, List, CheckSquare, Sliders, PlaySquare, 
+  Lock, FileCode, Eye, EyeOff, AlertCircle, Plus, Trash2, X
+} from 'lucide-react'
 
 // Question type - Coding or SQL
 type QuestionType = 'coding' | 'sql'
@@ -922,57 +926,59 @@ export default function QuestionCreatePage() {
     }
   }
 
-  return (
-    <div className="min-h-screen bg-background">
-      <div className="container mx-auto px-4 py-8 space-y-6">
-        {/* Back Button */}
-        <div style={{ marginBottom: "1rem" }}>
+ return (
+    <div style={{ backgroundColor: "#FAFCFB", minHeight: "100vh", fontFamily: "system-ui, -apple-system, sans-serif" }}>
+      <div style={{ maxWidth: "1200px", margin: "0 auto", padding: "3rem 1.5rem" }}>
+        
+        {/* Back Button --*/}
+        <div style={{ marginBottom: "2rem" }}>
           <button
             type="button"
-            className="btn-secondary"
             onClick={() => router.back()}
             style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "0.5rem",
-              padding: "0.5rem 1rem",
-              fontSize: "0.875rem",
+              display: "flex", alignItems: "center", gap: "0.5rem", padding: "0.5rem 0",
+              fontSize: "0.875rem", color: "#6B7280", backgroundColor: "transparent",
+              border: "none", fontWeight: 600, cursor: "pointer", transition: "color 0.2s ease"
             }}
+            onMouseOver={(e) => e.currentTarget.style.color = "#00684A"}
+            onMouseOut={(e) => e.currentTarget.style.color = "#6B7280"}
           >
-            ← Back
+            <ArrowLeft size={16} strokeWidth={2.5} /> Back
           </button>
         </div>
 
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold">Create DSA Question</h1>
-            <p className="text-muted-foreground mt-1">
-              Create a {questionType === 'sql' ? 'SQL' : 'Coding'} question with AI assistance.
-            </p>
-          </div>
-          <div className="flex gap-3">
-            <Link href="/dsa/questions">
-              <Button variant="outline">Cancel</Button>
-            </Link>
-            <Button onClick={handleCreate} disabled={saving}>
-              {saving ? 'Creating...' : `Create ${questionType === 'sql' ? 'SQL' : 'Coding'} Question`}
-            </Button>
-          </div>
+        {/* Header */}
+        <div style={{ marginBottom: "2.5rem" }}>
+          <h1 style={{ margin: "0 0 0.5rem 0", color: "#111827", fontSize: "2.25rem", fontWeight: 800, letterSpacing: "-0.025em" }}>
+            Create DSA Question
+          </h1>
+          <p style={{ color: "#6B7280", fontSize: "1rem", margin: 0 }}>
+            Author a new {questionType === 'sql' ? 'SQL' : 'Coding'} problem manually or generate one instantly using AI.
+          </p>
         </div>
 
+        {/* Error Display */}
         {error && (
-          <div className="rounded-md border border-red-500/40 bg-red-500/10 p-4 text-red-200 text-sm">
+          <div style={{ 
+            backgroundColor: "#FEF2F2", border: "1px solid #EF4444", color: "#991B1B", 
+            padding: "1rem 1.25rem", borderRadius: "0.75rem", marginBottom: "2rem", 
+            fontSize: "0.9375rem", fontWeight: 500, display: "flex", alignItems: "center", gap: "0.75rem" 
+          }}>
+            <AlertCircle size={20} />
             {error}
           </div>
         )}
 
-        {/* Question Type Selector */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Question Type</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-2 gap-4">
+        <div style={{ display: "flex", flexDirection: "column", gap: "2rem" }}>
+          
+          {/* Question Type Selector */}
+          <div style={{ backgroundColor: "#ffffff", padding: "2rem", borderRadius: "1rem", border: "1px solid #E5E7EB", boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "1.5rem", paddingBottom: "1rem", borderBottom: "1px solid #F3F4F6" }}>
+              <Settings size={20} color="#00684A" />
+              <h2 style={{ margin: 0, fontSize: "1.25rem", fontWeight: 700, color: "#111827" }}>Question Type</h2>
+            </div>
+            
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1.5rem" }}>
               <button
                 type="button"
                 onClick={() => {
@@ -981,22 +987,20 @@ export default function QuestionCreatePage() {
                   setTitle('')
                   setDescription('')
                 }}
-                className={`p-4 rounded-lg border-2 transition-all ${
-                  questionType === 'coding'
-                    ? 'border-purple-500 bg-purple-500/10'
-                    : 'border-slate-700 hover:border-slate-600'
-                }`}
+                style={{
+                  display: "flex", alignItems: "center", gap: "1rem", padding: "1.5rem",
+                  borderRadius: "0.75rem", cursor: "pointer", transition: "all 0.2s", textAlign: "left",
+                  backgroundColor: questionType === 'coding' ? "#F0F9F4" : "#ffffff",
+                  border: questionType === 'coding' ? "2px solid #00684A" : "1px solid #D1D5DB",
+                  boxShadow: questionType === 'coding' ? "0 4px 12px rgba(0, 104, 74, 0.1)" : "none"
+                }}
               >
-                <div className="flex items-center gap-3">
-                  <Code className={`w-8 h-8 ${questionType === 'coding' ? 'text-purple-400' : 'text-slate-400'}`} />
-                  <div className="text-left">
-                    <h3 className={`font-semibold ${questionType === 'coding' ? 'text-purple-400' : ''}`}>
-                      Coding Question
-                    </h3>
-                    <p className="text-xs text-muted-foreground">
-                      Python, Java, C++, JavaScript...
-                    </p>
-                  </div>
+                <div style={{ padding: "0.75rem", backgroundColor: questionType === 'coding' ? "#E1F2E9" : "#F3F4F6", borderRadius: "0.5rem", color: questionType === 'coding' ? "#00684A" : "#6B7280" }}>
+                  <Code size={24} />
+                </div>
+                <div>
+                  <h3 style={{ margin: "0 0 0.25rem 0", fontSize: "1.125rem", fontWeight: 700, color: questionType === 'coding' ? "#00684A" : "#374151" }}>Coding Question</h3>
+                  <p style={{ margin: 0, fontSize: "0.875rem", color: "#6B7280" }}>Algorithms, Data Structures (Python, Java, C++, etc.)</p>
                 </div>
               </button>
               
@@ -1008,122 +1012,90 @@ export default function QuestionCreatePage() {
                   setTitle('')
                   setDescription('')
                 }}
-                className={`p-4 rounded-lg border-2 transition-all ${
-                  questionType === 'sql'
-                    ? 'border-blue-500 bg-blue-500/10'
-                    : 'border-slate-700 hover:border-slate-600'
-                }`}
+                style={{
+                  display: "flex", alignItems: "center", gap: "1rem", padding: "1.5rem",
+                  borderRadius: "0.75rem", cursor: "pointer", transition: "all 0.2s", textAlign: "left",
+                  backgroundColor: questionType === 'sql' ? "#F0F9F4" : "#ffffff",
+                  border: questionType === 'sql' ? "2px solid #00684A" : "1px solid #D1D5DB",
+                  boxShadow: questionType === 'sql' ? "0 4px 12px rgba(0, 104, 74, 0.1)" : "none"
+                }}
               >
-                <div className="flex items-center gap-3">
-                  <Database className={`w-8 h-8 ${questionType === 'sql' ? 'text-blue-400' : 'text-slate-400'}`} />
-                  <div className="text-left">
-                    <h3 className={`font-semibold ${questionType === 'sql' ? 'text-blue-400' : ''}`}>
-                      SQL Question
-                    </h3>
-                    <p className="text-xs text-muted-foreground">
-                      SELECT, JOIN, Aggregation...
-                    </p>
-                  </div>
+                <div style={{ padding: "0.75rem", backgroundColor: questionType === 'sql' ? "#E1F2E9" : "#F3F4F6", borderRadius: "0.5rem", color: questionType === 'sql' ? "#00684A" : "#6B7280" }}>
+                  <Database size={24} />
+                </div>
+                <div>
+                  <h3 style={{ margin: "0 0 0.25rem 0", fontSize: "1.125rem", fontWeight: 700, color: questionType === 'sql' ? "#00684A" : "#374151" }}>SQL Question</h3>
+                  <p style={{ margin: 0, fontSize: "0.875rem", color: "#6B7280" }}>Database queries, JOINs, Aggregations, Window Functions</p>
                 </div>
               </button>
             </div>
-          </CardContent>
-        </Card>
+          </div>
 
-        {/* AI Question Generator */}
-        <Card className={questionType === 'sql' 
-          ? "border-blue-500/30 bg-gradient-to-r from-blue-500/5 to-cyan-500/5"
-          : "border-purple-500/30 bg-gradient-to-r from-purple-500/5 to-blue-500/5"
-        }>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Sparkles className={`w-5 h-5 ${questionType === 'sql' ? 'text-blue-400' : 'text-purple-400'}`} />
-              Generate {questionType === 'sql' ? 'SQL' : 'Coding'} Question with AI
-              <span className={`text-xs px-2 py-0.5 rounded ml-2 ${
-                questionType === 'sql' 
-                  ? 'bg-blue-500/20 text-blue-400' 
-                  : 'bg-purple-500/20 text-purple-400'
-              }`}>
+          {/* AI Question Generator Card */}
+          <div style={{ backgroundColor: "#F0F9F4", padding: "2rem", borderRadius: "1rem", border: "1px solid #A8E8BC", boxShadow: "0 4px 12px rgba(0, 104, 74, 0.05)" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "1rem" }}>
+              <Sparkles size={20} color="#00684A" />
+              <h2 style={{ margin: 0, fontSize: "1.25rem", fontWeight: 700, color: "#00684A" }}>
+                Generate {questionType === 'sql' ? 'SQL' : 'Coding'} Question with AI
+              </h2>
+              <span style={{ fontSize: "0.7rem", backgroundColor: "#E1F2E9", color: "#00684A", padding: "0.2rem 0.5rem", borderRadius: "1rem", fontWeight: 600, marginLeft: "0.5rem", textTransform: "uppercase", letterSpacing: "0.05em" }}>
                 Powered by GPT-4
               </span>
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <p className="text-sm text-muted-foreground">
+            </div>
+            
+            <p style={{ fontSize: "0.95rem", color: "#2D7A52", margin: "0 0 1.5rem 0" }}>
               {questionType === 'sql'
-                ? 'Describe the SQL topic and concepts, and AI will generate table schemas, sample data, and problem description.'
-                : 'Describe the topic and concepts, and AI will generate a complete question with description, starter code, and test cases.'
-              }
+                ? 'Describe the SQL topic and concepts, and AI will generate table schemas, sample data, and the problem description.'
+                : 'Describe the topic and concepts, and AI will generate a complete question with description, starter code, and test cases.'}
             </p>
             
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "1.5rem", marginBottom: "1.5rem" }}>
               <div>
-                <label className="text-sm font-medium">Topic</label>
-                {questionType === 'sql' ? (
-                  <>
-                    <Input
-                      list="sql-topics-list"
-                      value={aiTopic}
-                      onChange={(e) => setAiTopic(e.target.value)}
-                      placeholder="Type or select a topic (e.g., Joins, Aggregation, Window Functions)"
-                      disabled={generating}
-                      className="w-full"
-                    />
-                    <datalist id="sql-topics-list">
-                      {SQL_TOPICS.map((topic) => (
-                        <option key={topic} value={topic} />
-                      ))}
-                    </datalist>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Type your own or select from dropdown
-                    </p>
-                  </>
-                ) : (
-                  <Input
-                    value={aiTopic}
-                    onChange={(e) => setAiTopic(e.target.value)}
-                    placeholder="e.g., Arrays, Trees, Graphs"
-                    disabled={generating}
-                  />
+                <label style={{ display: "block", marginBottom: "0.5rem", fontWeight: 600, color: "#1E5A3B", fontSize: "0.875rem" }}>Topic</label>
+                <input
+                  type="text"
+                  value={aiTopic}
+                  onChange={(e) => setAiTopic(e.target.value)}
+                  placeholder={questionType === 'sql' ? "e.g., Joins, Aggregation" : "e.g., Arrays, Trees, Graphs"}
+                  disabled={generating}
+                  style={{ width: "100%", padding: "0.75rem", border: "1px solid #A8E8BC", borderRadius: "0.5rem", outline: "none", boxSizing: "border-box", backgroundColor: "#ffffff" }}
+                />
+                {questionType === 'sql' && (
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem", marginTop: "0.5rem" }}>
+                    {SQL_TOPICS.slice(0, 4).map((topic) => (
+                      <button
+                        key={topic}
+                        type="button"
+                        onClick={() => setAiTopic(topic)}
+                        disabled={generating}
+                        style={{ fontSize: "0.75rem", padding: "0.25rem 0.5rem", backgroundColor: "#E1F2E9", color: "#00684A", border: "1px solid #A8E8BC", borderRadius: "0.25rem", cursor: "pointer" }}
+                      >
+                        {topic}
+                      </button>
+                    ))}
+                  </div>
                 )}
               </div>
+              
               <div>
-                <label className="text-sm font-medium">Concepts</label>
-                {questionType === 'sql' ? (
-                  <>
-                    <Input
-                      list="sql-concepts-list"
-                      value={aiConcepts}
-                      onChange={(e) => setAiConcepts(e.target.value)}
-                      placeholder="Type or select concepts (e.g., LEFT JOIN, GROUP BY, HAVING)"
-                      disabled={generating}
-                      className="w-full"
-                    />
-                    <datalist id="sql-concepts-list">
-                      {SQL_CONCEPTS.map((concept) => (
-                        <option key={concept} value={concept} />
-                      ))}
-                    </datalist>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Type your own or select from dropdown
-                    </p>
-                  </>
-                ) : (
-                  <Input
-                    value={aiConcepts}
-                    onChange={(e) => setAiConcepts(e.target.value)}
-                    placeholder="e.g., Two pointers, BFS, Dynamic programming"
-                    disabled={generating}
-                  />
-                )}
+                <label style={{ display: "block", marginBottom: "0.5rem", fontWeight: 600, color: "#1E5A3B", fontSize: "0.875rem" }}>Concepts</label>
+                <input
+                  type="text"
+                  value={aiConcepts}
+                  onChange={(e) => setAiConcepts(e.target.value)}
+                  placeholder={questionType === 'sql' ? "e.g., LEFT JOIN, GROUP BY" : "e.g., Two pointers, BFS"}
+                  disabled={generating}
+                  style={{ width: "100%", padding: "0.75rem", border: "1px solid #A8E8BC", borderRadius: "0.5rem", outline: "none", boxSizing: "border-box", backgroundColor: "#ffffff" }}
+                />
               </div>
+              
               <div>
-                <label className="text-sm font-medium">Difficulty</label>
+                <label style={{ display: "block", marginBottom: "0.5rem", fontWeight: 600, color: "#1E5A3B", fontSize: "0.875rem" }}>Difficulty</label>
                 <select
                   value={aiDifficulty}
                   onChange={(e) => setAiDifficulty(e.target.value)}
                   disabled={generating}
-                  className="w-full mt-1 rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  style={{ width: "100%", padding: "0.75rem", border: "1px solid #A8E8BC", borderRadius: "0.5rem", outline: "none", boxSizing: "border-box", backgroundColor: "#ffffff" }}
                 >
                   {questionType === 'sql' ? (
                     <>
@@ -1133,383 +1105,406 @@ export default function QuestionCreatePage() {
                     </>
                   ) : (
                     <>
-                  <option value="easy">Easy</option>
-                  <option value="medium">Medium</option>
-                  <option value="hard">Hard</option>
+                      <option value="easy">Easy</option>
+                      <option value="medium">Medium</option>
+                      <option value="hard">Hard</option>
                     </>
                   )}
                 </select>
               </div>
             </div>
 
-            {/* Language Selection - Only for Coding Questions */}
+            {/* Language Selection - Coding Only */}
             {questionType === 'coding' && (
-              <div>
-                <label className="text-sm font-medium mb-2 block">
-                  Select Languages for Starter Code *
+              <div style={{ marginBottom: "1.5rem" }}>
+                <label style={{ display: "block", marginBottom: "0.25rem", fontWeight: 600, color: "#1E5A3B", fontSize: "0.875rem" }}>
+                  Select Languages for Starter Code <span style={{ color: "#DC2626" }}>*</span>
                 </label>
-                <p className="text-xs text-muted-foreground mb-2">
-                  AI will generate starter code only for the selected languages
-                </p>
-                <div className="flex flex-wrap gap-4 p-3 border border-input rounded-md bg-background/50">
+                <p style={{ fontSize: "0.8rem", color: "#2D7A52", marginBottom: "0.75rem" }}>AI will generate starter code only for the selected languages.</p>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: "1rem", padding: "1rem", backgroundColor: "#ffffff", border: "1px solid #A8E8BC", borderRadius: "0.5rem" }}>
                   {SUPPORTED_LANGUAGES.map((lang) => (
-                    <label key={lang} className="flex items-center gap-2 text-sm cursor-pointer">
-                      <Checkbox
+                    <label key={lang} style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontSize: "0.875rem", cursor: "pointer", color: "#374151", fontWeight: 500, textTransform: "capitalize" }}>
+                      <input
+                        type="checkbox"
                         checked={languages.includes(lang)}
-                        onCheckedChange={() => toggleLanguage(lang)}
+                        onChange={() => toggleLanguage(lang)}
                         disabled={generating}
+                        style={{ accentColor: "#00684A", width: "16px", height: "16px", cursor: "pointer" }}
                       />
-                      <span className="capitalize">{lang}</span>
+                      {lang}
                     </label>
                   ))}
                 </div>
                 {languages.length === 0 && (
-                  <p className="text-xs text-destructive mt-1">
-                    Please select at least one language
-                  </p>
+                  <p style={{ fontSize: "0.8rem", color: "#DC2626", marginTop: "0.5rem" }}>Please select at least one language.</p>
                 )}
               </div>
             )}
 
-            <Button
+            <button
+              type="button"
               onClick={handleGenerateWithAI}
               disabled={generating}
-              className={questionType === 'sql'
-                ? "bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700"
-                : "bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700"
-              }
+              style={{
+                display: "flex", alignItems: "center", gap: "0.5rem", padding: "0.75rem 1.5rem",
+                backgroundColor: "#00684A", color: "#ffffff", border: "none", borderRadius: "0.5rem",
+                fontWeight: 600, fontSize: "0.95rem", cursor: generating ? "not-allowed" : "pointer",
+                opacity: generating ? 0.7 : 1, transition: "all 0.2s ease", boxShadow: "0 4px 6px -1px rgba(0, 104, 74, 0.2)"
+              }}
+              onMouseEnter={(e) => { if(!generating) e.currentTarget.style.backgroundColor = "#084A2A" }}
+              onMouseLeave={(e) => { if(!generating) e.currentTarget.style.backgroundColor = "#00684A" }}
             >
-              {generating ? (
-                <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  Generating {questionType === 'sql' ? 'SQL' : 'Coding'} Question...
-                </>
-              ) : (
-                <>
-                  <Sparkles className="w-4 h-4 mr-2" />
-                  Generate {questionType === 'sql' ? 'SQL' : 'Coding'} Question
-                </>
-              )}
-            </Button>
-
-            {generating && (
-              <p className="text-xs text-muted-foreground">
-                {questionType === 'sql'
-                  ? 'This may take 10-20 seconds. AI is generating table schemas, sample data, and problem description...'
-                  : 'This may take 10-20 seconds. AI is generating title, description, starter code, and test cases...'
-                }
-              </p>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Divider */}
-        <div className="relative">
-          <div className="absolute inset-0 flex items-center">
-            <div className="w-full border-t border-slate-700"></div>
+              {generating ? <Loader2 size={18} className="animate-spin" /> : <Sparkles size={18} />}
+              {generating ? `Generating ${questionType === 'sql' ? 'SQL' : 'Coding'} Question...` : `Generate ${questionType === 'sql' ? 'SQL' : 'Coding'} Question`}
+            </button>
           </div>
-          <div className="relative flex justify-center text-xs uppercase">
-            <span className="bg-background px-2 text-muted-foreground">
-              {isAiGenerated ? 'Review and edit generated question' : 'Or create manually'}
+
+          {/* Divider */}
+          <div style={{ display: "flex", alignItems: "center", margin: "1rem 0" }}>
+            <div style={{ flex: 1, height: "1px", backgroundColor: "#E5E7EB" }}></div>
+            <span style={{ padding: "0 1rem", color: "#9CA3AF", fontSize: "0.75rem", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+              {isAiGenerated ? 'Review and Edit Details' : 'Or Create Manually'}
             </span>
+            <div style={{ flex: 1, height: "1px", backgroundColor: "#E5E7EB" }}></div>
           </div>
-        </div>
 
-            {/* Basic Details - Common for both types */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Basic Details</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div>
-              <label className="text-sm font-medium">Title *</label>
-              <Input
+          {/* Basic Details */}
+          <div style={{ backgroundColor: "#ffffff", padding: "2rem", borderRadius: "1rem", border: "1px solid #E5E7EB", boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "1.5rem", paddingBottom: "1rem", borderBottom: "1px solid #F3F4F6" }}>
+              <AlignLeft size={20} color="#00684A" />
+              <h2 style={{ margin: 0, fontSize: "1.25rem", fontWeight: 700, color: "#111827" }}>Basic Details</h2>
+            </div>
+            
+            <div style={{ marginBottom: "1.5rem" }}>
+              <label style={{ display: "block", marginBottom: "0.5rem", fontWeight: 600, color: "#374151", fontSize: "0.875rem" }}>
+                Title <span style={{ color: "#DC2626" }}>*</span>
+              </label>
+              <input
+                type="text"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
-                    placeholder={questionType === 'sql' ? "e.g., Employee Salary Analysis" : "e.g., Two Sum"}
+                placeholder={questionType === 'sql' ? "e.g., Employee Salary Analysis" : "e.g., Two Sum"}
+                style={{ width: "100%", padding: "0.75rem", border: "1px solid #D1D5DB", borderRadius: "0.5rem", outline: "none", boxSizing: "border-box" }}
+                onFocus={(e) => e.currentTarget.style.borderColor = "#00684A"}
+                onBlur={(e) => e.currentTarget.style.borderColor = "#D1D5DB"}
               />
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "1.5rem", marginBottom: "1.5rem" }}>
               <div>
-                <label className="text-sm font-medium">Difficulty</label>
+                <label style={{ display: "block", marginBottom: "0.5rem", fontWeight: 600, color: "#374151", fontSize: "0.875rem" }}>Difficulty</label>
                 <select
                   value={difficulty}
                   onChange={(e) => setDifficulty(e.target.value)}
-                  className="w-full mt-1 rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  style={{ width: "100%", padding: "0.75rem", border: "1px solid #D1D5DB", borderRadius: "0.5rem", outline: "none", boxSizing: "border-box", backgroundColor: "#ffffff" }}
                 >
                   <option value="easy">Easy</option>
                   <option value="medium">Medium</option>
                   <option value="hard">Hard</option>
                 </select>
               </div>
-                  {questionType === 'sql' && (
-                    <div>
-                      <label className="text-sm font-medium">SQL Category</label>
-                      <select
-                        value={sqlCategory}
-                        onChange={(e) => setSqlCategory(e.target.value)}
-                        className="w-full mt-1 rounded-md border border-input bg-background px-3 py-2 text-sm"
-                      >
-                        {SQL_CATEGORIES.map((cat) => (
-                          <option key={cat.value} value={cat.value}>
-                            {cat.label}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  )}
+              
+              {questionType === 'sql' && (
+                <div>
+                  <label style={{ display: "block", marginBottom: "0.5rem", fontWeight: 600, color: "#374151", fontSize: "0.875rem" }}>SQL Category</label>
+                  <select
+                    value={sqlCategory}
+                    onChange={(e) => setSqlCategory(e.target.value)}
+                    style={{ width: "100%", padding: "0.75rem", border: "1px solid #D1D5DB", borderRadius: "0.5rem", outline: "none", boxSizing: "border-box", backgroundColor: "#ffffff" }}
+                  >
+                    {SQL_CATEGORIES.map((cat) => (
+                      <option key={cat.value} value={cat.value}>{cat.label}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+              
               <div>
-                <label className="text-sm font-medium">Publish Status</label>
-                <div className="mt-2 flex items-center gap-2">
-                  <Checkbox
+                <label style={{ display: "block", marginBottom: "0.5rem", fontWeight: 600, color: "#374151", fontSize: "0.875rem" }}>Publish Status</label>
+                <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", padding: "0.75rem 0", cursor: "pointer" }}>
+                  <input
+                    type="checkbox"
                     checked={isPublished}
-                    onCheckedChange={(val) => setIsPublished(!!val)}
+                    onChange={(e) => setIsPublished(e.target.checked)}
+                    style={{ accentColor: "#00684A", width: "16px", height: "16px" }}
                   />
-                  <span className="text-sm text-muted-foreground">
-                    Published (visible to users)
-                  </span>
+                  <span style={{ fontSize: "0.95rem", color: "#4B5563" }}>Published (visible to users)</span>
+                </label>
+              </div>
+            </div>
+
+            {questionType === 'coding' && (
+              <div>
+                <label style={{ display: "block", marginBottom: "0.5rem", fontWeight: 600, color: "#374151", fontSize: "0.875rem" }}>
+                  Supported Languages <span style={{ color: "#DC2626" }}>*</span>
+                </label>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: "1rem", padding: "1rem", backgroundColor: "#F9FAFB", border: "1px solid #E5E7EB", borderRadius: "0.5rem" }}>
+                  {SUPPORTED_LANGUAGES.map((lang) => (
+                    <label key={lang} style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontSize: "0.875rem", cursor: "pointer", color: "#374151", fontWeight: 500, textTransform: "capitalize" }}>
+                      <input
+                        type="checkbox"
+                        checked={languages.includes(lang)}
+                        onChange={() => toggleLanguage(lang)}
+                        style={{ accentColor: "#00684A", width: "16px", height: "16px", cursor: "pointer" }}
+                      />
+                      {lang}
+                    </label>
+                  ))}
                 </div>
               </div>
-            </div>
-                {/* Language selector - only for coding questions */}
-                {questionType === 'coding' && (
-            <div>
-              <label className="text-sm font-medium mb-2 block">
-                Supported Languages *
-              </label>
-              <div className="flex flex-wrap gap-4">
-                {SUPPORTED_LANGUAGES.map((lang) => (
-                  <label key={lang} className="flex items-center gap-2 text-sm">
-                    <Checkbox
-                      checked={languages.includes(lang)}
-                      onCheckedChange={() => toggleLanguage(lang)}
-                    />
-                    <span className="capitalize">{lang}</span>
-                  </label>
-                ))}
-              </div>
-            </div>
-                )}
-          </CardContent>
-        </Card>
+            )}
+          </div>
 
-            {/* Problem Description - Common for both */}
-        <Card>
-          <CardHeader>
-                <CardTitle>Problem Description</CardTitle>
-          </CardHeader>
-              <CardContent className="space-y-4">
-              <Textarea
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                rows={5}
-                className="text-sm"
-                  placeholder={questionType === 'sql' 
-                    ? "Describe the business problem and what data needs to be retrieved..."
-                    : "Write a function that takes an integer as an input and checks if it is a prime number or not..."
-                  }
-                />
-              </CardContent>
-            </Card>
-
-            {/* SQL-SPECIFIC SECTIONS */}
-            {questionType === 'sql' && (
-              <>
-                {/* Table Schemas */}
-                <Card className="border-blue-500/20">
-                  <CardHeader>
-                    <CardTitle className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <Table2 className="w-5 h-5 text-blue-400" />
-                        Table Schemas
-                        {isAiGenerated && (
-                          <span className="text-xs bg-blue-500/20 text-blue-400 px-2 py-0.5 rounded">
-                            AI Generated
-                          </span>
-                        )}
+          {/* Problem Description */}
+          <div style={{ backgroundColor: "#ffffff", padding: "2rem", borderRadius: "1rem", border: "1px solid #E5E7EB", boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "1.5rem", paddingBottom: "1rem", borderBottom: "1px solid #F3F4F6" }}>
+              <AlignLeft size={20} color="#00684A" />
+              <h2 style={{ margin: 0, fontSize: "1.25rem", fontWeight: 700, color: "#111827" }}>Problem Description</h2>
             </div>
-                      <div className="flex items-center gap-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={handleLoadSeededSchema}
-                          disabled={loadingSeededSchema}
-                          className="bg-green-600/20 hover:bg-green-600/30 border-green-500/50 text-green-400"
-                        >
-                          {loadingSeededSchema ? (
-                            <>
-                              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                              Loading...
-                            </>
-                          ) : (
-                            <>
-                              <Database className="w-4 h-4 mr-2" />
-                              Use Existing DB
-                            </>
-                          )}
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => {
-                            const tableName = prompt('Enter table name:')
-                            if (tableName && tableName.trim()) {
-                              setSchemas({
-                                ...schemas,
-                                [tableName.trim()]: { columns: { id: 'INTEGER' } }
-                              })
-                              setSampleData({
-                                ...sampleData,
-                                [tableName.trim()]: []
-                              })
-                            }
-                          }}
-                        >
-                          + Add Table
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => {
-                            const tableName = prompt('Enter table name:')
-                            if (!tableName || !tableName.trim()) {
-                              return
-                            }
-                            const pasteText = prompt('Paste table schema (format: Column\tType, one per line, or markdown table):')
-                            if (pasteText && pasteText.trim()) {
-                              try {
-                                const parsed = parseTableSchema(pasteText.trim())
-                                if (parsed.columns && Object.keys(parsed.columns).length > 0) {
-                                  setSchemas({
-                                    ...schemas,
-                                    [tableName.trim()]: { columns: parsed.columns }
-                                  })
-                                  // Initialize empty sample data for this table
-                                  if (!sampleData[tableName.trim()]) {
-                                    setSampleData({
-                                      ...sampleData,
-                                      [tableName.trim()]: []
-                                    })
-                                  }
-                                  alert(`Successfully parsed table "${tableName.trim()}" with ${Object.keys(parsed.columns).length} columns`)
-                                } else {
-                                  alert('Failed to parse table schema. Please check the format.')
-                                }
-                              } catch (e) {
-                                alert(`Error parsing schema: ${e}`)
+            <textarea
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              rows={8}
+              placeholder={questionType === 'sql' ? "Describe the business problem and what data needs to be retrieved..." : "Write a function that takes an integer as an input and checks if it is a prime number or not..."}
+              style={{ width: "100%", padding: "1rem", border: "1px solid #D1D5DB", borderRadius: "0.5rem", outline: "none", boxSizing: "border-box", fontSize: "0.95rem", fontFamily: "inherit", resize: "vertical" }}
+              onFocus={(e) => e.currentTarget.style.borderColor = "#00684A"}
+              onBlur={(e) => e.currentTarget.style.borderColor = "#D1D5DB"}
+            />
+          </div>
+
+          {/* ======================= SQL SPECIFIC SECTIONS ======================= */}
+          {questionType === 'sql' && (
+            <>
+              {/* Table Schemas */}
+              <div style={{ backgroundColor: "#ffffff", padding: "2rem", borderRadius: "1rem", border: "1px solid #E5E7EB", boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "1.5rem", paddingBottom: "1rem", borderBottom: "1px solid #F3F4F6" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                    <Table2 size={20} color="#00684A" />
+                    <h2 style={{ margin: 0, fontSize: "1.25rem", fontWeight: 700, color: "#111827" }}>Table Schemas</h2>
+                    {isAiGenerated && (
+                      <span style={{ fontSize: "0.7rem", backgroundColor: "#E1F2E9", color: "#00684A", padding: "0.2rem 0.5rem", borderRadius: "1rem", fontWeight: 600, marginLeft: "0.5rem" }}>AI Generated</span>
+                    )}
+                  </div>
+                  <div style={{ display: "flex", gap: "0.5rem" }}>
+                    <button
+                      type="button"
+                      onClick={handleLoadSeededSchema}
+                      disabled={loadingSeededSchema}
+                      style={{ display: "flex", alignItems: "center", gap: "0.375rem", padding: "0.4rem 0.75rem", fontSize: "0.8rem", fontWeight: 600, color: "#00684A", backgroundColor: "#F0F9F4", border: "1px solid #A8E8BC", borderRadius: "0.375rem", cursor: loadingSeededSchema ? "not-allowed" : "pointer" }}
+                    >
+                      {loadingSeededSchema ? <Loader2 size={14} className="animate-spin" /> : <Database size={14} />}
+                      {loadingSeededSchema ? 'Loading...' : 'Use Existing DB'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const tableName = prompt('Enter table name:')
+                        if (tableName && tableName.trim()) {
+                          setSchemas({ ...schemas, [tableName.trim()]: { columns: { id: 'INTEGER' } } })
+                          setSampleData({ ...sampleData, [tableName.trim()]: [] })
+                        }
+                      }}
+                      style={{ display: "flex", alignItems: "center", gap: "0.375rem", padding: "0.4rem 0.75rem", fontSize: "0.8rem", fontWeight: 600, color: "#374151", backgroundColor: "#ffffff", border: "1px solid #D1D5DB", borderRadius: "0.375rem", cursor: "pointer" }}
+                    >
+                      <Plus size={14} /> Add Table
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const tableName = prompt('Enter table name:')
+                        if (!tableName || !tableName.trim()) return;
+                        const pasteText = prompt('Paste table schema (format: Column\tType, one per line, or markdown table):')
+                        if (pasteText && pasteText.trim()) {
+                          try {
+                            const parsed = parseTableSchema(pasteText.trim())
+                            if (parsed.columns && Object.keys(parsed.columns).length > 0) {
+                              setSchemas({ ...schemas, [tableName.trim()]: { columns: parsed.columns } })
+                              if (!sampleData[tableName.trim()]) {
+                                setSampleData({ ...sampleData, [tableName.trim()]: [] })
                               }
+                              alert(`Successfully parsed table "${tableName.trim()}" with ${Object.keys(parsed.columns).length} columns`)
+                            } else {
+                              alert('Failed to parse table schema. Please check the format.')
                             }
-                          }}
-                        >
-                          📋 Paste Schema
-                        </Button>
+                          } catch (e) {
+                            alert(`Error parsing schema: ${e}`)
+                          }
+                        }
+                      }}
+                      style={{ display: "flex", alignItems: "center", gap: "0.375rem", padding: "0.4rem 0.75rem", fontSize: "0.8rem", fontWeight: 600, color: "#374151", backgroundColor: "#ffffff", border: "1px solid #D1D5DB", borderRadius: "0.375rem", cursor: "pointer" }}
+                    >
+                      <List size={14} /> Paste Schema
+                    </button>
+                  </div>
+                </div>
+
+                {Object.keys(schemas).length === 0 ? (
+                  <div style={{ textAlign: "center", padding: "3rem", backgroundColor: "#F9FAFB", border: "1px dashed #D1D5DB", borderRadius: "0.5rem" }}>
+                    <p style={{ color: "#6B7280", fontSize: "0.95rem", marginBottom: "1rem" }}>No schemas yet. Use the options above to load from a database, generate with AI, or add manually.</p>
+                  </div>
+                ) : (
+                  <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+                    {Object.entries(schemas).map(([tableName, schema]) => (
+                      <div key={tableName} style={{ border: "1px solid #E5E7EB", borderRadius: "0.5rem", overflow: "hidden" }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "0.75rem 1rem", backgroundColor: "#F9FAFB", borderBottom: "1px solid #E5E7EB" }}>
+                          <span style={{ fontWeight: 600, color: "#00684A", fontFamily: "monospace" }}>{tableName}</span>
+                          <div style={{ display: "flex", gap: "0.5rem" }}>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const colName = prompt('Enter column name:')
+                                if (colName && colName.trim()) {
+                                  const colType = prompt('Enter column type (e.g., INTEGER, VARCHAR(255), DATE):') || 'VARCHAR(255)'
+                                  setSchemas({ ...schemas, [tableName]: { columns: { ...schema.columns, [colName.trim()]: colType.trim() } } })
+                                }
+                              }}
+                              style={{ fontSize: "0.75rem", color: "#00684A", backgroundColor: "transparent", border: "none", cursor: "pointer", fontWeight: 600 }}
+                            >
+                              + Column
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const newSchemas = { ...schemas }; delete newSchemas[tableName]; setSchemas(newSchemas);
+                                const newSampleData = { ...sampleData }; delete newSampleData[tableName]; setSampleData(newSampleData);
+                              }}
+                              style={{ fontSize: "0.75rem", color: "#DC2626", backgroundColor: "transparent", border: "none", cursor: "pointer", fontWeight: 600 }}
+                            >
+                              Remove
+                            </button>
+                          </div>
+                        </div>
+                        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.875rem" }}>
+                          <thead style={{ backgroundColor: "#ffffff", borderBottom: "1px solid #E5E7EB", textAlign: "left" }}>
+                            <tr>
+                              <th style={{ padding: "0.5rem 1rem", color: "#6B7280", fontWeight: 500 }}>Column</th>
+                              <th style={{ padding: "0.5rem 1rem", color: "#6B7280", fontWeight: 500 }}>Type</th>
+                              <th style={{ padding: "0.5rem 1rem", width: "40px" }}></th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {Object.entries(schema.columns).map(([colName, colType]) => (
+                              <tr key={colName} style={{ borderBottom: "1px solid #F3F4F6", backgroundColor: "#ffffff" }}>
+                                <td style={{ padding: "0.5rem 1rem", fontWeight: 500, color: "#111827", fontFamily: "monospace" }}>{colName}</td>
+                                <td style={{ padding: "0.5rem 1rem", color: "#00684A", fontFamily: "monospace" }}>{String(colType)}</td>
+                                <td style={{ padding: "0.5rem 1rem", textAlign: "right" }}>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const newColumns = { ...schema.columns }; delete newColumns[colName];
+                                      setSchemas({ ...schemas, [tableName]: { columns: newColumns } })
+                                    }}
+                                    style={{ color: "#DC2626", backgroundColor: "transparent", border: "none", cursor: "pointer" }}
+                                  >
+                                    <X size={14} />
+                                  </button>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
                       </div>
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    {Object.keys(schemas).length === 0 ? (
-                      <div className="text-center py-8 space-y-3">
-                        <p className="text-sm text-muted-foreground italic">
-                          No schemas yet. Use the options above to load from seeded database, generate with AI, or add tables manually.
-                        </p>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={handleLoadSeededSchema}
-                          disabled={loadingSeededSchema}
-                          className="bg-green-600/20 hover:bg-green-600/30 border-green-500/50 text-green-400"
-                        >
-                          {loadingSeededSchema ? (
-                            <>
-                              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                              Loading Seeded Database...
-                            </>
-                          ) : (
-                            <>
-                              <Database className="w-4 h-4 mr-2" />
-                              Load from Seeded Database
-                            </>
-                          )}
-                        </Button>
-                      </div>
-                    ) : (
-                      Object.entries(schemas).map(([tableName, schema]) => (
-                        <div key={tableName} className="border border-slate-700 rounded-lg p-4 space-y-3">
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-2">
-                              <Table2 className="w-4 h-4 text-blue-400" />
-                              <span className="font-mono font-medium text-blue-400">{tableName}</span>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Sample Data */}
+              <div style={{ backgroundColor: "#ffffff", padding: "2rem", borderRadius: "1rem", border: "1px solid #E5E7EB", boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "1.5rem", paddingBottom: "1rem", borderBottom: "1px solid #F3F4F6" }}>
+                  <Database size={20} color="#00684A" />
+                  <h2 style={{ margin: 0, fontSize: "1.25rem", fontWeight: 700, color: "#111827" }}>Sample Data</h2>
+                  {isAiGenerated && (
+                    <span style={{ fontSize: "0.7rem", backgroundColor: "#E1F2E9", color: "#00684A", padding: "0.2rem 0.5rem", borderRadius: "1rem", fontWeight: 600, marginLeft: "0.5rem" }}>AI Generated</span>
+                  )}
+                </div>
+                
+                {Object.keys(sampleData).length === 0 ? (
+                  <div style={{ textAlign: "center", padding: "3rem", backgroundColor: "#F9FAFB", border: "1px dashed #D1D5DB", borderRadius: "0.5rem" }}>
+                    <p style={{ color: "#6B7280", fontSize: "0.95rem" }}>{Object.keys(schemas).length === 0 ? 'Add table schemas first, then sample data will appear here.' : 'No sample data yet. Add rows to your tables.'}</p>
+                  </div>
+                ) : (
+                  <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+                    {Object.entries(sampleData).map(([tableName, rows]) => {
+                      const schema = schemas[tableName]
+                      const columns = schema ? Object.keys(schema.columns) : []
+                      return (
+                        <div key={tableName} style={{ border: "1px solid #E5E7EB", borderRadius: "0.5rem", overflow: "hidden" }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "0.75rem 1rem", backgroundColor: "#F9FAFB", borderBottom: "1px solid #E5E7EB" }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                              <span style={{ fontWeight: 600, color: "#00684A", fontFamily: "monospace" }}>{tableName}</span>
+                              <span style={{ fontSize: "0.75rem", color: "#6B7280" }}>({rows.length} rows)</span>
                             </div>
-                            <div className="flex items-center gap-2">
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="text-blue-400 hover:text-blue-300 h-7 px-2 text-xs"
+                            <div style={{ display: "flex", gap: "0.5rem" }}>
+                              <button
+                                type="button"
                                 onClick={() => {
-                                  const colName = prompt('Enter column name:')
-                                  if (colName && colName.trim()) {
-                                    const colType = prompt('Enter column type (e.g., INTEGER, VARCHAR(255), DATE):') || 'VARCHAR(255)'
-                                    setSchemas({
-                                      ...schemas,
-                                      [tableName]: {
-                                        columns: {
-                                          ...schema.columns,
-                                          [colName.trim()]: colType.trim()
-                                        }
-                                      }
-                                    })
+                                  const newRow = columns.map(() => '')
+                                  setSampleData({ ...sampleData, [tableName]: [...rows, newRow] })
+                                }}
+                                style={{ fontSize: "0.75rem", color: "#00684A", backgroundColor: "transparent", border: "none", cursor: "pointer", fontWeight: 600 }}
+                              >
+                                + Add Row
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const pasteText = prompt('Paste sample data (format: tab-separated with header row, or markdown table):')
+                                  if (pasteText && pasteText.trim()) {
+                                    try {
+                                      const parsedRows = parseSampleData(pasteText.trim(), columns)
+                                      if (parsedRows.length > 0) {
+                                        setSampleData({ ...sampleData, [tableName]: [...rows, ...parsedRows] })
+                                        alert(`Successfully parsed ${parsedRows.length} row(s)`)
+                                      } else { alert('No data rows found.') }
+                                    } catch (e) { alert(`Error parsing: ${e}`) }
                                   }
                                 }}
+                                style={{ fontSize: "0.75rem", color: "#00684A", backgroundColor: "transparent", border: "none", cursor: "pointer", fontWeight: 600 }}
                               >
-                                + Column
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="text-red-400 hover:text-red-300 h-7 px-2 text-xs"
-                                onClick={() => {
-                                  const newSchemas = { ...schemas }
-                                  delete newSchemas[tableName]
-                                  setSchemas(newSchemas)
-                                  const newSampleData = { ...sampleData }
-                                  delete newSampleData[tableName]
-                                  setSampleData(newSampleData)
-                                }}
-                              >
-                                Remove Table
-                              </Button>
+                                Paste Data
+                              </button>
                             </div>
                           </div>
-                          <div className="bg-slate-900 rounded p-3">
-                            <table className="w-full text-sm">
-                              <thead>
-                                <tr className="text-muted-foreground">
-                                  <th className="text-left py-1">Column</th>
-                                  <th className="text-left py-1">Type</th>
-                                  <th className="text-right py-1 w-16"></th>
+                          <div style={{ overflowX: "auto", padding: "1rem" }}>
+                            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.875rem" }}>
+                              <thead style={{ textAlign: "left", color: "#6B7280" }}>
+                                <tr>
+                                  {columns.map((col) => <th key={col} style={{ padding: "0.5rem", fontWeight: 500 }}>{col}</th>)}
+                                  <th style={{ width: "40px" }}></th>
                                 </tr>
                               </thead>
-                              <tbody className="font-mono">
-                                {Object.entries(schema.columns).map(([colName, colType]) => (
-                                  <tr key={colName} className="border-t border-slate-800">
-                                    <td className="py-1 text-green-400">{colName}</td>
-                                    <td className="py-1 text-yellow-400">{String(colType)}</td>
-                                    <td className="py-1 text-right">
-                                      <Button
-                                        variant="ghost"
-                                        size="sm"
-                                        className="text-red-400 hover:text-red-300 h-6 px-1 text-xs"
+                              <tbody>
+                                {rows.map((row, rowIdx) => (
+                                  <tr key={rowIdx} style={{ borderTop: "1px solid #F3F4F6" }}>
+                                    {row.map((cell, cellIdx) => (
+                                      <td key={cellIdx} style={{ padding: "0.5rem" }}>
+                                        <input
+                                          type="text"
+                                          value={cell === null ? '' : String(cell)}
+                                          onChange={(e) => {
+                                            const newRows = [...rows]
+                                            newRows[rowIdx] = [...newRows[rowIdx]]
+                                            newRows[rowIdx][cellIdx] = e.target.value
+                                            setSampleData({ ...sampleData, [tableName]: newRows })
+                                          }}
+                                          style={{ width: "100%", padding: "0.4rem", border: "1px solid #E5E7EB", borderRadius: "0.25rem", fontFamily: "monospace", fontSize: "0.8rem", outline: "none" }}
+                                          onFocus={(e) => e.currentTarget.style.borderColor = "#00684A"}
+                                          onBlur={(e) => e.currentTarget.style.borderColor = "#E5E7EB"}
+                                        />
+                                      </td>
+                                    ))}
+                                    <td style={{ padding: "0.5rem", textAlign: "right" }}>
+                                      <button
+                                        type="button"
                                         onClick={() => {
-                                          const newColumns = { ...schema.columns }
-                                          delete newColumns[colName]
-                                          setSchemas({
-                                            ...schemas,
-                                            [tableName]: { columns: newColumns }
-                                          })
+                                          const newRows = rows.filter((_, i) => i !== rowIdx)
+                                          setSampleData({ ...sampleData, [tableName]: newRows })
                                         }}
+                                        style={{ color: "#DC2626", backgroundColor: "transparent", border: "none", cursor: "pointer" }}
                                       >
-                                        ✕
-                                      </Button>
+                                        <X size={14} />
+                                      </button>
                                     </td>
                                   </tr>
                                 ))}
@@ -1517,404 +1512,215 @@ export default function QuestionCreatePage() {
                             </table>
                           </div>
                         </div>
-                      ))
-                    )}
-                  </CardContent>
-                </Card>
-
-                {/* Sample Data */}
-                <Card className="border-purple-500/20">
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <Database className="w-5 h-5 text-purple-400" />
-                      Sample Data
-                      {isAiGenerated && (
-                        <span className="text-xs bg-purple-500/20 text-purple-400 px-2 py-0.5 rounded">
-                          AI Generated
-                        </span>
-                      )}
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    {Object.keys(sampleData).length === 0 ? (
-                      <p className="text-sm text-muted-foreground italic">
-                        {Object.keys(schemas).length === 0 
-                          ? 'Add table schemas first, then sample data will appear here.'
-                          : 'No sample data yet. Add rows to your tables.'}
-                      </p>
-                    ) : (
-                      Object.entries(sampleData).map(([tableName, rows]) => {
-                        const schema = schemas[tableName]
-                        const columns = schema ? Object.keys(schema.columns) : []
-                        return (
-                          <div key={tableName} className="border border-slate-700 rounded-lg p-4 space-y-3">
-                            <div className="flex items-center justify-between">
-                              <div className="flex items-center gap-2">
-                                <Database className="w-4 h-4 text-purple-400" />
-                                <span className="font-mono font-medium text-purple-400">{tableName}</span>
-                                <span className="text-xs text-muted-foreground">({rows.length} rows)</span>
-                              </div>
-                              <div className="flex items-center gap-2">
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  className="text-purple-400 hover:text-purple-300 h-7 px-2 text-xs"
-                                  onClick={() => {
-                                    // Add a new row with empty/default values
-                                    const newRow = columns.map(() => '')
-                                    setSampleData({
-                                      ...sampleData,
-                                      [tableName]: [...rows, newRow]
-                                    })
-                                  }}
-                                >
-                                  + Add Row
-                                </Button>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  className="text-purple-400 hover:text-purple-300 h-7 px-2 text-xs"
-                                  onClick={() => {
-                                    const pasteText = prompt('Paste sample data (format: tab-separated with header row, or markdown table):')
-                                    if (pasteText && pasteText.trim()) {
-                                      try {
-                                        const parsedRows = parseSampleData(pasteText.trim(), columns)
-                                        if (parsedRows.length > 0) {
-                                          setSampleData({
-                                            ...sampleData,
-                                            [tableName]: [...rows, ...parsedRows]
-                                          })
-                                          alert(`Successfully parsed ${parsedRows.length} row(s)`)
-                                        } else {
-                                          alert('No data rows found. Please check the format.')
-                                        }
-                                      } catch (e) {
-                                        alert(`Error parsing sample data: ${e}`)
-                                      }
-                                    }
-                                  }}
-                                >
-                                  📋 Paste Data
-                                </Button>
-                              </div>
-                            </div>
-                            <div className="bg-slate-900 rounded p-3 overflow-x-auto">
-                              <table className="w-full text-sm">
-                                <thead>
-                                  <tr className="text-muted-foreground">
-                                    {columns.map((col) => (
-                                      <th key={col} className="text-left py-1 px-2">{col}</th>
-                                    ))}
-                                    <th className="w-12"></th>
-                                  </tr>
-                                </thead>
-                                <tbody className="font-mono">
-                                  {rows.map((row, rowIdx) => (
-                                    <tr key={rowIdx} className="border-t border-slate-800">
-                                      {row.map((cell, cellIdx) => (
-                                        <td key={cellIdx} className="py-1 px-2">
-                                          <Input
-                                            value={cell === null ? '' : String(cell)}
-                                            onChange={(e) => {
-                                              const newRows = [...rows]
-                                              newRows[rowIdx] = [...newRows[rowIdx]]
-                                              newRows[rowIdx][cellIdx] = e.target.value
-                                              setSampleData({
-                                                ...sampleData,
-                                                [tableName]: newRows
-                                              })
-                                            }}
-                                            className="h-7 text-xs font-mono bg-transparent border-slate-700"
-                                            placeholder="value"
-                                          />
-                                        </td>
-                                      ))}
-                                      <td className="py-1 px-2 text-right">
-                                        <Button
-                                          variant="ghost"
-                                          size="sm"
-                                          className="text-red-400 hover:text-red-300 h-6 px-1 text-xs"
-                                          onClick={() => {
-                                            const newRows = rows.filter((_, i) => i !== rowIdx)
-                                            setSampleData({
-                                              ...sampleData,
-                                              [tableName]: newRows
-                                            })
-                                          }}
-                                        >
-                                          ✕
-                                        </Button>
-                                      </td>
-                                    </tr>
-                                  ))}
-                                </tbody>
-                              </table>
-                            </div>
-                          </div>
-                        )
-                      })
-                    )}
-                  </CardContent>
-                </Card>
-
-                {/* SQL Starter Query */}
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Starter Query</CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <Textarea
-                      value={starterQuery}
-                      onChange={(e) => setStarterQuery(e.target.value)}
-                      rows={4}
-                      className="font-mono text-sm"
-                      placeholder="-- Write your SQL query here"
-                    />
-                  </CardContent>
-                </Card>
-
-                {/* Reference Query (Correct Answer) */}
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Reference Query (Correct Answer)</CardTitle>
-                    <p className="text-sm text-muted-foreground">
-                      This is the correct SQL query that produces the expected output. 
-                      Candidate submissions will be compared against this query's results.
-                    </p>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <Textarea
-                      value={referenceQuery}
-                      onChange={(e) => setReferenceQuery(e.target.value)}
-                      rows={6}
-                      className="font-mono text-sm"
-                      placeholder="SELECT column1, column2 FROM table_name WHERE condition ORDER BY column1;"
-                    />
-                    <div className="space-y-2">
-                      <label className="text-sm font-medium">Expected Output Preview (optional)</label>
-                      <p className="text-xs text-muted-foreground">
-                        Paste the expected result set for this query. This is stored with the question and shown to candidates
-                        in the SQL editor as a reference for what the correct result set should look like.
-                      </p>
-                      <Textarea
-                        value={sqlExpectedOutput}
-                        onChange={(e) => setSqlExpectedOutput(e.target.value)}
-                        rows={4}
-                        className="font-mono text-sm"
-                        placeholder="e.g., markdown table or plain-text rows representing the expected result set"
-                      />
-                    </div>
-                    <p className="text-xs text-yellow-600 dark:text-yellow-400">
-                      ⚠️ The SQL query itself is never shown to candidates, but the expected output preview may be displayed
-                      alongside the schema and sample data in the editor.
-                    </p>
-                  </CardContent>
-                </Card>
-
-                {/* SQL Evaluation Settings */}
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Evaluation Settings</CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div className="flex items-start gap-3">
-                      <Checkbox
-                        checked={orderSensitive}
-                        onCheckedChange={(val) => setOrderSensitive(!!val)}
-                      />
-                      <div>
-                        <label className="text-sm font-medium">Order Sensitive</label>
-                        <p className="text-xs text-muted-foreground mt-1">
-                          When enabled, results must be in the exact same order as expected.
-                        </p>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              </>
-            )}
-
-            {/* CODING-SPECIFIC SECTIONS */}
-            {questionType === 'coding' && (
-              <>
-                {/* Problem Details - Examples */}
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Examples</CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-6">
-            {/* Examples */}
-            <div>
-              <div className="flex items-center justify-between mb-3">
-                <label className="text-sm font-medium">Examples</label>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setExamples([...examples, { input: '', output: '', explanation: '' }])}
-                >
-                  + Add Example
-                </Button>
-              </div>
-              <div className="space-y-3">
-                {examples.map((example, idx) => (
-                  <div key={idx} className="border border-slate-700 rounded-lg p-3 space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-medium text-slate-400">Example {idx + 1}</span>
-                      {examples.length > 1 && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="text-red-400 hover:text-red-300 h-6 px-2"
-                          onClick={() => setExamples(examples.filter((_, i) => i !== idx))}
-                        >
-                          Remove
-                        </Button>
-                      )}
-                    </div>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <label className="text-xs text-muted-foreground">Input</label>
-                        <Input
-                          value={example.input}
-                          onChange={(e) => {
-                            const newExamples = [...examples]
-                            newExamples[idx].input = e.target.value
-                            setExamples(newExamples)
-                          }}
-                          placeholder='n = 7'
-                          className="font-mono text-sm"
-                        />
-                      </div>
-                      <div>
-                        <label className="text-xs text-muted-foreground">Output</label>
-                        <Input
-                          value={example.output}
-                          onChange={(e) => {
-                            const newExamples = [...examples]
-                            newExamples[idx].output = e.target.value
-                            setExamples(newExamples)
-                          }}
-                          placeholder='"Prime"'
-                          className="font-mono text-sm"
-                        />
-                      </div>
-                    </div>
-                    <div>
-                      <label className="text-xs text-muted-foreground">Explanation (optional)</label>
-                      <Input
-                        value={example.explanation}
-                        onChange={(e) => {
-                          const newExamples = [...examples]
-                          newExamples[idx].explanation = e.target.value
-                          setExamples(newExamples)
-                        }}
-                        placeholder='7 has only 2 factors: 1 and 7'
-                        className="text-sm"
-                      />
-                    </div>
+                      )
+                    })}
                   </div>
-                ))}
+                )}
               </div>
-            </div>
-          </CardContent>
-        </Card>
 
-        {/* Secure Mode Settings */}
-        <Card className="border-orange-500/30">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              Secure Mode
-              <span className="text-xs bg-orange-500/20 text-orange-400 px-2 py-0.5 rounded">
-                Prevents cheating
-              </span>
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex items-start gap-3">
-              <Checkbox
-                checked={secureMode}
-                onCheckedChange={(val) => setSecureMode(!!val)}
-                disabled={isAiGenerated}
-              />
-              <div>
-                <label className="text-sm font-medium">Enable Secure Mode</label>
-                <p className="text-xs text-muted-foreground mt-1">
-                  When enabled, users can only write the function body. The system blocks:
-                  <br />• <code className="text-orange-400">main()</code>, <code className="text-orange-400">System.out.println()</code>, <code className="text-orange-400">Scanner</code> (Java)
-                  <br />• <code className="text-orange-400">print()</code>, <code className="text-orange-400">input()</code> (Python)
-                  <br />• <code className="text-orange-400">cout</code>, <code className="text-orange-400">cin</code>, <code className="text-orange-400">main()</code> (C++)
-                  <br />• <code className="text-orange-400">console.log()</code>, <code className="text-orange-400">prompt()</code> (JavaScript)
-                </p>
-              </div>
-            </div>
-
-            {secureMode && (
-              <div className="border border-orange-500/20 rounded-lg p-4 space-y-4 bg-orange-500/5">
-                <h4 className="font-medium text-sm">Function Signature</h4>
-                <p className="text-xs text-muted-foreground">
-                  Define the function that users must implement. The system will automatically
-                  handle reading input and printing output.
-                </p>
-                
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="text-xs font-medium">Function Name *</label>
-                    <Input
-                      value={functionName}
-                      onChange={(e) => setFunctionName(e.target.value)}
-                      placeholder="e.g., twoSum, isPrime, reverseString"
-                      className="font-mono"
-                      disabled={isAiGenerated}
-                    />
+              {/* Starter & Reference Query (Grouped) */}
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1.5rem" }}>
+                <div style={{ backgroundColor: "#ffffff", padding: "2rem", borderRadius: "1rem", border: "1px solid #E5E7EB", boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "1rem", paddingBottom: "1rem", borderBottom: "1px solid #F3F4F6" }}>
+                    <FileCode size={20} color="#00684A" />
+                    <h2 style={{ margin: 0, fontSize: "1.125rem", fontWeight: 700, color: "#111827" }}>Starter Query</h2>
                   </div>
-                  <div>
-                    <label className="text-xs font-medium">Return Type *</label>
-                    <select
-                      value={returnType}
-                      onChange={(e) => setReturnType(e.target.value)}
-                      className="w-full mt-1 rounded-md border border-input bg-background px-3 py-2 text-sm font-mono"
-                      disabled={isAiGenerated}
-                    >
-                      <option value="int">int</option>
-                      <option value="long">long</option>
-                      <option value="double">double</option>
-                      <option value="boolean">boolean</option>
-                      <option value="string">string</option>
-                      <option value="int[]">int[] (array)</option>
-                      <option value="string[]">string[] (array)</option>
-                      <option value="int[][]">int[][] (2D array)</option>
-                      <option value="List<Integer>">List&lt;Integer&gt;</option>
-                      <option value="List<String>">List&lt;String&gt;</option>
-                      <option value="void">void</option>
-                    </select>
-                  </div>
+                  <textarea
+                    value={starterQuery}
+                    onChange={(e) => setStarterQuery(e.target.value)}
+                    rows={8}
+                    placeholder="-- Write your SQL query here"
+                    style={{ width: "100%", padding: "1rem", border: "1px solid #D1D5DB", borderRadius: "0.5rem", outline: "none", boxSizing: "border-box", fontSize: "0.875rem", fontFamily: "monospace", backgroundColor: "#F9FAFB" }}
+                    onFocus={(e) => e.currentTarget.style.borderColor = "#00684A"}
+                    onBlur={(e) => e.currentTarget.style.borderColor = "#D1D5DB"}
+                  />
                 </div>
 
-                <div>
-                  <label className="text-xs font-medium mb-2 block">Parameters *</label>
-                  <div className="space-y-2">
-                    {parameters.map((param, idx) => (
-                      <div key={idx} className="flex gap-2 items-center">
-                        <Input
-                          value={param.name}
+                <div style={{ backgroundColor: "#ffffff", padding: "2rem", borderRadius: "1rem", border: "1px solid #E5E7EB", boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "1rem", paddingBottom: "1rem", borderBottom: "1px solid #F3F4F6" }}>
+                    <CheckSquare size={20} color="#00684A" />
+                    <h2 style={{ margin: 0, fontSize: "1.125rem", fontWeight: 700, color: "#111827" }}>Reference Query (Answer)</h2>
+                  </div>
+                  <textarea
+                    value={referenceQuery}
+                    onChange={(e) => setReferenceQuery(e.target.value)}
+                    rows={8}
+                    placeholder="SELECT column1, column2 FROM table_name WHERE condition ORDER BY column1;"
+                    style={{ width: "100%", padding: "1rem", border: "1px solid #D1D5DB", borderRadius: "0.5rem", outline: "none", boxSizing: "border-box", fontSize: "0.875rem", fontFamily: "monospace", backgroundColor: "#F0F9F4" }}
+                    onFocus={(e) => e.currentTarget.style.borderColor = "#00684A"}
+                    onBlur={(e) => e.currentTarget.style.borderColor = "#D1D5DB"}
+                  />
+                </div>
+              </div>
+
+              {/* SQL Evaluation Settings */}
+              <div style={{ backgroundColor: "#ffffff", padding: "2rem", borderRadius: "1rem", border: "1px solid #E5E7EB", boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "1.5rem", paddingBottom: "1rem", borderBottom: "1px solid #F3F4F6" }}>
+                  <Sliders size={20} color="#00684A" />
+                  <h2 style={{ margin: 0, fontSize: "1.25rem", fontWeight: 700, color: "#111827" }}>Evaluation Settings</h2>
+                </div>
+                
+                <label style={{ display: "flex", alignItems: "flex-start", gap: "0.75rem", cursor: "pointer", padding: "1rem", backgroundColor: orderSensitive ? "#F0F9F4" : "#F9FAFB", border: `1px solid ${orderSensitive ? "#A8E8BC" : "#E5E7EB"}`, borderRadius: "0.5rem" }}>
+                  <input
+                    type="checkbox"
+                    checked={orderSensitive}
+                    onChange={(e) => setOrderSensitive(e.target.checked)}
+                    style={{ marginTop: "0.25rem", width: "16px", height: "16px", accentColor: "#00684A" }}
+                  />
+                  <div>
+                    <div style={{ fontWeight: 600, color: "#111827" }}>Order Sensitive Evaluation</div>
+                    <div style={{ fontSize: "0.875rem", color: "#6B7280", marginTop: "0.25rem" }}>When enabled, candidate results must be in the exact same order as expected (useful when testing ORDER BY clauses).</div>
+                  </div>
+                </label>
+
+                <div style={{ marginTop: "1.5rem" }}>
+                  <label style={{ display: "block", marginBottom: "0.5rem", fontWeight: 600, color: "#374151", fontSize: "0.875rem" }}>Expected Output Preview (Optional)</label>
+                  <p style={{ fontSize: "0.8rem", color: "#6B7280", marginBottom: "0.75rem" }}>Paste a text representation of the expected result set to show candidates what the output should look like.</p>
+                  <textarea
+                    value={sqlExpectedOutput}
+                    onChange={(e) => setSqlExpectedOutput(e.target.value)}
+                    rows={4}
+                    placeholder="e.g., markdown table or plain-text rows"
+                    style={{ width: "100%", padding: "1rem", border: "1px solid #D1D5DB", borderRadius: "0.5rem", outline: "none", boxSizing: "border-box", fontSize: "0.875rem", fontFamily: "monospace" }}
+                    onFocus={(e) => e.currentTarget.style.borderColor = "#00684A"}
+                    onBlur={(e) => e.currentTarget.style.borderColor = "#D1D5DB"}
+                  />
+                </div>
+              </div>
+            </>
+          )}
+
+          {/* ======================= CODING SPECIFIC SECTIONS ======================= */}
+          {questionType === 'coding' && (
+            <>
+              {/* Examples */}
+              <div style={{ backgroundColor: "#ffffff", padding: "2rem", borderRadius: "1rem", border: "1px solid #E5E7EB", boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "1.5rem", paddingBottom: "1rem", borderBottom: "1px solid #F3F4F6" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                    <PlaySquare size={20} color="#00684A" />
+                    <h2 style={{ margin: 0, fontSize: "1.25rem", fontWeight: 700, color: "#111827" }}>Examples</h2>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setExamples([...examples, { input: '', output: '', explanation: '' }])}
+                    style={{ display: "flex", alignItems: "center", gap: "0.375rem", padding: "0.4rem 0.75rem", fontSize: "0.875rem", fontWeight: 600, color: "#00684A", backgroundColor: "#F0F9F4", border: "1px solid #A8E8BC", borderRadius: "0.5rem", cursor: "pointer" }}
+                  >
+                    <Plus size={16} /> Add Example
+                  </button>
+                </div>
+                
+                <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
+                  {examples.map((example, idx) => (
+                    <div key={idx} style={{ padding: "1.5rem", border: "1px solid #E5E7EB", borderRadius: "0.75rem", backgroundColor: "#F9FAFB" }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem" }}>
+                        <h4 style={{ margin: 0, fontWeight: 700, color: "#374151" }}>Example {idx + 1}</h4>
+                        {examples.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => setExamples(examples.filter((_, i) => i !== idx))}
+                            style={{ color: "#DC2626", backgroundColor: "transparent", border: "none", cursor: "pointer", fontSize: "0.875rem", fontWeight: 600, display: "flex", alignItems: "center", gap: "0.25rem" }}
+                          >
+                            <Trash2 size={14} /> Remove
+                          </button>
+                        )}
+                      </div>
+                      
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem", marginBottom: "1rem" }}>
+                        <div>
+                          <label style={{ display: "block", marginBottom: "0.25rem", fontWeight: 600, color: "#4B5563", fontSize: "0.8rem", textTransform: "uppercase" }}>Input</label>
+                          <input
+                            type="text"
+                            value={example.input}
+                            onChange={(e) => {
+                              const newExamples = [...examples]; newExamples[idx].input = e.target.value; setExamples(newExamples)
+                            }}
+                            placeholder='n = 7'
+                            style={{ width: "100%", padding: "0.625rem", border: "1px solid #D1D5DB", borderRadius: "0.5rem", outline: "none", boxSizing: "border-box", fontFamily: "monospace", fontSize: "0.875rem" }}
+                            onFocus={(e) => e.currentTarget.style.borderColor = "#00684A"}
+                            onBlur={(e) => e.currentTarget.style.borderColor = "#D1D5DB"}
+                          />
+                        </div>
+                        <div>
+                          <label style={{ display: "block", marginBottom: "0.25rem", fontWeight: 600, color: "#4B5563", fontSize: "0.8rem", textTransform: "uppercase" }}>Output</label>
+                          <input
+                            type="text"
+                            value={example.output}
+                            onChange={(e) => {
+                              const newExamples = [...examples]; newExamples[idx].output = e.target.value; setExamples(newExamples)
+                            }}
+                            placeholder='"Prime"'
+                            style={{ width: "100%", padding: "0.625rem", border: "1px solid #D1D5DB", borderRadius: "0.5rem", outline: "none", boxSizing: "border-box", fontFamily: "monospace", fontSize: "0.875rem" }}
+                            onFocus={(e) => e.currentTarget.style.borderColor = "#00684A"}
+                            onBlur={(e) => e.currentTarget.style.borderColor = "#D1D5DB"}
+                          />
+                        </div>
+                      </div>
+                      <div>
+                        <label style={{ display: "block", marginBottom: "0.25rem", fontWeight: 600, color: "#4B5563", fontSize: "0.8rem", textTransform: "uppercase" }}>Explanation (Optional)</label>
+                        <textarea
+                          value={example.explanation}
                           onChange={(e) => {
-                            const newParams = [...parameters]
-                            newParams[idx].name = e.target.value
-                            setParameters(newParams)
+                            const newExamples = [...examples]; newExamples[idx].explanation = e.target.value; setExamples(newExamples)
                           }}
-                          placeholder="Parameter name"
-                          className="font-mono flex-1"
-                          disabled={isAiGenerated}
+                          rows={2}
+                          placeholder='7 has only 2 factors: 1 and 7'
+                          style={{ width: "100%", padding: "0.625rem", border: "1px solid #D1D5DB", borderRadius: "0.5rem", outline: "none", boxSizing: "border-box", fontSize: "0.875rem", resize: "vertical" }}
+                          onFocus={(e) => e.currentTarget.style.borderColor = "#00684A"}
+                          onBlur={(e) => e.currentTarget.style.borderColor = "#D1D5DB"}
                         />
-                        <select
-                          value={param.type}
-                          onChange={(e) => {
-                            const newParams = [...parameters]
-                            newParams[idx].type = e.target.value
-                            setParameters(newParams)
-                          }}
-                          className="rounded-md border border-input bg-background px-3 py-2 text-sm font-mono"
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Secure Mode Settings */}
+              <div style={{ backgroundColor: "#ffffff", padding: "2rem", borderRadius: "1rem", border: "1px solid #E5E7EB", boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "1.5rem", paddingBottom: "1rem", borderBottom: "1px solid #F3F4F6" }}>
+                  <Lock size={20} color="#00684A" />
+                  <h2 style={{ margin: 0, fontSize: "1.25rem", fontWeight: 700, color: "#111827" }}>Secure Mode</h2>
+                  <span style={{ fontSize: "0.7rem", backgroundColor: "#FEE2E2", color: "#B91C1C", padding: "0.2rem 0.5rem", borderRadius: "1rem", fontWeight: 600, marginLeft: "0.5rem", textTransform: "uppercase" }}>Anti-Cheat</span>
+                </div>
+
+                <label style={{ display: "flex", alignItems: "flex-start", gap: "0.75rem", cursor: isAiGenerated ? "not-allowed" : "pointer", padding: "1rem", backgroundColor: secureMode ? "#F0F9F4" : "#F9FAFB", border: `1px solid ${secureMode ? "#A8E8BC" : "#E5E7EB"}`, borderRadius: "0.75rem", marginBottom: "1.5rem", opacity: isAiGenerated ? 0.7 : 1 }}>
+                  <input
+                    type="checkbox"
+                    checked={secureMode}
+                    onChange={(e) => setSecureMode(e.target.checked)}
+                    disabled={isAiGenerated}
+                    style={{ marginTop: "0.25rem", width: "18px", height: "18px", accentColor: "#00684A", cursor: isAiGenerated ? "not-allowed" : "pointer" }}
+                  />
+                  <div>
+                    <div style={{ fontWeight: 600, color: "#111827", fontSize: "1rem" }}>Enable Secure Mode</div>
+                    <div style={{ fontSize: "0.875rem", color: "#6B7280", marginTop: "0.25rem", lineHeight: "1.5" }}>
+                      When enabled, candidates only write the core function body. I/O manipulation is completely blocked.
+                    </div>
+                  </div>
+                </label>
+
+                {secureMode && (
+                  <div style={{ padding: "1.5rem", backgroundColor: "#F9FAFB", border: "1px solid #E5E7EB", borderRadius: "0.75rem" }}>
+                    <h4 style={{ margin: "0 0 1rem 0", fontWeight: 700, color: "#374151" }}>Function Signature</h4>
+                    
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1.5rem", marginBottom: "1.5rem" }}>
+                      <div>
+                        <label style={{ display: "block", marginBottom: "0.5rem", fontWeight: 600, color: "#374151", fontSize: "0.875rem" }}>Function Name *</label>
+                        <input
+                          type="text"
+                          value={functionName}
+                          onChange={(e) => setFunctionName(e.target.value)}
+                          placeholder="e.g., twoSum"
                           disabled={isAiGenerated}
+                          style={{ width: "100%", padding: "0.75rem", border: "1px solid #D1D5DB", borderRadius: "0.5rem", outline: "none", boxSizing: "border-box", fontFamily: "monospace" }}
+                        />
+                      </div>
+                      <div>
+                        <label style={{ display: "block", marginBottom: "0.5rem", fontWeight: 600, color: "#374151", fontSize: "0.875rem" }}>Return Type *</label>
+                        <select
+                          value={returnType}
+                          onChange={(e) => setReturnType(e.target.value)}
+                          disabled={isAiGenerated}
+                          style={{ width: "100%", padding: "0.75rem", border: "1px solid #D1D5DB", borderRadius: "0.5rem", outline: "none", boxSizing: "border-box", fontFamily: "monospace", backgroundColor: "#ffffff" }}
                         >
                           <option value="int">int</option>
                           <option value="long">long</option>
@@ -1926,299 +1732,318 @@ export default function QuestionCreatePage() {
                           <option value="int[][]">int[][]</option>
                           <option value="List<Integer>">List&lt;Integer&gt;</option>
                           <option value="List<String>">List&lt;String&gt;</option>
+                          <option value="void">void</option>
                         </select>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => {
-                            if (parameters.length > 1) {
-                              setParameters(parameters.filter((_, i) => i !== idx))
-                            }
-                          }}
-                          disabled={parameters.length === 1 || isAiGenerated}
-                        >
-                          ✕
-                        </Button>
                       </div>
-                    ))}
-                  </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="mt-2"
-                    onClick={() => setParameters([...parameters, { name: '', type: 'int' }])}
-                    disabled={isAiGenerated}
-                  >
-                    + Add Parameter
-                  </Button>
-                  {isAiGenerated && (
-                    <p className="text-xs text-muted-foreground mt-2">
-                      ℹ️ Function signature is AI-generated and cannot be modified
-                    </p>
-                  )}
-                </div>
+                    </div>
 
-                <div className="bg-slate-900 rounded p-3 mt-4">
-                  <p className="text-xs text-muted-foreground mb-2">Preview (Java):</p>
-                  <code className="text-sm text-green-400 font-mono">
-                    public static {returnType} {functionName || 'functionName'}(
-                    {parameters
-                      .filter(p => p.name)
-                      .map(p => `${p.type} ${p.name}`)
-                      .join(', ')})
-                  </code>
-                </div>
+                    <div style={{ marginBottom: "1.5rem" }}>
+                      <label style={{ display: "block", marginBottom: "0.5rem", fontWeight: 600, color: "#374151", fontSize: "0.875rem" }}>Parameters *</label>
+                      <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+                        {parameters.map((param, idx) => (
+                          <div key={idx} style={{ display: "flex", gap: "0.75rem", alignItems: "center" }}>
+                            <input
+                              type="text"
+                              value={param.name}
+                              onChange={(e) => {
+                                const newParams = [...parameters]; newParams[idx].name = e.target.value; setParameters(newParams)
+                              }}
+                              placeholder="Name"
+                              disabled={isAiGenerated}
+                              style={{ flex: 1, padding: "0.625rem", border: "1px solid #D1D5DB", borderRadius: "0.5rem", outline: "none", fontFamily: "monospace" }}
+                            />
+                            <select
+                              value={param.type}
+                              onChange={(e) => {
+                                const newParams = [...parameters]; newParams[idx].type = e.target.value; setParameters(newParams)
+                              }}
+                              disabled={isAiGenerated}
+                              style={{ padding: "0.625rem", border: "1px solid #D1D5DB", borderRadius: "0.5rem", outline: "none", fontFamily: "monospace", backgroundColor: "#ffffff" }}
+                            >
+                              <option value="int">int</option>
+                              <option value="long">long</option>
+                              <option value="double">double</option>
+                              <option value="boolean">boolean</option>
+                              <option value="string">string</option>
+                              <option value="int[]">int[]</option>
+                              <option value="string[]">string[]</option>
+                              <option value="int[][]">int[][]</option>
+                              <option value="List<Integer>">List&lt;Integer&gt;</option>
+                              <option value="List<String>">List&lt;String&gt;</option>
+                            </select>
+                            <button
+                              type="button"
+                              onClick={() => { if (parameters.length > 1) setParameters(parameters.filter((_, i) => i !== idx)) }}
+                              disabled={parameters.length === 1 || isAiGenerated}
+                              style={{ padding: "0.5rem", color: (parameters.length === 1 || isAiGenerated) ? "#9CA3AF" : "#DC2626", backgroundColor: "transparent", border: "none", cursor: (parameters.length === 1 || isAiGenerated) ? "not-allowed" : "pointer" }}
+                            >
+                              <X size={20} />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setParameters([...parameters, { name: '', type: 'int' }])}
+                        disabled={isAiGenerated}
+                        style={{ display: "flex", alignItems: "center", gap: "0.375rem", marginTop: "0.75rem", padding: "0.4rem 0.75rem", fontSize: "0.8rem", fontWeight: 600, color: "#374151", backgroundColor: "#ffffff", border: "1px solid #D1D5DB", borderRadius: "0.375rem", cursor: isAiGenerated ? "not-allowed" : "pointer" }}
+                      >
+                        <Plus size={14} /> Add Parameter
+                      </button>
+                    </div>
+
+                    <div style={{ backgroundColor: "#111827", borderRadius: "0.5rem", padding: "1rem" }}>
+                      <p style={{ margin: "0 0 0.5rem 0", color: "#9CA3AF", fontSize: "0.75rem", textTransform: "uppercase", letterSpacing: "0.05em" }}>Java Preview</p>
+                      <code style={{ color: "#34D399", fontFamily: "monospace", fontSize: "0.9rem" }}>
+                        public static {returnType} {functionName || 'functionName'}(
+                        {parameters.filter(p => p.name).map(p => `${p.type} ${p.name}`).join(', ')})
+                      </code>
+                    </div>
+                  </div>
+                )}
               </div>
-            )}
-          </CardContent>
-        </Card>
 
-        {/* Starter Code */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Starter Code (Boilerplate)</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <p className="text-sm text-muted-foreground">
-              Provide starter code for each language. This is what users will see
-              when they start the problem.
-            </p>
-            {SUPPORTED_LANGUAGES.map((lang) => (
-              <div key={lang}>
-                <label className="text-sm font-medium capitalize flex items-center gap-2">
-                  {lang}
-                  {languages.includes(lang) && (
-                    <span className="text-xs bg-green-500/20 text-green-400 px-2 py-0.5 rounded">
-                      enabled
-                    </span>
-                  )}
-                </label>
-                <Textarea
-                  className="font-mono text-sm mt-2"
-                  rows={6}
-                  value={starterCode[lang] || ''}
-                  onChange={(e) =>
-                    setStarterCode((prev) => ({
-                      ...prev,
-                      [lang]: e.target.value,
-                    }))
-                  }
-                  disabled={isAiGenerated}
-                  placeholder={isAiGenerated ? "AI-generated starter code (cannot be edited)" : "Enter starter code for this language"}
-                />
-              </div>
-            ))}
-            {isAiGenerated && (
-              <p className="text-xs text-muted-foreground mt-2">
-                ℹ️ Starter code is AI-generated and cannot be modified. Generated for {languages.length} selected language{languages.length !== 1 ? 's' : ''}: {languages.join(', ')}.
-              </p>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Public Test Cases */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              Public Test Cases
-              <span className="text-xs bg-blue-500/20 text-blue-400 px-2 py-0.5 rounded">
-                Visible to users
-              </span>
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <p className="text-sm text-muted-foreground">
-              These test cases are shown to users. They can see the input, expected
-              output, and their output. Use 2-3 simple examples.
-            </p>
-            {publicTestcases.map((tc, idx) => (
-              <div
-                key={`public-${idx}`}
-                className="rounded-md border border-border p-4 space-y-3"
-              >
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium">
-                    Public Test Case {idx + 1}
-                  </span>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => removeTestcase('public', idx)}
-                    disabled={publicTestcases.length === 1}
-                  >
-                    Remove
-                  </Button>
+              {/* Starter Code */}
+              <div style={{ backgroundColor: "#ffffff", padding: "2rem", borderRadius: "1rem", border: "1px solid #E5E7EB", boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "1.5rem", paddingBottom: "1rem", borderBottom: "1px solid #F3F4F6" }}>
+                  <FileCode size={20} color="#00684A" />
+                  <h2 style={{ margin: 0, fontSize: "1.25rem", fontWeight: 700, color: "#111827" }}>Starter Code (Boilerplate)</h2>
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="text-xs font-medium">Input (stdin)</label>
-                    <Textarea
-                      rows={3}
-                      className="font-mono text-sm"
-                      value={formatTestcaseInput(tc.input)}
-                      onChange={(e) =>
-                        updateTestcase(idx, 'public', 'input', e.target.value)
-                      }
-                      placeholder={getStdinPlaceholder()}
-                    />
-                  </div>
-                  <div>
-                      <label className="text-xs font-medium">Expected Output</label>
-                    <Textarea
-                      rows={3}
-                      className="font-mono text-sm"
-                      value={formatTestcaseExpectedOutput(tc.expected_output)}
-                      onChange={(e) =>
-                        updateTestcase(idx, 'public', 'expected_output', e.target.value)
-                      }
-                      placeholder={
-                        getExpectedOutputPlaceholder(returnType)
-                      }
-                    />
-                  </div>
-                </div>
-              </div>
-            ))}
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => addTestcase('public')}
-            >
-              + Add Public Test Case
-            </Button>
-          </CardContent>
-        </Card>
-
-        {/* Hidden Test Cases */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              Hidden Test Cases
-              <span className="text-xs bg-yellow-500/20 text-yellow-400 px-2 py-0.5 rounded">
-                Hidden from users
-              </span>
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <p className="text-sm text-muted-foreground">
-              These test cases are <strong>never shown to users</strong>. They only see
-              "Passed" or "Failed". Use edge cases and stress tests to prevent
-              hardcoding.
-            </p>
-            {hiddenTestcases.map((tc, idx) => (
-              <div
-                key={`hidden-${idx}`}
-                className="rounded-md border border-yellow-500/30 bg-yellow-500/5 p-4 space-y-3"
-              >
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium">
-                    Hidden Test Case {idx + 1}
-                  </span>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => removeTestcase('hidden', idx)}
-                    disabled={hiddenTestcases.length === 1}
-                  >
-                    Remove
-                  </Button>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="text-xs font-medium">Input (stdin)</label>
-                    <Textarea
-                      rows={3}
-                      className="font-mono text-sm"
-                      value={formatTestcaseInput(tc.input)}
-                      onChange={(e) =>
-                        updateTestcase(idx, 'hidden', 'input', e.target.value)
-                      }
-                      placeholder={getStdinPlaceholder()}
-                    />
-                  </div>
-                  <div>
-                      <label className="text-xs font-medium">Expected Output</label>
-                    <Textarea
-                      rows={3}
-                      className="font-mono text-sm"
-                      value={formatTestcaseExpectedOutput(tc.expected_output)}
-                      onChange={(e) =>
-                        updateTestcase(idx, 'hidden', 'expected_output', e.target.value)
-                      }
-                      placeholder={
-                        getExpectedOutputPlaceholder(returnType)
-                      }
-                    />
-                  </div>
-                </div>
-              </div>
-            ))}
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => addTestcase('hidden')}
-            >
-              + Add Hidden Test Case
-                    </Button>
-                  </CardContent>
-                </Card>
-              </>
-            )}
-
-            {/* Constraints - Common for both */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Constraints</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="space-y-2">
-                  {constraints.map((constraint, idx) => (
-                    <div key={idx} className="flex items-center gap-2">
-                      <Input
-                        value={constraint}
-                        onChange={(e) => {
-                          const newConstraints = [...constraints]
-                          newConstraints[idx] = e.target.value
-                          setConstraints(newConstraints)
-                        }}
-                        placeholder={questionType === 'sql' 
-                          ? "e.g., Results must be ordered by salary DESC"
-                          : "e.g., 0 <= n <= 5 * 10^6"
-                        }
-                        className="font-mono text-sm flex-1"
+                
+                <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
+                  {SUPPORTED_LANGUAGES.map((lang) => (
+                    <div key={lang}>
+                      <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.5rem", fontWeight: 600, color: "#374151", fontSize: "0.875rem", textTransform: "capitalize" }}>
+                        {lang}
+                        {languages.includes(lang) && (
+                          <span style={{ fontSize: "0.65rem", backgroundColor: "#D1FAE5", color: "#059669", padding: "0.1rem 0.4rem", borderRadius: "1rem", textTransform: "uppercase" }}>Enabled</span>
+                        )}
+                      </label>
+                      <textarea
+                        rows={6}
+                        value={starterCode[lang] || ''}
+                        onChange={(e) => setStarterCode((prev) => ({ ...prev, [lang]: e.target.value }))}
+                        disabled={isAiGenerated}
+                        placeholder={isAiGenerated ? "AI-generated starter code (cannot be edited)" : "Enter starter code for this language"}
+                        style={{ width: "100%", padding: "1rem", border: "1px solid #D1D5DB", borderRadius: "0.5rem", outline: "none", boxSizing: "border-box", fontSize: "0.875rem", fontFamily: "monospace", backgroundColor: isAiGenerated ? "#F9FAFB" : "#ffffff" }}
+                        onFocus={(e) => { if(!isAiGenerated) e.currentTarget.style.borderColor = "#00684A" }}
+                        onBlur={(e) => { if(!isAiGenerated) e.currentTarget.style.borderColor = "#D1D5DB" }}
                       />
-                      {constraints.length > 1 && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="text-red-400 hover:text-red-300 h-8 px-2"
-                          onClick={() => setConstraints(constraints.filter((_, i) => i !== idx))}
-                        >
-                          ✕
-                        </Button>
-                      )}
                     </div>
                   ))}
                 </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setConstraints([...constraints, ''])}
-                >
-                  + Add Constraint
-            </Button>
-          </CardContent>
-        </Card>
+              </div>
 
-        {/* Bottom Actions */}
-        <div className="flex justify-end gap-3 pb-8">
-          <Link href="/dsa/questions">
-            <Button variant="outline">Cancel</Button>
-          </Link>
-          <Button onClick={handleCreate} disabled={saving}>
-            {saving ? 'Creating...' : `Create ${questionType === 'sql' ? 'SQL' : 'Coding'} Question`}
-          </Button>
+              {/* Public Test Cases */}
+              <div style={{ backgroundColor: "#ffffff", padding: "2rem", borderRadius: "1rem", border: "1px solid #E5E7EB", boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "1.5rem", paddingBottom: "1rem", borderBottom: "1px solid #F3F4F6" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                    <Eye size={20} color="#00684A" />
+                    <h2 style={{ margin: 0, fontSize: "1.25rem", fontWeight: 700, color: "#111827" }}>Public Test Cases</h2>
+                    <span style={{ fontSize: "0.7rem", backgroundColor: "#E0E7FF", color: "#4F46E5", padding: "0.2rem 0.5rem", borderRadius: "1rem", fontWeight: 600, marginLeft: "0.5rem" }}>Visible to candidates</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => addTestcase('public')}
+                    style={{ display: "flex", alignItems: "center", gap: "0.375rem", padding: "0.4rem 0.75rem", fontSize: "0.875rem", fontWeight: 600, color: "#00684A", backgroundColor: "#F0F9F4", border: "1px solid #A8E8BC", borderRadius: "0.5rem", cursor: "pointer" }}
+                  >
+                    <Plus size={16} /> Add Test Case
+                  </button>
+                </div>
+                
+                <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
+                  {publicTestcases.map((tc, idx) => (
+                    <div key={`public-${idx}`} style={{ padding: "1.5rem", border: "1px solid #E5E7EB", borderRadius: "0.75rem", backgroundColor: "#F9FAFB" }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem" }}>
+                        <h4 style={{ margin: 0, fontWeight: 700, color: "#374151" }}>Public Case {idx + 1}</h4>
+                        <button
+                          type="button"
+                          onClick={() => removeTestcase('public', idx)}
+                          disabled={publicTestcases.length === 1}
+                          style={{ color: publicTestcases.length === 1 ? "#9CA3AF" : "#DC2626", backgroundColor: "transparent", border: "none", cursor: publicTestcases.length === 1 ? "not-allowed" : "pointer", fontSize: "0.875rem", fontWeight: 600, display: "flex", alignItems: "center", gap: "0.25rem" }}
+                        >
+                          <Trash2 size={14} /> Remove
+                        </button>
+                      </div>
+                      
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1.5rem" }}>
+                        <div>
+                          <label style={{ display: "block", marginBottom: "0.25rem", fontWeight: 600, color: "#4B5563", fontSize: "0.8rem", textTransform: "uppercase" }}>Input (stdin)</label>
+                          <textarea
+                            rows={3}
+                            value={formatTestcaseInput(tc.input)}
+                            onChange={(e) => updateTestcase(idx, 'public', 'input', e.target.value)}
+                            placeholder={getStdinPlaceholder()}
+                            style={{ width: "100%", padding: "0.75rem", border: "1px solid #D1D5DB", borderRadius: "0.5rem", outline: "none", boxSizing: "border-box", fontFamily: "monospace", fontSize: "0.875rem" }}
+                            onFocus={(e) => e.currentTarget.style.borderColor = "#00684A"}
+                            onBlur={(e) => e.currentTarget.style.borderColor = "#D1D5DB"}
+                          />
+                        </div>
+                        <div>
+                          <label style={{ display: "block", marginBottom: "0.25rem", fontWeight: 600, color: "#4B5563", fontSize: "0.8rem", textTransform: "uppercase" }}>Expected Output</label>
+                          <textarea
+                            rows={3}
+                            value={formatTestcaseExpectedOutput(tc.expected_output)}
+                            onChange={(e) => updateTestcase(idx, 'public', 'expected_output', e.target.value)}
+                            placeholder={getExpectedOutputPlaceholder(returnType)}
+                            style={{ width: "100%", padding: "0.75rem", border: "1px solid #D1D5DB", borderRadius: "0.5rem", outline: "none", boxSizing: "border-box", fontFamily: "monospace", fontSize: "0.875rem" }}
+                            onFocus={(e) => e.currentTarget.style.borderColor = "#00684A"}
+                            onBlur={(e) => e.currentTarget.style.borderColor = "#D1D5DB"}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Hidden Test Cases */}
+              <div style={{ backgroundColor: "#ffffff", padding: "2rem", borderRadius: "1rem", border: "1px solid #E5E7EB", boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "1.5rem", paddingBottom: "1rem", borderBottom: "1px solid #F3F4F6" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                    <EyeOff size={20} color="#00684A" />
+                    <h2 style={{ margin: 0, fontSize: "1.25rem", fontWeight: 700, color: "#111827" }}>Hidden Test Cases</h2>
+                    <span style={{ fontSize: "0.7rem", backgroundColor: "#FEF9C3", color: "#D97706", padding: "0.2rem 0.5rem", borderRadius: "1rem", fontWeight: 600, marginLeft: "0.5rem" }}>Hidden from candidates</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => addTestcase('hidden')}
+                    style={{ display: "flex", alignItems: "center", gap: "0.375rem", padding: "0.4rem 0.75rem", fontSize: "0.875rem", fontWeight: 600, color: "#00684A", backgroundColor: "#F0F9F4", border: "1px solid #A8E8BC", borderRadius: "0.5rem", cursor: "pointer" }}
+                  >
+                    <Plus size={16} /> Add Hidden Case
+                  </button>
+                </div>
+                
+                <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
+                  {hiddenTestcases.map((tc, idx) => (
+                    <div key={`hidden-${idx}`} style={{ padding: "1.5rem", border: "1px solid #FDE68A", borderRadius: "0.75rem", backgroundColor: "#FEFCE8" }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem" }}>
+                        <h4 style={{ margin: 0, fontWeight: 700, color: "#92400E" }}>Hidden Case {idx + 1}</h4>
+                        <button
+                          type="button"
+                          onClick={() => removeTestcase('hidden', idx)}
+                          disabled={hiddenTestcases.length === 1}
+                          style={{ color: hiddenTestcases.length === 1 ? "#D1D5DB" : "#DC2626", backgroundColor: "transparent", border: "none", cursor: hiddenTestcases.length === 1 ? "not-allowed" : "pointer", fontSize: "0.875rem", fontWeight: 600, display: "flex", alignItems: "center", gap: "0.25rem" }}
+                        >
+                          <Trash2 size={14} /> Remove
+                        </button>
+                      </div>
+                      
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1.5rem" }}>
+                        <div>
+                          <label style={{ display: "block", marginBottom: "0.25rem", fontWeight: 600, color: "#92400E", fontSize: "0.8rem", textTransform: "uppercase" }}>Input (stdin)</label>
+                          <textarea
+                            rows={3}
+                            value={formatTestcaseInput(tc.input)}
+                            onChange={(e) => updateTestcase(idx, 'hidden', 'input', e.target.value)}
+                            placeholder={getStdinPlaceholder()}
+                            style={{ width: "100%", padding: "0.75rem", border: "1px solid #FCD34D", borderRadius: "0.5rem", outline: "none", boxSizing: "border-box", fontFamily: "monospace", fontSize: "0.875rem", backgroundColor: "#ffffff" }}
+                            onFocus={(e) => e.currentTarget.style.borderColor = "#D97706"}
+                            onBlur={(e) => e.currentTarget.style.borderColor = "#FCD34D"}
+                          />
+                        </div>
+                        <div>
+                          <label style={{ display: "block", marginBottom: "0.25rem", fontWeight: 600, color: "#92400E", fontSize: "0.8rem", textTransform: "uppercase" }}>Expected Output</label>
+                          <textarea
+                            rows={3}
+                            value={formatTestcaseExpectedOutput(tc.expected_output)}
+                            onChange={(e) => updateTestcase(idx, 'hidden', 'expected_output', e.target.value)}
+                            placeholder={getExpectedOutputPlaceholder(returnType)}
+                            style={{ width: "100%", padding: "0.75rem", border: "1px solid #FCD34D", borderRadius: "0.5rem", outline: "none", boxSizing: "border-box", fontFamily: "monospace", fontSize: "0.875rem", backgroundColor: "#ffffff" }}
+                            onFocus={(e) => e.currentTarget.style.borderColor = "#D97706"}
+                            onBlur={(e) => e.currentTarget.style.borderColor = "#FCD34D"}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </>
+          )}
+
+          {/* Constraints */}
+          <div style={{ backgroundColor: "#ffffff", padding: "2rem", borderRadius: "1rem", border: "1px solid #E5E7EB", boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "1.5rem", paddingBottom: "1rem", borderBottom: "1px solid #F3F4F6" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                <AlertCircle size={20} color="#00684A" />
+                <h2 style={{ margin: 0, fontSize: "1.25rem", fontWeight: 700, color: "#111827" }}>Constraints</h2>
+              </div>
+              <button
+                type="button"
+                onClick={() => setConstraints([...constraints, ''])}
+                style={{ display: "flex", alignItems: "center", gap: "0.375rem", padding: "0.4rem 0.75rem", fontSize: "0.875rem", fontWeight: 600, color: "#00684A", backgroundColor: "#F0F9F4", border: "1px solid #A8E8BC", borderRadius: "0.5rem", cursor: "pointer" }}
+              >
+                <Plus size={16} /> Add Constraint
+              </button>
+            </div>
+            
+            <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+              {constraints.map((constraint, idx) => (
+                <div key={idx} style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
+                  <input
+                    type="text"
+                    value={constraint}
+                    onChange={(e) => {
+                      const newConstraints = [...constraints]; newConstraints[idx] = e.target.value; setConstraints(newConstraints)
+                    }}
+                    placeholder={questionType === 'sql' ? "e.g., Results must be ordered by salary DESC" : "e.g., 0 <= n <= 5 * 10^6"}
+                    style={{ flex: 1, padding: "0.75rem", border: "1px solid #D1D5DB", borderRadius: "0.5rem", outline: "none", boxSizing: "border-box", fontFamily: "monospace", fontSize: "0.95rem" }}
+                    onFocus={(e) => e.currentTarget.style.borderColor = "#00684A"}
+                    onBlur={(e) => e.currentTarget.style.borderColor = "#D1D5DB"}
+                  />
+                  {constraints.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => setConstraints(constraints.filter((_, i) => i !== idx))}
+                      style={{ padding: "0.5rem", color: "#DC2626", backgroundColor: "transparent", border: "none", cursor: "pointer" }}
+                    >
+                      <X size={20} />
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+          
         </div>
+
+        {/* Sticky Form Actions (Bottom) */}
+        <div style={{ 
+          position: "sticky", bottom: "0", backgroundColor: "rgba(255, 255, 255, 0.95)", 
+          backdropFilter: "blur(12px)", padding: "1rem 0", borderTop: "1px solid #E5E7EB",
+          display: "flex", justifyContent: "flex-end", alignItems: "center", gap: "0.75rem", marginTop: "2rem", zIndex: 10
+        }}>
+          <button
+            type="button"
+            onClick={() => router.push("/dsa/questions")}
+            style={{ 
+              padding: "0.5rem 1.25rem", fontSize: "0.875rem", fontWeight: 600, color: "#4B5563",
+              backgroundColor: "#ffffff", border: "1px solid #D1D5DB", borderRadius: "9999px",
+              cursor: "pointer", transition: "all 0.2s", boxShadow: "0 1px 2px rgba(0,0,0,0.05)"
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = "#F9FAFB"; e.currentTarget.style.borderColor = "#9CA3AF"; }}
+            onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = "#ffffff"; e.currentTarget.style.borderColor = "#D1D5DB"; }}
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={handleCreate}
+            disabled={saving}
+            style={{ 
+              padding: "0.5rem 1.5rem", fontSize: "0.875rem", fontWeight: 600, color: "#ffffff",
+              backgroundColor: "#00684A", border: "1px solid #00684A", borderRadius: "9999px",
+              cursor: saving ? "not-allowed" : "pointer", opacity: saving ? 0.7 : 1,
+              boxShadow: "0 1px 2px rgba(0, 0, 0, 0.05)", transition: "all 0.2s"
+            }}
+            onMouseEnter={(e) => { if(!saving) { e.currentTarget.style.backgroundColor = "#084A2A"; e.currentTarget.style.borderColor = "#084A2A"; } }}
+            onMouseLeave={(e) => { if(!saving) { e.currentTarget.style.backgroundColor = "#00684A"; e.currentTarget.style.borderColor = "#00684A"; } }}
+          >
+            {saving ? 'Creating...' : `Create ${questionType === 'sql' ? 'SQL' : 'Coding'} Question`}
+          </button>
+        </div>
+
       </div>
     </div>
   )

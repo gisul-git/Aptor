@@ -1,0 +1,91 @@
+name: Deploy Demo Service to QA (Debian VM)
+
+on:
+  push:
+    branches:
+      - QA
+    paths:
+      - 'services/demo-service/**'
+      - '.github/workflows/deploy-qa-demo-service.yml'
+  pull_request:
+    types: [closed]
+    branches:
+      - QA
+    paths:
+      - 'services/demo-service/**'
+  workflow_dispatch:
+
+env:
+  VM_HOST: ${{ secrets.QA_VM_HOST }}
+  VM_USER: ${{ secrets.QA_VM_USER }}
+  VM_SSH_KEY: ${{ secrets.QA_VM_SSH_KEY }}
+  VM_DEPLOY_PATH: ${{ secrets.QA_VM_DEPLOY_PATH }}
+
+jobs:
+  deploy-demo-service-qa:
+    runs-on: ubuntu-latest
+    if: |
+      github.event_name == 'push' ||
+      (github.event_name == 'pull_request' && github.event.pull_request.merged == true) ||
+      github.event_name == 'workflow_dispatch'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: QA
+
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ env.VM_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H ${{ env.VM_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Deploy Demo Service to QA VM
+        run: |
+          DEPLOY_PATH="${{ env.VM_DEPLOY_PATH }}"
+          if [ -z "$DEPLOY_PATH" ]; then
+            DEPLOY_PATH="/opt/aptor"
+          fi
+          
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no ${{ env.VM_USER }}@${{ env.VM_HOST }} bash << EOF
+            set -e
+            
+            echo "🚀 Starting Demo Service QA deployment..."
+            
+            cd ${DEPLOY_PATH}
+            git fetch origin
+            git checkout QA
+            git pull origin QA
+            
+            # Clean up existing container (including Created state)
+            echo "🧹 Cleaning up existing Demo Service container..."
+            if docker ps -a --format "{{.Names}}" | grep -q "^gisul-demo-service$"; then
+              echo "Removing existing container: gisul-demo-service"
+              docker stop gisul-demo-service 2>/dev/null || true
+              docker rm -f gisul-demo-service 2>/dev/null || true
+            fi
+            
+            echo "🔨 Rebuilding Demo Service..."
+            docker-compose build demo-service
+            
+            echo "🔄 Starting Demo Service..."
+            docker-compose up -d --force-recreate --no-deps demo-service
+            
+            sleep 5
+            
+            if docker-compose ps demo-service | grep -q "Up"; then
+              echo "✅ Demo Service deployed successfully!"
+              docker-compose ps demo-service
+            else
+              echo "❌ Demo Service deployment failed!"
+              docker-compose logs demo-service
+              exit 1
+            fi
+          EOF
+
+      - name: Verify Deployment
+        run: |
+          echo "✅ Demo Service deployment completed"
+

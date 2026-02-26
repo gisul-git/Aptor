@@ -66,7 +66,7 @@ export default function EmployeeForm({ employee, onClose, onSuccess }: EmployeeF
     if (!validateForm()) {
       return;
     }
-
+ 
     try {
       if (employee) {
         // Update existing employee

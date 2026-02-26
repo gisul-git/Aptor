@@ -4,6 +4,22 @@ import { GetServerSideProps } from 'next'
 import { requireAuth } from '../../../lib/auth'
 import Link from 'next/link'
 import { useAIMLQuestions, useDeleteAIMLQuestion, usePublishAIMLQuestion } from '@/hooks/api/useAIML'
+import { 
+  ArrowLeft, 
+  Plus, 
+  Eye, 
+  Globe, 
+  Globe2, 
+  Edit3, 
+  Trash2, 
+  CheckCircle2, 
+  XCircle, 
+  Clock, 
+  Database, 
+  Bot, 
+  BookOpen, 
+  FileText 
+} from 'lucide-react'
 
 interface Question {
   id: string
@@ -38,7 +54,8 @@ function DeleteConfirmModal({ isOpen, questionTitle, onConfirm, onCancel, isDele
         left: 0,
         right: 0,
         bottom: 0,
-        backgroundColor: 'rgba(0, 0, 0, 0.6)',
+        backgroundColor: 'rgba(17, 24, 39, 0.7)',
+        backdropFilter: 'blur(4px)',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
@@ -50,38 +67,47 @@ function DeleteConfirmModal({ isOpen, questionTitle, onConfirm, onCancel, isDele
       <div
         style={{
           backgroundColor: '#ffffff',
-          borderRadius: '0.75rem',
+          borderRadius: '1rem',
           maxWidth: '480px',
           width: '100%',
-          padding: '1.5rem',
+          padding: '2rem',
           boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
+          border: '1px solid #E5E7EB'
         }}
         onClick={(e) => e.stopPropagation()}
       >
-        <div style={{ marginBottom: '1rem' }}>
-          <h3 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 600, color: '#1a1625', marginBottom: '0.5rem' }}>
-            Delete Question
-          </h3>
-          <p style={{ margin: 0, color: '#64748b', fontSize: '0.875rem', lineHeight: '1.5' }}>
+        <div style={{ marginBottom: '1.5rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.75rem' }}>
+            <div style={{ backgroundColor: '#FEE2E2', color: '#DC2626', padding: '0.5rem', borderRadius: '0.5rem' }}>
+              <Trash2 size={24} />
+            </div>
+            <h3 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 700, color: '#111827' }}>
+              Delete Question
+            </h3>
+          </div>
+          <p style={{ margin: 0, color: '#4B5563', fontSize: '0.95rem', lineHeight: '1.5' }}>
             Are you sure you want to delete <strong>"{questionTitle}"</strong>? This action cannot be undone.
           </p>
         </div>
-        <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
+        <div style={{ display: 'flex', gap: '1rem', justifyContent: 'flex-end' }}>
           <button
             type="button"
             onClick={onCancel}
             disabled={isDeleting}
             style={{
-              padding: '0.5rem 1rem',
+              padding: '0.625rem 1.25rem',
               fontSize: '0.875rem',
-              fontWeight: 500,
-              color: '#64748b',
-              backgroundColor: '#f3f4f6',
-              border: '1px solid #e5e7eb',
-              borderRadius: '0.375rem',
+              fontWeight: 600,
+              color: '#374151',
+              backgroundColor: '#ffffff',
+              border: '1px solid #D1D5DB',
+              borderRadius: '0.5rem',
               cursor: isDeleting ? 'not-allowed' : 'pointer',
               opacity: isDeleting ? 0.6 : 1,
+              transition: 'all 0.2s'
             }}
+            onMouseEnter={(e) => { if(!isDeleting) e.currentTarget.style.backgroundColor = '#F3F4F6' }}
+            onMouseLeave={(e) => { if(!isDeleting) e.currentTarget.style.backgroundColor = '#ffffff' }}
           >
             Cancel
           </button>
@@ -90,18 +116,24 @@ function DeleteConfirmModal({ isOpen, questionTitle, onConfirm, onCancel, isDele
             onClick={onConfirm}
             disabled={isDeleting}
             style={{
-              padding: '0.5rem 1rem',
+              padding: '0.625rem 1.25rem',
               fontSize: '0.875rem',
-              fontWeight: 500,
+              fontWeight: 600,
               color: '#ffffff',
               backgroundColor: '#DC2626',
-              border: '1px solid #DC2626',
-              borderRadius: '0.375rem',
+              border: 'none',
+              borderRadius: '0.5rem',
               cursor: isDeleting ? 'not-allowed' : 'pointer',
               opacity: isDeleting ? 0.6 : 1,
+              transition: 'all 0.2s',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.5rem'
             }}
+            onMouseEnter={(e) => { if(!isDeleting) e.currentTarget.style.backgroundColor = '#B91C1C' }}
+            onMouseLeave={(e) => { if(!isDeleting) e.currentTarget.style.backgroundColor = '#DC2626' }}
           >
-            {isDeleting ? 'Deleting...' : 'Delete'}
+            {isDeleting ? 'Deleting...' : 'Yes, Delete'}
           </button>
         </div>
       </div>
@@ -131,23 +163,24 @@ function SuccessToast({ isOpen, message, onClose }: SuccessToastProps) {
     <div
       style={{
         position: 'fixed',
-        top: '1rem',
-        right: '1rem',
-        backgroundColor: '#10b981',
-        color: '#ffffff',
-        padding: '0.75rem 1rem',
+        top: '1.5rem',
+        right: '1.5rem',
+        backgroundColor: '#F0FDF4',
+        border: '1px solid #10B981',
+        color: '#065F46',
+        padding: '1rem 1.25rem',
         borderRadius: '0.5rem',
         boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)',
         zIndex: 10001,
         display: 'flex',
         alignItems: 'center',
-        gap: '0.5rem',
-        minWidth: '250px',
-        animation: 'slideIn 0.3s ease-out',
+        gap: '0.75rem',
+        minWidth: '300px',
+        animation: 'slideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1)',
       }}
     >
-      <span style={{ fontSize: '1.25rem' }}>✓</span>
-      <span style={{ fontSize: '0.875rem', fontWeight: 500 }}>{message}</span>
+      <CheckCircle2 size={20} strokeWidth={2.5} />
+      <span style={{ fontSize: '0.9375rem', fontWeight: 600 }}>{message}</span>
     </div>
   )
 }
@@ -174,23 +207,24 @@ function ErrorToast({ isOpen, message, onClose }: ErrorToastProps) {
     <div
       style={{
         position: 'fixed',
-        top: '1rem',
-        right: '1rem',
-        backgroundColor: '#DC2626',
-        color: '#ffffff',
-        padding: '0.75rem 1rem',
+        top: '1.5rem',
+        right: '1.5rem',
+        backgroundColor: '#FEF2F2',
+        border: '1px solid #EF4444',
+        color: '#991B1B',
+        padding: '1rem 1.25rem',
         borderRadius: '0.5rem',
         boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)',
         zIndex: 10001,
         display: 'flex',
         alignItems: 'center',
-        gap: '0.5rem',
-        minWidth: '250px',
-        animation: 'slideIn 0.3s ease-out',
+        gap: '0.75rem',
+        minWidth: '300px',
+        animation: 'slideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1)',
       }}
     >
-      <span style={{ fontSize: '1.25rem' }}>✕</span>
-      <span style={{ fontSize: '0.875rem', fontWeight: 500 }}>{message}</span>
+      <XCircle size={20} strokeWidth={2.5} />
+      <span style={{ fontSize: '0.9375rem', fontWeight: 600 }}>{message}</span>
     </div>
   )
 }
@@ -305,21 +339,22 @@ export default function AIMLQuestionsListPage() {
   const getDifficultyColor = (difficulty: string) => {
     switch (difficulty.toLowerCase()) {
       case 'easy':
-        return { color: '#059669', bg: '#D1FAE5' }
+        return { color: '#059669', bg: '#D1FAE5', border: '#34D399' }
       case 'medium':
-        return { color: '#D97706', bg: '#FEF3C7' }
+        return { color: '#D97706', bg: '#FEF3C7', border: '#FBBF24' }
       case 'hard':
-        return { color: '#DC2626', bg: '#FEE2E2' }
+        return { color: '#DC2626', bg: '#FEE2E2', border: '#F87171' }
       default:
-        return { color: '#6B7280', bg: '#F3F4F6' }
+        return { color: '#4B5563', bg: '#F3F4F6', border: '#D1D5DB' }
     }
   }
 
   if (loading) {
     return (
-      <div style={{ backgroundColor: "#ffffff", minHeight: "100vh" }}>
-        <div className="container" style={{ paddingTop: "2rem", paddingBottom: "2rem" }}>
-          <div style={{ textAlign: "center" }}>Loading questions...</div>
+      <div style={{ backgroundColor: "#FAFCFB", minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "1rem", color: "#00684A" }}>
+          <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-[#00684A]"></div>
+          <span style={{ fontWeight: 500 }}>Loading repository...</span>
         </div>
       </div>
     )
@@ -339,7 +374,8 @@ export default function AIMLQuestionsListPage() {
           }
         }
       `}</style>
-      <div style={{ backgroundColor: "#ffffff", minHeight: "100vh" }}>
+      <div style={{ backgroundColor: "#FAFCFB", minHeight: "100vh", fontFamily: "system-ui, -apple-system, sans-serif" }}>
+        
         <DeleteConfirmModal
           isOpen={deleteModalOpen}
           questionTitle={questionToDelete?.title || ''}
@@ -357,220 +393,280 @@ export default function AIMLQuestionsListPage() {
           message={errorToast.message}
           onClose={() => setErrorToast({ isOpen: false, message: '' })}
         />
-        <div className="container" style={{ paddingTop: "2rem", paddingBottom: "2rem" }}>
-        <div style={{ marginBottom: "1.5rem", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <button
-            type="button"
-            className="btn-secondary"
-            onClick={() => router.push("/aiml")}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "0.5rem",
-              padding: "0.5rem 1rem",
-              fontSize: "0.875rem",
-            }}
-          >
-            ← Back
-          </button>
-          <Link href="/aiml/questions/create">
-            <button className="btn-primary" style={{ padding: "0.5rem 1rem" }}>
-              + Create Question
-            </button>
-          </Link>
-        </div>
 
-        <div className="card">
-          <h1 style={{ marginBottom: "2rem", color: "#1a1625" }}>AIML Questions</h1>
-
-          {questions.length === 0 ? (
-            <div style={{ padding: "3rem", textAlign: "center", color: "#64748b" }}>
-              <p>No questions found. Create your first question!</p>
-              <Link href="/aiml/questions/create">
-                <button className="btn-primary" style={{ marginTop: "1rem" }}>
-                  Create Question
-                </button>
-              </Link>
+        <div style={{ maxWidth: "1200px", margin: "0 auto", padding: "3rem 2rem" }}>
+          
+          {/* Header Section */}
+          <div style={{ marginBottom: "2rem", display: "flex", justifyContent: "space-between", alignItems: "flex-end" }}>
+            <div>
+              <button
+                type="button"
+                onClick={() => router.push("/aiml")}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "0.5rem",
+                  padding: "0.5rem 0",
+                  fontSize: "0.875rem",
+                  color: "#6B7280",
+                  backgroundColor: "transparent",
+                  border: "none",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  transition: "color 0.2s ease",
+                  marginBottom: "1rem"
+                }}
+                onMouseOver={(e) => e.currentTarget.style.color = "#00684A"}
+                onMouseOut={(e) => e.currentTarget.style.color = "#6B7280"}
+              >
+                <ArrowLeft size={16} strokeWidth={2.5} /> AIML Dashboard
+              </button>
+              <h1 style={{ margin: 0, color: "#111827", fontSize: "2.25rem", fontWeight: 800, letterSpacing: "-0.025em" }}>
+                Question Repository
+              </h1>
+              <p style={{ margin: "0.5rem 0 0 0", color: "#6B7280", fontSize: "1rem" }}>
+                Manage {questions.length} existing AI/ML questions.
+              </p>
             </div>
-          ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
-              {questions.map((q) => {
-                const diffColors = getDifficultyColor(q.difficulty)
-                return (
-                  <div
-                    key={q.id}
-                    style={{
-                      padding: "1.5rem",
-                      border: "1px solid #A8E8BC",
-                      borderRadius: "0.5rem",
-                      backgroundColor: "#ffffff",
-                    }}
-                  >
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "start", marginBottom: "0.75rem" }}>
-                      <div style={{ flex: 1 }}>
-                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "start", marginBottom: "0.5rem" }}>
-                          <h3 style={{ margin: 0, color: "#1a1625", fontSize: "1.25rem", fontWeight: 600 }}>
+            
+            <Link href="/aiml/questions/create" style={{ textDecoration: "none" }}>
+              <button style={{ 
+                padding: "0.75rem 1.25rem", 
+                backgroundColor: "#00684A", 
+                color: "#ffffff", 
+                border: "none", 
+                borderRadius: "0.5rem",
+                fontWeight: 600,
+                fontSize: "0.9375rem",
+                display: "flex",
+                alignItems: "center",
+                gap: "0.5rem",
+                cursor: "pointer",
+                transition: "all 0.2s",
+                boxShadow: "0 4px 6px -1px rgba(0, 104, 74, 0.2)"
+              }}
+              onMouseEnter={(e) => e.currentTarget.style.backgroundColor = "#084A2A"}
+              onMouseLeave={(e) => e.currentTarget.style.backgroundColor = "#00684A"}
+              >
+                <Plus size={18} strokeWidth={2.5} /> Create New Question
+              </button>
+            </Link>
+          </div>
+
+          {/* Main List Container */}
+          <div style={{ 
+            backgroundColor: "#ffffff", 
+            borderRadius: "0.75rem", 
+            border: "1px solid #E5E7EB", 
+            boxShadow: "0 1px 3px rgba(0,0,0,0.05)",
+            overflow: "hidden" 
+          }}>
+            {questions.length === 0 ? (
+              <div style={{ padding: "5rem 2rem", textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center" }}>
+                <div style={{ backgroundColor: "#F3F4F6", padding: "1.5rem", borderRadius: "50%", marginBottom: "1.5rem", color: "#9CA3AF" }}>
+                  <FileText size={48} strokeWidth={1.5} />
+                </div>
+                <h3 style={{ margin: "0 0 0.5rem 0", color: "#111827", fontSize: "1.25rem", fontWeight: 600 }}>Repository is empty</h3>
+                <p style={{ margin: "0 0 1.5rem 0", color: "#6B7280", maxWidth: "400px", lineHeight: "1.5" }}>
+                  You haven't created any AI/ML questions yet. Start building your library by authoring your first question.
+                </p>
+                <Link href="/aiml/questions/create" style={{ textDecoration: "none" }}>
+                  <button style={{ 
+                    padding: "0.625rem 1.25rem", 
+                    backgroundColor: "#ffffff", 
+                    color: "#00684A", 
+                    border: "1px solid #00684A", 
+                    borderRadius: "0.5rem",
+                    fontWeight: 600,
+                    cursor: "pointer",
+                  }}>
+                    Create Question
+                  </button>
+                </Link>
+              </div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column" }}>
+                {questions.map((q, idx) => {
+                  const diffColors = getDifficultyColor(q.difficulty)
+                  return (
+                    <div
+                      key={q.id}
+                      style={{
+                        padding: "1.5rem 2rem",
+                        borderBottom: idx !== questions.length - 1 ? "1px solid #E5E7EB" : "none",
+                        backgroundColor: "#ffffff",
+                        transition: "background-color 0.2s",
+                        display: "flex",
+                        alignItems: "flex-start",
+                        justifyContent: "space-between",
+                        gap: "2rem"
+                      }}
+                      onMouseEnter={(e) => e.currentTarget.style.backgroundColor = "#F9FAFB"}
+                      onMouseLeave={(e) => e.currentTarget.style.backgroundColor = "#ffffff"}
+                    >
+                      {/* Left: Content */}
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginBottom: "0.5rem" }}>
+                          <h3 style={{ margin: 0, color: "#111827", fontSize: "1.125rem", fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                             {q.title}
                           </h3>
-                          <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
-                            <span
-                              style={{
-                                padding: "0.375rem 0.75rem",
-                                borderRadius: "0.375rem",
-                                fontSize: "0.8125rem",
-                                fontWeight: 600,
-                                color: "#1E5A3B",
-                                backgroundColor: "#C9F4D4",
-                              }}
-                            >
-                              AIML
-                            </span>
-                            <span
-                              style={{
-                                padding: "0.375rem 0.75rem",
-                                borderRadius: "0.375rem",
-                                fontSize: "0.8125rem",
-                                fontWeight: 600,
-                                color: q.is_published ? "#059669" : "#6B7280",
-                                backgroundColor: q.is_published ? "#D1FAE5" : "#F3F4F6",
-                              }}
-                            >
-                              {q.is_published ? "Published" : "Draft"}
-                            </span>
-                          </div>
-                        </div>
-                        <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", marginBottom: "0.75rem" }}>
-                          <span
-                            style={{
-                              padding: "0.25rem 0.75rem",
-                              borderRadius: "0.375rem",
-                              fontSize: "0.875rem",
-                              fontWeight: 600,
-                              color: diffColors.color,
-                              backgroundColor: diffColors.bg,
-                            }}
-                          >
-                            {q.difficulty}
-                          </span>
-                          {q.library && (
-                            <span
-                              style={{
-                                padding: "0.25rem 0.75rem",
-                                borderRadius: "0.375rem",
-                                fontSize: "0.875rem",
-                                color: "#2D7A52",
-                                backgroundColor: "#E8FAF0",
-                              }}
-                            >
-                              📚 {q.library}
-                            </span>
-                          )}
-                          {q.ai_generated && (
-                            <span
-                              style={{
-                                padding: "0.25rem 0.75rem",
-                                borderRadius: "0.375rem",
-                                fontSize: "0.875rem",
-                                color: "#7C3AED",
-                                backgroundColor: "#EDE9FE",
-                              }}
-                            >
-                              🤖 AI Generated
-                            </span>
-                          )}
-                          {q.requires_dataset && (
-                            <span
-                              style={{
-                                padding: "0.25rem 0.75rem",
-                                borderRadius: "0.375rem",
-                                fontSize: "0.875rem",
-                                color: "#DC2626",
-                                backgroundColor: "#FEE2E2",
-                              }}
-                            >
-                              📊 Requires Dataset
-                            </span>
-                          )}
-                        </div>
-                        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.5rem", fontSize: "0.875rem", color: "#64748b" }}>
-                          {q.created_at && (
-                            <span style={{ display: "flex", alignItems: "center", gap: "0.25rem" }}>
-                              <span>🕐</span>
-                              <span>Created: {new Date(q.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
-                            </span>
-                          )}
-                        </div>
-                        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.5rem" }}>
-                          <span
-                            style={{
-                              display: "inline-flex",
-                              alignItems: "center",
-                              gap: "0.375rem",
-                              padding: "0.25rem 0.75rem",
-                              borderRadius: "0.375rem",
-                              fontSize: "0.875rem",
-                              fontWeight: 500,
-                              color: (q.is_scheduled !== undefined ? q.is_scheduled : q.is_published) ? "#059669" : "#6B7280",
-                              backgroundColor: (q.is_scheduled !== undefined ? q.is_scheduled : q.is_published) ? "#D1FAE5" : "#F3F4F6",
-                            }}
-                          >
-                            <span style={{
-                              width: "8px",
-                              height: "8px",
-                              borderRadius: "50%",
-                              backgroundColor: (q.is_scheduled !== undefined ? q.is_scheduled : q.is_published) ? "#059669" : "#6B7280",
-                            }}></span>
-                            {(q.is_scheduled !== undefined ? q.is_scheduled : q.is_published) ? "Scheduled" : "Not Scheduled"}
+                          
+                          {/* Status Badge */}
+                          <span style={{
+                            display: "inline-flex", alignItems: "center", gap: "0.375rem",
+                            padding: "0.25rem 0.625rem", borderRadius: "2rem", fontSize: "0.75rem", fontWeight: 600,
+                            color: q.is_published ? "#059669" : "#6B7280",
+                            backgroundColor: q.is_published ? "#D1FAE5" : "#F3F4F6",
+                            border: `1px solid ${q.is_published ? "#A7F3D0" : "#E5E7EB"}`
+                          }}>
+                            <span style={{ width: "6px", height: "6px", borderRadius: "50%", backgroundColor: q.is_published ? "#059669" : "#6B7280" }} />
+                            {q.is_published ? "Published" : "Draft"}
                           </span>
                         </div>
-                        <p style={{ margin: 0, color: "#64748b", fontSize: "0.875rem", lineHeight: "1.5" }}>
-                          {q.description.substring(0, 150)}...
+                        
+                        <p style={{ margin: "0 0 1rem 0", color: "#4B5563", fontSize: "0.9375rem", lineHeight: "1.5", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
+                          {q.description}
                         </p>
+
+                        {/* Tags Row */}
+                        <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", alignItems: "center" }}>
+                          <span style={{
+                            padding: "0.25rem 0.75rem", borderRadius: "0.375rem", fontSize: "0.75rem", fontWeight: 600,
+                            color: diffColors.color, backgroundColor: diffColors.bg, border: `1px solid ${diffColors.border}`
+                          }}>
+                            {q.difficulty.charAt(0).toUpperCase() + q.difficulty.slice(1)}
+                          </span>
+                          
+                          {q.library && (
+                            <span style={{
+                              display: "flex", alignItems: "center", gap: "0.375rem",
+                              padding: "0.25rem 0.75rem", borderRadius: "0.375rem", fontSize: "0.75rem", fontWeight: 600,
+                              color: "#00684A", backgroundColor: "#F0F9F4", border: "1px solid #E1F2E9"
+                            }}>
+                              <BookOpen size={12} /> {q.library}
+                            </span>
+                          )}
+                          
+                          {q.ai_generated && (
+                            <span style={{
+                              display: "flex", alignItems: "center", gap: "0.375rem",
+                              padding: "0.25rem 0.75rem", borderRadius: "0.375rem", fontSize: "0.75rem", fontWeight: 600,
+                              color: "#6D28D9", backgroundColor: "#EDE9FE", border: "1px solid #DDD6FE"
+                            }}>
+                              <Bot size={12} /> AI Generated
+                            </span>
+                          )}
+                          
+                          {q.requires_dataset && (
+                            <span style={{
+                              display: "flex", alignItems: "center", gap: "0.375rem",
+                              padding: "0.25rem 0.75rem", borderRadius: "0.375rem", fontSize: "0.75rem", fontWeight: 600,
+                              color: "#BE123C", backgroundColor: "#FFE4E6", border: "1px solid #FECDD3"
+                            }}>
+                              <Database size={12} /> Requires Dataset
+                            </span>
+                          )}
+
+                          {q.created_at && (
+                            <span style={{ display: "flex", alignItems: "center", gap: "0.375rem", color: "#9CA3AF", fontSize: "0.75rem", marginLeft: "0.5rem" }}>
+                              <Clock size={12} /> {new Date(q.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Right: Actions */}
+                      <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexShrink: 0 }}>
+                        <Link href={`/aiml/questions/${q.id}/preview`} style={{ textDecoration: "none" }}>
+                          <button 
+                            style={{ 
+                              display: "flex", alignItems: "center", gap: "0.375rem",
+                              padding: "0.5rem 0.75rem", fontSize: "0.875rem", fontWeight: 600,
+                              color: "#4B5563", backgroundColor: "#ffffff", border: "1px solid #D1D5DB",
+                              borderRadius: "0.5rem", cursor: "pointer", transition: "all 0.2s"
+                            }}
+                            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = "#F3F4F6"}
+                            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = "#ffffff"}
+                          >
+                            <Eye size={16} /> Preview
+                          </button>
+                        </Link>
+                        
+                        <Link href={`/aiml/questions/${q.id}/edit`} style={{ textDecoration: "none" }}>
+                          <button 
+                            style={{ 
+                              display: "flex", alignItems: "center", gap: "0.375rem",
+                              padding: "0.5rem 0.75rem", fontSize: "0.875rem", fontWeight: 600,
+                              color: "#00684A", backgroundColor: "#F0F9F4", border: "1px solid #E1F2E9",
+                              borderRadius: "0.5rem", cursor: "pointer", transition: "all 0.2s"
+                            }}
+                            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = "#E1F2E9"}
+                            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = "#F0F9F4"}
+                          >
+                            <Edit3 size={16} /> Edit
+                          </button>
+                        </Link>
+
+                        <button
+                          onClick={() => handleTogglePublish(q.id, q.is_published)}
+                          style={{ 
+                            display: "flex", alignItems: "center", gap: "0.375rem",
+                            padding: "0.5rem 0.75rem", fontSize: "0.875rem", fontWeight: 600,
+                            color: q.is_published ? "#D97706" : "#059669", 
+                            backgroundColor: "transparent", border: "1px solid transparent",
+                            borderRadius: "0.5rem", cursor: "pointer", transition: "all 0.2s"
+                          }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.backgroundColor = q.is_published ? "#FEF3C7" : "#D1FAE5"
+                            e.currentTarget.style.borderColor = q.is_published ? "#FCD34D" : "#A7F3D0"
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.backgroundColor = "transparent"
+                            e.currentTarget.style.borderColor = "transparent"
+                          }}
+                          title={q.is_published ? "Unpublish" : "Publish"}
+                        >
+                          {q.is_published ? <Globe2 size={16} /> : <Globe size={16} />}
+                          {q.is_published ? "Unpublish" : "Publish"}
+                        </button>
+
+                        <button
+                          onClick={() => handleDeleteClick(q.id, q.title)}
+                          disabled={deletingId === q.id}
+                          style={{ 
+                            display: "flex", alignItems: "center", justifyContent: "center",
+                            padding: "0.5rem", color: "#DC2626", 
+                            backgroundColor: "transparent", border: "1px solid transparent",
+                            borderRadius: "0.5rem", cursor: deletingId === q.id ? "not-allowed" : "pointer", 
+                            transition: "all 0.2s", opacity: deletingId === q.id ? 0.5 : 1
+                          }}
+                          onMouseEnter={(e) => {
+                            if(deletingId !== q.id) {
+                              e.currentTarget.style.backgroundColor = "#FEE2E2"
+                              e.currentTarget.style.borderColor = "#FECDD3"
+                            }
+                          }}
+                          onMouseLeave={(e) => {
+                            if(deletingId !== q.id) {
+                              e.currentTarget.style.backgroundColor = "transparent"
+                              e.currentTarget.style.borderColor = "transparent"
+                            }
+                          }}
+                          title="Delete"
+                        >
+                          <Trash2 size={18} />
+                        </button>
                       </div>
                     </div>
-                    <div style={{ display: "flex", gap: "0.5rem", marginTop: "1rem" }}>
-                      <Link href={`/aiml/questions/${q.id}/preview`}>
-                        <button className="btn-secondary" style={{ padding: "0.5rem 1rem", fontSize: "0.875rem" }}>
-                          👁️ Preview
-                        </button>
-                      </Link>
-                      <button
-                        className="btn-secondary"
-                        onClick={() => handleTogglePublish(q.id, q.is_published)}
-                        style={{ padding: "0.5rem 1rem", fontSize: "0.875rem" }}
-                      >
-                        {q.is_published ? "Unpublish" : "Publish"}
-                      </button>
-                      <Link href={`/aiml/questions/${q.id}/edit`}>
-                        <button className="btn-secondary" style={{ padding: "0.5rem 1rem", fontSize: "0.875rem" }}>
-                          Edit
-                        </button>
-                      </Link>
-                      <button
-                        className="btn-secondary"
-                        onClick={() => handleDeleteClick(q.id, q.title)}
-                        disabled={deletingId === q.id}
-                        style={{
-                          padding: "0.5rem 1rem",
-                          fontSize: "0.875rem",
-                          color: "#DC2626",
-                          borderColor: "#DC2626",
-                        }}
-                      >
-                        {deletingId === q.id ? "Deleting..." : "Delete"}
-                      </button>
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-          )}
+                  )
+                })}
+              </div>
+            )}
+          </div>
         </div>
       </div>
-    </div>
     </>
   )
 }
 
 export const getServerSideProps: GetServerSideProps = requireAuth
-

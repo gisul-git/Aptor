@@ -13,7 +13,7 @@ export default function Footer() {
   return (
     <footer className="bg-text-primary text-white py-16">
       <div className="max-w-7xl mx-auto px-6 lg:px-8">
-        {/* Trust Indicators */}
+        {/* Trust Indicatorss */}
         <div className="grid md:grid-cols-4 gap-6 mb-12 pb-12 border-b border-white/10">
           <div className="text-center md:text-left">
             <div className="text-2xl font-bold text-mint-200 mb-2">256-bit</div>
@@ -42,15 +42,15 @@ export default function Footer() {
               whileHover={{ scale: 1.05 }}
             >
               <Sparkles className="w-6 h-6 text-mint-200" />
-              <span className="text-2xl font-bold">Mint Cream AI</span>
+              <span className="text-2xl font-bold">Aaptor</span>
             </motion.a>
             <p className="text-mint-200 max-w-xs leading-relaxed mb-4">
-              Empowering your wellness journey with natural intelligence.
+              Transform your team's capabilities with AI-driven assessments and seamless collaboration.
             </p>
             <div className="flex items-center gap-4">
-              <span className="text-sm text-mint-100/80">Money-back guarantee</span>
+              <span className="text-sm text-mint-100/80">No credit card required</span>
               <span className="text-mint-100/50">•</span>
-              <span className="text-sm text-mint-100/80">30-day free trial</span>
+              <span className="text-sm text-mint-100/80">Free trial</span>
             </div>
           </div>
 
@@ -78,7 +78,7 @@ export default function Footer() {
         {/* Copyright */}
         <div className="pt-8 border-t border-white/10 text-center">
           <p className="text-mint-200 text-sm">
-            © 2024 Mint Cream AI. All rights reserved.
+            © 2024 Aaptor. All rights reserved.
           </p>
         </div>
       </div>

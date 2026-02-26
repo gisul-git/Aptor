@@ -4,6 +4,18 @@ import { GetServerSideProps } from 'next'
 import { requireAuth } from '../../../lib/auth'
 import { useCreateAIMLQuestion, useGenerateAIMLQuestion } from '@/hooks/api/useAIML'
 import { aimlService } from '@/services/aiml'
+import { 
+  ArrowLeft, 
+  Bot, 
+  PenTool, 
+  Sparkles, 
+  Loader2, 
+  Plus, 
+  Trash2, 
+  Check, 
+  Database,
+  BookOpen
+} from 'lucide-react'
 
 const AIML_SKILLS = [
   'Python',
@@ -609,497 +621,360 @@ export default function AIMLQuestionCreatePage() {
   }
 
   return (
-    <div style={{ minHeight: "100vh", backgroundColor: "#f9fafb", padding: "2rem 0" }}>
-      <div className="container" style={{ maxWidth: "900px", margin: "0 auto" }}>
+    <div style={{ minHeight: "100vh", backgroundColor: "#FAFCFB", padding: "2rem 0", fontFamily: "system-ui, -apple-system, sans-serif" }}>
+      <div style={{ maxWidth: "1100px", margin: "0 auto", padding: "0 1.5rem" }}>
+        
+        {/* Back Button */}
         <div style={{ marginBottom: "2rem" }}>
           <button
-            onClick={() => router.push("/aiml/questions")}
+            onClick={() => router.push("/aiml")}
             style={{
-              display: "inline-flex",
+              display: "flex",
               alignItems: "center",
               gap: "0.5rem",
-              padding: "0.625rem 1.25rem",
-              fontSize: "0.9375rem",
+              padding: "0.5rem 0",
+              fontSize: "0.875rem",
+              color: "#6B7280",
               backgroundColor: "transparent",
-              border: "1px solid #A8E8BC",
-              borderRadius: "0.5rem",
-              color: "#1E5A3B",
+              border: "none",
+              fontWeight: 600,
               cursor: "pointer",
-              transition: "all 0.2s ease",
-              fontWeight: 500,
+              transition: "color 0.2s ease",
             }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.backgroundColor = "#E8FAF0"
-              e.currentTarget.style.borderColor = "#9DE8B0"
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.backgroundColor = "transparent"
-              e.currentTarget.style.borderColor = "#A8E8BC"
-            }}
+            onMouseOver={(e) => e.currentTarget.style.color = "#00684A"}
+            onMouseOut={(e) => e.currentTarget.style.color = "#6B7280"}
           >
-            ← Back to Questions
+            <ArrowLeft size={16} strokeWidth={2.5} />AIML Dashboard
           </button>
         </div>
 
-        <div className="card" style={{ boxShadow: "0 4px 16px rgba(201, 244, 212, 0.15)" }}>
-          <div style={{ marginBottom: "2.5rem", paddingBottom: "1.5rem", borderBottom: "2px solid #E8FAF0" }}>
-            <h1 style={{ 
-              marginBottom: "0.5rem", 
-              color: "#1E5A3B",
-              fontSize: "2rem",
-              fontWeight: 700,
-              letterSpacing: "-0.02em"
-            }}>
-              Create AIML Question
-            </h1>
-            <p style={{ 
-              color: "#4A9A6A", 
-              fontSize: "0.9375rem",
-              margin: 0
-            }}>
-              Generate questions using AI or create them manually
-            </p>
-          </div>
-
-          {/* Question Type Toggle */}
-          <div style={{ 
-            marginBottom: "2.5rem", 
-            padding: "1.5rem", 
-            border: "2px solid #E8FAF0", 
-            borderRadius: "0.75rem",
-            backgroundColor: "#f9fafb"
+        {/* Page Header */}
+        <div style={{ marginBottom: "2.5rem" }}>
+          <h1 style={{ 
+            margin: "0 0 0.5rem 0", 
+            color: "#111827",
+            fontSize: "2.25rem",
+            fontWeight: 800,
+            letterSpacing: "-0.025em"
           }}>
-            <label style={{ 
-              display: "block", 
-              marginBottom: "1rem", 
+            Create AIML Question
+          </h1>
+          <p style={{ 
+            color: "#6B7280", 
+            fontSize: "1rem",
+            margin: 0
+          }}>
+            Create new questions manually or generate them instantly using AI.
+          </p>
+        </div>
+
+        {/* Question Type Toggle (Segmented Control) */}
+        <div style={{ 
+          marginBottom: "2rem", 
+          padding: "0.5rem", 
+          borderRadius: "0.75rem",
+          backgroundColor: "#F3F4F6",
+          display: "flex",
+          gap: "0.5rem"
+        }}>
+          <button
+            type="button"
+            onClick={() => setIsAiGenerated(false)}
+            style={{ 
+              display: "flex", 
+              alignItems: "center", 
+              justifyContent: "center",
+              gap: "0.5rem", 
+              cursor: "pointer",
+              padding: "0.75rem 1rem",
+              borderRadius: "0.5rem",
+              border: "none",
+              backgroundColor: !isAiGenerated ? "#ffffff" : "transparent",
+              boxShadow: !isAiGenerated ? "0 1px 3px rgba(0,0,0,0.1)" : "none",
+              transition: "all 0.2s ease",
+              flex: 1,
+              color: !isAiGenerated ? "#00684A" : "#6B7280",
               fontWeight: 600,
-              color: "#1E5A3B",
-              fontSize: "1rem"
-            }}>
-              Question Type
-            </label>
-            <div style={{ display: "flex", gap: "1.5rem" }}>
-              <label style={{ 
-                display: "flex", 
-                alignItems: "center", 
-                gap: "0.75rem", 
-                cursor: "pointer",
-                padding: "0.75rem 1.25rem",
-                borderRadius: "0.5rem",
-                border: !isAiGenerated ? "2px solid #C9F4D4" : "2px solid transparent",
-                backgroundColor: !isAiGenerated ? "#E8FAF0" : "transparent",
-                transition: "all 0.2s ease",
-                flex: 1,
-                justifyContent: "center"
-              }}>
-                <input
-                  type="radio"
-                  checked={!isAiGenerated}
-                  onChange={() => setIsAiGenerated(false)}
-                  style={{ 
-                    width: "18px", 
-                    height: "18px",
-                    cursor: "pointer"
-                  }}
-                />
-                <span style={{ 
-                  fontWeight: !isAiGenerated ? 600 : 500,
-                  color: "#1E5A3B"
-                }}>
-                  Manual Creation
-                </span>
-              </label>
-              <label style={{ 
-                display: "flex", 
-                alignItems: "center", 
-                gap: "0.75rem", 
-                cursor: "pointer",
-                padding: "0.75rem 1.25rem",
-                borderRadius: "0.5rem",
-                border: isAiGenerated ? "2px solid #C9F4D4" : "2px solid transparent",
-                backgroundColor: isAiGenerated ? "#E8FAF0" : "transparent",
-                transition: "all 0.2s ease",
-                flex: 1,
-                justifyContent: "center"
-              }}>
-                <input
-                  type="radio"
-                  checked={isAiGenerated}
-                  onChange={() => setIsAiGenerated(true)}
-                  style={{ 
-                    width: "18px", 
-                    height: "18px",
-                    cursor: "pointer"
-                  }}
-                />
-                <span style={{ 
-                  fontWeight: isAiGenerated ? 600 : 500,
-                  color: "#1E5A3B"
-                }}>
-                  AI Generated
-                </span>
-              </label>
-            </div>
-          </div>
+              fontSize: "0.95rem"
+            }}
+          >
+            <PenTool size={18} strokeWidth={!isAiGenerated ? 2.5 : 2} />
+            Manual Creation
+          </button>
+          
+          <button
+            type="button"
+            onClick={() => setIsAiGenerated(true)}
+            style={{ 
+              display: "flex", 
+              alignItems: "center", 
+              justifyContent: "center",
+              gap: "0.5rem", 
+              cursor: "pointer",
+              padding: "0.75rem 1rem",
+              borderRadius: "0.5rem",
+              border: "none",
+              backgroundColor: isAiGenerated ? "#ffffff" : "transparent",
+              boxShadow: isAiGenerated ? "0 1px 3px rgba(0,0,0,0.1)" : "none",
+              transition: "all 0.2s ease",
+              flex: 1,
+              color: isAiGenerated ? "#00684A" : "#6B7280",
+              fontWeight: 600,
+              fontSize: "0.95rem"
+            }}
+          >
+            <Sparkles size={18} strokeWidth={isAiGenerated ? 2.5 : 2} />
+            AI Generated
+          </button>
+        </div>
+
+        {/* Content Area */}
+        <div style={{
+          backgroundColor: "#ffffff",
+          borderRadius: "1rem",
+          border: "1px solid #E5E7EB",
+          boxShadow: "0 1px 3px rgba(0,0,0,0.05)",
+          padding: "2.5rem",
+          marginBottom: "4rem"
+        }}>
 
           {isAiGenerated ? (
-            /* AI Generation Form - NEW FORMAT */
-            <div style={{ marginBottom: "2rem" }}>
+            /* AI Generation Form */
+            <div>
               <div style={{ 
                 marginBottom: "2rem",
-                paddingBottom: "1rem",
-                borderBottom: "1px solid #E8FAF0"
+                display: "flex",
+                alignItems: "center",
+                gap: "0.75rem"
               }}>
-                <h2 style={{ 
-                  marginBottom: "0.5rem", 
-                  color: "#1E5A3B",
-                  fontSize: "1.5rem",
-                  fontWeight: 600
-                }}>
-                  AI Question Generation
-                </h2>
-                <p style={{ 
-                  color: "#4A9A6A", 
-                  fontSize: "0.875rem",
-                  margin: 0
-                }}>
-                  Let AI generate a comprehensive question based on your requirements
-                </p>
+                <div style={{ backgroundColor: "#F0F9F4", padding: "0.5rem", borderRadius: "0.5rem", color: "#00684A" }}>
+                  <Bot size={24} />
+                </div>
+                <div>
+                  <h2 style={{ margin: "0 0 0.25rem 0", color: "#111827", fontSize: "1.25rem", fontWeight: 700 }}>
+                    AI Configuration
+                  </h2>
+                  <p style={{ color: "#6B7280", fontSize: "0.875rem", margin: 0 }}>
+                    Provide the parameters, and AI will build the question structure.
+                  </p>
+                </div>
               </div>
               
-              <div style={{ 
-                display: "grid", 
-                gridTemplateColumns: "1fr 1fr", 
-                gap: "1.5rem",
-                marginBottom: "1.5rem"
-              }}>
-                <div>
-                  <label style={{ 
-                    display: "block", 
-                    marginBottom: "0.625rem", 
-                    fontWeight: 600,
-                    color: "#1E5A3B",
-                    fontSize: "0.9375rem"
-                  }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1.5rem", marginBottom: "1.5rem" }}>
+                <div style={{ gridColumn: "1 / -1" }}>
+                  <label style={{ display: "block", marginBottom: "0.5rem", fontWeight: 600, color: "#374151", fontSize: "0.875rem" }}>
                     Assessment Title <span style={{ color: "#DC2626" }}>*</span>
                   </label>
                   <input
                     type="text"
                     value={assessmentTitle}
                     onChange={(e) => setAssessmentTitle(e.target.value)}
-                    placeholder="Enter assessment title"
+                    placeholder="e.g., NumPy Data Normalization"
                     style={{
-                      width: "100%",
-                      padding: "0.875rem 1rem",
-                      border: "1px solid #A8E8BC",
-                      borderRadius: "0.5rem",
-                      fontSize: "0.9375rem",
-                      transition: "all 0.2s ease",
+                      width: "100%", padding: "0.75rem 1rem", border: "1px solid #D1D5DB",
+                      borderRadius: "0.5rem", fontSize: "0.95rem", transition: "all 0.2s ease",
+                      outline: "none", boxSizing: "border-box"
                     }}
                     onFocus={(e) => {
-                      e.currentTarget.style.borderColor = "#9DE8B0"
-                      e.currentTarget.style.boxShadow = "0 0 0 3px rgba(201, 244, 212, 0.2)"
+                      e.currentTarget.style.borderColor = "#00684A"
+                      e.currentTarget.style.boxShadow = "0 0 0 3px rgba(0, 104, 74, 0.1)"
                     }}
                     onBlur={(e) => {
-                      e.currentTarget.style.borderColor = "#A8E8BC"
+                      e.currentTarget.style.borderColor = "#D1D5DB"
                       e.currentTarget.style.boxShadow = "none"
                     }}
                   />
                 </div>
 
                 <div>
-                  <label style={{ 
-                    display: "block", 
-                    marginBottom: "0.625rem", 
-                    fontWeight: 600,
-                    color: "#1E5A3B",
-                    fontSize: "0.9375rem"
-                  }}>
-                    Skill <span style={{ color: "#DC2626" }}>*</span>
-                </label>
-                <select
+                  <label style={{ display: "block", marginBottom: "0.5rem", fontWeight: 600, color: "#374151", fontSize: "0.875rem" }}>
+                    Skill Domain <span style={{ color: "#DC2626" }}>*</span>
+                  </label>
+                  <select
                     value={skill}
                     onChange={(e) => handleSkillChange(e.target.value)}
-                  style={{
-                    width: "100%",
-                      padding: "0.875rem 1rem",
-                    border: "1px solid #A8E8BC",
-                      borderRadius: "0.5rem",
-                      fontSize: "0.9375rem",
-                      backgroundColor: "#ffffff",
-                      cursor: "pointer",
-                      transition: "all 0.2s ease",
+                    style={{
+                      width: "100%", padding: "0.75rem 1rem", border: "1px solid #D1D5DB",
+                      borderRadius: "0.5rem", fontSize: "0.95rem", backgroundColor: "#ffffff",
+                      cursor: "pointer", transition: "all 0.2s ease", outline: "none"
                     }}
-                    onFocus={(e) => {
-                      e.currentTarget.style.borderColor = "#9DE8B0"
-                      e.currentTarget.style.boxShadow = "0 0 0 3px rgba(201, 244, 212, 0.2)"
-                    }}
-                    onBlur={(e) => {
-                      e.currentTarget.style.borderColor = "#A8E8BC"
-                      e.currentTarget.style.boxShadow = "none"
-                    }}
+                    onFocus={(e) => e.currentTarget.style.borderColor = "#00684A"}
+                    onBlur={(e) => e.currentTarget.style.borderColor = "#D1D5DB"}
                   >
                     {AIML_SKILLS.map(s => (
                       <option key={s} value={s}>{s}</option>
-                  ))}
-                </select>
-              </div>
-              </div>
+                    ))}
+                  </select>
+                </div>
 
-              <div style={{ marginBottom: "1.5rem" }}>
-                <label style={{ 
-                  display: "block", 
-                  marginBottom: "0.625rem", 
-                  fontWeight: 600,
-                  color: "#1E5A3B",
-                  fontSize: "0.9375rem"
-                }}>
-                  Difficulty <span style={{ color: "#DC2626" }}>*</span>
-                </label>
-                <select
-                  value={aiDifficulty}
-                  onChange={(e) => handleDifficultyChange(e.target.value)}
-                  style={{
-                    width: "100%",
-                    padding: "0.875rem 1rem",
-                    border: "1px solid #A8E8BC",
-                    borderRadius: "0.5rem",
-                    fontSize: "0.9375rem",
-                    backgroundColor: "#ffffff",
-                    cursor: "pointer",
-                    transition: "all 0.2s ease",
-                  }}
-                  onFocus={(e) => {
-                    e.currentTarget.style.borderColor = "#9DE8B0"
-                    e.currentTarget.style.boxShadow = "0 0 0 3px rgba(201, 244, 212, 0.2)"
-                  }}
-                  onBlur={(e) => {
-                    e.currentTarget.style.borderColor = "#A8E8BC"
-                    e.currentTarget.style.boxShadow = "none"
-                  }}
-                >
-                  <option value="easy">Easy</option>
-                  <option value="medium">Medium</option>
-                  <option value="hard">Hard</option>
-                </select>
-              </div>
+                <div>
+                  <label style={{ display: "block", marginBottom: "0.5rem", fontWeight: 600, color: "#374151", fontSize: "0.875rem" }}>
+                    Difficulty Level <span style={{ color: "#DC2626" }}>*</span>
+                  </label>
+                  <select
+                    value={aiDifficulty}
+                    onChange={(e) => handleDifficultyChange(e.target.value)}
+                    style={{
+                      width: "100%", padding: "0.75rem 1rem", border: "1px solid #D1D5DB",
+                      borderRadius: "0.5rem", fontSize: "0.95rem", backgroundColor: "#ffffff",
+                      cursor: "pointer", transition: "all 0.2s ease", outline: "none"
+                    }}
+                    onFocus={(e) => e.currentTarget.style.borderColor = "#00684A"}
+                    onBlur={(e) => e.currentTarget.style.borderColor = "#D1D5DB"}
+                  >
+                    <option value="easy">Easy</option>
+                    <option value="medium">Medium</option>
+                    <option value="hard">Hard</option>
+                  </select>
+                </div>
 
-              <div style={{ marginBottom: "1.5rem" }}>
-                <label style={{ 
-                  display: "block", 
-                  marginBottom: "0.625rem", 
-                  fontWeight: 600,
-                  color: "#1E5A3B",
-                  fontSize: "0.9375rem"
-                }}>
-                  Topic
-                  {loadingTopics && (
-                    <span style={{ 
-                      marginLeft: "0.5rem", 
-                      color: "#4A9A6A", 
-                      fontSize: "0.875rem", 
-                      fontWeight: "normal" 
-                    }}>
-                      (Loading AI suggestions...)
-                    </span>
-                  )}
-                </label>
-                {loadingTopics ? (
-                  <div style={{ 
-                    padding: "2rem", 
-                    border: "1px solid #A8E8BC", 
-                    borderRadius: "0.5rem",
-                    backgroundColor: "#f9fafb",
-                    textAlign: "center",
-                    color: "#4A9A6A"
-                  }}>
-                    <div style={{ marginBottom: "0.5rem" }}>⏳</div>
-                    Loading AI-suggested topics...
-                  </div>
-                ) : (
-                  <div style={{
-                    padding: "1rem",
-                    border: "1px solid #A8E8BC",
-                    borderRadius: "0.5rem",
-                    minHeight: "120px",
-                    maxHeight: "220px",
-                    overflowY: "auto",
-                    backgroundColor: "#ffffff"
-                  }}>
-                    {availableTopics.length > 0 ? (
-                      <div style={{ 
-                        display: "flex", 
-                        flexWrap: "wrap", 
-                        gap: "0.75rem" 
-                      }}>
-                        {availableTopics.map(t => (
-                          <button
-                            key={t}
-                            type="button"
-                            onClick={() => setTopic(topic === t ? '' : t)}
-                            style={{
-                              padding: "0.625rem 1.25rem",
-                              border: topic === t ? "2px solid #C9F4D4" : "1px solid #A8E8BC",
-                              borderRadius: "0.5rem",
-                              backgroundColor: topic === t ? "#E8FAF0" : "#ffffff",
-                              color: topic === t ? "#1E5A3B" : "#2D7A52",
-                              cursor: "pointer",
-                              fontSize: "0.875rem",
-                              fontWeight: topic === t ? 600 : 500,
-                              transition: "all 0.2s ease",
-                            }}
-                            onMouseEnter={(e) => {
-                              if (topic !== t) {
-                                e.currentTarget.style.backgroundColor = "#E8FAF0"
-                                e.currentTarget.style.borderColor = "#C9F4D4"
-                              }
-                            }}
-                            onMouseLeave={(e) => {
-                              if (topic !== t) {
-                                e.currentTarget.style.backgroundColor = "#ffffff"
-                                e.currentTarget.style.borderColor = "#A8E8BC"
-                              }
-                            }}
-                          >
-                            {t}
-                          </button>
-                        ))}
-                      </div>
-                    ) : (
-                      <div style={{ 
-                        color: "#4A9A6A", 
-                        textAlign: "center", 
-                        padding: "2rem 1rem",
-                        fontSize: "0.875rem"
-                      }}>
-                        No topics available. Please select a skill and difficulty.
-                      </div>
+                <div style={{ gridColumn: "1 / -1" }}>
+                  <label style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "0.5rem", fontWeight: 600, color: "#374151", fontSize: "0.875rem" }}>
+                    <span>Specific Topic Focus</span>
+                    {loadingTopics && (
+                      <span style={{ color: "#6B7280", fontSize: "0.75rem", display: "flex", alignItems: "center", gap: "0.3rem" }}>
+                        <Loader2 size={12} className="animate-spin" /> Fetching AI suggestions...
+                      </span>
                     )}
-                  </div>
-                )}
-                {topicsError && (
-                  <small style={{ 
-                    color: "#DC2626", 
-                    fontSize: "0.875rem", 
-                    display: "block", 
-                    marginTop: "0.5rem" 
-                  }}>
-                    {topicsError} (Using fallback topics)
-                  </small>
-                )}
+                  </label>
+                  
+                  {loadingTopics ? (
+                    <div style={{ padding: "2rem", border: "1px solid #E5E7EB", borderRadius: "0.5rem", backgroundColor: "#F9FAFB", display: "flex", justifyContent: "center", alignItems: "center", color: "#6B7280" }}>
+                      <Loader2 size={24} className="animate-spin" />
+                    </div>
+                  ) : (
+                    <div style={{
+                      padding: "1.25rem", border: "1px solid #E5E7EB", borderRadius: "0.5rem",
+                      backgroundColor: "#F9FAFB", maxHeight: "240px", overflowY: "auto"
+                    }}>
+                      {availableTopics.length > 0 ? (
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: "0.6rem" }}>
+                          {availableTopics.map(t => (
+                            <button
+                              key={t}
+                              type="button"
+                              onClick={() => setTopic(topic === t ? '' : t)}
+                              style={{
+                                padding: "0.5rem 1rem",
+                                border: topic === t ? "2px solid #00684A" : "1px solid #D1D5DB",
+                                borderRadius: "2rem",
+                                backgroundColor: topic === t ? "#F0F9F4" : "#ffffff",
+                                color: topic === t ? "#00684A" : "#4B5563",
+                                cursor: "pointer",
+                                fontSize: "0.85rem",
+                                fontWeight: topic === t ? 600 : 500,
+                                transition: "all 0.15s ease",
+                              }}
+                              onMouseEnter={(e) => {
+                                if (topic !== t) { e.currentTarget.style.borderColor = "#9CA3AF" }
+                              }}
+                              onMouseLeave={(e) => {
+                                if (topic !== t) { e.currentTarget.style.borderColor = "#D1D5DB" }
+                              }}
+                            >
+                              {t}
+                            </button>
+                          ))}
+                        </div>
+                      ) : (
+                        <div style={{ color: "#6B7280", textAlign: "center", padding: "1rem", fontSize: "0.875rem" }}>
+                          No topics available. Please select a skill and difficulty.
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  {topicsError && (
+                    <p style={{ color: "#DC2626", fontSize: "0.75rem", margin: "0.5rem 0 0 0" }}>
+                      {topicsError} (Using fallback topics)
+                    </p>
+                  )}
+                </div>
+
+                <div style={{ gridColumn: "1 / -1", paddingTop: "1.5rem", borderTop: "1px solid #E5E7EB" }}>
+                  <label style={{ display: "block", marginBottom: "0.5rem", fontWeight: 600, color: "#374151", fontSize: "0.875rem" }}>
+                    Expected Dataset Format <span style={{ color: "#DC2626" }}>*</span>
+                  </label>
+                  <select
+                    value={datasetFormat}
+                    onChange={(e) => setDatasetFormat(e.target.value)}
+                    style={{
+                      width: "100%", padding: "0.75rem 1rem", border: "1px solid #D1D5DB",
+                      borderRadius: "0.5rem", fontSize: "0.95rem", backgroundColor: "#ffffff",
+                      cursor: "pointer", transition: "all 0.2s ease", outline: "none",
+                      marginBottom: "0.5rem"
+                    }}
+                    onFocus={(e) => {
+                      e.currentTarget.style.borderColor = "#00684A"
+                      e.currentTarget.style.boxShadow = "0 0 0 3px rgba(0, 104, 74, 0.1)"
+                    }}
+                    onBlur={(e) => {
+                      e.currentTarget.style.borderColor = "#D1D5DB"
+                      e.currentTarget.style.boxShadow = "none"
+                    }}
+                  >
+                    {DATASET_FORMATS.map(format => (
+                      <option key={format} value={format}>{format.toUpperCase()}</option>
+                    ))}
+                  </select>
+                  <p style={{ color: "#6B7280", fontSize: "0.8rem", margin: 0, display: "flex", alignItems: "center", gap: "0.3rem" }}>
+                    <Database size={14} /> The AI will generate data in JSON and convert it to {datasetFormat.toUpperCase()} for the candidate.
+                  </p>
+                </div>
               </div>
 
-              <div style={{ marginBottom: "2rem" }}>
-                <label style={{ 
-                  display: "block", 
-                  marginBottom: "0.625rem", 
-                  fontWeight: 600,
-                  color: "#1E5A3B",
-                  fontSize: "0.9375rem"
-                }}>
-                  Dataset Format <span style={{ color: "#DC2626" }}>*</span>
-                </label>
-                <select
-                  value={datasetFormat}
-                  onChange={(e) => setDatasetFormat(e.target.value)}
-                  style={{
-                    width: "100%",
-                    padding: "0.875rem 1rem",
-                    border: "1px solid #A8E8BC",
-                    borderRadius: "0.5rem",
-                    fontSize: "0.9375rem",
-                    backgroundColor: "#ffffff",
-                    cursor: "pointer",
-                    transition: "all 0.2s ease",
-                  }}
-                  onFocus={(e) => {
-                    e.currentTarget.style.borderColor = "#9DE8B0"
-                    e.currentTarget.style.boxShadow = "0 0 0 3px rgba(201, 244, 212, 0.2)"
-                  }}
-                  onBlur={(e) => {
-                    e.currentTarget.style.borderColor = "#A8E8BC"
-                    e.currentTarget.style.boxShadow = "none"
-                  }}
-                >
-                  {DATASET_FORMATS.map(format => (
-                    <option key={format} value={format}>{format.toUpperCase()}</option>
-                  ))}
-                </select>
-                <small style={{ 
-                  color: "#4A9A6A", 
-                  fontSize: "0.8125rem",
-                  display: "block",
-                  marginTop: "0.5rem"
-                }}>
-                  💡 The AI will generate the dataset in JSON format, which will then be automatically converted to the selected format ({datasetFormat.toUpperCase()}) when candidates access it.
-                </small>
-              </div>
-
-              <div style={{ 
-                paddingTop: "1.5rem",
-                borderTop: "1px solid #E8FAF0"
-              }}>
-              <button
-                type="button"
-                className="btn-primary"
-                onClick={handleAiGenerate}
-                disabled={generating}
-                  style={{ 
-                    width: "100%",
-                    padding: "0.875rem 1.5rem",
-                    fontSize: "1rem",
-                    fontWeight: 600
-                  }}
-                >
-                  {generating ? "⏳ Generating..." : "🤖 Generate Question with AI"}
-              </button>
               {error && (
-                  <div style={{ 
-                    marginTop: "1rem", 
-                    padding: "1rem", 
-                    backgroundColor: "#FEE2E2", 
-                    color: "#DC2626", 
-                    borderRadius: "0.5rem",
-                    borderLeft: "4px solid #DC2626"
-                  }}>
+                <div style={{ marginBottom: "1.5rem", padding: "1rem", backgroundColor: "#FEE2E2", color: "#DC2626", borderRadius: "0.5rem", borderLeft: "4px solid #DC2626", fontSize: "0.9rem" }}>
                   {error}
                 </div>
               )}
+
+              <div style={{ marginTop: "2rem" }}>
+                <button
+                  type="button"
+                  onClick={handleAiGenerate}
+                  disabled={generating}
+                  style={{ 
+                    width: "100%", padding: "1rem", backgroundColor: "#00684A", color: "#ffffff",
+                    border: "none", borderRadius: "0.5rem", fontSize: "1rem", fontWeight: 600,
+                    cursor: generating ? "not-allowed" : "pointer", opacity: generating ? 0.7 : 1,
+                    display: "flex", alignItems: "center", justifyContent: "center", gap: "0.5rem",
+                    transition: "background-color 0.2s"
+                  }}
+                  onMouseOver={(e) => { if(!generating) e.currentTarget.style.backgroundColor = "#084A2A" }}
+                  onMouseOut={(e) => { if(!generating) e.currentTarget.style.backgroundColor = "#00684A" }}
+                >
+                  {generating ? (
+                    <><Loader2 size={18} className="animate-spin" /> Generating Magic...</>
+                  ) : (
+                    <><Sparkles size={18} /> Generate Question</>
+                  )}
+                </button>
               </div>
             </div>
           ) : (
             /* Manual Creation Form */
-            <>
+            <div>
               <div style={{ 
                 marginBottom: "2rem",
-                paddingBottom: "1rem",
-                borderBottom: "1px solid #E8FAF0"
+                display: "flex",
+                alignItems: "center",
+                gap: "0.75rem"
               }}>
-                <h2 style={{ 
-                  marginBottom: "0.5rem", 
-                  color: "#1E5A3B",
-                  fontSize: "1.5rem",
-                  fontWeight: 600
-                }}>
-                  Manual Question Creation
-                </h2>
-                <p style={{ 
-                  color: "#4A9A6A", 
-                  fontSize: "0.875rem",
-                  margin: 0
-                }}>
-                  Create a question manually with full control over the content
-                </p>
+                <div style={{ backgroundColor: "#F0F9F4", padding: "0.5rem", borderRadius: "0.5rem", color: "#00684A" }}>
+                  <BookOpen size={24} />
+                </div>
+                <div>
+                  <h2 style={{ margin: "0 0 0.25rem 0", color: "#111827", fontSize: "1.25rem", fontWeight: 700 }}>
+                    Question Details
+                  </h2>
+                  <p style={{ color: "#6B7280", fontSize: "0.875rem", margin: 0 }}>
+                    Manually author the problem statement and structure.
+                  </p>
+                </div>
               </div>
 
               <div style={{ marginBottom: "1.5rem" }}>
-                <label style={{ 
-                  display: "block", 
-                  marginBottom: "0.625rem", 
-                  fontWeight: 600,
-                  color: "#1E5A3B",
-                  fontSize: "0.9375rem"
-                }}>
+                <label style={{ display: "block", marginBottom: "0.5rem", fontWeight: 600, color: "#374151", fontSize: "0.875rem" }}>
                   Title <span style={{ color: "#DC2626" }}>*</span>
                 </label>
                 <input
@@ -1108,95 +983,57 @@ export default function AIMLQuestionCreatePage() {
                   onChange={(e) => setTitle(e.target.value)}
                   placeholder="e.g., Normalize Array using NumPy"
                   style={{
-                    width: "100%",
-                    padding: "0.875rem 1rem",
-                    border: "1px solid #A8E8BC",
-                    borderRadius: "0.5rem",
-                    fontSize: "0.9375rem",
-                    transition: "all 0.2s ease",
+                    width: "100%", padding: "0.75rem 1rem", border: "1px solid #D1D5DB",
+                    borderRadius: "0.5rem", fontSize: "0.95rem", transition: "all 0.2s ease",
+                    outline: "none", boxSizing: "border-box"
                   }}
                   onFocus={(e) => {
-                    e.currentTarget.style.borderColor = "#9DE8B0"
-                    e.currentTarget.style.boxShadow = "0 0 0 3px rgba(201, 244, 212, 0.2)"
+                    e.currentTarget.style.borderColor = "#00684A"
+                    e.currentTarget.style.boxShadow = "0 0 0 3px rgba(0, 104, 74, 0.1)"
                   }}
                   onBlur={(e) => {
-                    e.currentTarget.style.borderColor = "#A8E8BC"
+                    e.currentTarget.style.borderColor = "#D1D5DB"
                     e.currentTarget.style.boxShadow = "none"
                   }}
                 />
               </div>
 
-              <div style={{ marginBottom: "1.5rem" }}>
-                <label style={{ 
-                  display: "block", 
-                  marginBottom: "0.625rem", 
-                  fontWeight: 600,
-                  color: "#1E5A3B",
-                  fontSize: "0.9375rem"
-                }}>
-                  Question Description <span style={{ color: "#DC2626" }}>*</span>
+              <div style={{ marginBottom: "2rem" }}>
+                <label style={{ display: "block", marginBottom: "0.5rem", fontWeight: 600, color: "#374151", fontSize: "0.875rem" }}>
+                  Problem Description <span style={{ color: "#DC2626" }}>*</span>
                 </label>
                 <textarea
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
-                  placeholder="Describe the problem in detail..."
+                  placeholder="Describe the problem, the required inputs, and expected outputs..."
                   style={{
-                    width: "100%",
-                    padding: "0.875rem 1rem",
-                    border: "1px solid #A8E8BC",
-                    borderRadius: "0.5rem",
-                    minHeight: "150px",
-                    fontSize: "0.9375rem",
-                    fontFamily: "inherit",
-                    resize: "vertical",
-                    transition: "all 0.2s ease",
+                    width: "100%", padding: "1rem", border: "1px solid #D1D5DB",
+                    borderRadius: "0.5rem", minHeight: "180px", fontSize: "0.95rem", 
+                    fontFamily: "inherit", resize: "vertical", transition: "all 0.2s ease",
+                    outline: "none", boxSizing: "border-box"
                   }}
                   onFocus={(e) => {
-                    e.currentTarget.style.borderColor = "#9DE8B0"
-                    e.currentTarget.style.boxShadow = "0 0 0 3px rgba(201, 244, 212, 0.2)"
+                    e.currentTarget.style.borderColor = "#00684A"
+                    e.currentTarget.style.boxShadow = "0 0 0 3px rgba(0, 104, 74, 0.1)"
                   }}
                   onBlur={(e) => {
-                    e.currentTarget.style.borderColor = "#A8E8BC"
+                    e.currentTarget.style.borderColor = "#D1D5DB"
                     e.currentTarget.style.boxShadow = "none"
                   }}
                 />
               </div>
 
-              <div style={{ marginBottom: "1.5rem" }}>
-                <label style={{ 
-                  display: "block", 
-                  marginBottom: "0.625rem", 
-                  fontWeight: 600,
-                  color: "#1E5A3B",
-                  fontSize: "0.9375rem"
-                }}>
-                  Tasks
+              <div style={{ marginBottom: "2rem" }}>
+                <label style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "0.75rem", fontWeight: 600, color: "#374151", fontSize: "0.875rem" }}>
+                  <span>Tasks/Steps</span>
                 </label>
-                <div style={{
-                  border: "1px solid #E8FAF0",
-                  borderRadius: "0.5rem",
-                  padding: "1rem",
-                  backgroundColor: "#f9fafb"
-                }}>
+                <div style={{ border: "1px solid #E5E7EB", borderRadius: "0.5rem", padding: "1.25rem", backgroundColor: "#F9FAFB" }}>
                   {tasks.map((task, idx) => (
-                    <div key={idx} style={{ 
-                      display: "flex", 
-                      gap: "0.75rem", 
-                      marginBottom: "0.75rem",
-                      alignItems: "center"
-                    }}>
+                    <div key={idx} style={{ display: "flex", gap: "0.75rem", marginBottom: "0.75rem", alignItems: "flex-start" }}>
                       <div style={{
-                        minWidth: "24px",
-                        height: "24px",
-                        borderRadius: "50%",
-                        backgroundColor: "#C9F4D4",
-                        color: "#1E5A3B",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        fontSize: "0.75rem",
-                        fontWeight: 600,
-                        flexShrink: 0
+                        width: "28px", height: "28px", borderRadius: "50%", backgroundColor: "#E1F2E9",
+                        color: "#00684A", display: "flex", alignItems: "center", justifyContent: "center",
+                        fontSize: "0.75rem", fontWeight: 700, flexShrink: 0, marginTop: "0.2rem"
                       }}>
                         {idx + 1}
                       </div>
@@ -1204,247 +1041,159 @@ export default function AIMLQuestionCreatePage() {
                         type="text"
                         value={task}
                         onChange={(e) => updateTask(idx, e.target.value)}
-                        placeholder={`Enter task ${idx + 1}...`}
-                  style={{
-                          flex: 1,
-                          padding: "0.75rem 1rem",
-                    border: "1px solid #A8E8BC",
-                          borderRadius: "0.5rem",
-                          fontSize: "0.9375rem",
-                          transition: "all 0.2s ease",
+                        placeholder="Define a specific task or step..."
+                        style={{
+                          flex: 1, padding: "0.6rem 1rem", border: "1px solid #D1D5DB",
+                          borderRadius: "0.5rem", fontSize: "0.95rem", outline: "none",
+                          transition: "border 0.2s"
                         }}
-                        onFocus={(e) => {
-                          e.currentTarget.style.borderColor = "#9DE8B0"
-                          e.currentTarget.style.boxShadow = "0 0 0 3px rgba(201, 244, 212, 0.2)"
-                        }}
-                        onBlur={(e) => {
-                          e.currentTarget.style.borderColor = "#A8E8BC"
-                          e.currentTarget.style.boxShadow = "none"
-                        }}
+                        onFocus={(e) => e.currentTarget.style.borderColor = "#00684A"}
+                        onBlur={(e) => e.currentTarget.style.borderColor = "#D1D5DB"}
                       />
                       <button
                         type="button"
                         onClick={() => removeTask(idx)}
                         style={{
-                          padding: "0.625rem 1rem",
-                          backgroundColor: "#DC2626",
-                          color: "white",
-                          border: "none",
-                          borderRadius: "0.5rem",
-                          cursor: "pointer",
-                          fontSize: "0.875rem",
-                          fontWeight: 500,
-                          transition: "all 0.2s ease",
-                          flexShrink: 0
+                          padding: "0.6rem", backgroundColor: "transparent", color: "#EF4444",
+                          border: "1px solid transparent", borderRadius: "0.5rem", cursor: "pointer",
+                          transition: "all 0.2s", marginTop: "0.1rem"
                         }}
-                        onMouseEnter={(e) => {
-                          e.currentTarget.style.backgroundColor = "#B91C1C"
-                          e.currentTarget.style.transform = "scale(1.05)"
-                        }}
-                        onMouseLeave={(e) => {
-                          e.currentTarget.style.backgroundColor = "#DC2626"
-                          e.currentTarget.style.transform = "scale(1)"
-                        }}
+                        onMouseEnter={(e) => e.currentTarget.style.backgroundColor = "#FEE2E2"}
+                        onMouseLeave={(e) => e.currentTarget.style.backgroundColor = "transparent"}
+                        title="Remove task"
                       >
-                        Remove
+                        <Trash2 size={18} />
                       </button>
                     </div>
                   ))}
                   <button
                     type="button"
                     onClick={addTask}
-                    className="btn-secondary"
                     style={{ 
-                      marginTop: "0.5rem",
-                      width: "100%",
-                      padding: "0.75rem 1rem"
+                      marginTop: "0.5rem", display: "flex", alignItems: "center", gap: "0.5rem",
+                      padding: "0.6rem 1rem", backgroundColor: "white", border: "1px dashed #D1D5DB",
+                      borderRadius: "0.5rem", color: "#4B5563", fontSize: "0.875rem", fontWeight: 600,
+                      cursor: "pointer", transition: "all 0.2s", width: "100%", justifyContent: "center"
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.borderColor = "#00684A"
+                      e.currentTarget.style.color = "#00684A"
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.borderColor = "#D1D5DB"
+                      e.currentTarget.style.color = "#4B5563"
                     }}
                   >
-                    + Add Task
+                    <Plus size={16} /> Add Another Task
                   </button>
                 </div>
               </div>
 
-              <div style={{ 
-                marginBottom: "2rem",
-                padding: "1.5rem",
-                border: "1px solid #E8FAF0",
-                borderRadius: "0.5rem",
-                backgroundColor: "#f9fafb"
-              }}>
-                <label style={{ 
-                  display: "flex", 
-                  alignItems: "center", 
-                  gap: "0.75rem", 
-                  cursor: "pointer",
-                  marginBottom: requiresDataset ? "1rem" : "0"
-                }}>
+              <div style={{ marginBottom: "2rem", padding: "1.5rem", border: "1px solid #E5E7EB", borderRadius: "0.75rem", backgroundColor: "#F9FAFB" }}>
+                <label style={{ display: "flex", alignItems: "center", gap: "0.75rem", cursor: "pointer", margin: 0 }}>
                   <input
                     type="checkbox"
                     checked={requiresDataset}
                     onChange={(e) => setRequiresDataset(e.target.checked)}
-                    style={{
-                      width: "18px",
-                      height: "18px",
-                      cursor: "pointer"
-                    }}
+                    style={{ width: "18px", height: "18px", cursor: "pointer", accentColor: "#00684A" }}
                   />
-                  <span style={{ 
-                    fontWeight: 600,
-                    color: "#1E5A3B",
-                    fontSize: "0.9375rem"
-                  }}>
-                    This question requires a dataset
+                  <span style={{ fontWeight: 600, color: "#111827", fontSize: "0.95rem" }}>
+                    This question requires a dataset attachment
                   </span>
                 </label>
+                
                 {requiresDataset && (
-                  <div style={{ 
-                    marginTop: "1rem",
-                    paddingTop: "1rem",
-                    borderTop: "1px solid #E8FAF0"
-                  }}>
-                    <div style={{ marginBottom: "1rem" }}>
-                      <label style={{ 
-                        display: "block", 
-                        marginBottom: "0.625rem", 
-                        fontWeight: 600, 
-                        fontSize: "0.9375rem",
-                        color: "#1E5A3B"
-                      }}>
-                        Dataset Format <span style={{ color: "#DC2626" }}>*</span>
+                  <div style={{ marginTop: "1.25rem", paddingTop: "1.25rem", borderTop: "1px solid #E5E7EB" }}>
+                    <div style={{ marginBottom: "1.25rem" }}>
+                      <label style={{ display: "block", marginBottom: "0.5rem", fontWeight: 600, fontSize: "0.875rem", color: "#374151" }}>
+                        Candidate Dataset Format <span style={{ color: "#DC2626" }}>*</span>
                       </label>
                       <select
                         value={manualDatasetFormat}
                         onChange={(e) => setManualDatasetFormat(e.target.value)}
-                      style={{
-                        width: "100%",
-                          padding: "0.875rem 1rem",
-                        border: "1px solid #A8E8BC",
-                          borderRadius: "0.5rem",
-                          fontSize: "0.9375rem",
-                          backgroundColor: "#ffffff",
-                          cursor: "pointer",
-                          transition: "all 0.2s ease",
+                        style={{
+                          width: "100%", padding: "0.75rem 1rem", border: "1px solid #D1D5DB",
+                          borderRadius: "0.5rem", fontSize: "0.95rem", backgroundColor: "#ffffff",
+                          cursor: "pointer", outline: "none"
                         }}
-                        onFocus={(e) => {
-                          e.currentTarget.style.borderColor = "#9DE8B0"
-                          e.currentTarget.style.boxShadow = "0 0 0 3px rgba(201, 244, 212, 0.2)"
-                        }}
-                        onBlur={(e) => {
-                          e.currentTarget.style.borderColor = "#A8E8BC"
-                          e.currentTarget.style.boxShadow = "none"
-                        }}
+                        onFocus={(e) => e.currentTarget.style.borderColor = "#00684A"}
+                        onBlur={(e) => e.currentTarget.style.borderColor = "#D1D5DB"}
                       >
                         {DATASET_FORMATS.map(format => (
                           <option key={format} value={format}>{format.toUpperCase()}</option>
                         ))}
                       </select>
-                  </div>
+                    </div>
                     <div>
-                      <label style={{ 
-                        display: "block", 
-                        marginBottom: "0.625rem", 
-                        fontWeight: 600, 
-                        fontSize: "0.9375rem",
-                        color: "#1E5A3B"
-                      }}>
-                        Upload Dataset File
-                </label>
+                      <label style={{ display: "block", marginBottom: "0.5rem", fontWeight: 600, fontSize: "0.875rem", color: "#374151" }}>
+                        Upload Source Dataset <span style={{ color: "#DC2626" }}>*</span>
+                      </label>
                       <input
                         type="file"
                         accept=".csv,.json,.xlsx"
                         onChange={(e) => {
                           const file = e.target.files?.[0] || null
-                          console.log('🔵 [AIML Create] Dataset file selected:', {
-                            hasFile: !!file,
-                            fileName: file?.name,
-                            fileSize: file?.size,
-                            fileType: file?.type,
-                            lastModified: file?.lastModified,
-                          })
                           setDatasetFile(file)
-                          if (file) {
-                            console.log('🟢 [AIML Create] Dataset file set successfully:', file.name)
-                          } else {
-                            console.log('🟡 [AIML Create] No file selected or file cleared')
-                          }
                         }}
-                  style={{
-                    width: "100%",
-                          padding: "0.875rem 1rem",
-                    border: "1px solid #A8E8BC",
-                          borderRadius: "0.5rem",
-                          fontSize: "0.9375rem",
-                          backgroundColor: "#ffffff",
-                          cursor: "pointer",
+                        style={{
+                          width: "100%", padding: "0.6rem", border: "1px dashed #A8E8BC",
+                          borderRadius: "0.5rem", fontSize: "0.9rem", backgroundColor: "#ffffff",
+                          cursor: "pointer", color: "#4B5563"
                         }}
                       />
-                      <small style={{ 
-                        color: "#4A9A6A", 
-                        fontSize: "0.8125rem", 
-                        display: "block", 
-                        marginTop: "0.5rem" 
-                      }}>
-                        Upload a dataset file (CSV, JSON, or Excel). The dataset will be converted to the selected format.
-                      </small>
-              </div>
+                      <p style={{ color: "#6B7280", fontSize: "0.8rem", margin: "0.5rem 0 0 0" }}>
+                        Upload a CSV, JSON, or Excel file. It will be converted to your chosen format above.
+                      </p>
+                    </div>
                   </div>
                 )}
               </div>
 
-            </>
-          )}
+              {error && (
+                <div style={{ marginBottom: "1.5rem", padding: "1rem", backgroundColor: "#FEE2E2", color: "#DC2626", borderRadius: "0.5rem", borderLeft: "4px solid #DC2626", fontSize: "0.9rem" }}>
+                  {error}
+                </div>
+              )}
 
-          {error && (
-            <div style={{ 
-              marginBottom: "1.5rem", 
-              padding: "1rem", 
-              backgroundColor: "#FEE2E2", 
-              color: "#DC2626", 
-              borderRadius: "0.5rem",
-              borderLeft: "4px solid #DC2626"
-            }}>
-              {error}
+              <div style={{ 
+                display: "flex", gap: "1rem", paddingTop: "1.5rem", borderTop: "1px solid #E5E7EB" 
+              }}>
+                <button
+                  type="button"
+                  onClick={() => router.push("/aiml/questions")}
+                  style={{ 
+                    flex: 1, padding: "0.875rem", fontSize: "1rem", fontWeight: 600, color: "#374151",
+                    backgroundColor: "#ffffff", border: "1px solid #D1D5DB", borderRadius: "0.5rem",
+                    cursor: "pointer", transition: "all 0.2s"
+                  }}
+                  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = "#F9FAFB"}
+                  onMouseLeave={(e) => e.currentTarget.style.backgroundColor = "#ffffff"}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleCreate}
+                  disabled={saving}
+                  style={{ 
+                    flex: 2, padding: "0.875rem", fontSize: "1rem", fontWeight: 600, color: "#ffffff",
+                    backgroundColor: "#00684A", border: "none", borderRadius: "0.5rem",
+                    cursor: saving ? "not-allowed" : "pointer", opacity: saving ? 0.7 : 1,
+                    display: "flex", alignItems: "center", justifyContent: "center", gap: "0.5rem",
+                    transition: "all 0.2s"
+                  }}
+                  onMouseEnter={(e) => { if(!saving) e.currentTarget.style.backgroundColor = "#084A2A" }}
+                  onMouseLeave={(e) => { if(!saving) e.currentTarget.style.backgroundColor = "#00684A" }}
+                >
+                  {saving ? (
+                    <><Loader2 size={18} className="animate-spin" /> Saving...</>
+                  ) : (
+                    <><Check size={18} /> Save Manual Question</>
+                  )}
+                </button>
+              </div>
             </div>
           )}
-
-          {!isAiGenerated && (
-            <div style={{ 
-              display: "flex", 
-              gap: "1rem", 
-              marginTop: "2rem",
-              paddingTop: "2rem",
-              borderTop: "2px solid #E8FAF0"
-            }}>
-            <button
-              type="button"
-              className="btn-secondary"
-              onClick={() => router.push("/aiml/questions")}
-                style={{ 
-                  flex: 1,
-                  padding: "0.875rem 1.5rem",
-                  fontSize: "1rem",
-                  fontWeight: 600
-                }}
-            >
-              Cancel
-            </button>
-              <button
-                type="button"
-                className="btn-primary"
-                onClick={handleCreate}
-                disabled={saving}
-                style={{ 
-                  flex: 1,
-                  padding: "0.875rem 1.5rem",
-                  fontSize: "1rem",
-                  fontWeight: 600
-                }}
-              >
-                {saving ? "⏳ Creating..." : "Create Question"}
-              </button>
-            </div>
-            )}
         </div>
       </div>
     </div>

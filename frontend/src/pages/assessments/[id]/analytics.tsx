@@ -156,9 +156,16 @@ export default function AnalyticsPage() {
                 return true;
               }
             }
-            // Fallback: Check if userId contains email (for email: format)
+            // Fallback 1: Check if userId contains email (for email: format)
             if (log.userId && log.userId.startsWith('email:')) {
               const userIdEmail = log.userId.replace('email:', '').trim().toLowerCase();
+              if (userIdEmail === emailLower) {
+                return true;
+              }
+            }
+            // Fallback 2: Check if userId is the email directly (for flags saved with plain email)
+            if (log.userId && log.userId.includes('@')) {
+              const userIdEmail = String(log.userId).trim().toLowerCase();
               if (userIdEmail === emailLower) {
                 return true;
               }
@@ -233,8 +240,9 @@ export default function AnalyticsPage() {
         },
       })
 
-      if (response.data.data?.success && response.data?.data?.referenceImage) {
-        setReferencePhoto(response.data.data.referenceImage)
+      const respData = response?.data;
+      if (respData?.success && respData.referenceImage) {
+        setReferencePhoto(respData.referenceImage)
       } else {
         setReferencePhoto(null)
       }
@@ -319,7 +327,7 @@ export default function AnalyticsPage() {
         name: newCandidateName.trim(),
       })
       
-      if (response.data?.success) {
+      if (response?.data?.success) {
         // Refresh assessment data to get updated candidates list
         await refetchAssessment()
         await refetchCandidates()
@@ -346,7 +354,7 @@ export default function AnalyticsPage() {
         email: email,
       })
       
-      if (response.data?.success) {
+      if (response?.data?.success) {
         alert("Invitation resent successfully!")
         // Refresh assessment data
         await refetchAssessment()

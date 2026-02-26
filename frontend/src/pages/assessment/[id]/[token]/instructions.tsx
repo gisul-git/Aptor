@@ -107,7 +107,6 @@ export default function AssessmentInstructionsPage() {
   }, []);
 
   // Handle "Start Assessment" click - go directly to camera modal
-  // Handle start assessment
   const handleStartClick = () => {
     if (!acknowledged || !id || !token) return;
     handleStartAssessment();
@@ -131,12 +130,21 @@ export default function AssessmentInstructionsPage() {
   }
 
   return (
-    <div style={{ backgroundColor: "#f7f3e8", minHeight: "100vh", padding: "2rem" }}>
+    <div style={{ backgroundColor: "#ffffff", minHeight: "100vh", padding: "2rem" }}>
       <div style={{ maxWidth: "900px", margin: "0 auto" }}>
-        <div className="card" style={{ padding: "2rem" }}>
+        <div 
+          className="card" 
+          style={{ 
+            padding: "2rem",
+            backgroundColor: "#ffffff",
+            borderRadius: "1rem",
+            border: "1px solid #D1D5DB", 
+            boxShadow: "0 1px 2px 0 rgba(0, 0, 0, 0.05)"
+          }}
+        >
           <div style={{ textAlign: "center", marginBottom: "1.5rem" }}>
             <p style={{ margin: 0, color: "#6b7280", fontSize: "0.9rem" }}>Candidate</p>
-            <h1 style={{ fontSize: "2rem", fontWeight: 700, color: "#1f2937" }}>
+            <h1 style={{ fontSize: "2rem", fontWeight: 700, color: "#00684A" }}>
               Assessment Instructions
             </h1>
             {email && name && (
@@ -171,10 +179,11 @@ export default function AssessmentInstructionsPage() {
                 "Use the navigation controls to move between questions in the current section.",
               ]}
             />
-            {/* Proctoring Guidelines Card - Mandatory Fullscreen */}
+            
+            {/* Proctoring Guidelines Card - Mandatory Fullscreen (Kept Red for Warning UX) */}
             <div
               style={{
-                border: "2px solid #ef4444",
+                border: "1px solid #fecaca",
                 borderRadius: "0.75rem",
                 padding: "1.25rem",
                 backgroundColor: "#fef2f2",
@@ -206,6 +215,7 @@ export default function AssessmentInstructionsPage() {
                 </li>
               </ul>
             </div>
+            
             <InstructionCard
               title="Code of Conduct"
               bullets={[
@@ -216,7 +226,13 @@ export default function AssessmentInstructionsPage() {
             />
           </div>
 
-          <div style={{ marginBottom: "1.5rem" }}>
+          <div style={{ 
+            marginBottom: "1.5rem", 
+            padding: "1rem",
+            backgroundColor: "#F0F9F4",
+            borderRadius: "0.5rem",
+            border: "1px solid #E1F2E9"
+          }}>
             <label style={{ display: "flex", alignItems: "center", gap: "0.75rem", cursor: "pointer" }}>
               <input
                 type="checkbox"
@@ -224,7 +240,7 @@ export default function AssessmentInstructionsPage() {
                 onChange={(e) => setAcknowledged(e.target.checked)}
                 style={{ width: "1.25rem", height: "1.25rem" }}
               />
-              <span style={{ fontSize: "0.95rem", color: "#1f2937" }}>
+              <span style={{ fontSize: "0.95rem", color: "#00684A", fontWeight: 500 }}>
                 I have read and understood the instructions, and I agree to follow the assessment rules.
               </span>
             </label>
@@ -232,22 +248,18 @@ export default function AssessmentInstructionsPage() {
 
           <button
             type="button"
-            className="btn-primary"
+            className="bg-brand-primary hover:bg-[#084A2A] text-white font-medium px-4 sm:px-6 py-2.5 sm:py-3 h-auto shadow-sm hover:shadow-md transition-all text-sm sm:text-base w-full"
             onClick={handleStartClick}
-            disabled={!acknowledged}
+            disabled={!acknowledged || isStarting}
             style={{
-              width: "100%",
-              padding: "0.85rem",
-              fontSize: "1rem",
               opacity: acknowledged ? 1 : 0.6,
               cursor: acknowledged ? "pointer" : "not-allowed",
             }}
           >
-            Start Assessment
+            {isStarting ? "Starting..." : "Start Assessment"}
           </button>
         </div>
       </div>
-
     </div>
   );
 }
@@ -256,16 +268,16 @@ function InstructionCard({ title, bullets }: { title: string; bullets: string[] 
   return (
     <div
       style={{
-        border: "1px solid #e5e7eb",
+        border: "1px solid #E1F2E9",
         borderRadius: "0.75rem",
         padding: "1.25rem",
-        backgroundColor: "#ffffff",
+        backgroundColor: "#F0F9F4",
       }}
     >
-      <h2 style={{ fontSize: "1.1rem", fontWeight: 600, color: "#1f2937", marginBottom: "0.75rem" }}>
+      <h2 style={{ fontSize: "1.1rem", fontWeight: 600, color: "#00684A", marginBottom: "0.75rem" }}>
         {title}
       </h2>
-      <ul style={{ margin: 0, paddingLeft: "1.25rem", color: "#4b5563", lineHeight: 1.6 }}>
+      <ul style={{ margin: 0, paddingLeft: "1.25rem", color: "#475569", lineHeight: 1.6 }}>
         {bullets.map((item, idx) => (
           <li key={idx} style={{ marginBottom: "0.5rem" }}>
             {item}

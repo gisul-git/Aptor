@@ -373,7 +373,7 @@ export default function SignInPage({ providers }: SignInPageProps) {
 
   const googleProvider = providers ? providers["google"] : undefined;
   const microsoftProvider = providers ? providers["azure-ad"] ?? providers["azuread"] : undefined;
-  const callbackUrl = (router.query.callbackUrl as string) ?? "/employee/management";
+  const callbackUrl = (router.query.callbackUrl as string) ?? "/dashboard";
 
   // Caps Lock detection
   useEffect(() => {
@@ -514,8 +514,8 @@ export default function SignInPage({ providers }: SignInPageProps) {
       sessionStorage.removeItem('verified_email');
     }
     
-    // Always redirect to employee management page after successful login
-    window.location.replace("/employee/management");
+    // Redirect to dashboard after successful login
+    window.location.replace("/dashboard");
   };
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
@@ -530,6 +530,9 @@ export default function SignInPage({ providers }: SignInPageProps) {
     setLoading(true);
     setError(null);
 
+    // Flag to track if MFA was detected to prevent NextAuth fallback
+    let mfaDetected = false;
+    
     try {
       // First check if MFA is required by calling backend directly
       const loginPayload: any = {
@@ -546,14 +549,21 @@ export default function SignInPage({ providers }: SignInPageProps) {
 
       // Check if MFA is required - check multiple possible response structures
       const responseData = loginResponse.data;
-      const requireMfa = responseData?.data?.require_mfa || responseData?.require_mfa;
+      // Check all possible locations for require_mfa flag
+      const requireMfa = responseData?.data?.require_mfa || 
+                        responseData?.require_mfa || 
+                        loginResponse?.data?.data?.require_mfa ||
+                        loginResponse?.data?.require_mfa;
       
-      if (requireMfa) {
+      if (requireMfa === true) {
+        mfaDetected = true;
+        console.log("🔐 [SignIn] MFA required detected, redirecting to MFA page");
+        
         // Store email for MFA page
         if (typeof window !== "undefined") {
           sessionStorage.setItem("super_admin_email", email);
-          // Use window.location for immediate redirect to prevent any code execution after
-          window.location.href = `/super-admin/mfa?email=${encodeURIComponent(email)}`;
+          // Use window.location.replace for immediate redirect (doesn't add to history)
+          window.location.replace(`/super-admin/mfa?email=${encodeURIComponent(email)}`);
         }
         setLoading(false);
         return; // IMPORTANT: Return early to prevent NextAuth call
@@ -577,6 +587,17 @@ export default function SignInPage({ providers }: SignInPageProps) {
       setLoading(false);
 
       if (result?.error) {
+        // Check if error is MFA_REQUIRED
+        if (result.error === "MFA_REQUIRED" || result.error.includes("MFA_REQUIRED")) {
+          mfaDetected = true;
+          console.log("🔐 [SignIn] MFA required detected from NextAuth, redirecting to MFA page");
+          if (typeof window !== "undefined") {
+            sessionStorage.setItem("super_admin_email", email);
+            window.location.replace(`/super-admin/mfa?email=${encodeURIComponent(email)}`);
+          }
+          return;
+        }
+        
         if (result.error.includes("Email not verified") || result.error.includes("email verification")) {
           setShowVerification(true);
           setTimeRemaining(60);
@@ -594,19 +615,31 @@ export default function SignInPage({ providers }: SignInPageProps) {
         sessionStorage.removeItem('verified_email');
       }
       
-      // Redirect to employee management page after successful login
-      window.location.replace("/employee/management");
+      // Redirect to dashboard after successful login
+      window.location.replace("/dashboard");
     } catch (err: any) {
       setLoading(false);
       
+      // If MFA was already detected, don't proceed with any fallback
+      if (mfaDetected) {
+        console.log("🔐 [SignIn] MFA already detected, skipping error handling");
+        return;
+      }
+      
       // Check if the error response contains require_mfa (in case axios throws an error)
       const errorData = err?.response?.data;
-      const requireMfaFromError = errorData?.data?.require_mfa || errorData?.require_mfa;
+      const requireMfaFromError = errorData?.data?.require_mfa || 
+                                  errorData?.require_mfa ||
+                                  err?.response?.data?.data?.require_mfa ||
+                                  err?.response?.data?.require_mfa;
       
-      if (requireMfaFromError) {
+      if (requireMfaFromError === true) {
+        mfaDetected = true;
+        console.log("🔐 [SignIn] MFA required detected in error response, redirecting to MFA page");
+        
         if (typeof window !== "undefined") {
           sessionStorage.setItem("super_admin_email", email);
-          window.location.href = `/super-admin/mfa?email=${encodeURIComponent(email)}`;
+          window.location.replace(`/super-admin/mfa?email=${encodeURIComponent(email)}`);
         }
         return; // IMPORTANT: Return early to prevent NextAuth call
       }
@@ -617,39 +650,52 @@ export default function SignInPage({ providers }: SignInPageProps) {
         return; // Don't try NextAuth if backend is down
       }
 
-      // For other errors, try NextAuth as fallback
-      const result = await signIn("credentials", {
-        redirect: false,
-        email,
-        password,
-        callbackUrl,
-      });
+      // For other errors, try NextAuth as fallback (only if MFA was not detected)
+      if (!mfaDetected) {
+        const result = await signIn("credentials", {
+          redirect: false,
+          email,
+          password,
+          callbackUrl,
+        });
 
-      if (result?.error) {
-        if (result.error.includes("Email not verified") || result.error.includes("email verification")) {
-          setShowVerification(true);
-          setTimeRemaining(60);
-          setCodeExpired(false);
-          await handleSendVerificationCode();
-        } else {
-          const errorMessage = err?.response?.data?.detail || err?.response?.data?.message || err?.message || result.error;
-          setError(errorMessage);
+        if (result?.error) {
+          // Check if error is MFA_REQUIRED
+          if (result.error === "MFA_REQUIRED" || result.error.includes("MFA_REQUIRED")) {
+            mfaDetected = true;
+            console.log("🔐 [SignIn] MFA required detected from NextAuth fallback, redirecting to MFA page");
+            if (typeof window !== "undefined") {
+              sessionStorage.setItem("super_admin_email", email);
+              window.location.replace(`/super-admin/mfa?email=${encodeURIComponent(email)}`);
+            }
+            return;
+          }
+          
+          if (result.error.includes("Email not verified") || result.error.includes("email verification")) {
+            setShowVerification(true);
+            setTimeRemaining(60);
+            setCodeExpired(false);
+            await handleSendVerificationCode();
+          } else {
+            const errorMessage = err?.response?.data?.detail || err?.response?.data?.message || err?.message || result.error;
+            setError(errorMessage);
+          }
+          return;
         }
-        return;
-      }
 
-      // Check if this is a post-signup login
-      const isPostSignup = router.query.fromSignup === 'true' || 
-                          (typeof window !== 'undefined' && sessionStorage.getItem('post_signup_verified') === 'true');
-      
-      // Clear the flag
-      if (typeof window !== 'undefined') {
-        sessionStorage.removeItem('post_signup_verified');
-        sessionStorage.removeItem('verified_email');
+        // Check if this is a post-signup login
+        const isPostSignup = router.query.fromSignup === 'true' || 
+                            (typeof window !== 'undefined' && sessionStorage.getItem('post_signup_verified') === 'true');
+        
+        // Clear the flag
+        if (typeof window !== 'undefined') {
+          sessionStorage.removeItem('post_signup_verified');
+          sessionStorage.removeItem('verified_email');
+        }
+        
+        // Redirect to dashboard after successful login
+        window.location.replace("/dashboard");
       }
-      
-      // Always redirect to employee management page after successful login
-      window.location.replace("/employee/management");
     }
   }
 

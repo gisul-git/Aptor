@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/router";
 import { getSession } from "next-auth/react";
+import { Check, X, Clock } from "lucide-react"; // <-- Added Lucide icons here
 import IdentityVerification from "@/proctoring/components/IdentityVerification";
 import { getGateContext } from "@/lib/gateContext";
 import { useAssessmentFull } from "@/hooks/api/useAssessments";
@@ -41,72 +42,20 @@ export default function IdentityVerificationPage() {
   const assessmentId = typeof id === 'string' ? id : undefined;
   const assessmentToken = typeof token === 'string' ? token : undefined;
   
-  console.log("[identity-verify] 🔵 useAssessmentFull hook called:", {
-    assessmentId,
-    hasToken: !!assessmentToken,
-    idType: typeof id,
-    tokenType: typeof token,
-    timestamp: new Date().toISOString(),
-  });
-  
   const { data: assessmentData, isLoading, error: assessmentError } = useAssessmentFull(assessmentId, assessmentToken);
-
-  console.log("[identity-verify] 📊 useAssessmentFull hook state:", {
-    hasData: !!assessmentData,
-    isLoading,
-    hasError: !!assessmentError,
-    errorMessage: assessmentError?.message,
-    dataKeys: assessmentData ? Object.keys(assessmentData) : [],
-  });
 
   // Extract proctoring settings from assessment data
   useEffect(() => {
-    console.log("[identity-verify] 🔵 useEffect for assessmentData:", {
-      hasAssessmentData: !!assessmentData,
-      assessmentDataType: typeof assessmentData,
-      assessmentDataKeys: assessmentData ? Object.keys(assessmentData) : [],
-      hasSchedule: !!(assessmentData?.schedule),
-      hasProctoringSettings: !!(assessmentData?.proctoringSettings || assessmentData?.schedule?.proctoringSettings),
-      scheduleKeys: assessmentData?.schedule ? Object.keys(assessmentData.schedule) : [],
-      fullAssessmentData: JSON.stringify(assessmentData, null, 2),
-    });
-    
     if (assessmentData) {
       const assessment = assessmentData;
       // Check both locations: schedule.proctoringSettings (preferred) and top-level proctoringSettings
       const proctoringSettings = assessment?.schedule?.proctoringSettings || assessment?.proctoringSettings;
       
-      console.log("[identity-verify] 🔍 Extracting proctoring settings:", {
-        hasSchedule: !!(assessment?.schedule),
-        scheduleType: typeof assessment?.schedule,
-        scheduleKeys: assessment?.schedule ? Object.keys(assessment.schedule) : [],
-        hasScheduleProctoringSettings: !!(assessment?.schedule?.proctoringSettings),
-        scheduleProctoringSettings: assessment?.schedule?.proctoringSettings,
-        hasTopLevelProctoringSettings: !!(assessment?.proctoringSettings),
-        topLevelProctoringSettings: assessment?.proctoringSettings,
-        extractedProctoringSettings: proctoringSettings,
-        hasExtractedProctoringSettings: !!proctoringSettings,
-      });
-      
       const aiEnabled = proctoringSettings?.aiProctoringEnabled === true;
       const faceMismatch = proctoringSettings?.faceMismatchEnabled === true;
       
-      console.log("[identity-verify] ✅ Final proctoring settings values:", {
-        aiEnabled,
-        faceMismatch,
-        aiProctoringEnabledValue: proctoringSettings?.aiProctoringEnabled,
-        faceMismatchEnabledValue: proctoringSettings?.faceMismatchEnabled,
-        proctoringSettingsFull: JSON.stringify(proctoringSettings, null, 2),
-      });
-      
       setAiProctoringEnabled(aiEnabled);
       setFaceMismatchEnabled(faceMismatch);
-      console.log('[Identity Verification Page] ✅ Proctoring settings loaded and set:', {
-        aiProctoringEnabled: aiEnabled,
-        faceMismatchEnabled: faceMismatch,
-        hasProctoringSettings: !!proctoringSettings,
-        proctoringSettings,
-      });
     } else {
       // Fallback: Try sessionStorage if React Query data not available
       try {
@@ -118,17 +67,11 @@ export default function IdentityVerificationPage() {
           const faceMismatch = proctoringSettings?.faceMismatchEnabled === true;
           setAiProctoringEnabled(aiEnabled);
           setFaceMismatchEnabled(faceMismatch);
-          console.log('[Identity Verification Page] ✅ Loaded proctoring settings from sessionStorage:', {
-            aiProctoringEnabled: aiEnabled,
-            faceMismatchEnabled: faceMismatch,
-          });
         } else {
-          // Default to false if no data available
           setAiProctoringEnabled(false);
           setFaceMismatchEnabled(false);
         }
       } catch (e) {
-        console.warn('[Identity Verification Page] Could not load from sessionStorage:', e);
         setAiProctoringEnabled(false);
         setFaceMismatchEnabled(false);
       }
@@ -162,26 +105,10 @@ export default function IdentityVerificationPage() {
     
     // Check instructions acknowledgment
     const instructionsAcknowledged = sessionStorage.getItem(`instructionsAcknowledged_${id}`);
-    console.log("[IDENTITY-VERIFY] Instructions acknowledgment check", {
-      instructionsAcknowledged: !!instructionsAcknowledged,
-      id,
-      token,
-      timestamp: new Date().toISOString()
-    });
     if (!instructionsAcknowledged && id && token) {
       const targetUrl = `/assessment/${id}/${token}/instructions-new`;
-      console.log("[IDENTITY-VERIFY] 🔄 Instructions not acknowledged, navigating to instructions-new", {
-        targetUrl,
-        id,
-        token
-      });
       router.replace(targetUrl).catch((err) => {
-        console.error("[IDENTITY-VERIFY] ❌ Navigation error:", {
-          error: err,
-          name: err?.name,
-          message: err?.message,
-          stack: err?.stack
-        });
+        console.error("[IDENTITY-VERIFY] Navigation error:", err);
       });
       return;
     }
@@ -442,7 +369,6 @@ export default function IdentityVerificationPage() {
       
       // For Custom MCQ assessments, check schedule similar to AI assessments
       if (isCustomMCQ) {
-        // For Custom MCQ assessments, fetch assessment details to check schedule
         try {
           const apiGatewayUrl = await getApiGatewayUrl();
           const apiBase = `${apiGatewayUrl}/api/v1`;
@@ -464,7 +390,6 @@ export default function IdentityVerificationPage() {
                 const now = new Date();
                 
                 if (now < startTime) {
-                  console.log(`[Identity] Custom MCQ assessment not started yet. Current: ${now.toISOString()}, Start: ${startTime.toISOString()}`);
                   setTestStartTime(startTimeStr);
                   setShowStartTimeModal(true);
                   setIsStarting(false);
@@ -481,7 +406,6 @@ export default function IdentityVerificationPage() {
           }
         } catch (err) {
           console.error("[Identity] Error fetching Custom MCQ assessment schedule:", err);
-          // Proceed if schedule check fails
         }
       }
       
@@ -491,8 +415,6 @@ export default function IdentityVerificationPage() {
         const apiBase = `${apiGatewayUrl}/api/v1`;
         const testEndpoint = isDSATest ? `/dsa/tests/${id}/public?user_id=${userId}` : `/aiml/tests/${id}/public?user_id=${userId}`;
         
-        // CRITICAL: Always check test start time FIRST before attempting to start
-        // This ensures the popup shows on this page itself
         try {
           const testResponse = await fetch(`${apiBase}${testEndpoint}`, {
             method: "GET",
@@ -506,52 +428,37 @@ export default function IdentityVerificationPage() {
             startTimeStr = testData.schedule?.startTime || testData.start_time || null;
             
             if (startTimeStr) {
-              // Normalize timezone - ensure we parse as UTC if it has 'Z' or timezone info
               let startTime: Date;
               if (startTimeStr.endsWith('Z') || startTimeStr.includes('+') || startTimeStr.includes('-', 10)) {
-                // Has timezone info, parse as-is
                 startTime = new Date(startTimeStr);
               } else {
-                // No timezone info, assume UTC and append 'Z'
                 startTime = new Date(startTimeStr + 'Z');
               }
               
               const now = new Date();
               
-              // Check if test start time has been reached
               if (now < startTime) {
-                // Test hasn't started yet - show modal and STOP here (don't proceed)
-                console.log(`[Identity] Test not started yet. Current: ${now.toISOString()}, Start: ${startTime.toISOString()}`);
                 setTestStartTime(startTimeStr);
                 setShowStartTimeModal(true);
-                setIsStarting(false); // Reset loading state
-                return; // CRITICAL: Return early to prevent navigation
+                setIsStarting(false);
+                return;
               } else {
                 testHasStarted = true;
               }
             } else {
-              // No start time configured - allow to proceed
               testHasStarted = true;
             }
-          } else {
-            console.warn("[Identity] Could not fetch test details, proceeding with start attempt");
-            // If we can't fetch test details, proceed to backend validation
           }
         } catch (err) {
           console.error("[Identity] Error fetching test details:", err);
-          // If fetch fails, proceed to backend validation as fallback
         }
         
-        // Only proceed to start test if we've confirmed it has started (or no start time configured)
-        // If test hasn't started, we should have already returned above
         if (startTimeStr && !testHasStarted) {
-          // This shouldn't happen, but double-check
           setTestStartTime(startTimeStr);
           setShowStartTimeModal(true);
           return;
         }
       } else if (isAIAssessment) {
-        // For AI assessments, check schedule via assessment endpoint
         try {
           const scheduleResponse = await fetch(`/api/assessment/get-schedule?assessmentId=${id}&token=${token}`);
           if (scheduleResponse.ok) {
@@ -560,9 +467,7 @@ export default function IdentityVerificationPage() {
               startTimeStr = scheduleData.data.schedule.startTime;
               const examMode = scheduleData.data.schedule?.examMode || scheduleData.data?.examMode || "strict";
               
-              // Normalize timezone
               if (!startTimeStr) {
-                // If startTimeStr is null, skip time check
                 return;
               }
               
@@ -575,21 +480,16 @@ export default function IdentityVerificationPage() {
               
               const now = new Date();
               
-              // For strict mode, check if assessment has started
               if (examMode === "strict") {
                 if (now < startTime) {
-                  // Assessment hasn't started yet - show waiting modal
-                  console.log(`[Identity] Assessment not started yet. Current: ${now.toISOString()}, Start: ${startTime.toISOString()}, Time diff: ${(startTime.getTime() - now.getTime()) / 1000} seconds`);
                   setTestStartTime(startTimeStr);
                   setShowStartTimeModal(true);
                   setIsStarting(false);
-                  return; // CRITICAL: Don't proceed to navigation
+                  return; 
                 } else {
                   testHasStarted = true;
-                  console.log(`[Identity] Assessment has started. Current: ${now.toISOString()}, Start: ${startTime.toISOString()}`);
                 }
               } else {
-                // Flexible mode - allow to start (but still check window)
                 const endTimeStr = scheduleData.data?.schedule?.endTime || scheduleData.data?.endTime;
                 if (endTimeStr) {
                   let endTime: Date;
@@ -600,8 +500,6 @@ export default function IdentityVerificationPage() {
                   }
                   
                   if (now > endTime) {
-                    // Window has closed
-                    console.log(`[Identity] Flexible window has closed. Current: ${now.toISOString()}, End: ${endTime.toISOString()}`);
                     setError("The assessment window has closed. You cannot start the assessment now.");
                     setIsStarting(false);
                     return;
@@ -615,17 +513,12 @@ export default function IdentityVerificationPage() {
           }
         } catch (err) {
           console.error("[Identity] Error fetching assessment schedule:", err);
-          // Proceed if schedule check fails
         }
       }
       
-      // Try to start the test/assessment - backend will also validate start time
       let response: Response | null = null;
       
       if (isAIAssessment) {
-        // For AI assessments only, attempt to call start-session (optional - may not exist)
-        // Custom MCQ doesn't have a start-session endpoint - it tracks startedAt on submission
-        // If it fails, we'll proceed anyway since attempt is created when fetching questions
         try {
           response = await fetch("/api/assessment/start-session", {
             method: "POST",
@@ -641,23 +534,14 @@ export default function IdentityVerificationPage() {
           });
           
           if (!response.ok) {
-            // If start-session fails (404 or other error), log but continue
-            // The attempt will be created when fetching questions in take-new.tsx
-            console.warn("[Identity] Start-session endpoint returned error, but proceeding anyway:", response.status);
-            response = null; // Treat as success - we'll proceed
+            response = null; 
           }
         } catch (err) {
-          // If fetch fails (e.g., 404), that's okay - proceed anyway
-          console.warn("[Identity] Start-session endpoint not available, proceeding to assessment:", err);
-          response = null; // Treat as success - we'll proceed
+          response = null;
         }
       } else if (isCustomMCQ) {
-        // Custom MCQ doesn't need start-session - it tracks startedAt when candidate submits
-        // Just proceed to the assessment
-        console.log("[Identity] Custom MCQ assessment - skipping start-session (not needed)");
-        response = null; // Treat as success - we'll proceed
+        response = null; 
       } else if (isDSATest || isAIMLTest) {
-        // Use DSA or AIML test start endpoint
         const apiGatewayUrl = await getApiGatewayUrl();
         const apiBase = `${apiGatewayUrl}/api/v1`;
         const startEndpoint = isDSATest ? `/dsa/tests/${id}/start?user_id=${userId}` : `/aiml/tests/${id}/start?user_id=${userId}`;
@@ -673,7 +557,6 @@ export default function IdentityVerificationPage() {
           const errorData = await response.json().catch(() => ({}));
           const errorMessage = errorData.detail || errorData.message || "Failed to start test";
           
-          // Check if it's a "test not started yet" error (backend validation)
           if (response.status === 403 && (
             errorMessage.includes("will start at") || 
             errorMessage.includes("not available yet") || 
@@ -681,9 +564,7 @@ export default function IdentityVerificationPage() {
             errorMessage.includes("Test will start") ||
             errorMessage.includes("Test not available")
           )) {
-            // Backend also says test hasn't started - show modal
             if (!startTimeStr) {
-              // Try to fetch start time again if we don't have it
               try {
                 const testEndpoint = isDSATest ? `/dsa/tests/${id}/public?user_id=${userId}` : `/aiml/tests/${id}/public?user_id=${userId}`;
                 const testResponse = await fetch(`${apiBase}${testEndpoint}`);
@@ -698,36 +579,26 @@ export default function IdentityVerificationPage() {
             
             setTestStartTime(startTimeStr);
             setShowStartTimeModal(true);
-            setIsStarting(false); // Reset loading state
-            return; // Stop here, don't navigate
+            setIsStarting(false);
+            return;
           }
           
-          // For other errors, just log and don't navigate
           console.error("[Identity] Error starting test:", errorMessage);
-          setIsStarting(false); // Reset loading state
+          setIsStarting(false);
           return;
         }
-      } else if (isCustomMCQ) {
-        // Custom MCQ assessments don't have a start endpoint - just proceed to navigation
-        response = null; // No start endpoint call needed
       }
       
-      // Test/Assessment can start - proceed with navigation
-      // Store verification completion
       sessionStorage.setItem(`identityVerificationCompleted_${id}`, "true");
       
-      // Store screen stream globally so take.tsx can access it for screen snapshots
       if (screenStream && screenStream.active) {
         (window as any).__screenStream = screenStream;
-        console.log('[Identity] Screen stream stored globally for take.tsx');
       }
       
-      // Navigate to exam (flow-aware)
-      // Note: Keep loading state true during navigation - it will reset when page changes
       await router.push(ctx?.finalTakeUrl || `/assessment/${id}/${token}/take`);
     } catch (error) {
       console.error("[Identity] Error checking test start time:", error);
-      setIsStarting(false); // Reset loading state on error
+      setIsStarting(false); 
     }
   };
   
@@ -750,7 +621,6 @@ export default function IdentityVerificationPage() {
         setTimeUntilStart(remaining);
         
         if (remaining <= 0) {
-          // Start time arrived - reload page to start assessment
           window.location.reload();
         }
       } catch (err) {
@@ -789,19 +659,20 @@ export default function IdentityVerificationPage() {
   return (
     <div style={{ 
         minHeight: "100vh", 
-        backgroundColor: "#f7f3e8",
+        backgroundColor: "#ffffff", // Emerald Mint Theme
         padding: "2rem"
       }}>
-      <div style={{ maxWidth: "800px", margin: "0 auto" }}>
+      <div style={{ maxWidth: "1200px", margin: "0 auto" }}>
         <div style={{
           backgroundColor: "#ffffff",
           borderRadius: "1rem",
           padding: "2rem",
-          boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.1)"
+          border: "1px solid #D1D5DB", // Soft border
+          boxShadow: "0 1px 2px 0 rgba(0, 0, 0, 0.05)" // Soft shadow
         }}>
           {/* Header */}
           <div style={{ textAlign: "center", marginBottom: "2rem" }}>
-            <h1 style={{ fontSize: "2rem", fontWeight: 700, color: "#1e293b", marginBottom: "0.5rem" }}>
+            <h1 style={{ fontSize: "2rem", fontWeight: 700, color: "#00684A", marginBottom: "0.5rem" }}>
               Identity Verification
             </h1>
             <p style={{ color: "#64748b", fontSize: "1rem" }}>
@@ -813,18 +684,18 @@ export default function IdentityVerificationPage() {
           <div style={{ display: "grid", gap: "1.5rem", marginBottom: "2rem" }}>
             {/* Step 1: Capture Photo */}
             <div style={{
-              border: "1px solid #e5e7eb",
+              border: `1px solid ${steps[0].status === "passed" ? "#E1F2E9" : steps[0].status === "failed" ? "#fecaca" : "#D1D5DB"}`,
               borderRadius: "0.5rem",
               padding: "1.5rem",
-              backgroundColor: steps[0].status === "passed" ? "#f0fdf4" : 
-                             steps[0].status === "failed" ? "#fef2f2" : "#f9fafb"
+              backgroundColor: steps[0].status === "passed" ? "#E1F2E9" : 
+                 steps[0].status === "failed" ? "#fef2f2" : "#F0F9F4"
             }}>
               <div style={{ display: "flex", alignItems: "center", marginBottom: "1rem" }}>
                 <div style={{
                   width: "2rem",
                   height: "2rem",
                   borderRadius: "50%",
-                  backgroundColor: steps[0].status === "passed" ? "#10b981" : 
+                  backgroundColor: steps[0].status === "passed" ? "#00684A" : 
                                  steps[0].status === "failed" ? "#ef4444" : "#94a3b8",
                   color: "#ffffff",
                   display: "flex",
@@ -833,9 +704,9 @@ export default function IdentityVerificationPage() {
                   fontWeight: 600,
                   marginRight: "1rem"
                 }}>
-                  {steps[0].status === "passed" ? "✓" : steps[0].status === "failed" ? "✗" : "1"}
+                  {steps[0].status === "passed" ? <Check size={16} strokeWidth={3} /> : steps[0].status === "failed" ? <X size={16} strokeWidth={3} /> : "1"}
                 </div>
-                <h3 style={{ fontSize: "1.25rem", fontWeight: 600, color: "#1e293b" }}>
+                <h3 style={{ fontSize: "1.25rem", fontWeight: 600, color: "#00684A" }}>
                   {steps[0].title}
                 </h3>
               </div>
@@ -865,7 +736,7 @@ export default function IdentityVerificationPage() {
                       marginBottom: "1rem"
                     }}
                   />
-                  <div style={{ fontSize: "0.875rem", color: "#10b981" }}>
+                  <div style={{ fontSize: "0.875rem", color: "#00684A", fontWeight: 500 }}>
                     {steps[0].message}
                   </div>
                 </div>
@@ -880,18 +751,18 @@ export default function IdentityVerificationPage() {
             
             {/* Step 2: Screen Share */}
             <div style={{
-              border: "1px solid #e5e7eb",
+              border: `1px solid ${steps[1].status === "passed" ? "#E1F2E9" : steps[1].status === "failed" ? "#fecaca" : "#D1D5DB"}`,
               borderRadius: "0.5rem",
               padding: "1.5rem",
-              backgroundColor: steps[1].status === "passed" ? "#f0fdf4" : 
-                             steps[1].status === "failed" ? "#fef2f2" : "#f9fafb"
+              backgroundColor: steps[1].status === "passed" ? "#E1F2E9" : 
+                 steps[1].status === "failed" ? "#fef2f2" : "#F0F9F4"
             }}>
               <div style={{ display: "flex", alignItems: "center", marginBottom: "1rem" }}>
                 <div style={{
                   width: "2rem",
                   height: "2rem",
                   borderRadius: "50%",
-                  backgroundColor: steps[1].status === "passed" ? "#10b981" : 
+                  backgroundColor: steps[1].status === "passed" ? "#00684A" : 
                                  steps[1].status === "failed" ? "#ef4444" : "#94a3b8",
                   color: "#ffffff",
                   display: "flex",
@@ -900,9 +771,9 @@ export default function IdentityVerificationPage() {
                   fontWeight: 600,
                   marginRight: "1rem"
                 }}>
-                  {steps[1].status === "passed" ? "✓" : steps[1].status === "failed" ? "✗" : "2"}
+                  {steps[1].status === "passed" ? <Check size={16} strokeWidth={3} /> : steps[1].status === "failed" ? <X size={16} strokeWidth={3} /> : "2"}
                 </div>
-                <h3 style={{ fontSize: "1.25rem", fontWeight: 600, color: "#1e293b" }}>
+                <h3 style={{ fontSize: "1.25rem", fontWeight: 600, color: "#00684A" }}>
                   {steps[1].title}
                 </h3>
               </div>
@@ -921,14 +792,17 @@ export default function IdentityVerificationPage() {
                     onClick={startScreenShare}
                     style={{
                       padding: "0.75rem 1.5rem",
-                      backgroundColor: "#6953a3",
+                      backgroundColor: "#00684A", // Emerald
                       color: "#ffffff",
                       border: "none",
                       borderRadius: "0.5rem",
                       fontSize: "1rem",
                       fontWeight: 600,
-                      cursor: "pointer"
+                      cursor: "pointer",
+                      transition: "background-color 0.2s ease"
                     }}
+                    onMouseOver={(e) => e.currentTarget.style.backgroundColor = "#084A2A"}
+                    onMouseOut={(e) => e.currentTarget.style.backgroundColor = "#00684A"}
                   >
                     Start Screen Share
                   </button>
@@ -942,7 +816,7 @@ export default function IdentityVerificationPage() {
               )}
               
               {steps[1].status === "passed" && (
-                <div style={{ fontSize: "0.875rem", color: "#10b981" }}>
+                <div style={{ fontSize: "0.875rem", color: "#00684A", fontWeight: 500 }}>
                   {steps[1].message}
                 </div>
               )}
@@ -964,14 +838,17 @@ export default function IdentityVerificationPage() {
                     onClick={startScreenShare}
                     style={{
                       padding: "0.75rem 1.5rem",
-                      backgroundColor: "#6953a3",
+                      backgroundColor: "#00684A", // Emerald
                       color: "#ffffff",
                       border: "none",
                       borderRadius: "0.5rem",
                       fontSize: "1rem",
                       fontWeight: 600,
-                      cursor: "pointer"
+                      cursor: "pointer",
+                      transition: "background-color 0.2s ease"
                     }}
+                    onMouseOver={(e) => e.currentTarget.style.backgroundColor = "#084A2A"}
+                    onMouseOut={(e) => e.currentTarget.style.backgroundColor = "#00684A"}
                   >
                     Retry Screen Share
                   </button>
@@ -981,18 +858,18 @@ export default function IdentityVerificationPage() {
             
             {/* Step 3: Fullscreen Mode */}
             <div style={{
-              border: "1px solid #e5e7eb",
+              border: `1px solid ${steps[2].status === "passed" ? "#E1F2E9" : steps[2].status === "failed" ? "#fecaca" : "#D1D5DB"}`,
               borderRadius: "0.5rem",
               padding: "1.5rem",
-              backgroundColor: steps[2].status === "passed" ? "#f0fdf4" : 
-                             steps[2].status === "failed" ? "#fef2f2" : "#f9fafb"
+              backgroundColor: steps[2].status === "passed" ? "#E1F2E9" : 
+                 steps[2].status === "failed" ? "#fef2f2" : "#F0F9F4"
             }}>
               <div style={{ display: "flex", alignItems: "center", marginBottom: "1rem" }}>
                 <div style={{
                   width: "2rem",
                   height: "2rem",
                   borderRadius: "50%",
-                  backgroundColor: steps[2].status === "passed" ? "#10b981" : 
+                  backgroundColor: steps[2].status === "passed" ? "#00684A" : 
                                  steps[2].status === "failed" ? "#ef4444" : "#94a3b8",
                   color: "#ffffff",
                   display: "flex",
@@ -1001,9 +878,9 @@ export default function IdentityVerificationPage() {
                   fontWeight: 600,
                   marginRight: "1rem"
                 }}>
-                  {steps[2].status === "passed" ? "✓" : steps[2].status === "failed" ? "✗" : "3"}
+                  {steps[2].status === "passed" ? <Check size={16} strokeWidth={3} /> : steps[2].status === "failed" ? <X size={16} strokeWidth={3} /> : "3"}
                 </div>
-                <h3 style={{ fontSize: "1.25rem", fontWeight: 600, color: "#1e293b" }}>
+                <h3 style={{ fontSize: "1.25rem", fontWeight: 600, color: "#00684A" }}>
                   {steps[2].title}
                 </h3>
               </div>
@@ -1013,14 +890,17 @@ export default function IdentityVerificationPage() {
                   onClick={enterFullscreen}
                   style={{
                     padding: "0.75rem 1.5rem",
-                    backgroundColor: "#6953a3",
+                    backgroundColor: "#00684A", // Emerald
                     color: "#ffffff",
                     border: "none",
                     borderRadius: "0.5rem",
                     fontSize: "1rem",
                     fontWeight: 600,
-                    cursor: "pointer"
+                    cursor: "pointer",
+                    transition: "background-color 0.2s ease"
                   }}
+                  onMouseOver={(e) => e.currentTarget.style.backgroundColor = "#084A2A"}
+                  onMouseOut={(e) => e.currentTarget.style.backgroundColor = "#00684A"}
                 >
                   Enter Fullscreen
                 </button>
@@ -1033,7 +913,7 @@ export default function IdentityVerificationPage() {
               )}
               
               {steps[2].status === "passed" && (
-                <div style={{ fontSize: "0.875rem", color: "#10b981" }}>
+                <div style={{ fontSize: "0.875rem", color: "#00684A", fontWeight: 500 }}>
                   {steps[2].message}
                 </div>
               )}
@@ -1047,14 +927,17 @@ export default function IdentityVerificationPage() {
                     onClick={enterFullscreen}
                     style={{
                       padding: "0.75rem 1.5rem",
-                      backgroundColor: "#6953a3",
+                      backgroundColor: "#00684A", // Emerald
                       color: "#ffffff",
                       border: "none",
                       borderRadius: "0.5rem",
                       fontSize: "1rem",
                       fontWeight: 600,
-                      cursor: "pointer"
+                      cursor: "pointer",
+                      transition: "background-color 0.2s ease"
                     }}
+                    onMouseOver={(e) => e.currentTarget.style.backgroundColor = "#084A2A"}
+                    onMouseOut={(e) => e.currentTarget.style.backgroundColor = "#00684A"}
                   >
                     Retry Fullscreen
                   </button>
@@ -1068,23 +951,22 @@ export default function IdentityVerificationPage() {
             <button
               onClick={handleStartAssessment}
               disabled={isStarting}
+              className={`transition-all ${!isStarting ? "hover:bg-[#084A2A] hover:shadow-md" : ""}`}
               style={{
                 width: "100%",
                 padding: "1rem 2rem",
-                backgroundColor: isStarting ? "#6ee7b7" : "#10b981",
-                color: "#ffffff",
+                backgroundColor: isStarting ? "#D1D5DB" : "#00684A", // Emerald green mapped to Tailwind bg-brand-primary
+                color: isStarting ? "#6B7280" : "#ffffff",
                 border: "none",
                 borderRadius: "0.5rem",
                 fontSize: "1.125rem",
-                fontWeight: 600,
+                fontWeight: 500, // Tailwind font-medium
                 cursor: isStarting ? "wait" : "pointer",
-                boxShadow: "0 4px 6px -1px rgba(16, 185, 129, 0.3)",
-                opacity: isStarting ? 0.8 : 1,
+                boxShadow: isStarting ? "none" : "0 1px 2px 0 rgba(0, 0, 0, 0.05)",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
-                gap: "0.5rem",
-                transition: "all 0.2s ease"
+                gap: "0.5rem"
               }}
             >
               {isStarting ? (
@@ -1093,8 +975,8 @@ export default function IdentityVerificationPage() {
                     style={{
                       width: "20px",
                       height: "20px",
-                      border: "3px solid rgba(255, 255, 255, 0.3)",
-                      borderTopColor: "#ffffff",
+                      border: "3px solid rgba(0, 104, 74, 0.2)", // Emerald transparent
+                      borderTopColor: "#00684A", // Emerald solid
                       borderRadius: "50%",
                       animation: "spin 0.8s linear infinite"
                     }}
@@ -1146,33 +1028,21 @@ export default function IdentityVerificationPage() {
                   width: "4rem",
                   height: "4rem",
                   borderRadius: "50%",
-                  backgroundColor: "#fef3c7",
+                  backgroundColor: "#fef3c7", // Kept yellow/amber for waiting state
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
                   margin: "0 auto 1.5rem",
                 }}
               >
-                <svg
-                  style={{ width: "2rem", height: "2rem", color: "#f59e0b" }}
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
-                  />
-                </svg>
+                <Clock style={{ width: "2rem", height: "2rem", color: "#f59e0b" }} strokeWidth={2} />
               </div>
               
               <h2
                 style={{
                   fontSize: "1.5rem",
                   fontWeight: 700,
-                  color: "#1e293b",
+                  color: "#00684A", // Emerald
                   marginBottom: "1rem",
                 }}
               >
@@ -1210,7 +1080,7 @@ export default function IdentityVerificationPage() {
                   </div>
                   <div style={{
                     fontSize: "2rem",
-                    color: "#3b82f6",
+                    color: "#00684A", // Emerald
                     fontWeight: 700,
                     marginBottom: "1.5rem",
                   }}>
@@ -1224,9 +1094,10 @@ export default function IdentityVerificationPage() {
                   // Reload the page to check if start time has arrived
                   window.location.reload();
                 }}
+                className="transition-all hover:bg-[#084A2A] hover:shadow-md"
                 style={{
                   padding: "0.75rem 2rem",
-                  backgroundColor: "#6953a3",
+                  backgroundColor: "#00684A", // Emerald
                   color: "#ffffff",
                   border: "none",
                   borderRadius: "0.5rem",

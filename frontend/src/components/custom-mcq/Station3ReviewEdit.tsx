@@ -1,5 +1,19 @@
 import { useState, useEffect, useMemo } from "react";
 import { CustomMCQAssessment, MCQQuestion, SubjectiveQuestion, Question } from "../../types/custom-mcq";
+import { 
+  Edit3, 
+  Trash2, 
+  Plus, 
+  Clock, 
+  HelpCircle, 
+  CheckCircle2, 
+  FileText, 
+  X, 
+  Save, 
+  Layers,
+  ChevronRight,
+  AlertCircle
+} from "lucide-react";
 
 interface Station3Props {
   assessmentData: Partial<CustomMCQAssessment>;
@@ -23,7 +37,6 @@ export default function Station3ReviewEdit({ assessmentData, updateAssessmentDat
 
   const questions = assessmentData.questions || [];
   
-  // Ensure all questions have unique IDs - use useMemo to avoid recalculating unnecessarily
   const questionsWithIds = useMemo(() => {
     return questions.map((q, idx) => ({
       ...q,
@@ -32,31 +45,30 @@ export default function Station3ReviewEdit({ assessmentData, updateAssessmentDat
     }));
   }, [questions]);
   
-  // Update assessment data if IDs were missing (only once when component mounts or questions change)
   useEffect(() => {
     const needsUpdate = questions.some((q, idx) => !q.id);
     if (needsUpdate && questions.length > 0) {
       updateAssessmentData({ questions: questionsWithIds });
     }
-  }, []); // Only run once on mount
+  }, []);
 
   const addOption = (question: Partial<MCQQuestion>) => {
-    const options = (question as MCQQuestion).options || [];
-    const nextLabel = String.fromCharCode(65 + options.length); // A, B, C, D, E, ...
+    const options = question.options || [];
+    const nextLabel = String.fromCharCode(65 + options.length);
     setNewQuestion({
       ...question,
       options: [...options, { label: nextLabel, text: "" }],
-    });
+    } as any);
   };
 
   const removeOption = (question: Partial<MCQQuestion>, index: number) => {
-    const options = (question as MCQQuestion).options || [];
+    const options = question.options || [];
     if (options.length > 2) {
       const newOptions = options.filter((_, i) => i !== index);
       setNewQuestion({
         ...question,
         options: newOptions,
-      });
+      } as any);
     }
   };
 
@@ -82,7 +94,6 @@ export default function Station3ReviewEdit({ assessmentData, updateAssessmentDat
       }
     }
 
-    // Use current questions with IDs, not the original array
     const currentQuestions = questionsWithIds;
     
     let questionToSave: Question;
@@ -110,12 +121,10 @@ export default function Station3ReviewEdit({ assessmentData, updateAssessmentDat
 
     let updatedQuestions: Question[];
     if (editingQuestion !== null && editingQuestionIndex !== null) {
-      // Update by index to ensure we only update the exact question being edited
       updatedQuestions = currentQuestions.map((q, idx) => 
         idx === editingQuestionIndex ? questionToSave : q
       );
     } else {
-      // Add new question
       updatedQuestions = [...currentQuestions, questionToSave];
     }
 
@@ -127,13 +136,11 @@ export default function Station3ReviewEdit({ assessmentData, updateAssessmentDat
   };
 
   const handleEdit = (question: Question, index: number) => {
-    // Use questions with IDs to get the correct question
     const questionToEdit = questionsWithIds[index];
     setEditingQuestion(questionToEdit);
     setEditingQuestionIndex(index);
-    setNewQuestionType(questionToEdit.questionType || (("options" in questionToEdit && "correctAn" in questionToEdit) ? "mcq" : "subjective"));
+    setNewQuestionType(questionToEdit.questionType || (("options" in questionToEdit && "correctAn" in questionToEdit) ? "mcq" : "subjective") as any);
     
-    // Deep copy the question to avoid mutating the original
     if (questionToEdit.questionType === "mcq" || ("options" in questionToEdit && "correctAn" in questionToEdit)) {
       const mcqQ = questionToEdit as MCQQuestion;
       setNewQuestion({ 
@@ -182,7 +189,6 @@ export default function Station3ReviewEdit({ assessmentData, updateAssessmentDat
            (section === "coding" && !("options" in q && "correctAn" in q));
   }).length;
 
-  // Per-section timer state
   const enablePerSectionTimers = (assessmentData as any).enablePerSectionTimers || false;
   const sectionTimers = (assessmentData as any).sectionTimers || { MCQ: 20, Subjective: 30, Coding: 30 };
 
@@ -195,440 +201,270 @@ export default function Station3ReviewEdit({ assessmentData, updateAssessmentDat
 
   const handleSectionTimerChange = (section: "MCQ" | "Subjective" | "Coding", value: string) => {
     const numValue = parseInt(value) || 1;
-    const newSectionTimers = {
-      ...sectionTimers,
-      [section]: numValue,
-    };
-    
-    // Calculate total duration from section timers
+    const newSectionTimers = { ...sectionTimers, [section]: numValue };
     const totalDuration = (newSectionTimers.MCQ || 0) + (newSectionTimers.Subjective || 0) + (newSectionTimers.Coding || 0);
-    
     updateAssessmentData({
       sectionTimers: newSectionTimers,
       duration: totalDuration > 0 ? totalDuration : undefined,
-      schedule: {
-        ...(assessmentData as any)?.schedule,
-        duration: totalDuration > 0 ? totalDuration : undefined,
-      },
+      schedule: { ...(assessmentData as any)?.schedule, duration: totalDuration > 0 ? totalDuration : undefined },
     } as any);
   };
 
   return (
-    <div>
-      <h2 style={{ marginBottom: "1.5rem", color: "#1E5A3B" }}>✏️ Review & Edit Questions</h2>
-      <p style={{ marginBottom: "2rem", color: "#2D7A52" }}>
-        Review, edit, or add questions. All questions from your CSV are shown below.
-      </p>
-
-      {/* Per-Section Timer Settings */}
-      <div style={{ 
-        marginBottom: "2rem", 
-        padding: "1.5rem", 
-        backgroundColor: "#f8fafc", 
-        borderRadius: "0.75rem", 
-        border: "2px solid #e2e8f0" 
-      }}>
-        <label style={{ display: "flex", alignItems: "center", gap: "0.75rem", cursor: "pointer", marginBottom: enablePerSectionTimers ? "1rem" : "0" }}>
-          <input
-            type="checkbox"
-            checked={enablePerSectionTimers}
-            onChange={(e) => handleEnablePerSectionTimersChange(e.target.checked)}
-            style={{ width: "20px", height: "20px", cursor: "pointer" }}
-          />
-          <div>
-            <div style={{ fontWeight: 600, color: "#1e293b", fontSize: "1rem" }}>
-              Enable Per-Section Timer
-            </div>
-            <div style={{ fontSize: "0.875rem", color: "#64748b", marginTop: "0.25rem" }}>
-              Each section (MCQ/Subjective/Coding) will have its own timer. Sections will be locked when their timer expires.
-            </div>
+    <div className="w-full max-w-5xl mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
+      <div className="space-y-2 px-1">
+        <div className="flex items-center gap-3">
+          <div className="p-2.5 bg-[#C9F4D4] rounded-xl text-[#1E5A3B] shadow-sm">
+            <Edit3 size={24} strokeWidth={2.5} />
           </div>
-        </label>
+          <h2 className="text-2xl sm:text-3xl font-extrabold text-gray-900 tracking-tight leading-none">Review & Edit Questions</h2>
+        </div>
+        <p className="text-gray-600 text-sm sm:text-base font-medium max-w-2xl leading-relaxed">
+          Review, edit, or add questions. All questions from your CSV are shown below.
+        </p>
+      </div>
+
+      <div className="bg-white border-2 border-[#A8E8BC]/30 rounded-[2rem] p-6 sm:p-8 shadow-sm transition-all hover:shadow-md">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <label className="flex items-center gap-4 cursor-pointer group">
+            <div className={`p-4 rounded-2xl transition-all duration-300 ${enablePerSectionTimers ? 'bg-[#C9F4D4]' : 'bg-gray-100 group-hover:bg-gray-200'}`}>
+              <Clock className={enablePerSectionTimers ? 'text-[#1E5A3B]' : 'text-gray-400'} size={24} />
+            </div>
+            <div className="pr-4">
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={enablePerSectionTimers}
+                  onChange={(e) => handleEnablePerSectionTimersChange(e.target.checked)}
+                  className="w-5 h-5 rounded border-gray-300 text-[#1E5A3B] focus:ring-[#1E5A3B] cursor-pointer"
+                />
+                <span className="font-bold text-gray-900 text-lg">Enable Per-Section Timer</span>
+              </div>
+              <p className="text-gray-500 text-sm mt-1 leading-snug">Each section (MCQ/Subjective/Coding) will have its own timer. Sections will be locked when their timer expires.</p>
+            </div>
+          </label>
+        </div>
 
         {enablePerSectionTimers && (
-          <div style={{ marginTop: "1.5rem", display: "flex", flexDirection: "column", gap: "1rem" }}>
-            {mcqCount > 0 && (
-              <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
-                <label style={{ display: "block", minWidth: "120px", fontWeight: 600, color: "#1E5A3B" }}>
-                  MCQ Timer (minutes):
-                </label>
-                <input
-                  type="number"
-                  min="1"
-                  value={sectionTimers.MCQ || 20}
-                  onChange={(e) => handleSectionTimerChange("MCQ", e.target.value)}
-                  style={{ 
-                    width: "150px", 
-                    padding: "0.75rem", 
-                    border: "1px solid #A8E8BC", 
-                    borderRadius: "0.5rem" 
-                  }}
-                />
-                <span style={{ fontSize: "0.875rem", color: "#64748b" }}>
-                  {mcqCount} question{mcqCount !== 1 ? 's' : ''} in MCQ section
-                </span>
-              </div>
-            )}
-            {subjectiveCount > 0 && (
-              <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
-                <label style={{ display: "block", minWidth: "120px", fontWeight: 600, color: "#1E5A3B" }}>
-                  Subjective Timer (minutes):
-                </label>
-                <input
-                  type="number"
-                  min="1"
-                  value={sectionTimers.Subjective || 30}
-                  onChange={(e) => handleSectionTimerChange("Subjective", e.target.value)}
-                  style={{ 
-                    width: "150px", 
-                    padding: "0.75rem", 
-                    border: "1px solid #A8E8BC", 
-                    borderRadius: "0.5rem" 
-                  }}
-                />
-                <span style={{ fontSize: "0.875rem", color: "#64748b" }}>
-                  {subjectiveCount} question{subjectiveCount !== 1 ? 's' : ''} in Subjective section
-                </span>
-              </div>
-            )}
-            {codingCount > 0 && (
-              <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
-                <label style={{ display: "block", minWidth: "120px", fontWeight: 600, color: "#1E5A3B" }}>
-                  Coding Timer (minutes):
-                </label>
-                <input
-                  type="number"
-                  min="1"
-                  value={sectionTimers.Coding || 30}
-                  onChange={(e) => handleSectionTimerChange("Coding", e.target.value)}
-                  style={{ 
-                    width: "150px", 
-                    padding: "0.75rem", 
-                    border: "1px solid #A8E8BC", 
-                    borderRadius: "0.5rem" 
-                  }}
-                />
-                <span style={{ fontSize: "0.875rem", color: "#64748b" }}>
-                  {codingCount} question{codingCount !== 1 ? 's' : ''} in Coding section
-                </span>
-              </div>
-            )}
+          <div className="mt-8 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 animate-in slide-in-from-top-2">
+            {[
+              { id: 'MCQ', label: 'MCQ Timer (minutes):', count: mcqCount, text: 'in MCQ section' },
+              { id: 'Subjective', label: 'Subjective Timer (minutes):', count: subjectiveCount, text: 'in Subjective section' },
+              { id: 'Coding', label: 'Coding Timer (minutes):', count: codingCount, text: 'in Coding section' }
+            ].map((section) => (
+              section.count > 0 && (
+                <div key={section.id} className="p-5 bg-emerald-50/50 rounded-2xl border border-emerald-100 space-y-3">
+                  <label className="block text-xs font-black text-[#1E5A3B] uppercase tracking-wider">{section.label}</label>
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="number"
+                      min="1"
+                      value={(sectionTimers as any)[section.id]}
+                      onChange={(e) => handleSectionTimerChange(section.id as any, e.target.value)}
+                      className="w-24 px-3 py-2 rounded-lg border-2 border-emerald-100 focus:border-[#10b981] outline-none font-bold text-[#1E5A3B]"
+                    />
+                    <span className="text-[11px] text-[#4A9A6A] font-bold leading-tight">
+                      {section.count} question{section.count !== 1 ? 's' : ''} {section.text}
+                    </span>
+                  </div>
+                </div>
+              )
+            ))}
           </div>
         )}
       </div>
 
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1.5rem" }}>
-        <div>
-          <strong style={{ color: "#1E5A3B" }}>Total Questions: {questionsWithIds.length}</strong>
-          <span style={{ color: "#4A9A6A", marginLeft: "1rem" }}>
-            (MCQ: {mcqCount}, Subjective: {subjectiveCount}{codingCount > 0 ? `, Coding: ${codingCount}` : ''})
-          </span>
+      <div className="flex flex-col sm:flex-row justify-between items-center bg-white rounded-[2rem] p-6 text-gray-900 shadow-[0_10px_40px_rgba(0,0,0,0.04)] gap-4 sticky top-4 z-40 border-2 border-[#C9F4D4]/40 backdrop-blur-md bg-white/90">
+        <div className="flex items-center gap-4">
+          <div className="p-3 bg-[#C9F4D4] rounded-2xl text-[#1E5A3B] shadow-sm">
+            <Layers size={22} strokeWidth={2.5} />
+          </div>
+          <div>
+            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-400 leading-none mb-1.5">Assessment Data</p>
+            <div className="flex flex-wrap items-center gap-3">
+              <span className="text-xl font-extrabold text-[#1E5A3B] tracking-tight">Total Questions: {questionsWithIds.length}</span>
+              <span className="text-[10px] font-black text-[#1E5A3B] bg-[#C9F4D4] px-2.5 py-1 rounded-lg uppercase tracking-tighter">
+                MCQ: {mcqCount} | Sub: {subjectiveCount}
+              </span>
+            </div>
+          </div>
         </div>
         <button
           type="button"
-          onClick={() => {
-            setShowAddForm(true);
-            setEditingQuestion(null);
-            resetForm("mcq");
-          }}
-          className="btn-primary"
+          onClick={() => { setShowAddForm(true); setEditingQuestion(null); resetForm("mcq"); }}
+          className="w-full sm:w-auto px-8 py-3.5 bg-[#C9F4D4] text-[#1E5A3B] rounded-2xl font-black text-sm uppercase tracking-wider flex items-center justify-center gap-2 transition-all hover:opacity-90 active:scale-95 shadow-md shadow-[#C9F4D4]/20"
         >
-          + Add Question
+          <Plus size={20} strokeWidth={3} /> Add Question
         </button>
       </div>
 
-      {/* Add/Edit Form */}
       {showAddForm && (
-        <div
-          style={{
-            padding: "1.5rem",
-            border: "2px solid #A8E8BC",
-            borderRadius: "0.5rem",
-            marginBottom: "2rem",
-            backgroundColor: "#E8FAF0",
-          }}
-        >
-          <h3 style={{ marginBottom: "1rem", color: "#1E5A3B" }}>
-            {editingQuestion ? "Edit Question" : "Add New Question"}
-          </h3>
-
-          {!editingQuestion && (
-            <div style={{ marginBottom: "1rem" }}>
-              <label style={{ display: "block", marginBottom: "0.5rem", fontWeight: 600, color: "#1E5A3B" }}>
-                Question Type <span style={{ color: "#ef4444" }}>*</span>
-              </label>
-              <div style={{ display: "flex", gap: "1rem" }}>
-                <button
-                  type="button"
-                  onClick={() => {
-                    resetForm("mcq");
-                  }}
-                  style={{
-                    padding: "0.75rem 1.5rem",
-                    border: newQuestionType === "mcq" ? "2px solid #2D7A52" : "1px solid #A8E8BC",
-                    borderRadius: "0.5rem",
-                    backgroundColor: newQuestionType === "mcq" ? "#E8FAF0" : "#ffffff",
-                    color: newQuestionType === "mcq" ? "#1E5A3B" : "#2D7A52",
-                    fontWeight: newQuestionType === "mcq" ? 600 : 400,
-                    cursor: "pointer",
-                  }}
-                >
-                  MCQ
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    resetForm("subjective");
-                  }}
-                  style={{
-                    padding: "0.75rem 1.5rem",
-                    border: newQuestionType === "subjective" ? "2px solid #2D7A52" : "1px solid #A8E8BC",
-                    borderRadius: "0.5rem",
-                    backgroundColor: newQuestionType === "subjective" ? "#E8FAF0" : "#ffffff",
-                    color: newQuestionType === "subjective" ? "#1E5A3B" : "#2D7A52",
-                    fontWeight: newQuestionType === "subjective" ? 600 : 400,
-                    cursor: "pointer",
-                  }}
-                >
-                  Subjective
-                </button>
-              </div>
-            </div>
-          )}
-
-          <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
-            <div>
-              <label style={{ display: "block", marginBottom: "0.5rem", fontWeight: 600, color: "#1E5A3B" }}>
-                Question <span style={{ color: "#ef4444" }}>*</span>
-              </label>
-              <textarea
-                value={newQuestion.question || ""}
-                onChange={(e) => setNewQuestion({ ...newQuestion, question: e.target.value })}
-                placeholder="Enter your question"
-                rows={3}
-                style={{ width: "100%", padding: "0.5rem", border: "1px solid #A8E8BC", borderRadius: "0.25rem" }}
-              />
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+          <div className="bg-white w-full max-w-2xl rounded-[2rem] shadow-2xl border border-white/20 animate-in zoom-in-95 duration-200 flex flex-col overflow-hidden max-h-[90vh]">
+            <div className="px-8 py-5 border-b border-slate-100 flex justify-between items-center shrink-0 bg-white">
+              <h3 className="text-xl font-extrabold text-gray-900 flex items-center gap-2">
+                <div className="w-2 h-6 bg-[#10b981] rounded-full" />
+                {editingQuestion ? "Edit Question" : "Add New Question"}
+              </h3>
+              <button onClick={() => setShowAddForm(false)} className="p-2 hover:bg-gray-100 rounded-full text-gray-400 transition-colors"><X size={24} /></button>
             </div>
 
-            {newQuestionType === "mcq" && (
-              <>
-                <div>
-                  <label style={{ display: "block", marginBottom: "0.5rem", fontWeight: 600, color: "#1E5A3B" }}>
-                    Answer Type <span style={{ color: "#ef4444" }}>*</span>
-                  </label>
-                  <select
-                    value={(newQuestion as Partial<MCQQuestion>).answerType || "single"}
-                    onChange={(e) =>
-                      setNewQuestion((prev) => {
-                        // Type-safe: only MCQ questions have answerType
-                        if (newQuestionType !== "mcq") return prev;
-                        return {
-                          ...(prev as Partial<MCQQuestion>),
-                          answerType: e.target.value as any,
-                        };
-                      })
-                    }
-                    style={{ width: "100%", padding: "0.5rem", border: "1px solid #A8E8BC", borderRadius: "0.25rem" }}
-                  >
-                    <option value="single">Single Choice</option>
-                    <option value="multiple_all">Multiple Choice (All Required)</option>
-                    <option value="multiple_any">Multiple Choice (Any One)</option>
-                  </select>
+            <div className="p-8 overflow-y-auto grow space-y-6 custom-scrollbar">
+              {!editingQuestion && (
+                <div className="space-y-3">
+                  <label className="text-xs font-black text-[#0A5F38] uppercase tracking-widest px-1">Question Type</label>
+                  <div className="flex gap-2 p-1 bg-gray-100 rounded-xl">
+                    <button
+                      onClick={() => resetForm("mcq")}
+                      className={`flex-1 py-2.5 rounded-lg font-bold text-sm transition-all ${newQuestionType === "mcq" ? 'bg-[#C9F4D4] text-[#1E5A3B] shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}
+                    >MCQ</button>
+                    <button
+                      onClick={() => resetForm("subjective")}
+                      className={`flex-1 py-2.5 rounded-lg font-bold text-sm transition-all ${newQuestionType === "subjective" ? 'bg-[#C9F4D4] text-[#1E5A3B] shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}
+                    >Subjective</button>
+                  </div>
                 </div>
+              )}
 
-                <div>
-                  <label style={{ display: "block", marginBottom: "0.5rem", fontWeight: 600, color: "#1E5A3B" }}>
-                    Options <span style={{ color: "#ef4444" }}>*</span>
-                  </label>
-                  {((newQuestion as Partial<MCQQuestion>).options || []).map((option, idx) => (
-                    <div key={idx} style={{ display: "flex", gap: "0.5rem", marginBottom: "0.5rem" }}>
-                      <input
-                        type="text"
-                        value={option.label}
-                        disabled
-                        style={{ width: "50px", padding: "0.5rem", border: "1px solid #A8E8BC", borderRadius: "0.25rem", backgroundColor: "#f0f0f0" }}
-                      />
-                      <input
-                        type="text"
-                        value={option.text}
-                        onChange={(e) => {
-                          const newOptions = [...((newQuestion as Partial<MCQQuestion>).options || [])];
-                          newOptions[idx].text = e.target.value;
-                          setNewQuestion((prev) => {
-                            // Type-safe: only MCQ questions have options
-                            if (newQuestionType !== "mcq") return prev;
-                            return {
-                              ...(prev as Partial<MCQQuestion>),
-                              options: newOptions,
-                            };
-                          });
-                        }}
-                        placeholder={`Option ${option.label}`}
-                        style={{ flex: 1, padding: "0.5rem", border: "1px solid #A8E8BC", borderRadius: "0.25rem" }}
-                      />
-                      {((newQuestion as Partial<MCQQuestion>).options || []).length > 2 && (
-                        <button
-                          type="button"
-                          onClick={() => removeOption(newQuestion as Partial<MCQQuestion>, idx)}
-                          style={{ padding: "0.5rem 1rem", backgroundColor: "#ef4444", color: "#fff", border: "none", borderRadius: "0.25rem", cursor: "pointer" }}
-                        >
-                          Remove
-                        </button>
-                      )}
-                    </div>
-                  ))}
-                  <button
-                    type="button"
-                    onClick={() => addOption(newQuestion as Partial<MCQQuestion>)}
-                    className="btn-secondary"
-                    style={{ width: "fit-content" }}
-                  >
-                    + Add Option
-                  </button>
-                </div>
-
-                <div>
-                  <label style={{ display: "block", marginBottom: "0.5rem", fontWeight: 600, color: "#1E5A3B" }}>
-                    Correct Answer(s) <span style={{ color: "#ef4444" }}>*</span>
-                    <span style={{ fontSize: "0.875rem", fontWeight: 400, color: "#2D7A52" }}>
-                      {" "}(e.g., A or A,B for multiple)
-                    </span>
-                  </label>
-                  <input
-                    type="text"
-                    value={(newQuestion as Partial<MCQQuestion>).correctAn || ""}
-                    onChange={(e) =>
-                      setNewQuestion((prev) => {
-                        // Type-safe: only MCQ questions have correctAn
-                        if (newQuestionType !== "mcq") return prev;
-                        return {
-                          ...(prev as Partial<MCQQuestion>),
-                          correctAn: e.target.value.toUpperCase(),
-                        };
-                      })
-                    }
-                    placeholder="A or A,B"
-                    style={{ width: "100%", padding: "0.5rem", border: "1px solid #A8E8BC", borderRadius: "0.25rem" }}
+              <div className="space-y-5">
+                <div className="space-y-2">
+                  <label className="text-xs font-black text-[#0A5F38] uppercase tracking-widest px-1">Question <span className="text-red-500">*</span></label>
+                  <textarea
+                    value={newQuestion.question || ""}
+                    onChange={(e) => setNewQuestion({ ...newQuestion, question: e.target.value })}
+                    className="w-full px-5 py-4 bg-gray-50 border-2 border-gray-100 rounded-2xl focus:border-[#10b981] focus:bg-white outline-none transition-all resize-none font-medium text-gray-800"
+                    rows={3}
+                    placeholder="Enter your question"
                   />
                 </div>
-              </>
-            )}
 
-            <div>
-              <label style={{ display: "block", marginBottom: "0.5rem", fontWeight: 600, color: "#1E5A3B" }}>
-                Marks <span style={{ color: "#ef4444" }}>*</span>
-              </label>
-              <input
-                type="number"
-                value={newQuestion.marks || 1}
-                onChange={(e) => setNewQuestion({ ...newQuestion, marks: parseInt(e.target.value) || 1 })}
-                min={1}
-                style={{ width: "100%", padding: "0.5rem", border: "1px solid #A8E8BC", borderRadius: "0.25rem" }}
-              />
+                {newQuestionType === "mcq" && (
+                  <div className="space-y-5">
+                    <div className="space-y-2">
+                      <label className="text-xs font-black text-[#0A5F38] uppercase tracking-widest px-1">Answer Type <span className="text-red-500">*</span></label>
+                      <select
+                        value={(newQuestion as Partial<MCQQuestion>).answerType || "single"}
+                        onChange={(e) => setNewQuestion(prev => ({ ...(prev as any), answerType: e.target.value }))}
+                        className="w-full px-4 py-3 bg-gray-50 border-2 border-gray-100 rounded-xl outline-none font-bold text-gray-700"
+                      >
+                        <option value="single">Single Choice</option>
+                        <option value="multiple_all">Multiple Choice (All Required)</option>
+                        <option value="multiple_any">Multiple Choice (Any One)</option>
+                      </select>
+                    </div>
+
+                    <div className="space-y-4">
+                      <label className="text-xs font-black text-[#0A5F38] uppercase tracking-widest px-1">Options</label>
+                      {((newQuestion as Partial<MCQQuestion>).options || []).map((option, idx) => (
+                        <div key={idx} className="flex gap-3 group">
+                          <div className="w-12 h-12 bg-[#C9F4D4] flex items-center justify-center font-black text-[#1E5A3B] rounded-xl shrink-0 border-2 border-transparent transition-all">{option.label}</div>
+                          <input
+                            type="text"
+                            value={option.text}
+                            onChange={(e) => {
+                              const options = [...((newQuestion as Partial<MCQQuestion>).options || [])];
+                              options[idx].text = e.target.value;
+                              setNewQuestion({...newQuestion, options } as any);
+                            }}
+                            className="flex-1 px-4 border-2 border-gray-100 rounded-xl outline-none focus:border-[#10b981] font-medium"
+                            placeholder={`Option ${option.label}`}
+                          />
+                          {((newQuestion as Partial<MCQQuestion>).options || []).length > 2 && (
+                            <button onClick={() => removeOption(newQuestion as Partial<MCQQuestion>, idx)} className="p-3 bg-[#C9F4D4] text-red-500 rounded-xl transition-all shadow-sm"><Trash2 size={20} /></button>
+                          )}
+                        </div>
+                      ))}
+                      <button onClick={() => addOption(newQuestion as Partial<MCQQuestion>)} className="flex items-center justify-center gap-2 bg-[#C9F4D4] text-[#1E5A3B] px-6 py-2.5 rounded-xl font-bold text-sm hover:opacity-90 transition-all">
+                        <Plus size={18} strokeWidth={3} /> Add Option
+                      </button>
+                    </div>
+
+                    <div className="p-5 bg-amber-50 rounded-[1.5rem] border border-amber-100 space-y-3">
+                      <label className="flex items-center gap-2 text-xs font-black text-amber-700 uppercase tracking-widest">
+                        <AlertCircle size={14} /> Correct Answer(s)
+                      </label>
+                      <input
+                        type="text"
+                        value={(newQuestion as Partial<MCQQuestion>).correctAn || ""}
+                        onChange={(e) => setNewQuestion(prev => ({ ...(prev as any), correctAn: e.target.value.toUpperCase() }))}
+                        placeholder="A or A,B"
+                        className="w-full px-4 py-3 bg-white border-2 border-amber-200 rounded-xl outline-none font-black text-amber-900 placeholder:text-amber-200"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                <div className="space-y-2">
+                  <label className="text-xs font-black text-[#0A5F38] uppercase tracking-widest px-1">Marks</label>
+                  <input
+                    type="number"
+                    value={newQuestion.marks || 1}
+                    onChange={(e) => setNewQuestion({ ...newQuestion, marks: parseInt(e.target.value) || 1 })}
+                    min={1}
+                    className="w-full px-4 py-3 bg-gray-50 border-2 border-gray-100 rounded-xl outline-none focus:border-[#10b981] font-bold"
+                  />
+                </div>
+              </div>
             </div>
 
-            <div style={{ display: "flex", gap: "1rem" }}>
-              <button type="button" onClick={handleSaveQuestion} className="btn-primary">
-                {editingQuestion ? "Save Changes" : "Add Question"}
+            <div className="p-8 bg-gray-50 border-t flex gap-3 shrink-0">
+              <button onClick={handleSaveQuestion} className="flex-1 bg-[#C9F4D4] text-[#1E5A3B] py-4 rounded-2xl font-bold flex items-center justify-center gap-2 hover:opacity-90 transition-all shadow-lg active:scale-95">
+                <Save size={20} /> {editingQuestion ? "Save Changes" : "Add Question"}
               </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setShowAddForm(false);
-                  setEditingQuestion(null);
-                  resetForm("mcq");
-                }}
-                className="btn-secondary"
-              >
-                Cancel
-              </button>
+              <button onClick={() => { setShowAddForm(false); setEditingQuestion(null); resetForm("mcq"); }} className="px-8 bg-[#C9F4D4] text-[#1E5A3B] py-4 rounded-2xl font-bold hover:opacity-90 transition-all uppercase text-xs tracking-widest shadow-md">Cancel</button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Questions List */}
-      <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+      <div className="space-y-4">
         {questionsWithIds.map((question, idx) => {
           const isMCQ = question.questionType === "mcq" || ("options" in question && "correctAn" in question);
           return (
-            <div
-              key={question.id || idx}
-              style={{
-                padding: "1.5rem",
-                border: "1px solid #A8E8BC",
-                borderRadius: "0.5rem",
-                backgroundColor: "#ffffff",
-              }}
-            >
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "start", marginBottom: "1rem" }}>
-                <div style={{ flex: 1 }}>
-                  <div style={{ display: "flex", gap: "1rem", marginBottom: "0.5rem" }}>
-                    <span style={{ fontWeight: 600, color: "#2D7A52" }}>Q{idx + 1}</span>
-                    <span style={{ color: "#4A9A6A" }}>[{question.section}]</span>
-                    <span style={{ 
-                      padding: "0.25rem 0.5rem", 
-                      backgroundColor: isMCQ ? "#E8FAF0" : "#FFF4E6", 
-                      color: isMCQ ? "#1E5A3B" : "#B45309",
-                      borderRadius: "0.25rem",
-                      fontSize: "0.875rem",
-                      fontWeight: 600
-                    }}>
+            <div key={question.id || idx} className="group bg-white border border-slate-200 rounded-[1.5rem] p-6 transition-all hover:border-[#10b981] hover:shadow-xl relative overflow-hidden">
+              <div className="flex flex-col md:flex-row justify-between items-start gap-6">
+                <div className="flex-1 space-y-4">
+                  <div className="flex flex-wrap items-center gap-3">
+                    <span className="flex items-center justify-center w-8 h-8 rounded-lg bg-[#0A5F38] text-white text-xs font-black">Q{idx + 1}</span>
+                    <div className="flex items-center gap-2 bg-slate-50 px-3 py-1 rounded-lg border border-slate-100">
+                      <FileText size={12} className="text-slate-400" />
+                      <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">[{question.section}]</span>
+                    </div>
+                    <span className={`px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest ${isMCQ ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' : 'bg-orange-50 text-orange-700 border border-orange-100'}`}>
                       {isMCQ ? "MCQ" : "Subjective"}
                     </span>
-                    {isMCQ && (question as MCQQuestion).answerType && (
-                      <span style={{ color: "#4A9A6A" }}>{(question as MCQQuestion).answerType}</span>
-                    )}
-                    <span style={{ color: "#4A9A6A" }}>{question.marks} marks</span>
+                    <span className="text-[10px] font-bold text-[#1E5A3B] bg-[#C9F4D4]/30 px-2 py-1 rounded-lg border border-[#C9F4D4]/50">{question.marks} marks</span>
                   </div>
-                  <p style={{ marginBottom: "1rem", fontWeight: 600, color: "#1E5A3B" }}>{question.question}</p>
-                  {isMCQ && (question as MCQQuestion).options && (
-                    <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-                      {(question as MCQQuestion).options.map((opt, optIdx) => (
-                        <div key={optIdx} style={{ paddingLeft: "1rem", color: "#2D7A52" }}>
-                          <strong>{opt.label}:</strong> {opt.text}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                  {isMCQ && (question as MCQQuestion).correctAn && (
-                    <div style={{ marginTop: "0.5rem", color: "#10b981", fontWeight: 600 }}>
-                      Correct: {(question as MCQQuestion).correctAn}
+                  <p className="text-lg font-bold text-gray-900 leading-snug">{question.question}</p>
+                  {isMCQ && (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
+                      {(question as MCQQuestion).options?.map((opt, optIdx) => {
+                        const isCorrect = (question as MCQQuestion).correctAn?.split(',').includes(opt.label);
+                        return (
+                          <div key={optIdx} className={`flex items-center gap-3 p-3 rounded-xl border ${isCorrect ? 'bg-emerald-50/50 border-emerald-200' : 'bg-slate-50 border-transparent'}`}>
+                            <span className={`w-6 h-6 flex items-center justify-center rounded-md font-black text-[10px] ${isCorrect ? 'bg-[#10b981] text-white' : 'bg-white text-slate-400 border border-slate-200'}`}>{opt.label}</span>
+                            <span className={`text-sm font-semibold ${isCorrect ? 'text-emerald-900' : 'text-slate-600'}`}>{opt.text}</span>
+                            {isCorrect && <CheckCircle2 size={14} className="ml-auto text-[#10b981]" />}
+                          </div>
+                        );
+                      })}
                     </div>
                   )}
                 </div>
-                <div style={{ display: "flex", gap: "0.5rem" }}>
-                  <button
-                    type="button"
-                    onClick={() => handleEdit(question, idx)}
-                    className="btn-secondary"
-                    style={{ padding: "0.5rem 1rem", fontSize: "0.875rem" }}
-                  >
-                    Edit
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleDelete(question.id!)}
-                    style={{
-                      padding: "0.5rem 1rem",
-                      fontSize: "0.875rem",
-                      backgroundColor: "#ef4444",
-                      color: "#fff",
-                      border: "none",
-                      borderRadius: "0.25rem",
-                      cursor: "pointer",
-                    }}
-                  >
-                    Delete
-                  </button>
+                <div className="flex md:flex-col gap-2 shrink-0 md:opacity-0 group-hover:opacity-100 transition-opacity">
+                  <button onClick={() => handleEdit(question, idx)} className="p-3 bg-[#C9F4D4] text-[#1E5A3B] rounded-xl transition-all border border-transparent shadow-sm"><Edit3 size={18} /></button>
+                  <button onClick={() => handleDelete(question.id!)} className="p-3 bg-[#C9F4D4] text-red-500 rounded-xl transition-all border border-transparent shadow-sm"><Trash2 size={18} /></button>
                 </div>
               </div>
             </div>
           );
         })}
         {questionsWithIds.length === 0 && (
-          <div style={{ textAlign: "center", padding: "3rem", color: "#4A9A6A" }}>
-            No questions yet. Add questions or upload a CSV file.
+          <div className="flex flex-col items-center justify-center py-20 bg-slate-50 rounded-[3rem] border-2 border-dashed border-slate-200 text-center space-y-4 font-sans">
+            <div className="w-16 h-16 bg-white rounded-full flex items-center justify-center shadow-sm text-slate-300">
+              <FileText size={32} />
+            </div>
+            <p className="font-bold text-slate-500">No questions yet. Add questions or upload a CSV file.</p>
           </div>
         )}
       </div>

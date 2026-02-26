@@ -121,7 +121,7 @@ export default function PlatformCompetencies() {
   return (
     <section
       ref={ref}
-      className="relative py-20 md:py-32 px-4 md:px-8 bg-white overflow-hidden"
+      className="relative py-16 sm:py-20 md:py-32 px-4 sm:px-6 md:px-8 lg:px-12 bg-white overflow-hidden"
     >
       <div className="absolute inset-0 bg-gradient-to-b from-white via-[#FAFFFE] to-white -z-10" />
 

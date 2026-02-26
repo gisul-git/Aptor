@@ -90,8 +90,11 @@ export default withAuth(
           "/auth/set-password",  // Employee set password page
           "/auth/employee-login",  // Employee login page
           "/super-admin/mfa",  // MFA page - user is in the middle of login flow
+          "/schedule-demo",  // Schedule demo page - public landing page
+          "/thank-you",  // Thank you page after demo submission
           "/api/auth",
           "/api/assessment",
+          "/api/schedule-demo",  // Schedule demo API endpoint - public form submission
           "/api/proctor",  // Proctoring API routes (validated server-side)
           "/api/config",  // Runtime configuration API routes (used by candidate pages)
           "/employee",  // Employee routes - handled by component with modal
@@ -240,6 +243,8 @@ export const config = {
      * - api/auth (NextAuth routes)
      * - api/assessment (Candidate assessment API)
      * - api/proctor (Proctoring API - candidates aren't logged in)
+     * - api/config (Runtime configuration API)
+     * - api/v1 (All API v1 routes - handled by API Gateway with its own auth)
      * - api/v1/candidate (Candidate API routes - reference photo, etc.)
      * - mediapipe (MediaPipe assets)
      * - _next/static (static files)
@@ -248,7 +253,7 @@ export const config = {
      * - favicon.ico (favicon file)
      * - public files (public folder)
      */
-    "/((?!api/auth|api/assessment|api/proctor|api/config|api/v1/candidate|mediapipe|_next/static|_next/image|_next/data|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|js|wasm|data|binarypb)$).*)",
+    "/((?!api/auth|api/assessment|api/proctor|api/config|api/v1|api/v1/candidate|mediapipe|_next/static|_next/image|_next/data|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|js|wasm|data|binarypb)$).*)",
   ],
 };
 

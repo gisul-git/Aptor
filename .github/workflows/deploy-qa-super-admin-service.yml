@@ -59,11 +59,19 @@ jobs:
             git checkout QA
             git pull origin QA
             
+            # Clean up existing container (including Created state)
+            echo "🧹 Cleaning up existing Super Admin Service container..."
+            if docker ps -a --format "{{.Names}}" | grep -q "^gisul-super-admin-service$"; then
+              echo "Removing existing container: gisul-super-admin-service"
+              docker stop gisul-super-admin-service 2>/dev/null || true
+              docker rm -f gisul-super-admin-service 2>/dev/null || true
+            fi
+            
             echo "🔨 Rebuilding Super Admin Service..."
             docker-compose build super-admin-service
             
-            echo "🔄 Restarting Super Admin Service..."
-            docker-compose up -d --no-deps super-admin-service
+            echo "🔄 Starting Super Admin Service..."
+            docker-compose up -d --force-recreate --no-deps super-admin-service
             
             sleep 5
             
