@@ -11,6 +11,7 @@ import { Eye, Video } from "lucide-react";
 import axios from "axios";
 import Link from "next/link";
 import EmailInvitationModal from "../../components/custom-mcq/EmailInvitationModal";
+import SuccessModal from "@/components/SuccessModal";
 // React Query hooks
 import { 
   useCustomMCQAssessment, 
@@ -68,6 +69,10 @@ export default function CustomMCQDetailsPage({ session }: CustomMCQDetailsPagePr
   });
   const [savingTemplate, setSavingTemplate] = useState(false);
   const [sendingInvitations, setSendingInvitations] = useState(false);
+  const [successModal, setSuccessModal] = useState<{ isOpen: boolean; message: string }>({
+    isOpen: false,
+    message: '',
+  });
   // Removed isLiveProctoringCooldown - no longer needed
 
   // Fetch reference photos for all submissions when assessment loads
@@ -1078,7 +1083,10 @@ export default function CustomMCQDetailsPage({ session }: CustomMCQDetailsPagePr
               type="button"
               onClick={() => {
                 navigator.clipboard.writeText(assessmentUrl);
-                alert("URL copied to clipboard!");
+                setSuccessModal({
+                  isOpen: true,
+                  message: "URL copied to clipboard!",
+                });
               }}
               className="btn-primary"
             >
@@ -2657,6 +2665,17 @@ export default function CustomMCQDetailsPage({ session }: CustomMCQDetailsPagePr
           hasNewCandidates={true}
         />
       )}
+
+      {/* Success Modal */}
+      <SuccessModal
+        isOpen={successModal.isOpen}
+        title="Success"
+        message={successModal.message}
+        confirmText="OK"
+        onConfirm={() => {
+          setSuccessModal({ isOpen: false, message: '' })
+        }}
+      />
 
       <style jsx>{`
         @keyframes spin {

@@ -9,6 +9,7 @@ import { ArrowLeft, Lightbulb, CheckCircle2, TrendingUp, AlertTriangle, Eye, Clo
 import { useSession } from 'next-auth/react'
 import ProctorLogsReview from '../../../../components/admin/ProctorLogsReview'
 import * as XLSX from 'xlsx'
+import SuccessModal from '@/components/SuccessModal'
 import { 
   useAIMLTest, 
   useAIMLCandidates, 
@@ -116,18 +117,24 @@ export default function AnalyticsPage() {
   const selectedCandidateUserId = selectedCandidate || (typeof candidateUserId === 'string' ? candidateUserId : undefined)
   const { data: analyticsData, isLoading: loadingAnalytics, refetch: refetchAnalytics } = useAIMLCandidateAnalytics(testId, selectedCandidateUserId)
 
-  // Debug logging for React Query data
-  console.log('[AIML Analytics] 🔍 React Query Data:', {
-    testId,
-    testInfoData: testInfoData ? 'exists' : 'null',
-    candidatesData: candidatesData ? `exists (${Array.isArray(candidatesData) ? candidatesData.length : 'not array'})` : 'null',
-    candidatesDataType: typeof candidatesData,
-    candidatesDataIsArray: Array.isArray(candidatesData),
-    loadingCandidates,
-    candidatesError: candidatesError ? candidatesError.message : null,
-    selectedCandidateUserId,
-    analyticsData: analyticsData ? 'exists' : 'null'
-  })
+  // Debug logging for React Query data (development only, disabled by default)
+  if (process.env.NODE_ENV === 'development' && false) { // Set to true for debugging
+    // @ts-ignore - Debug code, disabled by default
+    const candidatesDataInfo = candidatesData 
+      ? `exists (${Array.isArray(candidatesData) ? String(candidatesData?.length ?? 0) : 'not array'})`
+      : 'null';
+    console.log('[AIML Analytics] 🔍 React Query Data:', {
+      testId,
+      testInfoData: testInfoData ? 'exists' : 'null',
+      candidatesData: candidatesDataInfo,
+      candidatesDataType: candidatesData ? typeof candidatesData : 'undefined',
+      candidatesDataIsArray: candidatesData ? Array.isArray(candidatesData) : false,
+      loadingCandidates,
+      candidatesError: candidatesError ? (candidatesError as Error).message : null,
+      selectedCandidateUserId,
+      analyticsData: analyticsData ? 'exists' : 'null'
+    })
+  }
   
   // Mutations
   const addCandidateMutation = useAddAIMLCandidate()
@@ -150,6 +157,10 @@ export default function AnalyticsPage() {
   const [addingCandidate, setAddingCandidate] = useState(false)
   const bulkAddCandidatesMutation = useBulkAddAIMLCandidates()
   const [testInfo, setTestInfo] = useState<any>(null)
+  const [successModal, setSuccessModal] = useState<{ isOpen: boolean; message: string }>({
+    isOpen: false,
+    message: '',
+  })
   const [showEmailTemplateModal, setShowEmailTemplateModal] = useState(false)
   const [emailTemplate, setEmailTemplate] = useState<{
     logoUrl?: string;
@@ -171,20 +182,26 @@ export default function AnalyticsPage() {
   const [exportingResults, setExportingResults] = useState(false)
 
   const fetchReferencePhoto = async (candidateEmail: string) => {
-    console.log('[AIML Analytics] 🔍 fetchReferencePhoto called:', { testId, candidateEmail })
+    if (process.env.NODE_ENV === 'development') {
+      console.log('[AIML Analytics] 🔍 fetchReferencePhoto called:', { testId, candidateEmail })
+    }
     
     if (!testId || typeof testId !== 'string' || !candidateEmail) {
-      console.warn('[AIML Analytics] ⚠️ Missing required params:', { testId, candidateEmail })
+      if (process.env.NODE_ENV === 'development') {
+        console.warn('[AIML Analytics] ⚠️ Missing required params:', { testId, candidateEmail })
+      }
       setReferencePhoto(null)
       return
     }
 
     try {
-      console.log('[AIML Analytics] 📡 Fetching reference photo from API...', {
-        assessmentId: testId,
-        candidateEmail,
-        endpoint: '/api/v1/candidate/get-reference-photo'
-      })
+      if (process.env.NODE_ENV === 'development') {
+        console.log('[AIML Analytics] 📡 Fetching reference photo from API...', {
+          assessmentId: testId,
+          candidateEmail,
+          endpoint: '/api/v1/candidate/get-reference-photo'
+        })
+      }
       
       // For AIML tests, pass testType=aiml to call only AIML endpoint
       const response = await axios.get(`/api/v1/candidate/get-reference-photo`, {
@@ -195,36 +212,43 @@ export default function AnalyticsPage() {
         },
       })
 
-      console.log('[AIML Analytics] 📥 API Response:', {
-        success: response.data?.success,
-        hasReferenceImage: !!response.data?.data?.referenceImage,
-        dataKeys: response.data?.data ? Object.keys(response.data.data) : [],
-        message: response.data?.message,
-        fullResponse: response.data
-      })
-      
-      // Log the assessmentId mismatch if photo not found
-      if (!response.data?.data?.referenceImage && response.data?.message === 'No reference photo found') {
-        console.warn('[AIML Analytics] ⚠️ Reference photo not found. Check if assessmentId matches:', {
-          testIdUsed: testId,
-          candidateEmail,
-          note: 'Photo might have been saved with a different assessmentId. Check candidate side logs for the actual assessmentId used when saving.'
+      if (process.env.NODE_ENV === 'development') {
+        console.log('[AIML Analytics] 📥 API Response:', {
+          success: response.data?.success,
+          hasReferenceImage: !!response.data?.data?.referenceImage,
+          dataKeys: response.data?.data ? Object.keys(response.data.data) : [],
+          message: response.data?.message,
         })
+      }
+      
+      // Log the assessmentId mismatch if photo not found (always log warnings)
+      if (!response.data?.data?.referenceImage && response.data?.message === 'No reference photo found') {
+        if (process.env.NODE_ENV === 'development') {
+          console.warn('[AIML Analytics] ⚠️ Reference photo not found. Check if assessmentId matches:', {
+            testIdUsed: testId,
+            candidateEmail,
+            note: 'Photo might have been saved with a different assessmentId. Check candidate side logs for the actual assessmentId used when saving.'
+          })
+        }
       }
 
       if (response.data?.success && response.data?.data?.referenceImage) {
-        console.log('[AIML Analytics] ✅ Reference photo fetched successfully')
+        if (process.env.NODE_ENV === 'development') {
+          console.log('[AIML Analytics] ✅ Reference photo fetched successfully')
+        }
         setReferencePhoto(response.data.data.referenceImage)
       } else {
-        console.warn('[AIML Analytics] ⚠️ No reference image in response:', response.data)
+        if (process.env.NODE_ENV === 'development') {
+          console.warn('[AIML Analytics] ⚠️ No reference image in response')
+        }
         setReferencePhoto(null)
       }
     } catch (error: any) {
+      // Always log errors
       console.error('[AIML Analytics] ❌ Error fetching reference photo:', {
         error: error.message,
         response: error.response?.data,
         status: error.response?.status,
-        fullError: error
       })
       setReferencePhoto(null)
     }
@@ -235,7 +259,9 @@ export default function AnalyticsPage() {
 
     setLoadingProctorLogs(true)
     try {
-      console.log('[Analytics] Fetching proctor logs with userId:', userKey)
+      if (process.env.NODE_ENV === 'development') {
+        console.log('[Analytics] Fetching proctor logs with userId:', userKey)
+      }
       
       const response = await fetch(
         `/api/proctor/logs?assessmentId=${encodeURIComponent(testId)}&userId=${encodeURIComponent(userKey)}`
@@ -303,54 +329,31 @@ export default function AnalyticsPage() {
 
   // Sync candidates data from React Query
   useEffect(() => {
-    console.log('[AIML Analytics] 🔄 Syncing candidates data:', {
-      candidatesData,
-      isArray: Array.isArray(candidatesData),
-      length: Array.isArray(candidatesData) ? candidatesData.length : 'N/A',
-      type: typeof candidatesData,
-      hasData: !!candidatesData
-    })
+    if (process.env.NODE_ENV === 'development') {
+      console.log('[AIML Analytics] 🔄 Syncing candidates data:', {
+        candidatesData,
+        isArray: Array.isArray(candidatesData),
+        length: Array.isArray(candidatesData) ? candidatesData.length : 'N/A',
+        type: typeof candidatesData,
+        hasData: !!candidatesData
+      })
+    }
     
     if (candidatesData && Array.isArray(candidatesData)) {
-      console.log('[AIML Analytics] ✅ Setting candidates:', {
-        count: candidatesData.length,
-        candidates: candidatesData.map((c: any) => ({
-          user_id: c.user_id,
-          name: c.name,
-          email: c.email,
-          status: c.status, // Include status in debug log
-          has_submitted: c.has_submitted,
-          submission_score: c.submission_score,
-          invited: c.invited,
-          invited_at: c.invited_at,
-          submitted_at: c.submitted_at,
-          started_at: c.started_at // Check if started_at exists
-        })),
-        fullCandidatesData: candidatesData // Log full objects to see all fields
-      })
-      
-      // Debug: Log each candidate's full object to see all available fields
-      candidatesData.forEach((c: any, index: number) => {
-        console.log(`[AIML Analytics] 🔍 Candidate ${index + 1} full object:`, {
-          email: c.email,
-          name: c.name,
-          status: c.status,
-          has_submitted: c.has_submitted,
-          submitted_at: c.submitted_at,
-          started_at: c.started_at,
-          invited: c.invited,
-          invited_at: c.invited_at,
-          allFields: Object.keys(c),
-          fullObject: c
+      if (process.env.NODE_ENV === 'development') {
+        console.log('[AIML Analytics] ✅ Setting candidates:', {
+          count: candidatesData.length,
         })
-      })
+      }
       setCandidates(candidatesData)
     } else {
-      console.warn('[AIML Analytics] ⚠️ Candidates data is not valid array:', {
-        candidatesData,
-        type: typeof candidatesData,
-        isArray: Array.isArray(candidatesData)
-      })
+      if (process.env.NODE_ENV === 'development') {
+        console.warn('[AIML Analytics] ⚠️ Candidates data is not valid array:', {
+          candidatesData,
+          type: typeof candidatesData,
+          isArray: Array.isArray(candidatesData)
+        })
+      }
       // Clear candidates if data is invalid
       setCandidates([])
     }
@@ -359,21 +362,9 @@ export default function AnalyticsPage() {
   // Sync analytics data from React Query
   useEffect(() => {
     if (analyticsData) {
-      console.log('[AIML Analytics] 📊 Syncing analytics data:', analyticsData)
-      console.log('[AIML Analytics] 📊 Data structure check:', {
-        hasQuestionAnalytics: !!analyticsData.question_analytics,
-        questionAnalyticsType: typeof analyticsData.question_analytics,
-        questionAnalyticsIsArray: Array.isArray(analyticsData.question_analytics),
-        questionAnalyticsLength: analyticsData.question_analytics?.length || 0,
-        firstQuestion: analyticsData.question_analytics?.[0] ? {
-          hasCode: !!analyticsData.question_analytics[0].code,
-          codeLength: analyticsData.question_analytics[0].code?.length || 0,
-          hasOutputs: !!analyticsData.question_analytics[0].outputs,
-          outputsCount: analyticsData.question_analytics[0].outputs?.length || 0,
-          hasAiFeedback: !!analyticsData.question_analytics[0].ai_feedback
-        } : null,
-        allKeys: Object.keys(analyticsData)
-      })
+      if (process.env.NODE_ENV === 'development') {
+        console.log('[AIML Analytics] 📊 Syncing analytics data')
+      }
       setAnalytics(analyticsData)
       // Fetch proctor logs when analytics data is loaded
       if (selectedCandidateUserId && analyticsData.candidate?.email) {
@@ -382,7 +373,9 @@ export default function AnalyticsPage() {
       }
     } else if (selectedCandidateUserId && !loadingAnalytics) {
       // Clear analytics if no data and not loading (query completed but no data)
-      console.log('[AIML Analytics] ⚠️ No analytics data found for candidate:', selectedCandidateUserId)
+      if (process.env.NODE_ENV === 'development') {
+        console.log('[AIML Analytics] ⚠️ No analytics data found for candidate:', selectedCandidateUserId)
+      }
       setAnalytics(null)
     }
   }, [analyticsData, selectedCandidateUserId, loadingAnalytics])
@@ -412,17 +405,19 @@ export default function AnalyticsPage() {
     
     // Try to fetch reference photo if candidate email is available
     const candidate = candidates.find(c => c.user_id === userId)
-    console.log('[AIML Analytics] 👤 Candidate selected for reference photo:', {
-      userId,
-      candidateFound: !!candidate,
-      candidateEmail: candidate?.email,
-      allCandidates: candidates.map(c => ({ user_id: c.user_id, email: c.email }))
-    })
+    if (process.env.NODE_ENV === 'development') {
+      console.log('[AIML Analytics] 👤 Candidate selected for reference photo:', {
+        userId,
+        candidateFound: !!candidate,
+        candidateEmail: candidate?.email,
+      })
+    }
     if (candidate?.email) {
-      console.log('[AIML Analytics] 📞 Calling fetchReferencePhoto with email:', candidate.email)
       fetchReferencePhoto(candidate.email)
     } else {
-      console.warn('[AIML Analytics] ⚠️ Candidate email not found, cannot fetch reference photo')
+      if (process.env.NODE_ENV === 'development') {
+        console.warn('[AIML Analytics] ⚠️ Candidate email not found, cannot fetch reference photo')
+      }
     }
     // Scroll to top of analytics content when candidate is selected
     setTimeout(() => {
@@ -500,7 +495,11 @@ export default function AnalyticsPage() {
         setNewCandidateName("")
         setNewCandidateEmail("")
         setEmailError(null)
-        alert("Candidate added successfully!")
+        // Show success modal instead of alert
+        setSuccessModal({
+          isOpen: true,
+          message: "Candidate added successfully!",
+        })
       }
     } catch (err: any) {
       setEmailError(err.response?.data?.detail || err.response?.data?.message || "Failed to add candidate")
@@ -831,13 +830,16 @@ export default function AnalyticsPage() {
   }
 
   // Calculate overall statistics
-  console.log('[AIML Analytics] 📊 Calculating statistics:', {
-    candidatesLength: candidates.length,
-    candidates: candidates,
-    candidatesData: candidatesData,
-    loadingCandidates,
-    candidatesError: candidatesError ? candidatesError.message : null
-  })
+  // Removed excessive logging - only log in development if explicitly needed
+  if (process.env.NODE_ENV === 'development' && false) { // Set to true for debugging
+    console.log('[AIML Analytics] 📊 Calculating statistics:', {
+      candidatesLength: candidates.length,
+      candidates: candidates,
+      candidatesData: candidatesData,
+      loadingCandidates,
+      candidatesError: candidatesError ? (candidatesError as Error).message : null
+    })
+  }
   
   const submittedCandidates = candidates.filter(c => c.has_submitted)
   const totalCandidates = candidates.length
@@ -848,13 +850,16 @@ export default function AnalyticsPage() {
   const passedCount = submittedCandidates.filter(c => (c.submission_score || 0) >= 60).length
   const failedCount = submittedCandidates.filter(c => (c.submission_score || 0) < 60).length
   
-  console.log('[AIML Analytics] 📊 Statistics calculated:', {
-    totalCandidates,
-    submittedCount,
-    avgScore,
-    passedCount,
-    failedCount
-  })
+  // Removed excessive logging - only log in development if needed
+  if (process.env.NODE_ENV === 'development' && false) { // Set to true for debugging
+    console.log('[AIML Analytics] 📊 Statistics calculated:', {
+      totalCandidates,
+      submittedCount,
+      avgScore,
+      passedCount,
+      failedCount
+    })
+  }
 
   return (
     <div className="container">
@@ -975,7 +980,10 @@ export default function AnalyticsPage() {
                     onClick={() => {
                       const testUrl = `${typeof window !== 'undefined' ? window.location.origin : ''}/aiml/test/${testId}?token=${testInfo.test_token}`;
                       navigator.clipboard.writeText(testUrl);
-                      alert("Test URL copied to clipboard!");
+                      setSuccessModal({
+                        isOpen: true,
+                        message: "Test URL copied to clipboard!",
+                      });
                     }}
                     style={{ marginTop: 0, whiteSpace: "nowrap", padding: "0.75rem 1.5rem" }}
                   >
@@ -1074,14 +1082,8 @@ export default function AnalyticsPage() {
           </div>
           
           {(() => {
-            console.log('[AIML Analytics] 🎨 Rendering candidates section:', {
-              candidatesLength: candidates.length,
-              candidates: candidates,
-              candidatesData: candidatesData,
-              loadingCandidates,
-              candidatesError: candidatesError ? candidatesError.message : null
-            })
-            return null
+              // Removed excessive render logging - causes console spam
+              return null
           })()}
           {candidates.length === 0 ? (
             <div>
@@ -1142,20 +1144,30 @@ export default function AnalyticsPage() {
                           if (!displayStatus || displayStatus === "pending") {
                             if (candidate.has_submitted || candidate.submitted_at) {
                               displayStatus = "completed";
-                              console.log(`[Status] ${candidate.email}: Setting to "completed" (has_submitted: ${candidate.has_submitted}, submitted_at: ${candidate.submitted_at})`, debugInfo);
+                              if (process.env.NODE_ENV === 'development' && false) { // Set to true for debugging
+                                console.log(`[Status] ${candidate.email}: Setting to "completed" (has_submitted: ${candidate.has_submitted}, submitted_at: ${candidate.submitted_at})`, debugInfo);
+                              }
                             } else if (candidate.started_at) {
                               // Candidate has started but not submitted yet
                               displayStatus = "started";
-                              console.log(`[Status] ${candidate.email}: Setting to "started" (started_at: ${candidate.started_at})`, debugInfo);
+                              if (process.env.NODE_ENV === 'development' && false) { // Set to true for debugging
+                                console.log(`[Status] ${candidate.email}: Setting to "started" (started_at: ${candidate.started_at})`, debugInfo);
+                              }
                             } else if (candidate.invited || candidate.invited_at) {
                               displayStatus = "invited";
-                              console.log(`[Status] ${candidate.email}: Setting to "invited"`, debugInfo);
+                              if (process.env.NODE_ENV === 'development' && false) { // Set to true for debugging
+                                console.log(`[Status] ${candidate.email}: Setting to "invited"`, debugInfo);
+                              }
                             } else {
                               displayStatus = "pending";
-                              console.log(`[Status] ${candidate.email}: Setting to "pending" (no submission data)`, debugInfo);
+                              if (process.env.NODE_ENV === 'development' && false) { // Set to true for debugging
+                                console.log(`[Status] ${candidate.email}: Setting to "pending" (no submission data)`, debugInfo);
+                              }
                             }
                           } else {
-                            console.log(`[Status] ${candidate.email}: Using backend status "${displayStatus}"`, debugInfo);
+                            if (process.env.NODE_ENV === 'development' && false) { // Set to true for debugging
+                              console.log(`[Status] ${candidate.email}: Using backend status "${displayStatus}"`, debugInfo);
+                            }
                           }
                           
                           return (
@@ -1311,13 +1323,7 @@ export default function AnalyticsPage() {
                 📊 Overall Analytics
               </button>
               {(() => {
-                console.log('[AIML Analytics] 🎨 Rendering candidates sidebar:', {
-                  candidatesLength: candidates.length,
-                  candidates: candidates,
-                  candidatesData: candidatesData,
-                  loadingCandidates,
-                  candidatesError: candidatesError ? candidatesError.message : null
-                })
+                // Removed excessive render logging - causes console spam
                 return null
               })()}
               {filteredCandidates.length === 0 && candidates.length > 0 ? (
@@ -2514,6 +2520,17 @@ export default function AnalyticsPage() {
           }
         }
       `}</style>
+
+      {/* Success Modal */}
+      <SuccessModal
+        isOpen={successModal.isOpen}
+        title="Success"
+        message={successModal.message}
+        confirmText="OK"
+        onConfirm={() => {
+          setSuccessModal({ isOpen: false, message: '' })
+        }}
+      />
     </div>
   )
 }
