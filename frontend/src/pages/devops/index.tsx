@@ -8,6 +8,11 @@ export default function DevOpsHomePage() {
     <main style={{ padding: "24px", fontFamily: "JetBrains Mono, monospace", background: "#0b0f14", minHeight: "100vh", color: "#c8d3df" }}>
       <h1 style={{ marginTop: 0, letterSpacing: "0.08em", textTransform: "uppercase" }}>DevOps Tests</h1>
       <p style={{ color: "#8fa1b4" }}>Open a test to run commands, Terraform, and lint tasks in the assessment IDE.</p>
+      <p style={{ marginTop: "8px" }}>
+        <Link href="/cloud" style={{ color: "#4cc9f0", textDecoration: "none" }}>
+          Open Cloud Playground Demo
+        </Link>
+      </p>
 
       {isLoading && <p>Loading tests...</p>}
       {error && <p style={{ color: "#e5484d" }}>{(error as Error).message}</p>}

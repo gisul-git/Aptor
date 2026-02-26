@@ -68,6 +68,9 @@ export default withAuth(
         if (
           isLocalhost &&
           (
+            pathname === "/cloud" ||
+            pathname.startsWith("/cloud/") ||
+            pathname.startsWith("/api/cloud-execution/") ||
             pathname === "/devops" ||
             pathname.startsWith("/devops/") ||
             pathname.startsWith("/api/devops/") ||
