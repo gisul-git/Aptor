@@ -59,11 +59,19 @@ jobs:
             git checkout QA
             git pull origin QA
             
+            # Clean up existing container (including Created state)
+            echo "🧹 Cleaning up existing Demo Service container..."
+            if docker ps -a --format "{{.Names}}" | grep -q "^gisul-demo-service$"; then
+              echo "Removing existing container: gisul-demo-service"
+              docker stop gisul-demo-service 2>/dev/null || true
+              docker rm -f gisul-demo-service 2>/dev/null || true
+            fi
+            
             echo "🔨 Rebuilding Demo Service..."
             docker-compose build demo-service
             
-            echo "🔄 Restarting Demo Service..."
-            docker-compose up -d --no-deps demo-service
+            echo "🔄 Starting Demo Service..."
+            docker-compose up -d --force-recreate --no-deps demo-service
             
             sleep 5
             
