@@ -944,7 +944,7 @@ export default function QuestionCreatePage() {
     <div style={{ backgroundColor: "#FAFCFB", minHeight: "100vh", fontFamily: "system-ui, -apple-system, sans-serif" }}>
       <div style={{ maxWidth: "1200px", margin: "0 auto", padding: "3rem 1.5rem" }}>
         
-        {/* Back Button */}
+        {/* Back Button --*/}
         <div style={{ marginBottom: "2rem" }}>
           <button
             type="button"
