@@ -9,28 +9,16 @@ from functools import lru_cache
 class DSASettings(BaseSettings):
     """
     DSA Module Settings - reads from .env file
-    Environment variables should be set in .env file (e.g., JUDGE0_URL=http://168.220.236.250:2358)
     MongoDB configuration uses MONGO_URI and MONGO_DB from .env
     """
     # MongoDB Configuration (reads from .env)
     mongo_uri: str = "mongodb://localhost:27017"
     mongo_db: str = "ai_assessment"
-    
-    # Judge0 Configuration
-    # These fields will automatically read from environment variables:
-    # judge0_url -> JUDGE0_URL
-    # judge0_timeout -> JUDGE0_TIMEOUT
-    # etc.
-    judge0_url: str = "http://168.220.236.250:2358"
-    judge0_timeout: int = 60
-    judge0_poll_interval: float = 1.5
-    judge0_max_polls: int = 20
-    judge0_api_key: str = ""  # For RapidAPI hosted Judge0
-    
-    # Custom Execution Engine Configuration
-    custom_python_engine_url: str = "http://localhost:9000"
-    use_custom_engine: bool = True  # Feature flag to enable/disable custom engine
-    
+
+
+    # DSA Execution API – single endpoint for all 10 DSA languages
+    dsa_execution_api_url: str = "http://103.173.99.254:8000"
+
     # OpenAI Configuration (can also use OPENAI_API_KEY from main config)
     openai_api_key: str = ""
     
@@ -60,13 +48,9 @@ def clear_settings_cache():
 # Note: These are set at module import time. To refresh after .env changes, 
 # restart the service or call clear_settings_cache() and re-import
 _settings = get_dsa_settings()
-JUDGE0_URL = _settings.judge0_url
-JUDGE0_TIMEOUT = _settings.judge0_timeout
-JUDGE0_POLL_INTERVAL = _settings.judge0_poll_interval
-JUDGE0_MAX_POLLS = _settings.judge0_max_polls
-JUDGE0_API_KEY = _settings.judge0_api_key
+
 OPENAI_API_KEY = _settings.openai_api_key
-CUSTOM_PYTHON_ENGINE_URL = _settings.custom_python_engine_url
-USE_CUSTOM_ENGINE = _settings.use_custom_engine
+
+DSA_EXECUTION_API_URL = _settings.dsa_execution_api_url
 SQL_ENGINE_URL = _settings.sql_engine_url
 

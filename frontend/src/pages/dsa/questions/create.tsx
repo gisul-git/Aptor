@@ -379,7 +379,21 @@ const SQL_CATEGORIES = [
 // SQL Topics for quick selection
 const SQL_TOPICS = [
   'Basic SELECT', 'Filtering with WHERE', 'INNER JOIN', 'LEFT JOIN',
-  'GROUP BY', 'HAVING Clause', 'Aggregate Functions', 'Subqueries', 'Window Functions'
+  'GROUP BY', 'HAVING Clause', 'Aggregate Functions', 'Subqueries', 'Window Functions',
+  'RIGHT JOIN', 'FULL OUTER JOIN', 'CROSS JOIN', 'UNION', 'INTERSECT', 'EXCEPT',
+  'ORDER BY', 'LIMIT', 'OFFSET', 'DISTINCT', 'CASE WHEN', 'NULL Handling',
+  'String Functions', 'Date Functions', 'Numeric Functions', 'CTEs (Common Table Expressions)',
+  'Recursive CTEs', 'PIVOT/UNPIVOT', 'Ranking Functions'
+]
+
+// SQL Concepts for quick selection
+const SQL_CONCEPTS = [
+  'SELECT', 'FROM', 'WHERE', 'INNER JOIN', 'LEFT JOIN', 'RIGHT JOIN', 'FULL OUTER JOIN',
+  'GROUP BY', 'HAVING', 'ORDER BY', 'LIMIT', 'OFFSET', 'DISTINCT', 'UNION', 'INTERSECT',
+  'EXCEPT', 'CASE WHEN', 'NULL', 'IS NULL', 'IS NOT NULL', 'COUNT', 'SUM', 'AVG', 'MAX', 'MIN',
+  'ROW_NUMBER', 'RANK', 'DENSE_RANK', 'PARTITION BY', 'OVER', 'LAG', 'LEAD', 'FIRST_VALUE',
+  'LAST_VALUE', 'CTE', 'WITH', 'EXISTS', 'IN', 'NOT IN', 'LIKE', 'BETWEEN', 'AND', 'OR',
+  'String Functions', 'Date Functions', 'Aggregate Functions', 'Window Functions', 'Subqueries'
 ]
 
 type TableSchema = {
@@ -549,6 +563,21 @@ export default function QuestionCreatePage() {
         setStarterQuery(data.starter_query || '-- Write your SQL query here\n\nSELECT ')
         setHints(data.hints?.length > 0 ? data.hints : [''])
         setOrderSensitive(data.evaluation?.order_sensitive || false)
+        // Set reference query if generated
+        setReferenceQuery(data.reference_query || '')
+        // Set expected output if generated (from reference query execution)
+        // sql_expected_output is stored as JSON string, format it nicely for display
+        if (data.sql_expected_output) {
+          try {
+            // Parse and pretty-print JSON for readability
+            const parsed = JSON.parse(data.sql_expected_output)
+            // Format as nicely indented JSON
+            setSqlExpectedOutput(JSON.stringify(parsed, null, 2))
+          } catch (e) {
+            // Not JSON, use as-is
+            setSqlExpectedOutput(data.sql_expected_output)
+          }
+        }
       } else {
         // Coding-specific fields
         // Preserve user's selected languages (don't override from response)
@@ -671,66 +700,21 @@ export default function QuestionCreatePage() {
     }
   }
 
-  // Fetch seeded database schema from SQL execution engine
+  // Fetch preloaded/default database schema from SQL execution engine
   const handleLoadSeededSchema = async () => {
     setLoadingSeededSchema(true)
     setError(null)
 
     try {
-      // Get SQL engine URL at runtime from API route
-      const { getSqlEngineUrl } = await import('@/lib/sql-engine-config')
-      const baseUrl = await getSqlEngineUrl()
+      // Use the admin endpoint to fetch the default/preloaded database schema
+      // This endpoint calls the SQL engine with empty body to get the default seed
+      // Note: dsaApi already has baseURL set to /api/v1/dsa, so we only need the path
+      console.log('[Load Seeded Schema] Fetching default/preloaded database schema from admin endpoint...')
       
-      // Remove /api suffix if present (we'll add it back for the endpoint)
-      let sqlEngineBase = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl
-      if (sqlEngineBase.endsWith('/api')) {
-        sqlEngineBase = sqlEngineBase.slice(0, -4)
-      }
-      
-      // Try /api/schema first, then /schema if that fails
-      let schemaUrl = `${sqlEngineBase}/api/schema`
-      console.log('[Load Seeded Schema] SQL Engine Base URL:', sqlEngineBase)
-      console.log('[Load Seeded Schema] Trying endpoint:', schemaUrl)
-      
-      let response = await fetch(schemaUrl, {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      })
-      
-      if (!response.ok) {
-        const text = await response.text()
-        // If we got HTML (404 page) and tried /api/schema, try /schema directly
-        if ((text.trim().startsWith('<!DOCTYPE') || text.trim().startsWith('<html')) && schemaUrl.includes('/api/schema')) {
-          console.log('[Load Seeded Schema] /api/schema returned HTML, trying /schema directly')
-          schemaUrl = `${sqlEngineBase}/schema`
-          response = await fetch(schemaUrl, {
-            method: 'GET',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-          })
-          
-          if (!response.ok) {
-            const retryText = await response.text()
-            if (retryText.trim().startsWith('<!DOCTYPE') || retryText.trim().startsWith('<html')) {
-              throw new Error(`SQL engine returned HTML (likely 404). Tried both ${sqlEngineBase}/api/schema and ${sqlEngineBase}/schema. Make sure the SQL execution engine is running and the endpoint path is correct.`)
-            }
-            throw new Error(`HTTP ${response.status}: ${retryText.substring(0, 200)}`)
-          }
-        } else {
-          throw new Error(`HTTP ${response.status}: ${text.substring(0, 200)}`)
-        }
-      }
-      
-      const contentType = response.headers.get('content-type') || ''
-      if (!contentType.includes('application/json')) {
-        const text = await response.text()
-        throw new Error(`Expected JSON but got ${contentType}. Response: ${text.substring(0, 500)}`)
-      }
-      
-      const data = await response.json()
+      const response = await dsaApi.get('/admin/seeded-schema')
+      const data = response.data?.data || response.data
+
+      console.log('[Load Seeded Schema] Received schema data:', data)
 
       if (data.schemas && Object.keys(data.schemas).length > 0) {
         // Set schemas
@@ -750,19 +734,21 @@ export default function QuestionCreatePage() {
         }
         setSampleData(normalizedSampleData)
 
-        alert(`✅ Successfully loaded ${Object.keys(data.schemas).length} table(s) from seeded database!`)
+        alert(`✅ Successfully loaded ${Object.keys(data.schemas).length} table(s) from preloaded database!`)
       } else {
-        alert('⚠️ No tables found in seeded database')
+        alert('⚠️ No tables found in preloaded database')
       }
     } catch (err: any) {
       console.error('Error loading seeded schema:', err)
-      let errorMessage = 'Failed to load seeded database schema.'
+      let errorMessage = 'Failed to load preloaded database schema.'
       if (err.response?.data?.detail) {
         errorMessage = err.response.data.detail
+      } else if (err.response?.data?.message) {
+        errorMessage = err.response.data.message
       } else if (err.message) {
         errorMessage = `${errorMessage} Error: ${err.message}`
       } else if (err.code === 'ERR_NETWORK') {
-        errorMessage = `Network error. Make sure the SQL execution engine is running. Check NEXT_PUBLIC_SQL_ENGINE_URL environment variable.`
+        errorMessage = `Network error. Make sure the SQL execution engine is running and the backend is accessible.`
       }
       setError(errorMessage)
       alert(`❌ ${errorMessage}`)
@@ -1073,42 +1059,63 @@ export default function QuestionCreatePage() {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
                 <label className="text-sm font-medium">Topic</label>
-                <Input
-                  value={aiTopic}
-                  onChange={(e) => setAiTopic(e.target.value)}
-                  placeholder={questionType === 'sql' 
-                    ? "e.g., Joins, Aggregation, Window Functions"
-                    : "e.g., Arrays, Trees, Graphs"
-                  }
-                  disabled={generating}
-                />
-                {questionType === 'sql' && (
-                  <div className="flex flex-wrap gap-1 mt-2">
-                    {SQL_TOPICS.slice(0, 4).map((topic) => (
-                      <button
-                        key={topic}
-                        type="button"
-                        className="text-xs px-2 py-1 bg-slate-800 hover:bg-slate-700 rounded"
-                        onClick={() => setAiTopic(topic)}
-                        disabled={generating}
-                      >
-                        {topic}
-                      </button>
-                    ))}
-                  </div>
+                {questionType === 'sql' ? (
+                  <>
+                    <Input
+                      list="sql-topics-list"
+                      value={aiTopic}
+                      onChange={(e) => setAiTopic(e.target.value)}
+                      placeholder="Type or select a topic (e.g., Joins, Aggregation, Window Functions)"
+                      disabled={generating}
+                      className="w-full"
+                    />
+                    <datalist id="sql-topics-list">
+                      {SQL_TOPICS.map((topic) => (
+                        <option key={topic} value={topic} />
+                      ))}
+                    </datalist>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Type your own or select from dropdown
+                    </p>
+                  </>
+                ) : (
+                  <Input
+                    value={aiTopic}
+                    onChange={(e) => setAiTopic(e.target.value)}
+                    placeholder="e.g., Arrays, Trees, Graphs"
+                    disabled={generating}
+                  />
                 )}
               </div>
               <div>
                 <label className="text-sm font-medium">Concepts</label>
-                <Input
-                  value={aiConcepts}
-                  onChange={(e) => setAiConcepts(e.target.value)}
-                  placeholder={questionType === 'sql'
-                    ? "e.g., LEFT JOIN, GROUP BY, HAVING"
-                    : "e.g., Two pointers, BFS, Dynamic programming"
-                  }
-                  disabled={generating}
-                />
+                {questionType === 'sql' ? (
+                  <>
+                    <Input
+                      list="sql-concepts-list"
+                      value={aiConcepts}
+                      onChange={(e) => setAiConcepts(e.target.value)}
+                      placeholder="Type or select concepts (e.g., LEFT JOIN, GROUP BY, HAVING)"
+                      disabled={generating}
+                      className="w-full"
+                    />
+                    <datalist id="sql-concepts-list">
+                      {SQL_CONCEPTS.map((concept) => (
+                        <option key={concept} value={concept} />
+                      ))}
+                    </datalist>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Type your own or select from dropdown
+                    </p>
+                  </>
+                ) : (
+                  <Input
+                    value={aiConcepts}
+                    onChange={(e) => setAiConcepts(e.target.value)}
+                    placeholder="e.g., Two pointers, BFS, Dynamic programming"
+                    disabled={generating}
+                  />
+                )}
               </div>
               <div>
                 <label className="text-sm font-medium">Difficulty</label>

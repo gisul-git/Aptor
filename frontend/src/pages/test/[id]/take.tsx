@@ -1427,7 +1427,7 @@ export default function TestTakePage() {
         const response = await dsaService.submitCodeFull({
           question_id: questionId,
           source_code: currentCode,
-          language_id: String(languageId),
+          language: currentLang,
           started_at: startedAt,
           submitted_at: submittedAt,
           time_spent_seconds: timeSpentSeconds,
@@ -1446,20 +1446,27 @@ export default function TestTakePage() {
           throw new Error('Invalid response format: missing public_results')
         }
         
-        const mappedResults: SubmissionTestcaseResult[] = (result.public_results || []).map((r: any) => ({
-          visible: true,
-          input: r.input,
-          expected: r.expected_output,
-          output: r.user_output || r.stdout || '',
-          stdout: r.user_output || r.stdout || '',
-          stderr: r.stderr || '',
-          compile_output: r.compile_output || '',
-          time: r.time,
-          memory: r.memory,
-          status: r.status,
-          passed: r.passed,
-        }))
-        
+        const mappedResults: SubmissionTestcaseResult[] = (result.public_results || []).map((r: any) => {
+          const rawExpected = r.expected_output
+          const expectedStr = rawExpected == null ? '' : typeof rawExpected === 'string' ? rawExpected : JSON.stringify(rawExpected, null, 2)
+          const rawOut = r.user_output ?? r.stdout ?? ''
+          const outputStr = typeof rawOut === 'string' ? rawOut : JSON.stringify(rawOut, null, 2)
+          const inputStr = typeof r.input === 'string' ? r.input : (r.input != null ? JSON.stringify(r.input, null, 2) : '')
+          return {
+            visible: true,
+            input: inputStr,
+            expected: expectedStr,
+            output: outputStr,
+            stdout: outputStr,
+            stderr: r.stderr || '',
+            compile_output: r.compile_output || '',
+            time: r.time,
+            memory: r.memory,
+            status: r.status,
+            passed: r.passed,
+          }
+        })
+
         setPublicResults(prev => ({ ...prev, [questionId]: mappedResults }))
         setHiddenSummary(prev => ({ ...prev, [questionId]: result.hidden_summary || null }))
 
@@ -1760,57 +1767,17 @@ export default function TestTakePage() {
         // Normalize SQL query to single line with \n characters
         sqlQuery = sqlQuery.replace(/\r\n/g, '\n').replace(/\r/g, '\n')
         
-        // Get SQL engine URL at runtime from API route
-        const { getSqlEngineUrl } = await import('@/lib/sql-engine-config')
-        const baseUrl = await getSqlEngineUrl()
-        const sqlEngineUrl = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl
+        console.log('[SQL Run] Sending query via backend proxy:', sqlQuery.substring(0, 100) + (sqlQuery.length > 100 ? '...' : ''))
         
-        console.log('[SQL Run] SQL Engine URL:', sqlEngineUrl)
-        console.log('[SQL Run] Sending query:', sqlQuery.substring(0, 100) + (sqlQuery.length > 100 ? '...' : ''))
-        
-        const requestBody = {
+        // Use backend proxy endpoint to avoid CORS issues
+        // The proxy will use groupId from the question if available
+        const executeResult = await dsaService.proxySQLExecute({
           questionId: currentQuestion.id,
           code: sqlQuery,
-          schemas: currentQuestion.schemas || null,
-          sample_data: currentQuestion.sample_data || null,
-        }
-        
-        const executeResponse = await fetch(`${sqlEngineUrl}/api/execute`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(requestBody),
+          // Note: schemas and sample_data are optional - backend will use groupId from question if available
+          schemas: currentQuestion.schemas || undefined,
+          sample_data: currentQuestion.sample_data || undefined,
         })
-        
-        if (!executeResponse.ok) {
-          const text = await executeResponse.text()
-          if (text.trim().startsWith('<!DOCTYPE') || text.trim().startsWith('<html')) {
-            throw new Error(`SQL engine returned HTML (likely 404). Make sure the SQL execution engine is running on ${sqlEngineUrl}`)
-          }
-          throw new Error(`HTTP ${executeResponse.status}: ${text.substring(0, 200)}`)
-        }
-        
-        const contentType = executeResponse.headers.get('content-type') || ''
-        let responseText = ''
-        
-        try {
-          responseText = await executeResponse.text()
-        } catch (e: any) {
-          throw new Error(`Failed to read response: ${e?.message || String(e)}`)
-        }
-        
-        if (!contentType.includes('application/json')) {
-          throw new Error(`Expected JSON but got ${contentType}. Response: ${responseText.substring(0, 500)}`)
-        }
-        
-        let executeResult
-        try {
-          executeResult = JSON.parse(responseText)
-        } catch (e: any) {
-          console.error('Failed to parse JSON response:', responseText)
-          throw new Error(`Invalid JSON response from SQL engine. Response: ${responseText.substring(0, 500)}`)
-        }
         
         // Normalize the result to match expected format
         const result = {
@@ -1903,7 +1870,7 @@ export default function TestTakePage() {
       const response = await dsaService.runCodePublic({
         question_id: currentQuestion.id,
         source_code: currentCode,
-        language_id: String(languageId),
+        language: currentLang,
       })
       
       // Handle both ApiResponse wrapper and plain object responses
@@ -1928,16 +1895,19 @@ export default function TestTakePage() {
         if (expectedValue === null || expectedValue === undefined) {
           expectedValue = ''
         } else if (typeof expectedValue !== 'string') {
-          // Convert objects/arrays to JSON string
-          expectedValue = JSON.stringify(expectedValue)
+          expectedValue = JSON.stringify(expectedValue, null, 2)
         }
-        
+        // API may return user_output/stdout as array/object; format for display
+        const rawOut = r.user_output ?? r.stdout ?? ''
+        const outputStr = typeof rawOut === 'string' ? rawOut : JSON.stringify(rawOut, null, 2)
+        const inputStr = typeof r.input === 'string' ? r.input : (r.input != null ? JSON.stringify(r.input, null, 2) : '')
+
         return {
         visible: true,
-        input: r.input,
+        input: inputStr,
           expected: expectedValue,
-        output: r.user_output || r.stdout || '',
-        stdout: r.user_output || r.stdout || '',
+        output: outputStr,
+        stdout: outputStr,
         stderr: r.stderr || '',
         compile_output: r.compile_output || '',
         time: r.time,
@@ -2178,68 +2148,23 @@ export default function TestTakePage() {
         }
         
         
-        // Get SQL engine URL at runtime from API route
-        const { getSqlEngineUrl } = await import('@/lib/sql-engine-config')
-        const baseUrl = await getSqlEngineUrl()
-        const sqlEngineUrl = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl
-        
         console.log('[SQL Submit] ===== Starting Submit =====')
-        console.log('[SQL Submit] SQL Engine URL:', sqlEngineUrl)
-        console.log('[SQL Submit] Sending query:', sqlQuery.substring(0, 100) + (sqlQuery.length > 100 ? '...' : ''))
+        console.log('[SQL Submit] Sending query via backend proxy:', sqlQuery.substring(0, 100) + (sqlQuery.length > 100 ? '...' : ''))
         console.log('[SQL Submit] Question ID:', currentQuestion.id)
         console.log('[SQL Submit] Expected Output:', expectedOutput)
         
-        const requestBody = {
+        // Use backend proxy endpoint to avoid CORS issues
+        // The proxy will use groupId from the question if available
+        const submitResult = await dsaService.proxySQLSubmit({
           questionId: currentQuestion.id,
           code: sqlQuery,
           expectedOutput: expectedOutput,
-          schemas: currentQuestion.schemas || null,
-          sample_data: currentQuestion.sample_data || null,
-        }
-        console.log('[SQL Submit] Request body:', JSON.stringify(requestBody).substring(0, 500))
-        
-        const submitResponse = await fetch(`${sqlEngineUrl}/api/submit`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(requestBody),
+          // Note: schemas and sample_data are optional - backend will use groupId from question if available
+          schemas: currentQuestion.schemas || undefined,
+          sample_data: currentQuestion.sample_data || undefined,
         })
         
-        console.log('[SQL Submit] Response status:', submitResponse.status, submitResponse.statusText)
-        console.log('[SQL Submit] Response headers:', Object.fromEntries(submitResponse.headers.entries()))
-
-        // Check if response is OK and is JSON
-        if (!submitResponse.ok) {
-          const text = await submitResponse.text()
-          if (text.trim().startsWith('<!DOCTYPE') || text.trim().startsWith('<html')) {
-            throw new Error(`SQL engine returned HTML (likely 404). Make sure the SQL execution engine is running on ${sqlEngineUrl}`)
-          }
-          throw new Error(`HTTP ${submitResponse.status}: ${text.substring(0, 200)}`)
-        }
-
-        const contentType = submitResponse.headers.get('content-type') || ''
-        let responseText = ''
-        
-        // Read response as text first to handle errors better
-        try {
-          responseText = await submitResponse.text()
-        } catch (e: any) {
-          throw new Error(`Failed to read response: ${e?.message || String(e)}`)
-        }
-        
-        if (!contentType.includes('application/json')) {
-          throw new Error(`Expected JSON but got ${contentType}. Response: ${responseText.substring(0, 500)}`)
-        }
-        
-        // Try to parse JSON
-        let submitResult
-        try {
-          submitResult = JSON.parse(responseText)
-        } catch (e: any) {
-          console.error('Failed to parse JSON response:', responseText)
-          throw new Error(`Invalid JSON response from SQL engine. Response: ${responseText.substring(0, 500)}`)
-        }
+        console.log('[SQL Submit] Response from backend proxy:', submitResult)
         
         // Debug: Log the full response to see what we're getting
         console.log('[SQL Submit] Full response from engine:', JSON.stringify(submitResult, null, 2))
@@ -2574,7 +2499,7 @@ export default function TestTakePage() {
       const response = await dsaService.submitCodeFull({
         question_id: currentQuestion.id,
         source_code: currentCode,
-        language_id: String(languageId),
+        language: currentLang,
         started_at: startedAt,
         submitted_at: submittedAt,
         time_spent_seconds: timeSpentSeconds,
@@ -2593,20 +2518,27 @@ export default function TestTakePage() {
         throw new Error('Invalid response format: missing public_results')
       }
       
-      const mappedResults: SubmissionTestcaseResult[] = (result.public_results || []).map((r: any) => ({
-        visible: true,
-        input: r.input,
-        expected: r.expected_output,
-        output: r.user_output || r.stdout || '',
-        stdout: r.user_output || r.stdout || '',
-        stderr: r.stderr || '',
-        compile_output: r.compile_output || '',
-        time: r.time,
-        memory: r.memory,
-        status: r.status,
-        passed: r.passed,
-      }))
-      
+      const mappedResults: SubmissionTestcaseResult[] = (result.public_results || []).map((r: any) => {
+        const rawExpected = r.expected_output
+        const expectedStr = rawExpected == null ? '' : typeof rawExpected === 'string' ? rawExpected : JSON.stringify(rawExpected, null, 2)
+        const rawOut = r.user_output ?? r.stdout ?? ''
+        const outputStr = typeof rawOut === 'string' ? rawOut : JSON.stringify(rawOut, null, 2)
+        const inputStr = typeof r.input === 'string' ? r.input : (r.input != null ? JSON.stringify(r.input, null, 2) : '')
+        return {
+          visible: true,
+          input: inputStr,
+          expected: expectedStr,
+          output: outputStr,
+          stdout: outputStr,
+          stderr: r.stderr || '',
+          compile_output: r.compile_output || '',
+          time: r.time,
+          memory: r.memory,
+          status: r.status,
+          passed: r.passed,
+        }
+      })
+
       setPublicResults(prev => ({ ...prev, [currentQuestion.id]: mappedResults }))
       setHiddenSummary(prev => ({ ...prev, [currentQuestion.id]: result.hidden_summary || null }))
 

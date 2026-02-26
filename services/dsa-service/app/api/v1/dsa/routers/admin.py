@@ -156,6 +156,7 @@ async def generate_sql_question_endpoint(
     - Sample data for each table
     - Query constraints and requirements
     - Starter query template
+    - groupId and seedSql (automatically creates seed in SQL engine)
     
     Provide topic and/or concepts to guide the generation:
     - Topics: "Joins", "Aggregation", "Window Functions", "Subqueries"
@@ -165,13 +166,22 @@ async def generate_sql_question_endpoint(
     - competency: "DSA"
     - question_type: "SQL"
     - sql_category: select | join | aggregation | subquery | window
+    - groupId: UUID from SQL engine (seed identifier)
+    - seedSql: DDL/INSERT statements for seeding the database
     """
     try:
+        from ..services.ai_sql_generator import generate_sql_question, create_seed_for_generated_question
+        
+        # Generate the SQL question
         question_data = await generate_sql_question(
             difficulty=request.difficulty,
             topic=request.topic,
             concepts=request.concepts,
         )
+        
+        # Automatically create seed and add groupId/seedSql
+        question_data = await create_seed_for_generated_question(question_data)
+        
         return question_data
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
