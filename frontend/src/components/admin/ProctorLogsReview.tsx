@@ -52,8 +52,8 @@ const extractSnapshot = (log: ProctorLog): string | null => {
         return `data:image/${format};base64,${firstEvidence.data}`;
       }
     }
-    // Single evidence object
-    else if (!Array.isArray(log.evidence) && log.evidence.type === "image" && log.evidence.data) {
+    // Single evidence object (supports type: 'image', 'webcam', 'screen')
+    else if (!Array.isArray(log.evidence) && log.evidence.data) {
       const format = log.evidence.format || "jpeg";
       if (log.evidence.data.startsWith("data:")) {
         return log.evidence.data;
@@ -152,20 +152,25 @@ const extractAllEvidence = (log: ProctorLog): Array<{ type: string; data: string
 
 type TabType = 
   | "VISUAL_EVIDENCE"
+  | "ADMIN_FLAGGED"
   | "FULLSCREEN_EXIT"
   | "TAB_SWITCH"
   | "WINDOW_FOCUS_LOST"
   | "GAZE_AWAY"
   | "NO_FACE"
   | "MULTIPLE_FACE"
-  | "FACE_MISMATCH"
-  | "SYSTEM_EVENTS";
+  | "FACE_MISMATCH";
 
 const TAB_CONFIG: Record<TabType, { label: string; icon: string; eventTypes: string[] }> = {
   VISUAL_EVIDENCE: {
     label: "📸 Visual Evidence",
     icon: "📸",
-    eventTypes: ["GAZE_AWAY", "NO_FACE_DETECTED", "MULTIPLE_FACES_DETECTED", "FACE_MISMATCH", "ADMIN_FLAGGED"],
+    eventTypes: ["GAZE_AWAY", "NO_FACE_DETECTED", "MULTIPLE_FACES_DETECTED", "FACE_MISMATCH"],
+  },
+  ADMIN_FLAGGED: {
+    label: "🚩 Admin Flagged",
+    icon: "🚩",
+    eventTypes: ["ADMIN_FLAGGED"],
   },
   FULLSCREEN_EXIT: {
     label: "⛔ Fullscreen Violations",
@@ -202,11 +207,6 @@ const TAB_CONFIG: Record<TabType, { label: string; icon: string; eventTypes: str
     icon: "🔒",
     eventTypes: ["FACE_MISMATCH"],
   },
-  SYSTEM_EVENTS: {
-    label: "ℹ System Events",
-    icon: "ℹ",
-    eventTypes: ["PROCTORING_STARTED", "PROCTORING_STOPPED", "CAMERA_PERMISSION_GRANTED"],
-  },
 };
 
 const getSeverityStyle = (severity?: string) => {
@@ -242,7 +242,8 @@ export const ProctorLogsReview: React.FC<ProctorLogsReviewProps> = ({ logs, cand
   const stats = useMemo(() => {
     const snapshotLogs = logs.filter((log) => extractSnapshot(log) !== null);
     const categoryCounts: Record<TabType, number> = {
-      VISUAL_EVIDENCE: snapshotLogs.length,
+      VISUAL_EVIDENCE: 0,
+      ADMIN_FLAGGED: 0,
       FULLSCREEN_EXIT: 0,
       TAB_SWITCH: 0,
       WINDOW_FOCUS_LOST: 0,
@@ -250,13 +251,25 @@ export const ProctorLogsReview: React.FC<ProctorLogsReviewProps> = ({ logs, cand
       NO_FACE: 0,
       MULTIPLE_FACE: 0,
       FACE_MISMATCH: 0,
-      SYSTEM_EVENTS: 0,
     };
 
     logs.forEach((log) => {
       Object.entries(TAB_CONFIG).forEach(([tab, config]) => {
         if (config.eventTypes.includes(log.eventType)) {
-          categoryCounts[tab as TabType]++;
+          // Special handling for tabs that require snapshots
+          if (tab === "VISUAL_EVIDENCE") {
+            if (extractSnapshot(log) !== null) {
+              categoryCounts[tab as TabType]++;
+            }
+          } else if (tab === "ADMIN_FLAGGED") {
+            // ADMIN_FLAGGED needs to have evidence (webcam or screen)
+            if (extractAllEvidence(log).length > 0 || extractSnapshot(log) !== null) {
+              categoryCounts[tab as TabType]++;
+            }
+          } else {
+            // Other tabs: count all matching event types
+            categoryCounts[tab as TabType]++;
+          }
         }
       });
     });
@@ -401,16 +414,22 @@ export const ProctorLogsReview: React.FC<ProctorLogsReviewProps> = ({ logs, cand
           >
             No violations in this category
           </div>
-        ) : activeTab === "VISUAL_EVIDENCE" ? (
-          // Visual Evidence Tab - Image Grid
+        ) : (
+          // All Tabs - Visual Grid Layout (consistent across all violation types)
           <div>
             <div style={{ marginBottom: "1rem", color: "#64748b", fontSize: "0.875rem" }}>
-              Showing snapshots captured at violation trigger
+              {activeTab === "ADMIN_FLAGGED" 
+                ? "Showing admin-flagged violations with webcam and screen snapshots"
+                : activeTab === "VISUAL_EVIDENCE"
+                ? "Showing snapshots captured at violation trigger"
+                : `Showing ${TAB_CONFIG[activeTab].label.toLowerCase()} violations`}
             </div>
             <div
               style={{
                 display: "grid",
-                gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))",
+                gridTemplateColumns: activeTab === "ADMIN_FLAGGED" 
+                  ? "repeat(auto-fill, minmax(350px, 1fr))" 
+                  : "repeat(auto-fill, minmax(200px, 1fr))",
                 gap: "1rem",
               }}
             >
@@ -427,30 +446,68 @@ export const ProctorLogsReview: React.FC<ProctorLogsReviewProps> = ({ logs, cand
                   const screenEvidence = allEvidence.find(e => e.type === 'screen');
                   
                   return (
-                    <div
-                      key={log._id || index}
-                      onClick={() => setSelectedImage(log)}
-                      style={{
-                        cursor: "pointer",
-                        border: "1px solid #e2e8f0",
-                        borderRadius: "0.5rem",
-                        overflow: "hidden",
-                        backgroundColor: "#ffffff",
-                        transition: "transform 0.2s, box-shadow 0.2s",
-                      }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.transform = "translateY(-2px)";
-                        e.currentTarget.style.boxShadow = "0 4px 6px rgba(0, 0, 0, 0.1)";
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.transform = "translateY(0)";
-                        e.currentTarget.style.boxShadow = "none";
-                      }}
-                    >
+                  <div
+                    key={log._id || index}
+                    onClick={() => {
+                      // For dual evidence, clicking the card shows the first image (webcam)
+                      // Individual images can be clicked separately
+                      if (webcamEvidence) {
+                        const base64Data = webcamEvidence.data.startsWith('data:') 
+                          ? webcamEvidence.data.split(',')[1] 
+                          : webcamEvidence.data;
+                        // Clear metadata.evidence to prevent extractSnapshot from using the array
+                        const metadataWithoutEvidence = { ...log.metadata };
+                        delete metadataWithoutEvidence.evidence;
+                        setSelectedImage({
+                          ...log,
+                          evidence: { type: 'webcam', format: 'jpeg', data: base64Data },
+                          snapshotBase64: webcamEvidence.data,
+                          metadata: metadataWithoutEvidence
+                        });
+                      }
+                    }}
+                    style={{
+                      cursor: webcamEvidence ? "pointer" : "default",
+                      border: "1px solid #e2e8f0",
+                      borderRadius: "0.5rem",
+                      overflow: "hidden",
+                      backgroundColor: "#ffffff",
+                      transition: "transform 0.2s, box-shadow 0.2s",
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.transform = "translateY(-2px)";
+                      e.currentTarget.style.boxShadow = "0 4px 6px rgba(0, 0, 0, 0.1)";
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.transform = "translateY(0)";
+                      e.currentTarget.style.boxShadow = "none";
+                    }}
+                  >
                       {/* Dual snapshot display: side-by-side */}
-                      <div style={{ display: "flex", width: "100%", height: "150px" }}>
-                        {/* Webcam snapshot */}
-                        <div style={{ flex: 1, position: "relative", borderRight: "1px solid #e2e8f0" }}>
+                      <div style={{ display: "flex", width: "100%", height: activeTab === "ADMIN_FLAGGED" ? "200px" : "150px" }}>
+                        {/* Webcam snapshot - clickable */}
+                        <div 
+                          style={{ flex: 1, position: "relative", borderRight: "1px solid #e2e8f0", cursor: webcamEvidence ? "pointer" : "default" }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (webcamEvidence) {
+                              // Extract base64 data from data URI if needed
+                              const base64Data = webcamEvidence.data.startsWith('data:') 
+                                ? webcamEvidence.data.split(',')[1] 
+                                : webcamEvidence.data;
+                              // Create a temporary log object with just the webcam image for modal display
+                              // Clear metadata.evidence to prevent extractSnapshot from using the array
+                              const metadataWithoutEvidence = { ...log.metadata };
+                              delete metadataWithoutEvidence.evidence;
+                              setSelectedImage({
+                                ...log,
+                                evidence: { type: 'webcam', format: 'jpeg', data: base64Data },
+                                snapshotBase64: webcamEvidence.data,
+                                metadata: metadataWithoutEvidence
+                              });
+                            }
+                          }}
+                        >
                           {webcamEvidence ? (
                             <>
                               <div style={{ 
@@ -484,8 +541,29 @@ export const ProctorLogsReview: React.FC<ProctorLogsReviewProps> = ({ logs, cand
                             </div>
                           )}
                         </div>
-                        {/* Screen snapshot */}
-                        <div style={{ flex: 1, position: "relative" }}>
+                        {/* Screen snapshot - clickable */}
+                        <div 
+                          style={{ flex: 1, position: "relative", cursor: screenEvidence ? "pointer" : "default" }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (screenEvidence) {
+                              // Extract base64 data from data URI if needed
+                              const base64Data = screenEvidence.data.startsWith('data:') 
+                                ? screenEvidence.data.split(',')[1] 
+                                : screenEvidence.data;
+                              // Create a temporary log object with just the screen image for modal display
+                              // Clear metadata.evidence to prevent extractSnapshot from using the array
+                              const metadataWithoutEvidence = { ...log.metadata };
+                              delete metadataWithoutEvidence.evidence;
+                              setSelectedImage({
+                                ...log,
+                                evidence: { type: 'screen', format: 'jpeg', data: base64Data },
+                                snapshotBase64: screenEvidence.data,
+                                metadata: metadataWithoutEvidence
+                              });
+                            }
+                          }}
+                        >
                           {screenEvidence ? (
                             <>
                               <div style={{ 
@@ -556,21 +634,22 @@ export const ProctorLogsReview: React.FC<ProctorLogsReviewProps> = ({ logs, cand
                   );
                 }
                 
-                // Single snapshot display (existing behavior for other events or single evidence)
+                // Single snapshot display or no snapshot (card layout for all violations)
                 const snapshot = extractSnapshot(log);
-                if (!snapshot) return null; // Safety check
                 
                 return (
                   <div
                     key={log._id || index}
-                    onClick={() => setSelectedImage(log)}
+                    onClick={() => snapshot ? setSelectedImage(log) : undefined}
                     style={{
-                      cursor: "pointer",
+                      cursor: snapshot ? "pointer" : "default",
                       border: "1px solid #e2e8f0",
                       borderRadius: "0.5rem",
                       overflow: "hidden",
                       backgroundColor: "#ffffff",
                       transition: "transform 0.2s, box-shadow 0.2s",
+                      display: "flex",
+                      flexDirection: "column",
                     }}
                     onMouseEnter={(e) => {
                       e.currentTarget.style.transform = "translateY(-2px)";
@@ -581,33 +660,76 @@ export const ProctorLogsReview: React.FC<ProctorLogsReviewProps> = ({ logs, cand
                       e.currentTarget.style.boxShadow = "none";
                     }}
                   >
-                    <img
-                      src={snapshot}
-                      alt={log.eventType}
-                      style={{
-                        width: "100%",
-                        height: "150px",
-                        objectFit: "cover",
-                        backgroundColor: "#f1f5f9",
-                      }}
-                    />
-                    <div style={{ padding: "0.75rem" }}>
-                      <div
+                    {/* Show snapshot if available, otherwise skip image area */}
+                    {snapshot ? (
+                      <img
+                        src={snapshot}
+                        alt={log.eventType}
                         style={{
-                          fontSize: "0.875rem",
-                          fontWeight: 600,
-                          color: severityStyle.color,
-                          marginBottom: "0.25rem",
+                          width: "100%",
+                          height: "150px",
+                          objectFit: "cover",
+                          backgroundColor: "#f1f5f9",
                         }}
-                      >
-                        {log.eventType.replace(/_/g, " ")}
-                      </div>
-                      {/* Show reason for ADMIN_FLAGGED events even with single snapshot */}
+                      />
+                    ) : null}
+                    <div style={{ padding: snapshot ? "0.75rem" : "1rem" }}>
+                      {/* Icon and Event Type Header for non-snapshot events */}
+                      {!snapshot && (
+                        <div style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "0.5rem",
+                          marginBottom: "0.75rem"
+                        }}>
+                          <span style={{ fontSize: "1.5rem" }}>
+                            {TAB_CONFIG[activeTab]?.icon || "📋"}
+                          </span>
+                          <div
+                            style={{
+                              fontSize: "0.875rem",
+                              fontWeight: 600,
+                              color: severityStyle.color,
+                            }}
+                          >
+                            {log.eventType.replace(/_/g, " ")}
+                          </div>
+                        </div>
+                      )}
+                      {/* Event Type for snapshot events */}
+                      {snapshot && (
+                        <div
+                          style={{
+                            fontSize: "0.875rem",
+                            fontWeight: 600,
+                            color: severityStyle.color,
+                            marginBottom: "0.25rem",
+                          }}
+                        >
+                          {log.eventType.replace(/_/g, " ")}
+                        </div>
+                      )}
+                      {/* Show severity badge */}
+                      {log.severity && (
+                        <div style={{ 
+                          display: "inline-block",
+                          fontSize: "0.625rem",
+                          fontWeight: 600,
+                          padding: "0.125rem 0.5rem",
+                          borderRadius: "9999px",
+                          backgroundColor: severityStyle.bg,
+                          color: severityStyle.color,
+                          marginBottom: "0.5rem"
+                        }}>
+                          {severityStyle.badge}
+                        </div>
+                      )}
+                      {/* Show reason for ADMIN_FLAGGED events */}
                       {isAdminFlagged && reason && (
                         <div style={{ 
                           fontSize: "0.75rem", 
                           color: "#475569", 
-                          marginBottom: "0.25rem",
+                          marginBottom: "0.5rem",
                           lineHeight: "1.4",
                           maxHeight: "2.8em",
                           overflow: "hidden",
@@ -619,7 +741,25 @@ export const ProctorLogsReview: React.FC<ProctorLogsReviewProps> = ({ logs, cand
                           {reason}
                         </div>
                       )}
-                      <div style={{ fontSize: "0.75rem", color: "#64748b" }}>
+                      {/* Show metadata for non-snapshot events - cleaner display */}
+                      {!snapshot && log.metadata && Object.keys(log.metadata).length > 0 && (
+                        <div style={{ 
+                          fontSize: "0.75rem", 
+                          color: "#475569",
+                          marginBottom: "0.5rem",
+                          lineHeight: "1.5"
+                        }}>
+                          {Object.entries(log.metadata)
+                            .filter(([key]) => !key.includes("snapshot") && !key.includes("base64") && !key.includes("evidence") && key !== "reason")
+                            .map(([key, value]) => (
+                              <div key={key} style={{ marginBottom: "0.25rem" }}>
+                                <span style={{ fontWeight: 600, color: "#64748b" }}>{key}:</span>{" "}
+                                <span style={{ color: "#0f172a" }}>{String(value)}</span>
+                              </div>
+                            ))}
+                        </div>
+                      )}
+                      <div style={{ fontSize: "0.75rem", color: "#64748b", marginTop: snapshot ? "0.25rem" : "0" }}>
                         {formatTimestamp(log.timestamp)}
                       </div>
                     </div>
@@ -627,123 +767,6 @@ export const ProctorLogsReview: React.FC<ProctorLogsReviewProps> = ({ logs, cand
                 );
               })}
             </div>
-          </div>
-        ) : (
-          // Other Tabs - Grouped Lists
-          <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
-            {Object.entries(groupedLogs).map(([eventType, groupLogs]) => {
-              const isExpanded = expandedGroups.has(eventType);
-              return (
-                <div
-                  key={eventType}
-                  style={{
-                    backgroundColor: "#ffffff",
-                    border: "1px solid #e2e8f0",
-                    borderRadius: "0.5rem",
-                    overflow: "hidden",
-                  }}
-                >
-                  {/* Group Header */}
-                  <div
-                    onClick={() => toggleGroup(eventType)}
-                    style={{
-                      padding: "1rem 1.25rem",
-                      display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "center",
-                      cursor: "pointer",
-                      backgroundColor: "#f8fafc",
-                      borderBottom: isExpanded ? "1px solid #e2e8f0" : "none",
-                    }}
-                  >
-                    <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
-                      <span style={{ fontSize: "1.5rem" }}>{isExpanded ? "▼" : "▶"}</span>
-                      <span style={{ fontWeight: 600, fontSize: "1rem" }}>
-                        {eventType.replace(/_/g, " ")}
-                      </span>
-                      <span
-                        style={{
-                          backgroundColor: "#e2e8f0",
-                          color: "#64748b",
-                          padding: "0.25rem 0.75rem",
-                          borderRadius: "9999px",
-                          fontSize: "0.75rem",
-                          fontWeight: 600,
-                        }}
-                      >
-                        {groupLogs.length} {groupLogs.length === 1 ? "time" : "times"}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Group Content */}
-                  {isExpanded && (
-                    <div style={{ padding: "0.75rem" }}>
-                      {groupLogs.map((log, index) => {
-                        const severityStyle = getSeverityStyle(log.severity);
-                        const snapshot = extractSnapshot(log);
-                        
-                        return (
-                          <div
-                            key={log._id || index}
-                            style={{
-                              display: "flex",
-                              justifyContent: "space-between",
-                              alignItems: "center",
-                              padding: "0.75rem",
-                              borderBottom:
-                                index < groupLogs.length - 1 ? "1px solid #f1f5f9" : "none",
-                            }}
-                          >
-                            <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
-                              <span
-                                style={{
-                                  fontSize: "0.75rem",
-                                  color: "#64748b",
-                                  minWidth: "140px",
-                                }}
-                              >
-                                {formatTimestamp(log.timestamp)}
-                              </span>
-                              {log.metadata && Object.keys(log.metadata).length > 0 && (
-                                <div style={{ fontSize: "0.75rem", color: "#64748b" }}>
-                                  {Object.entries(log.metadata)
-                                    .filter(([key]) => !key.includes("snapshot") && !key.includes("base64") && !key.includes("evidence"))
-                                    .map(([key, value]) => (
-                                      <span key={key} style={{ marginRight: "0.75rem" }}>
-                                        <span style={{ fontWeight: 500 }}>{key}:</span>{" "}
-                                        {typeof value === "object"
-                                          ? JSON.stringify(value)
-                                          : String(value)}
-                                      </span>
-                                    ))}
-                                </div>
-                              )}
-                            </div>
-                            {snapshot && (
-                              <button
-                                onClick={() => setSelectedImage(log)}
-                                style={{
-                                  padding: "0.25rem 0.75rem",
-                                  fontSize: "0.75rem",
-                                  backgroundColor: "#2563eb",
-                                  color: "#ffffff",
-                                  border: "none",
-                                  borderRadius: "0.375rem",
-                                  cursor: "pointer",
-                                }}
-                              >
-                                View Snapshot
-                              </button>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
           </div>
         )}
       </div>
@@ -771,10 +794,12 @@ export const ProctorLogsReview: React.FC<ProctorLogsReviewProps> = ({ logs, cand
             style={{
               backgroundColor: "#ffffff",
               borderRadius: "0.75rem",
-              maxWidth: "900px",
+              maxWidth: "90vw",
               maxHeight: "90vh",
-              overflow: "auto",
+              overflow: "hidden",
               position: "relative",
+              display: "flex",
+              flexDirection: "column",
             }}
           >
             {/* Close Button */}
@@ -803,21 +828,33 @@ export const ProctorLogsReview: React.FC<ProctorLogsReviewProps> = ({ logs, cand
 
             {/* Image */}
             {extractSnapshot(selectedImage) && (
-              <img
-                src={extractSnapshot(selectedImage)!}
-                alt="Violation evidence"
-                style={{
-                  width: "100%",
-                  height: "auto",
-                  display: "block",
-                  borderTopLeftRadius: "0.75rem",
-                  borderTopRightRadius: "0.75rem",
-                }}
-              />
+              <div style={{ 
+                width: "100%", 
+                maxHeight: "70vh", 
+                overflow: "hidden",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                backgroundColor: "#000000",
+                flex: "1 1 auto"
+              }}>
+                <img
+                  src={extractSnapshot(selectedImage)!}
+                  alt="Violation evidence"
+                  style={{
+                    maxWidth: "100%",
+                    maxHeight: "70vh",
+                    height: "auto",
+                    width: "auto",
+                    objectFit: "contain",
+                    display: "block",
+                  }}
+                />
+              </div>
             )}
 
             {/* Details */}
-            <div style={{ padding: "1.5rem" }}>
+            <div style={{ padding: "1.5rem", overflowY: "auto", flex: "0 0 auto" }}>
               <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "1rem" }}>
                 <div>
                   <div style={{ fontSize: "1.25rem", fontWeight: 600, marginBottom: "0.25rem" }}>
@@ -844,8 +881,8 @@ export const ProctorLogsReview: React.FC<ProctorLogsReviewProps> = ({ logs, cand
                 )}
               </div>
 
-              {/* Metadata */}
-              {selectedImage.metadata && Object.keys(selectedImage.metadata).length > 0 && (
+              {/* Reason for ADMIN_FLAGGED events */}
+              {selectedImage.eventType === 'ADMIN_FLAGGED' && selectedImage.metadata?.reason && (
                 <div
                   style={{
                     backgroundColor: "#f8fafc",
@@ -864,19 +901,10 @@ export const ProctorLogsReview: React.FC<ProctorLogsReviewProps> = ({ logs, cand
                       letterSpacing: "0.05em",
                     }}
                   >
-                    Metadata
+                    Reason
                   </div>
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.75rem" }}>
-                    {Object.entries(selectedImage.metadata)
-                      .filter(([key]) => !key.includes("snapshot") && !key.includes("base64") && !key.includes("evidence"))
-                      .map(([key, value]) => (
-                        <div key={key} style={{ fontSize: "0.875rem" }}>
-                          <span style={{ color: "#64748b", fontWeight: 500 }}>{key}:</span>{" "}
-                          <span style={{ color: "#0f172a" }}>
-                            {typeof value === "object" ? JSON.stringify(value) : String(value)}
-                          </span>
-                        </div>
-                      ))}
+                  <div style={{ fontSize: "0.875rem", color: "#0f172a", lineHeight: "1.5" }}>
+                    {selectedImage.metadata.reason}
                   </div>
                 </div>
               )}

@@ -1192,7 +1192,7 @@ export class AdminLiveService {
       
       // Capture webcam snapshot
       try {
-        const webcamStream = candidateInfo?.webcamStream;
+        const webcamStream = candidateInfo?.webcamStream ?? null;
         const webcamBase64 = await captureSnapshot(webcamStream, 'webcam');
         if (webcamBase64) {
           snapshotBase64 = webcamBase64; // Keep for backward compatibility
@@ -1205,7 +1205,7 @@ export class AdminLiveService {
       
       // Capture screen snapshot
       try {
-        const screenStream = candidateInfo?.screenStream;
+        const screenStream = candidateInfo?.screenStream ?? null;
         const screenBase64 = await captureSnapshot(screenStream, 'screen');
         if (screenBase64) {
           evidenceArray.push({ type: 'screen', format: 'jpeg', data: screenBase64 });

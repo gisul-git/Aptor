@@ -119,14 +119,18 @@ export default function AnalyticsPage() {
 
   // Debug logging for React Query data (development only, disabled by default)
   if (process.env.NODE_ENV === 'development' && false) { // Set to true for debugging
+    // @ts-ignore - Debug code, disabled by default
+    const candidatesDataInfo = candidatesData 
+      ? `exists (${Array.isArray(candidatesData) ? String(candidatesData?.length ?? 0) : 'not array'})`
+      : 'null';
     console.log('[AIML Analytics] 🔍 React Query Data:', {
       testId,
       testInfoData: testInfoData ? 'exists' : 'null',
-      candidatesData: candidatesData ? `exists (${Array.isArray(candidatesData) ? candidatesData.length : 'not array'})` : 'null',
-      candidatesDataType: typeof candidatesData,
-      candidatesDataIsArray: Array.isArray(candidatesData),
+      candidatesData: candidatesDataInfo,
+      candidatesDataType: candidatesData ? typeof candidatesData : 'undefined',
+      candidatesDataIsArray: candidatesData ? Array.isArray(candidatesData) : false,
       loadingCandidates,
-      candidatesError: candidatesError ? candidatesError.message : null,
+      candidatesError: candidatesError ? (candidatesError as Error).message : null,
       selectedCandidateUserId,
       analyticsData: analyticsData ? 'exists' : 'null'
     })
@@ -833,7 +837,7 @@ export default function AnalyticsPage() {
       candidates: candidates,
       candidatesData: candidatesData,
       loadingCandidates,
-      candidatesError: candidatesError ? candidatesError.message : null
+      candidatesError: candidatesError ? (candidatesError as Error).message : null
     })
   }
   
