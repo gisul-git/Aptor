@@ -70,10 +70,13 @@ jobs:
             echo "🔨 Building frontend Docker image..."
             docker build -t aptor-frontend:qa -t aptor-frontend:latest .
             
-            # Stop and remove old frontend container
-            echo "🛑 Stopping old frontend container..."
-            docker stop aptor-frontend || true
-            docker rm aptor-frontend || true
+            # Stop and remove old frontend container (including Created state)
+            echo "🛑 Stopping and removing old frontend container..."
+            if docker ps -a --format "{{.Names}}" | grep -qE "^(aptor-frontend|gisul-frontend)$"; then
+              echo "Removing existing frontend container..."
+              docker stop aptor-frontend gisul-frontend 2>/dev/null || true
+              docker rm -f aptor-frontend gisul-frontend 2>/dev/null || true
+            fi
             
             # Run new frontend container
             echo "🚀 Starting new frontend container..."
