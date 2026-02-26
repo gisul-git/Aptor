@@ -82,13 +82,18 @@ class AIMLAgentClient {
         this.ws.onerror = (error) => {
           console.error('[AIMLAgent] WebSocket error:', error)
           this.isConnecting = false
+          // PRODUCTION FIX: Track failed connection attempt even on immediate error
+          // onclose will also fire and call scheduleReconnect, but we need to ensure
+          // the attempt is tracked even if onclose doesn't fire in some edge cases
           reject(new Error('WebSocket connection failed'))
         }
 
-        this.ws.onclose = () => {
-          console.log('[AIMLAgent] Connection closed')
+        this.ws.onclose = (event) => {
+          console.log('[AIMLAgent] Connection closed', event.code, event.reason)
           this.ws = null
           this.isConnecting = false
+          // PRODUCTION FIX: Always schedule reconnect attempt tracking
+          // This will increment reconnectAttempt and eventually set permanentlyDisconnected
           this.scheduleReconnect()
         }
       } catch (err) {

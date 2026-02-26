@@ -63,12 +63,20 @@ jobs:
             git checkout QA
             git pull origin QA
             
+            # Clean up existing container (including Created state)
+            echo "🧹 Cleaning up existing API Gateway container..."
+            if docker ps -a --format "{{.Names}}" | grep -q "^gisul-api-gateway$"; then
+              echo "Removing existing container: gisul-api-gateway"
+              docker stop gisul-api-gateway 2>/dev/null || true
+              docker rm -f gisul-api-gateway 2>/dev/null || true
+            fi
+            
             # Rebuild and restart only API Gateway service
             echo "🔨 Rebuilding API Gateway..."
             docker-compose build api-gateway
             
-            echo "🔄 Restarting API Gateway..."
-            docker-compose up -d --no-deps api-gateway
+            echo "🔄 Starting API Gateway..."
+            docker-compose up -d --force-recreate --no-deps api-gateway
             
             # Wait for service to be ready
             echo "⏳ Waiting for API Gateway to be ready..."

@@ -7,7 +7,7 @@
 
 import { useState, useCallback, useRef, useEffect } from 'react'
 import NotebookCell from './NotebookCell'
-import { connect, interruptKernel, restartKernel, isConnected, executeCode } from './agentClient'
+import { connect, interruptKernel, restartKernel, isConnected, executeCode, isAgentUnavailable } from './agentClient'
 import DatasetViewer from './DatasetViewer'
 
 interface Cell {
@@ -144,6 +144,15 @@ export default function AIMLCompetencyNotebook({
     
     const attemptConnection = async () => {
       try {
+        // PRODUCTION FIX: Check if agent is permanently unavailable before attempting connection
+        if (isAgentUnavailable()) {
+          console.warn('[AIMLNotebook] Agent is permanently unavailable. Stopping retry attempts.')
+          if (isMounted) {
+            setConnected(false)
+          }
+          return // Don't retry if agent is permanently unavailable
+        }
+        
         // Check if already connected
         if (isConnected()) {
           // If already connected, check if we need to warmup
@@ -174,10 +183,16 @@ export default function AIMLCompetencyNotebook({
           setConnected(false)
           // Reset warmup flag on connection failure so we retry warmup on reconnect
           kernelWarmedUpRef.current = false
-          // Retry connection after a delay
-          interval = setTimeout(() => {
-            attemptConnection()
-          }, 3000) // Retry every 3 seconds
+          
+          // PRODUCTION FIX: Only retry if agent is not permanently unavailable
+          if (!isAgentUnavailable()) {
+            // Retry connection after a delay
+            interval = setTimeout(() => {
+              attemptConnection()
+            }, 3000) // Retry every 3 seconds
+          } else {
+            console.warn('[AIMLNotebook] Agent is permanently unavailable. Stopping retry attempts.')
+          }
         }
       }
     }
@@ -188,6 +203,12 @@ export default function AIMLCompetencyNotebook({
     // Also check connection status periodically to handle disconnections
     const statusCheckInterval = setInterval(() => {
       if (isMounted) {
+        // PRODUCTION FIX: Don't check if agent is permanently unavailable
+        if (isAgentUnavailable()) {
+          setConnected(false)
+          return // Don't attempt reconnection if agent is unavailable
+        }
+        
         const currentlyConnected = isConnected()
         setConnected(currentlyConnected)
         
