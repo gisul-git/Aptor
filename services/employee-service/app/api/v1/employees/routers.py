@@ -223,3 +223,31 @@ async def employee_login(
     )
     return result
 
+
+@router.get("/organizations/{org_id}", response_model=dict)
+async def get_organization(
+    org_id: str,
+    db: AsyncIOMotorDatabase = Depends(get_db),
+    admin_context: dict = Depends(require_org_admin),
+):
+    """Get organization details by orgId."""
+    service = EmployeeService(db)
+    
+    # Verify the org_id matches the admin's organization
+    if org_id != admin_context["org_id"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You can only access your own organization"
+        )
+    
+    organization = await service.get_organization_by_id(org_id)
+    if not organization:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Organization not found"
+        )
+    
+    return {
+        "success": True,
+        "data": organization,
+    }

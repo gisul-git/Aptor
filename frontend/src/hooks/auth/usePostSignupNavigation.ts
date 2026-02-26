@@ -57,9 +57,9 @@ export function usePostSignupNavigation(options: UsePostSignupNavigationOptions 
       if (status === 'authenticated' && session?.user) {
         const userRole = (session.user as any)?.role;
         
-        // For org_admin, navigate to employee management page
+        // For org_admin, navigate to dashboard
         if (userRole === 'org_admin') {
-          router.push('/employee/management');
+          router.push('/dashboard');
           return;
         }
         

@@ -109,8 +109,11 @@ export default withAuth(
           "/auth/set-password",  // Employee set password page
           "/auth/employee-login",  // Employee login page
           "/super-admin/mfa",  // MFA page - user is in the middle of login flow
+          "/schedule-demo",  // Schedule demo page - public landing page
+          "/thank-you",  // Thank you page after demo submission
           "/api/auth",
           "/api/assessment",
+          "/api/schedule-demo",  // Schedule demo API endpoint - public form submission
           "/api/proctor",  // Proctoring API routes (validated server-side)
           "/api/config",  // Runtime configuration API routes (used by candidate pages)
           "/employee",  // Employee routes - handled by component with modal

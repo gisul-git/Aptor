@@ -74,11 +74,11 @@ export default function CandidateAnalyticsPage() {
         let foundCandidateName = ''
         let foundCandidateData: Candidate | null = null
         
-        if (assessmentResponse.data.data?.success && assessmentResponse.data?.data) {
-          setAssessment(assessmentResponse.data.data)
+        if (assessmentResponse?.data?.success && assessmentResponse.data) {
+          setAssessment(assessmentResponse.data)
           
           // Find candidate in assessment - check both candidates array and also try to get from candidate results
-          const candidates = assessmentResponse.data.data.assessment?.candidates || []
+          const candidates = assessmentResponse.data.data?.assessment?.candidates || []
           let foundCandidate = candidates.find((c: any) => {
             const cEmail = (c.email || '').toLowerCase().trim()
             return cEmail === candidateEmail.toLowerCase().trim()
@@ -133,8 +133,8 @@ export default function CandidateAnalyticsPage() {
                 candidateEmail,
               )}&candidateName=${encodeURIComponent(foundCandidateName)}`,
             )
-            if (logsResponse.data?.success && logsResponse.data?.data) {
-              setAnswerLogs(logsResponse.data.data || [])
+            if (logsResponse?.data?.success) {
+              setAnswerLogs(logsResponse.data || [])
             }
           } catch (err) {
             console.error('Error fetching answer logs:', err)

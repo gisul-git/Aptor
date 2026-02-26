@@ -45,21 +45,33 @@ export const authOptions: NextAuthOptions = {
       async authorize(credentials) {
         // If mfaToken is provided, this is a post-MFA login
         if (credentials?.mfaToken) {
+          console.log("🔐 [Credentials] MFA token provided, verifying token");
           try {
-            // Verify the token is valid by getting user info
-            const userResponse = await fastApiClient.get("/api/v1/users/me", {
+            // Verify the token is valid by getting user info from super-admin service
+            // Use super-admin service's /me endpoint instead of users service
+            const userResponse = await fastApiClient.get("/api/v1/super-admin/me", {
               headers: {
                 Authorization: `Bearer ${credentials.mfaToken}`,
               },
             });
             
-            const userData = userResponse.data?.data;
+            console.log("🔐 [Credentials] MFA token verification response:", {
+              status: userResponse?.status,
+              data: userResponse?.data,
+              baseURL: fastApiClient.defaults.baseURL,
+            });
+            
+            const userData = userResponse.data?.data ?? userResponse.data;
             if (!userData || userData.role !== "super_admin") {
+              console.error("🔴 [Credentials] MFA token verification failed: Invalid user data or role", {
+                hasUserData: !!userData,
+                role: userData?.role,
+              });
               return null;
             }
 
             const backendUser: BackendUser = {
-              id: userData.id,
+              id: userData.id || userData._id,
               name: userData.name,
               email: userData.email,
               role: userData.role,
@@ -69,9 +81,18 @@ export const authOptions: NextAuthOptions = {
               token: credentials.mfaToken,
               refreshToken: (credentials as any).refreshToken || "",
             } as BackendUser;
+            
+            console.log("🔐 [Credentials] MFA token verified successfully, returning user");
             return backendUser;
-          } catch (err) {
-            console.error("MFA token verification failed:", err);
+          } catch (err: any) {
+            console.error("🔴 [Credentials] MFA token verification failed:", {
+              error: err,
+              message: err?.message,
+              response: err?.response?.data,
+              status: err?.response?.status,
+              code: err?.code,
+              baseURL: fastApiClient.defaults.baseURL,
+            });
             return null;
           }
         }
@@ -109,11 +130,11 @@ export const authOptions: NextAuthOptions = {
 
           // Check if MFA is required for super_admin (support nested or top-level flags)
           const requireMfa = data?.require_mfa ?? respData?.require_mfa;
-          if (requireMfa) {
-            // Return null instead of throwing - let frontend handle MFA redirect
-            // This prevents NextAuth from showing an error
-            console.log("🔐 [Credentials] MFA required for user, returning null to let frontend handle it");
-            return null;
+          if (requireMfa === true) {
+            // Throw a specific error that the frontend can catch and handle
+            // This prevents NextAuth from showing a generic "CredentialsSignin" error
+            console.log("🔐 [Credentials] MFA required for user, throwing MFARequired error");
+            throw new Error("MFA_REQUIRED");
           }
           
           // Accept token either as `token` or `accessToken` and user either as `user` or top-level fields
@@ -158,10 +179,13 @@ export const authOptions: NextAuthOptions = {
 
           return backendUser;
         } catch (error: any) {
-          // Check if MFA is required - if so, return null silently
-          if (error?.response?.data?.data?.require_mfa || error?.response?.data?.require_mfa) {
-            console.log("🔐 [Credentials] Error response indicates MFA required, returning null");
-            return null; // Return null for MFA - frontend will handle redirect
+          // Check if MFA is required - if so, throw specific error
+          const requireMfaFromError = error?.response?.data?.data?.require_mfa || 
+                                     error?.response?.data?.require_mfa ||
+                                     error?.message === "MFA_REQUIRED";
+          if (requireMfaFromError === true || error?.message === "MFA_REQUIRED") {
+            console.log("🔐 [Credentials] Error response indicates MFA required, throwing MFARequired error");
+            throw new Error("MFA_REQUIRED");
           }
 
           // Check for connection errors (backend not running)
@@ -214,19 +238,19 @@ export const authOptions: NextAuthOptions = {
       // Prevent the "flash" of landing page by never redirecting to "/"
       // after sign-in. Also restrict redirects to same-origin for safety.
       try {
-        // Relative URLs (e.g. "/employee/management")
+        // Relative URLs (e.g. "/dashboard")
         if (url.startsWith("/")) {
-          return url === "/" ? `${baseUrl}/employee/management` : `${baseUrl}${url}`;
+          return url === "/" ? `${baseUrl}/dashboard` : `${baseUrl}${url}`;
         }
 
         // Absolute URLs
         const parsed = new URL(url);
         if (parsed.origin !== baseUrl) {
-          return `${baseUrl}/employee/management`;
+          return `${baseUrl}/dashboard`;
         }
-        return parsed.pathname === "/" ? `${baseUrl}/employee/management` : url;
+        return parsed.pathname === "/" ? `${baseUrl}/dashboard` : url;
       } catch {
-        return `${baseUrl}/employee/management`;
+        return `${baseUrl}/dashboard`;
       }
     },
     async signIn({ user, account, profile }) {

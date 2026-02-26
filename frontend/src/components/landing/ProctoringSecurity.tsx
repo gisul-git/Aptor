@@ -125,16 +125,16 @@ export default function ProctoringSecurity() {
   return (
     <section
       ref={ref}
-      className="relative py-20 md:py-32 px-4 md:px-8 bg-gradient-to-b from-white via-[#FAFFFE] to-[#F0FDF4] overflow-hidden"
+      className="relative py-16 sm:py-20 md:py-32 px-4 sm:px-6 md:px-8 lg:px-12 bg-gradient-to-b from-white via-[#FAFFFE] to-[#F0FDF4] overflow-hidden"
     >
       <div className="absolute inset-0 -z-10">
         <div className="absolute top-24 left-10 w-80 h-80 bg-[#E8F9F0] rounded-full blur-3xl opacity-70" />
         <div className="absolute bottom-10 right-10 w-96 h-96 bg-[#C9F4D4] rounded-full blur-3xl opacity-60" />
       </div>
 
-      <div className="max-w-7xl mx-auto">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 md:px-8 lg:px-12">
         {/* Header */}
-        <div className="text-center mb-16">
+        <div className="text-center mb-12 sm:mb-16">
           <div className="inline-flex items-center gap-2 bg-white px-4 py-2 rounded-full text-[#2D5F4A] text-sm font-semibold mb-6 shadow-sm border border-[#E8F9F0]">
             <Shield className="w-4 h-4 text-[#2D7A52]" />
             Security &amp; Proctoring

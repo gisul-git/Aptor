@@ -287,6 +287,9 @@ temp/
 # AI Assessment Platform specific
 # Add any project-specific files here
 
+# Root-level src directory (not frontend/src)
+/src/
+
 # API keys and secrets (if stored in files)
 *_key.txt
 *_secret.txt

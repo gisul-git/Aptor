@@ -11,7 +11,7 @@ import Hero from "@/components/landing/Hero";
 import VideoShowcase from "@/components/landing/VideoShowcase";
 import SkillCapabilityExplainer from "@/components/landing/SkillCapabilityExplainer";
 import PlatformCompetencies from "@/components/landing/PlatformCompetencies";
-import ApterJourney from "@/components/landing/ApterJourney";
+import AaptorJourney from "@/components/landing/AaptorJourney";
 import ProctoringSecurity from "@/components/landing/ProctoringSecurity";
 import IntegrationEcosystem from "@/components/landing/IntegrationEcosystem";
 import Features from "@/components/landing/Features";
@@ -135,7 +135,7 @@ export default function HomePage() {
           <VideoShowcase />
           <SkillCapabilityExplainer />
           <PlatformCompetencies />
-          <ApterJourney />
+          <AaptorJourney />
           <ProctoringSecurity />
           <IntegrationEcosystem />
           <Features />
