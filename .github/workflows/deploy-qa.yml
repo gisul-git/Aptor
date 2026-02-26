@@ -126,24 +126,34 @@ jobs:
             # Wait for containers to be fully stopped
             sleep 2
             
-            # Force stop any remaining containers by name pattern (more reliable)
-            echo "🛑 Force stopping any remaining containers..."
+            # Force stop and remove any remaining containers by name pattern (including Created state)
+            echo "🛑 Force stopping and removing any remaining containers..."
             for container in gisul-frontend gisul-api-gateway gisul-auth-service \
                             gisul-ai-assessment-service gisul-custom-mcq-service \
                             gisul-aiml-service gisul-dsa-service gisul-proctoring-service \
-                            gisul-super-admin-service gisul-employee-service gisul-redis; do
+                            gisul-super-admin-service gisul-employee-service gisul-redis \
+                            gisul-aiml-agent-service; do
               if docker ps -a --format "{{.Names}}" | grep -q "^${container}$"; then
-                echo "Removing container: ${container}"
+                echo "Removing container (any state): ${container}"
                 docker stop "${container}" 2>/dev/null || true
                 docker rm -f "${container}" 2>/dev/null || true
               fi
             done
             
-            # Remove any orphaned containers with our naming pattern (catch-all)
-            echo "🧹 Removing any orphaned containers..."
-            docker ps -a --filter "name=gisul-" --format "{{.ID}} {{.Names}}" | while read id name; do
-              if [ -n "$id" ]; then
-                echo "Removing orphaned container: $name ($id)"
+            # Remove any orphaned containers with our naming pattern (catch-all, including Created state)
+            echo "🧹 Removing any orphaned containers (including Created state)..."
+            docker ps -a --filter "name=gisul-" --format "{{.ID}} {{.Names}} {{.Status}}" | while read id name status; do
+              if [ -n "$id" ] && [ "$name" != "gisul-aiml-agent-service" ]; then
+                echo "Removing orphaned container: $name ($id) - Status: $status"
+                docker rm -f "$id" 2>/dev/null || true
+              fi
+            done
+            
+            # Specifically remove containers in "Created" state that might not be caught above
+            echo "🧹 Removing containers in Created state..."
+            docker ps -a --filter "status=created" --filter "name=gisul-" --format "{{.ID}} {{.Names}}" | while read id name; do
+              if [ -n "$id" ] && [ "$name" != "gisul-aiml-agent-service" ]; then
+                echo "Removing Created container: $name ($id)"
                 docker rm -f "$id" 2>/dev/null || true
               fi
             done
@@ -177,7 +187,8 @@ jobs:
             docker compose build --no-cache
             
             echo "🚀 Starting services..."
-            docker compose up -d --remove-orphans
+            # Use --force-recreate to ensure containers are recreated even if they exist
+            docker compose up -d --force-recreate --remove-orphans
             
             # Wait for services
             echo "⏳ Waiting for services to be ready..."

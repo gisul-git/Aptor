@@ -59,11 +59,19 @@ jobs:
             git checkout QA
             git pull origin QA
             
+            # Clean up existing container (including Created state)
+            echo "🧹 Cleaning up existing AIML Service container..."
+            if docker ps -a --format "{{.Names}}" | grep -q "^gisul-aiml-service$"; then
+              echo "Removing existing container: gisul-aiml-service"
+              docker stop gisul-aiml-service 2>/dev/null || true
+              docker rm -f gisul-aiml-service 2>/dev/null || true
+            fi
+            
             echo "🔨 Rebuilding AIML Service..."
             docker-compose build aiml-service
             
-            echo "🔄 Restarting AIML Service..."
-            docker-compose up -d --no-deps aiml-service
+            echo "🔄 Starting AIML Service..."
+            docker-compose up -d --force-recreate --no-deps aiml-service
             
             sleep 5
             
