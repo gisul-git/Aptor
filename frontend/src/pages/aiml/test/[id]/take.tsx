@@ -7,7 +7,7 @@ import dynamic from 'next/dynamic'
 import axios from 'axios'
 import aimlApi from '../../../../lib/aiml/api'
 import { useAIMLTestForCandidate, useSubmitAIMLAnswer, useSubmitAIMLTest } from '@/hooks/api/useAIML'
-import { useUniversalProctoring, CandidateLiveService, resolveUserIdForProctoring, type ProctoringViolation } from '@/universal-proctoring'
+import { useUniversalProctoring, CandidateLiveService, resolveUserIdForProctoring, type ProctoringViolation, type ProctoringEventType } from '@/universal-proctoring'
 import WebcamPreview from '../../../../components/WebcamPreview'
 import { ViolationToast, pushViolationToast } from '@/components/ViolationToast'
 import { Timer } from 'lucide-react';
@@ -253,7 +253,7 @@ export default function AIMLTestTakePage() {
   // Activity Pattern Proctor - monitors mouse, keyboard, scroll patterns
   useActivityPatternProctor({
     userId: userId || '',
-    assessmentId: testId || '',
+    assessmentId: String(testId || ''),
     onViolation: (violation) => {
       console.log('[AIML Take] Activity pattern violation:', violation);
       handleUniversalViolation({
@@ -1632,13 +1632,13 @@ export default function AIMLTestTakePage() {
             onCodeChange={handleCodeChange}
             onOutputChange={handleOutputChange}
             userId={userId || ''}
-            assessmentId={testId || ''}
+            assessmentId={String(testId || '')}
             onPasteViolation={(violation) => {
               handleUniversalViolation({
-                eventType: violation.eventType,
+                eventType: violation.eventType as ProctoringEventType,
                 timestamp: violation.timestamp,
-                assessmentId: violation.assessmentId,
-                userId: violation.userId,
+                assessmentId: String(testId || ''),
+                userId: userId || '',
                 metadata: violation.metadata,
               });
             }}

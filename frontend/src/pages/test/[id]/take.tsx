@@ -21,6 +21,7 @@ import {
   CandidateLiveService,
   resolveUserIdForProctoring,
   type ProctoringViolation,
+  type ProctoringEventType,
 } from "@/universal-proctoring";
 import WebcamPreview from "@/components/WebcamPreview";
 import { ViolationToast, pushViolationToast } from "@/components/ViolationToast";
@@ -550,18 +551,18 @@ export default function TestTakePage() {
   // Activity Pattern Proctor - monitors mouse, keyboard, scroll patterns
   useActivityPatternProctor({
     userId: userId || '',
-    assessmentId: testId || '',
+    assessmentId: String(testId || ''),
     onViolation: (violation) => {
       console.log('[DSA Take] Activity pattern violation:', violation);
       handleUniversalViolation({
-        eventType: violation.eventType,
+        eventType: violation.eventType as ProctoringEventType,
         timestamp: violation.timestamp,
-        assessmentId: violation.assessmentId,
-        userId: violation.userId,
+        assessmentId: String(testId || ''),
+        userId: userId || '',
         metadata: violation.metadata,
       });
     },
-    enabled: !!userId && !!testId && !submitted, // Only enable when test is active
+    enabled: !!userId && !!testId, // Only enable when test is active
     copyPasteThreshold: 20, // Lower threshold for easier detection (default: 50)
   });
 
@@ -3253,13 +3254,13 @@ export default function TestTakePage() {
                   publicResults={publicResults[currentQuestion.id] || []}
                   hiddenSummary={hiddenSummary?.[currentQuestion.id] || null}
                   userId={userId || ''}
-                  assessmentId={testId || ''}
+                  assessmentId={String(testId || '')}
                   onPasteViolation={(violation) => {
                     handleUniversalViolation({
-                      eventType: violation.eventType,
+                      eventType: violation.eventType as ProctoringEventType,
                       timestamp: violation.timestamp,
-                      assessmentId: violation.assessmentId,
-                      userId: violation.userId,
+                      assessmentId: String(testId || ''),
+                      userId: userId || '',
                       metadata: violation.metadata,
                     });
                   }}

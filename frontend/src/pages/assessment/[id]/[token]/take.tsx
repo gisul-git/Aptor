@@ -28,6 +28,7 @@ import {
   CandidateLiveService,
   resolveUserIdForProctoring,
   type ProctoringViolation,
+  type ProctoringEventType,
 } from "@/universal-proctoring";
 import { stopStream } from "@/universal-proctoring/live";
 import WebcamPreview from "@/components/WebcamPreview";
@@ -3500,10 +3501,10 @@ export default function CandidateAssessmentPage() {
                             assessmentId={assessmentIdStr}
                             onPasteViolation={(violation) => {
                               handleUniversalViolation({
-                                eventType: violation.eventType,
+                                eventType: violation.eventType as ProctoringEventType,
                                 timestamp: violation.timestamp,
-                                assessmentId: violation.assessmentId,
-                                userId: violation.userId,
+                                assessmentId: assessmentIdStr,
+                                userId: candidateIdStr,
                                 metadata: violation.metadata,
                               });
                             }}
