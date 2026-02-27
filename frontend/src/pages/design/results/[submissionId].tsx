@@ -1,240 +1,361 @@
-/**
- * Design Assessment Results Page
- * 
- * Displays evaluation results with scores and feedback
- */
+import { useEffect, useState } from 'react'
+import { useRouter } from 'next/router'
+import { GetServerSideProps } from 'next'
+import { requireAuth } from '../../../lib/auth'
 
-import { useEffect, useState } from 'react';
-import { useRouter } from 'next/router';
+interface EvaluationFeedback {
+  overall?: string
+  strengths?: string[]
+  improvements?: string[]
+  rule_based?: {
+    score: number
+    details: {
+      element_count?: { score: number; feedback: string }
+      color_usage?: { score: number; feedback: string }
+      layout_structure?: { score: number; feedback: string }
+      interaction_quality?: { score: number; feedback: string }
+    }
+  }
+  ai_based?: {
+    score: number
+    feedback: string
+    strengths?: string[]
+    improvements?: string[]
+  }
+  final_score?: number
+  weights?: any
+}
 
-interface EvaluationResult {
-  submission_id: string;
-  rule_based_score: number;
-  ai_based_score: number;
-  final_score: number;
-  feedback: {
-    overall?: string;
-    strengths?: string[];
-    improvements?: string[];
-    rule_based?: {
-      score: number;
-      breakdown?: {
-        completeness?: number;
-        alignment?: number;
-        spacing?: number;
-        typography?: number;
-        color?: number;
-        hierarchy?: number;
-        interaction?: number;
-      };
-      notes?: string;
-    };
-    ai_based?: {
-      score: number;
-      breakdown?: {
-        aesthetics?: number;
-        ux_clarity?: number;
-        creativity?: number;
-        accessibility?: number;
-        balance?: number;
-      };
-      notes?: string;
-    };
-    final_score?: number;
-    weights?: {
-      rule_based?: string;
-      ai_based?: string;
-    };
-  };
+interface Submission {
+  submission_id: string
+  rule_based_score: number
+  ai_based_score: number
+  final_score: number
+  feedback: EvaluationFeedback
 }
 
 export default function DesignResultsPage() {
-  const router = useRouter();
-  const { submissionId } = router.query;
+  const router = useRouter()
+  const { submissionId } = router.query
+  const [submission, setSubmission] = useState<Submission | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [result, setResult] = useState<EvaluationResult | null>(null);
-  
+  const API_URL = process.env.NEXT_PUBLIC_DESIGN_SERVICE_URL || 'http://localhost:3006/api/v1/design'
+
   useEffect(() => {
-    if (!submissionId) return;
-    
-    fetchResults();
-  }, [submissionId]);
-  
+    if (submissionId) {
+      fetchResults()
+      // Poll for results every 3 seconds if evaluation is not complete
+      const interval = setInterval(() => {
+        if (submission && submission.final_score === 0) {
+          fetchResults()
+        }
+      }, 3000)
+      
+      return () => clearInterval(interval)
+    }
+  }, [submissionId])
+
   const fetchResults = async () => {
     try {
-      const response = await fetch(
-        `http://localhost:3006/api/v1/design/submissions/${submissionId}/evaluation`
-      );
-      
-      if (!response.ok) {
-        throw new Error('Failed to fetch results');
+      const response = await fetch(`${API_URL}/submissions/${submissionId}/evaluation`)
+      if (response.ok) {
+        const data = await response.json()
+        setSubmission(data)
+        setLoading(false)
+      } else {
+        setError('Failed to fetch evaluation results')
+        setLoading(false)
       }
-      
-      const data = await response.json();
-      setResult(data);
-      setLoading(false);
     } catch (err) {
-      setError((err as Error).message);
-      setLoading(false);
+      console.error('Failed to fetch results:', err)
+      setError('Failed to fetch evaluation results')
+      setLoading(false)
     }
-  };
-  
+  }
+
+  const getScoreColor = (score: number) => {
+    if (score >= 80) return '#059669'
+    if (score >= 60) return '#D97706'
+    return '#DC2626'
+  }
+
+  const getScoreBg = (score: number) => {
+    if (score >= 80) return '#D1FAE5'
+    if (score >= 60) return '#FEF3C7'
+    return '#FEE2E2'
+  }
+
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading results...</p>
+      <div style={{ backgroundColor: "#ffffff", minHeight: "100vh" }}>
+        <div className="container" style={{ paddingTop: "2rem", paddingBottom: "2rem" }}>
+          <div style={{ textAlign: "center", padding: "3rem" }}>
+            <div style={{ fontSize: "3rem", marginBottom: "1rem" }}>⏳</div>
+            <h2 style={{ fontSize: "1.5rem", fontWeight: 600, marginBottom: "0.5rem", color: "#7C3AED" }}>
+              Evaluating Your Design...
+            </h2>
+            <p style={{ color: "#64748b" }}>
+              Our AI is analyzing your submission. This may take a few moments.
+            </p>
+          </div>
         </div>
       </div>
-    );
+    )
   }
-  
-  if (error || !result) {
+
+  if (error || !submission) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-center">
-          <h1 className="text-2xl font-bold text-red-600 mb-4">Error</h1>
-          <p className="text-gray-600 mb-4">{error || 'Results not found'}</p>
-          <button
-            onClick={() => router.push('/dashboard')}
-            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
-          >
-            Go to Dashboard
-          </button>
+      <div style={{ backgroundColor: "#ffffff", minHeight: "100vh" }}>
+        <div className="container" style={{ paddingTop: "2rem", paddingBottom: "2rem" }}>
+          <div style={{ textAlign: "center", padding: "3rem" }}>
+            <div style={{ fontSize: "3rem", marginBottom: "1rem" }}>❌</div>
+            <h2 style={{ fontSize: "1.5rem", fontWeight: 600, marginBottom: "0.5rem", color: "#DC2626" }}>
+              Error Loading Results
+            </h2>
+            <p style={{ color: "#64748b", marginBottom: "1.5rem" }}>
+              {error || 'Submission not found'}
+            </p>
+            <button
+              onClick={() => router.push('/design/tests')}
+              className="btn-primary"
+            >
+              Back to Tests
+            </button>
+          </div>
         </div>
       </div>
-    );
+    )
   }
-  
+
+  const isEvaluating = submission.final_score === 0 && !submission.feedback
+
   return (
-    <div className="min-h-screen bg-gray-50 py-12 px-4">
-      <div className="max-w-4xl mx-auto">
-        <h1 className="text-3xl font-bold mb-8">📊 Evaluation Results</h1>
-        
-        {/* Final Score Card */}
-        <div className="bg-gradient-to-br from-purple-500 to-indigo-600 rounded-2xl p-12 text-white text-center mb-8">
-          <p className="text-xl mb-2 opacity-90">Final Score</p>
-          <p className="text-7xl font-bold">{result.final_score.toFixed(1)}</p>
-          <p className="text-2xl mt-2 opacity-90">out of 100</p>
-        </div>
-        
-        {/* Score Breakdown */}
-        <div className="grid grid-cols-2 gap-6 mb-8">
-          <div className="bg-white rounded-xl p-6 shadow-sm">
-            <h3 className="text-lg font-bold mb-3 text-gray-900">Rule-Based Score (60%)</h3>
-            <p className="text-5xl font-bold text-blue-600 mb-2">
-              {result.rule_based_score.toFixed(1)}
+    <div style={{ backgroundColor: "#ffffff", minHeight: "100vh" }}>
+      <div className="container" style={{ paddingTop: "2rem", paddingBottom: "2rem" }}>
+        <div className="card">
+          {/* Header */}
+          <div style={{ textAlign: "center", marginBottom: "2rem" }}>
+            <div style={{ fontSize: "4rem", marginBottom: "1rem" }}>
+              {isEvaluating ? '⏳' : submission.final_score >= 80 ? '🎉' : submission.final_score >= 60 ? '👍' : '💪'}
+            </div>
+            <h1 style={{ fontSize: "2rem", fontWeight: 600, marginBottom: "0.5rem", color: "#1a1625" }}>
+              {isEvaluating ? 'Evaluation in Progress' : 'Design Evaluation Complete'}
+            </h1>
+            <p style={{ color: "#64748b", fontSize: "1.125rem" }}>
+              {isEvaluating 
+                ? 'Your submission is being evaluated by our AI. Please wait...'
+                : 'Here are your detailed results and feedback'}
             </p>
-            <p className="text-sm text-gray-600 mb-4">
-              Based on design structure, alignment, spacing, and consistency
-            </p>
-            {result.feedback.rule_based?.breakdown && (
-              <div className="mt-4 pt-4 border-t border-gray-200">
-                <p className="text-xs font-bold text-gray-700 mb-2">Breakdown:</p>
-                <div className="space-y-1 text-xs text-gray-600">
-                  {Object.entries(result.feedback.rule_based.breakdown).map(([key, value]) => (
-                    <div key={key} className="flex justify-between">
-                      <span className="capitalize">{key.replace('_', ' ')}:</span>
-                      <span className="font-medium">{value?.toFixed(1)}</span>
-                    </div>
-                  ))}
+          </div>
+
+          {!isEvaluating && (
+            <>
+              {/* Score Summary */}
+              <div style={{ 
+                display: "grid", 
+                gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", 
+                gap: "1rem", 
+                marginBottom: "2rem" 
+              }}>
+                <div style={{ 
+                  padding: "1.5rem", 
+                  border: "1px solid #E8B4FA", 
+                  borderRadius: "0.5rem", 
+                  textAlign: "center",
+                  backgroundColor: "#F9F5FF"
+                }}>
+                  <div style={{ fontSize: "0.875rem", color: "#7C3AED", fontWeight: 600, marginBottom: "0.5rem" }}>
+                    Final Score
+                  </div>
+                  <div style={{ 
+                    fontSize: "2.5rem", 
+                    fontWeight: 700, 
+                    color: getScoreColor(submission.final_score) 
+                  }}>
+                    {Math.round(submission.final_score)}
+                  </div>
+                  <div style={{ fontSize: "0.875rem", color: "#64748b" }}>out of 100</div>
+                </div>
+
+                <div style={{ 
+                  padding: "1.5rem", 
+                  border: "1px solid #E8B4FA", 
+                  borderRadius: "0.5rem", 
+                  textAlign: "center" 
+                }}>
+                  <div style={{ fontSize: "0.875rem", color: "#7C3AED", fontWeight: 600, marginBottom: "0.5rem" }}>
+                    Rule-Based Score
+                  </div>
+                  <div style={{ fontSize: "2rem", fontWeight: 700, color: "#1a1625" }}>
+                    {Math.round(submission.rule_based_score)}
+                  </div>
+                  <div style={{ fontSize: "0.875rem", color: "#64748b" }}>Technical metrics</div>
+                </div>
+
+                <div style={{ 
+                  padding: "1.5rem", 
+                  border: "1px solid #E8B4FA", 
+                  borderRadius: "0.5rem", 
+                  textAlign: "center" 
+                }}>
+                  <div style={{ fontSize: "0.875rem", color: "#7C3AED", fontWeight: 600, marginBottom: "0.5rem" }}>
+                    AI-Based Score
+                  </div>
+                  <div style={{ fontSize: "2rem", fontWeight: 700, color: "#1a1625" }}>
+                    {Math.round(submission.ai_based_score)}
+                  </div>
+                  <div style={{ fontSize: "0.875rem", color: "#64748b" }}>Design quality</div>
                 </div>
               </div>
-            )}
-          </div>
-          
-          <div className="bg-white rounded-xl p-6 shadow-sm">
-            <h3 className="text-lg font-bold mb-3 text-gray-900">AI-Based Score (40%)</h3>
-            <p className="text-5xl font-bold text-purple-600 mb-2">
-              {result.ai_based_score.toFixed(1)}
-            </p>
-            <p className="text-sm text-gray-600 mb-4">
-              Based on visual aesthetics, UX clarity, and creativity
-            </p>
-            {result.feedback.ai_based?.breakdown && (
-              <div className="mt-4 pt-4 border-t border-gray-200">
-                <p className="text-xs font-bold text-gray-700 mb-2">Breakdown:</p>
-                <div className="space-y-1 text-xs text-gray-600">
-                  {Object.entries(result.feedback.ai_based.breakdown).map(([key, value]) => (
-                    <div key={key} className="flex justify-between">
-                      <span className="capitalize">{key.replace('_', ' ')}:</span>
-                      <span className="font-medium">{value?.toFixed(1)}</span>
-                    </div>
-                  ))}
+
+              {/* Rule-Based Feedback */}
+              {submission.feedback?.rule_based?.details && Object.keys(submission.feedback.rule_based.details).length > 0 && (
+                <div style={{ marginBottom: "2rem" }}>
+                  <h2 style={{ fontSize: "1.5rem", fontWeight: 600, marginBottom: "1rem", color: "#7C3AED" }}>
+                    📊 Technical Analysis
+                  </h2>
+                  <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+                    {Object.entries(submission.feedback.rule_based.details).map(([key, detail]: [string, any]) => (
+                      <div 
+                        key={key}
+                        style={{ 
+                          padding: "1rem", 
+                          border: "1px solid #E8B4FA", 
+                          borderRadius: "0.5rem",
+                          backgroundColor: "#F9F5FF"
+                        }}
+                      >
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.5rem" }}>
+                          <h3 style={{ fontSize: "1rem", fontWeight: 600, color: "#1a1625", textTransform: "capitalize" }}>
+                            {key.replace(/_/g, ' ')}
+                          </h3>
+                          <span style={{
+                            padding: "0.25rem 0.75rem",
+                            borderRadius: "0.375rem",
+                            fontSize: "0.875rem",
+                            fontWeight: 600,
+                            color: getScoreColor(detail.score),
+                            backgroundColor: getScoreBg(detail.score),
+                          }}>
+                            {Math.round(detail.score)}/100
+                          </span>
+                        </div>
+                        <p style={{ fontSize: "0.875rem", color: "#64748b" }}>
+                          {detail.feedback}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
                 </div>
-              </div>
+              )}
+
+              {/* Overall Feedback */}
+              {submission.feedback?.overall && (
+                <div style={{ marginBottom: "2rem" }}>
+                  <h2 style={{ fontSize: "1.5rem", fontWeight: 600, marginBottom: "1rem", color: "#7C3AED" }}>
+                    📝 Overall Feedback
+                  </h2>
+                  <div style={{ 
+                    padding: "1.5rem", 
+                    border: "1px solid #E8B4FA", 
+                    borderRadius: "0.5rem",
+                    backgroundColor: "#F9F5FF"
+                  }}>
+                    <p style={{ fontSize: "1rem", color: "#1a1625", lineHeight: "1.6" }}>
+                      {submission.feedback.overall}
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* Strengths and Improvements */}
+              {(submission.feedback?.strengths || submission.feedback?.improvements || 
+                submission.feedback?.ai_based?.strengths || submission.feedback?.ai_based?.improvements) && (
+                <div style={{ marginBottom: "2rem" }}>
+                  <h2 style={{ fontSize: "1.5rem", fontWeight: 600, marginBottom: "1rem", color: "#7C3AED" }}>
+                    💡 Detailed Feedback
+                  </h2>
+                  <div style={{ 
+                    padding: "1.5rem", 
+                    border: "1px solid #E8B4FA", 
+                    borderRadius: "0.5rem",
+                    backgroundColor: "#F9F5FF"
+                  }}>
+                    {(submission.feedback.strengths || submission.feedback.ai_based?.strengths) && 
+                     (submission.feedback.strengths?.length > 0 || submission.feedback.ai_based?.strengths?.length > 0) && (
+                      <div style={{ marginBottom: "1.5rem" }}>
+                        <h3 style={{ fontSize: "1rem", fontWeight: 600, color: "#059669", marginBottom: "0.5rem" }}>
+                          ✅ Strengths
+                        </h3>
+                        <ul style={{ paddingLeft: "1.5rem", color: "#1a1625" }}>
+                          {(submission.feedback.strengths || submission.feedback.ai_based?.strengths || []).map((strength, index) => (
+                            <li key={index} style={{ marginBottom: "0.25rem" }}>{strength}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+
+                    {(submission.feedback.improvements || submission.feedback.ai_based?.improvements) && 
+                     (submission.feedback.improvements?.length > 0 || submission.feedback.ai_based?.improvements?.length > 0) && (
+                      <div>
+                        <h3 style={{ fontSize: "1rem", fontWeight: 600, color: "#D97706", marginBottom: "0.5rem" }}>
+                          💡 Areas for Improvement
+                        </h3>
+                        <ul style={{ paddingLeft: "1.5rem", color: "#1a1625" }}>
+                          {(submission.feedback.improvements || submission.feedback.ai_based?.improvements || []).map((improvement, index) => (
+                            <li key={index} style={{ marginBottom: "0.25rem" }}>{improvement}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* AI Feedback (if separate) */}
+              {submission.feedback?.ai_based?.feedback && (
+                <div style={{ marginBottom: "2rem" }}>
+                  <h2 style={{ fontSize: "1.5rem", fontWeight: 600, marginBottom: "1rem", color: "#7C3AED" }}>
+                    🤖 AI Design Review
+                  </h2>
+                  <div style={{ 
+                    padding: "1.5rem", 
+                    border: "1px solid #E8B4FA", 
+                    borderRadius: "0.5rem",
+                    backgroundColor: "#F9F5FF"
+                  }}>
+                    <p style={{ fontSize: "1rem", color: "#1a1625", lineHeight: "1.6" }}>
+                      {submission.feedback.ai_based.feedback}
+                    </p>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+
+          {/* Actions */}
+          <div style={{ display: "flex", justifyContent: "center", gap: "1rem", marginTop: "2rem" }}>
+            <button
+              onClick={() => router.push('/design/tests')}
+              className="btn-secondary"
+            >
+              Back to Tests
+            </button>
+            {!isEvaluating && (
+              <button
+                onClick={() => window.print()}
+                className="btn-primary"
+              >
+                📄 Download Results
+              </button>
             )}
           </div>
-        </div>
-        
-        {/* Feedback */}
-        <div className="bg-white rounded-xl p-6 shadow-sm mb-8">
-          <h3 className="text-lg font-bold mb-4 text-gray-900">📝 Evaluation Feedback</h3>
-          
-          {result.feedback.overall && (
-            <p className="text-gray-700 leading-relaxed mb-4 p-4 bg-blue-50 rounded-lg">
-              {result.feedback.overall}
-            </p>
-          )}
-          
-          {result.feedback.strengths && result.feedback.strengths.length > 0 && (
-            <div className="mb-4">
-              <p className="font-bold text-green-700 mb-2">✅ Strengths:</p>
-              <ul className="list-disc list-inside space-y-1 text-gray-700">
-                {result.feedback.strengths.map((strength, i) => (
-                  <li key={i}>{strength}</li>
-                ))}
-              </ul>
-            </div>
-          )}
-          
-          {result.feedback.improvements && result.feedback.improvements.length > 0 && (
-            <div>
-              <p className="font-bold text-orange-700 mb-2">💡 Areas for Improvement:</p>
-              <ul className="list-disc list-inside space-y-1 text-gray-700">
-                {result.feedback.improvements.map((improvement, i) => (
-                  <li key={i}>{improvement}</li>
-                ))}
-              </ul>
-            </div>
-          )}
-        </div>
-        
-        {/* Score Calculation */}
-        {result.feedback.weights && (
-          <div className="bg-gray-100 rounded-xl p-6 mb-8">
-            <h3 className="text-lg font-bold mb-4 text-gray-900">Score Calculation</h3>
-            <div className="space-y-2 text-sm text-gray-700">
-              <p>
-                Rule-Based: {result.rule_based_score.toFixed(1)} × {result.feedback.weights.rule_based} = {
-                  (result.rule_based_score * 0.6).toFixed(1)
-                }
-              </p>
-              <p>
-                AI-Based: {result.ai_based_score.toFixed(1)} × {result.feedback.weights.ai_based} = {
-                  (result.ai_based_score * 0.4).toFixed(1)
-                }
-              </p>
-              <p className="font-bold pt-2 border-t border-gray-300">
-                Final Score: {result.final_score.toFixed(1)}
-              </p>
-            </div>
-          </div>
-        )}
-        
-        {/* Actions */}
-        <div className="flex gap-4">
-          <button
-            onClick={() => router.push('/')}
-            className="flex-1 px-6 py-3 bg-blue-600 text-white rounded-lg font-bold hover:bg-blue-700"
-          >
-            Go to Dashboard
-          </button>
         </div>
       </div>
     </div>
-  );
+  )
 }
+
+export const getServerSideProps: GetServerSideProps = requireAuth

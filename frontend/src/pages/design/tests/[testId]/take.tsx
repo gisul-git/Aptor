@@ -102,10 +102,34 @@ export default function DesignAssessmentTakePage() {
   }, [workspace, timeLeft]);
 
   // Submit design
-  const handleSubmit = () => {
-    alert('Design submitted successfully!\n\n(Submission and evaluation logic will be implemented here)');
-    // TODO: Implement actual submission
-    // router.push(`/design/tests/${testId}/results`);
+  const handleSubmit = async () => {
+    try {
+      // TODO: Implement actual submission to backend
+      const response = await fetch(`${API_URL}/submit`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          session_id: workspace?.session_id,
+          user_id: workspace?.user_id || 'candidate-' + Date.now(),
+          question_id: question?._id || question?.id,
+          file_id: workspace?.file_id,
+        })
+      });
+      
+      if (!response.ok) {
+        throw new Error('Submission failed');
+      }
+      
+      const result = await response.json();
+      console.log('✅ Submission successful:', result);
+      
+      // Redirect to results page
+      window.location.href = `/design/results/${result.submission_id}`;
+      
+    } catch (error) {
+      console.error('Submission error:', error);
+      alert('Submission failed. Please try again.');
+    }
   };
 
   // LOADING STATE

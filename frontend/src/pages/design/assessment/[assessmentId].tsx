@@ -433,13 +433,17 @@ export default function DesignAssessmentPage() {
         })
       });
       
-      if (!submitRes.ok) throw new Error('Submission failed');
+      if (!submitRes.ok) {
+        const errorData = await submitRes.json().catch(() => ({}));
+        throw new Error(errorData.detail || 'Submission failed');
+      }
       
       const result = await submitRes.json();
       console.log('✅ Submission successful:', result);
+      console.log('📍 Redirecting to:', `/design/results/${result.submission_id}`);
       
-      // Redirect to results
-      router.push(`/design/results/${result.submission_id}`);
+      // Use window.location for more reliable redirect
+      window.location.href = `/design/results/${result.submission_id}`;
       
     } catch (err: any) {
       console.error('❌ Submission error:', err);

@@ -67,6 +67,7 @@ services:
       - AIML_SERVICE_URL=http://aiml-service:3003
       - DSA_SERVICE_URL=http://dsa-service:3004
       - PROCTORING_SERVICE_URL=http://proctoring-service:3005
+      - DESIGN_SERVICE_URL=http://design-service:3006
       - SUPER_ADMIN_SERVICE_URL=http://super-admin-service:3006
       - CORS_ORIGINS=${CORS_ORIGINS:-https://qa.aaptor.com,http://frontend:3000,http://localhost:3000,http://localhost:3001}
       - EMPLOYEE_SERVICE_URL=${EMPLOYEE_SERVICE_URL:-http://employee-service:4005}
@@ -241,6 +242,29 @@ services:
       - SENDGRID_API_KEY=${SENDGRID_API_KEY}
       - SENDGRID_FROM_EMAIL=${SENDGRID_FROM_EMAIL}
       - SENDGRID_FROM_NAME=${SENDGRID_FROM_NAME:-AI Assessment Platform}
+    depends_on:
+      - redis
+    networks:
+      - microservices-network
+    restart: unless-stopped
+
+  # Design Service
+  design-service:
+    build:
+      context: ./services/design-service
+      dockerfile: Dockerfile
+    container_name: gisul-design-service
+    ports:
+      - "3006:3006"
+    environment:
+      - PORT=3006
+      - MONGODB_URL=${MONGO_URI}
+      - MONGODB_DB_NAME=aptor_design
+      - JWT_SECRET_KEY=${JWT_SECRET}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
     depends_on:
       - redis
     networks:

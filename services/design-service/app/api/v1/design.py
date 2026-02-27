@@ -406,6 +406,52 @@ async def get_test(test_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.patch("/tests/{test_id}/publish")
+async def toggle_test_publish_status(test_id: str, request: PublishStatusRequest):
+    """Toggle test publish status"""
+    try:
+        if design_repository.db is None:
+            await design_repository.initialize()
+        
+        is_published = request.is_published
+        
+        db = design_repository.db
+        
+        # Generate test token if publishing
+        import secrets
+        test_token = secrets.token_urlsafe(32) if is_published else None
+        
+        update_data = {
+            "is_published": is_published,
+            "updated_at": datetime.utcnow()
+        }
+        
+        if test_token:
+            update_data["test_token"] = test_token
+        
+        result = await db.design_tests.update_one(
+            {"_id": test_id},
+            {"$set": update_data}
+        )
+        
+        if result.matched_count == 0:
+            raise HTTPException(status_code=404, detail="Test not found")
+        
+        logger.info(f"Test {test_id} publish status updated to {is_published}")
+        
+        return {
+            "message": "Publish status updated successfully",
+            "is_published": is_published,
+            "test_token": test_token
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to update publish status: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # Penpot Workspace Management
 @router.post("/workspace/create", response_model=Dict[str, Any])
 async def create_workspace(request: CreateSessionRequest):
@@ -1060,3 +1106,211 @@ async def health_check():
             status_code=503,
             content={"status": "unhealthy", "error": str(e)}
         )
+
+
+# Candidate Management Endpoints
+class AddCandidateRequest(BaseModel):
+    name: str
+    email: str
+
+
+@router.post("/tests/{test_id}/add-candidate")
+async def add_candidate(test_id: str, request: AddCandidateRequest):
+    """Add a single candidate to a test"""
+    try:
+        if design_repository.db is None:
+            await design_repository.initialize()
+        
+        db = design_repository.db
+        
+        # Check if test exists
+        test = await db.design_tests.find_one({"_id": test_id})
+        if not test:
+            raise HTTPException(status_code=404, detail="Test not found")
+        
+        # Check if candidate already exists
+        existing = await db.design_candidates.find_one({
+            "test_id": test_id,
+            "email": request.email
+        })
+        
+        if existing:
+            raise HTTPException(status_code=400, detail="Candidate already exists for this test")
+        
+        # Create candidate document
+        candidate_doc = {
+            "test_id": test_id,
+            "name": request.name,
+            "email": request.email,
+            "invited": False,
+            "invited_at": None,
+            "started_at": None,
+            "submitted_at": None,
+            "has_submitted": False,
+            "submission_score": None,
+            "created_at": datetime.utcnow(),
+            "updated_at": datetime.utcnow()
+        }
+        
+        result = await db.design_candidates.insert_one(candidate_doc)
+        
+        logger.info(f"Added candidate {request.email} to test {test_id}")
+        
+        return {
+            "message": "Candidate added successfully",
+            "candidate_id": str(result.inserted_id)
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to add candidate: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/tests/{test_id}/bulk-add-candidates")
+async def bulk_add_candidates(test_id: str, file: UploadFile = File(...)):
+    """Bulk upload candidates from CSV file"""
+    try:
+        if design_repository.db is None:
+            await design_repository.initialize()
+        
+        db = design_repository.db
+        
+        # Check if test exists
+        test = await db.design_tests.find_one({"_id": test_id})
+        if not test:
+            raise HTTPException(status_code=404, detail="Test not found")
+        
+        # Read CSV file
+        import csv
+        import io
+        
+        contents = await file.read()
+        decoded = contents.decode('utf-8')
+        csv_reader = csv.DictReader(io.StringIO(decoded))
+        
+        success_count = 0
+        failed_count = 0
+        duplicate_count = 0
+        failed_rows = []
+        
+        for row in csv_reader:
+            try:
+                name = row.get('name', '').strip()
+                email = row.get('email', '').strip()
+                
+                if not name or not email:
+                    failed_count += 1
+                    failed_rows.append({"row": row, "reason": "Missing name or email"})
+                    continue
+                
+                # Check if candidate already exists
+                existing = await db.design_candidates.find_one({
+                    "test_id": test_id,
+                    "email": email
+                })
+                
+                if existing:
+                    duplicate_count += 1
+                    continue
+                
+                # Create candidate document
+                candidate_doc = {
+                    "test_id": test_id,
+                    "name": name,
+                    "email": email,
+                    "invited": False,
+                    "invited_at": None,
+                    "started_at": None,
+                    "submitted_at": None,
+                    "has_submitted": False,
+                    "submission_score": None,
+                    "created_at": datetime.utcnow(),
+                    "updated_at": datetime.utcnow()
+                }
+                
+                await db.design_candidates.insert_one(candidate_doc)
+                success_count += 1
+                
+            except Exception as e:
+                failed_count += 1
+                failed_rows.append({"row": row, "reason": str(e)})
+        
+        logger.info(f"Bulk upload to test {test_id}: {success_count} success, {failed_count} failed, {duplicate_count} duplicates")
+        
+        return {
+            "message": "Bulk upload completed",
+            "success_count": success_count,
+            "failed_count": failed_count,
+            "duplicate_count": duplicate_count,
+            "failed_rows": failed_rows
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to bulk upload candidates: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/tests/{test_id}/candidates")
+async def get_test_candidates(test_id: str):
+    """Get all candidates for a test"""
+    try:
+        if design_repository.db is None:
+            await design_repository.initialize()
+        
+        db = design_repository.db
+        
+        # Check if test exists
+        test = await db.design_tests.find_one({"_id": test_id})
+        if not test:
+            raise HTTPException(status_code=404, detail="Test not found")
+        
+        # Get all candidates
+        candidates = await db.design_candidates.find(
+            {"test_id": test_id}
+        ).sort("created_at", -1).to_list(length=None)
+        
+        # Convert ObjectId to string
+        for candidate in candidates:
+            candidate["_id"] = str(candidate["_id"])
+        
+        logger.info(f"Retrieved {len(candidates)} candidates for test {test_id}")
+        
+        return candidates
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get candidates: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/tests/{test_id}/candidates/{candidate_id}")
+async def remove_candidate(test_id: str, candidate_id: str):
+    """Remove a candidate from a test"""
+    try:
+        if design_repository.db is None:
+            await design_repository.initialize()
+        
+        db = design_repository.db
+        
+        result = await db.design_candidates.delete_one({
+            "_id": ObjectId(candidate_id),
+            "test_id": test_id
+        })
+        
+        if result.deleted_count == 0:
+            raise HTTPException(status_code=404, detail="Candidate not found")
+        
+        logger.info(f"Removed candidate {candidate_id} from test {test_id}")
+        
+        return {"message": "Candidate removed successfully"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to remove candidate: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
