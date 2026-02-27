@@ -241,19 +241,21 @@ jobs:
                   docker network disconnect -f aptor_microservices-network "$container" 2>/dev/null || true
                 fi
               done
-              sleep 1
+              sleep 5
             fi
             # Remove network
             docker network rm aptor_microservices-network 2>/dev/null || true
-            # Prune unused networks to ensure it's gone
             docker network prune -f 2>/dev/null || true
-            # Wait and verify network is removed
-            sleep 2
-            if docker network inspect aptor_microservices-network >/dev/null 2>&1; then
-              echo "⚠️  Network still exists, force removing again..."
-              docker network rm -f aptor_microservices-network 2>/dev/null || true
-              sleep 1
-            fi
+            sleep 5
+            for i in 1 2 3 4 5; do
+              if ! docker network inspect aptor_microservices-network >/dev/null 2>&1; then
+                echo "✅ Network confirmed gone"
+                break
+              fi
+              echo "⏳ Network still exists, waiting... ($i/5)"
+              docker network rm aptor_microservices-network 2>/dev/null || true
+              sleep 3
+            done
             
             # Build and start services
             echo "🔨 Building services..."
@@ -277,24 +279,18 @@ jobs:
             
             # Final check - ensure network doesn't exist before starting
             echo "🔍 Final network check before starting services..."
-            max_network_retries=3
-            network_retry=0
-            while [ $network_retry -lt $max_network_retries ] && docker network inspect aptor_microservices-network >/dev/null 2>&1; do
-              echo "⚠️  Network still exists (attempt $((network_retry + 1))/$max_network_retries), removing..."
-              docker network rm -f aptor_microservices-network 2>/dev/null || true
-              sleep 2
-              network_retry=$((network_retry + 1))
+            docker network rm aptor_microservices-network 2>/dev/null || true
+            docker network prune -f 2>/dev/null || true
+            sleep 5
+            for i in 1 2 3 4 5; do
+              if ! docker network inspect aptor_microservices-network >/dev/null 2>&1; then
+                echo "✅ Network confirmed gone"
+                break
+              fi
+              echo "⏳ Network still exists, waiting... ($i/5)"
+              docker network rm aptor_microservices-network 2>/dev/null || true
+              sleep 3
             done
-            
-            # Verify network is gone
-            if docker network inspect aptor_microservices-network >/dev/null 2>&1; then
-              echo "❌ ERROR: Network still exists after cleanup attempts!"
-              echo "Force pruning all unused networks..."
-              docker network prune -f
-              sleep 1
-            else
-              echo "✅ Network successfully removed"
-            fi
             
             # One final container check - check by exact names to be absolutely sure
             echo "🔍 Final container check before docker-compose up..."
@@ -328,7 +324,8 @@ jobs:
             
             # Verify all are gone
             sleep 2
-            remaining=$(docker ps -a --filter "name=gisul-" --format "{{.Names}}" | grep -v "gisul-aiml-agent-service" | wc -l)
+            remaining=$(docker ps -a --filter "name=gisul-" --format "{{.Names}}" | grep -v "gisul-aiml-agent-service" | wc -l | tr -d ' ')
+            remaining=${remaining:-0}
             if [ "$remaining" -gt 0 ]; then
               echo "❌ ERROR: Containers still exist after final cleanup!"
               docker ps -a --filter "name=gisul-"
@@ -376,11 +373,24 @@ jobs:
               echo "✅ Verified: No containers exist, safe to proceed"
             fi
             
+            echo "👻 Checking for ghost containers via docker inspect..."
+            for container_name in gisul-frontend gisul-api-gateway gisul-auth-service \
+                                 gisul-ai-assessment-service gisul-custom-mcq-service \
+                                 gisul-aiml-service gisul-dsa-service gisul-proctoring-service \
+                                 gisul-super-admin-service gisul-employee-service gisul-demo-service gisul-redis; do
+              ghost_id=$(docker inspect "$container_name" --format "{{.Id}}" 2>/dev/null || true)
+              if [ -n "$ghost_id" ]; then
+                echo "👻 Found ghost container: $container_name ($ghost_id), force removing..."
+                docker rm -f "$ghost_id" 2>/dev/null || true
+              fi
+            done
+            sleep 2
+            
             echo "🚀 Starting services..."
             # Use --force-recreate to ensure any containers in "Creating" or "Created" state are removed first
             # This prevents conflicts when docker compose tries to create containers that already exist
             # If docker-compose fails, clean up and exit to prevent partial state
-            if ! docker compose up -d --force-recreate --remove-orphans; then
+            if ! docker compose up -d --remove-orphans --force-recreate; then
               echo "❌ docker-compose up failed, cleaning up and exiting..."
               docker compose down --remove-orphans 2>/dev/null || true
               # Remove any containers that were created by exact name
