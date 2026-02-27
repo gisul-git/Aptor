@@ -283,64 +283,8 @@ jobs:
               sleep 1
             fi
             
-            # Final check - ensure network doesn't exist before starting
-            echo "🔍 Final network check before starting services..."
-            # Find the actual network name (Docker Compose may prefix it with directory name)
-            NETWORK_NAME=$(docker network ls --format "{{.Name}}" | grep -E "(aptor|gisul).*microservices-network" | head -1 || echo "aptor_microservices-network")
-            if [ -z "$NETWORK_NAME" ] || [ "$NETWORK_NAME" = "aptor_microservices-network" ]; then
-              # Try common variations
-              if docker network inspect aptor_microservices-network >/dev/null 2>&1; then
-                NETWORK_NAME="aptor_microservices-network"
-              elif docker network inspect aptor-microservices-network >/dev/null 2>&1; then
-                NETWORK_NAME="aptor-microservices-network"
-              else
-                NETWORK_NAME=""
-              fi
-            fi
-            
-            if [ -n "$NETWORK_NAME" ] && docker network inspect "$NETWORK_NAME" >/dev/null 2>&1; then
-              echo "Found network: $NETWORK_NAME"
-              # Disconnect ALL containers including aiml-agent-service
-              echo "Disconnecting all containers from network..."
-              CONTAINERS=$(docker network inspect "$NETWORK_NAME" --format '{{range .Containers}}{{.Name}} {{end}}' 2>/dev/null || echo "")
-              if [ -n "$CONTAINERS" ]; then
-                echo "$CONTAINERS" | tr ' ' '\n' | grep -v '^$' | while read container; do
-                  if [ -n "$container" ]; then
-                    echo "Disconnecting container: $container"
-                    docker network disconnect -f "$NETWORK_NAME" "$container" 2>/dev/null || true
-                  fi
-                done
-                sleep 2
-              fi
-              
-              # Try to remove network with retries
-              max_network_retries=3
-              network_retry=0
-              while [ $network_retry -lt $max_network_retries ]; do
-                if ! docker network inspect "$NETWORK_NAME" >/dev/null 2>&1; then
-                  echo "✅ Network $NETWORK_NAME successfully removed"
-                  break
-                fi
-                network_retry=$((network_retry + 1))
-                echo "⚠️  Network still exists (attempt $network_retry/$max_network_retries), removing..."
-                docker network rm -f "$NETWORK_NAME" 2>/dev/null || true
-                sleep 2
-              done
-              
-              # Final check and force prune if still exists
-              if docker network inspect "$NETWORK_NAME" >/dev/null 2>&1; then
-                echo "⚠️  Network still exists after retries, force pruning..."
-                docker network prune -f 2>/dev/null || true
-                sleep 1
-                if docker network inspect "$NETWORK_NAME" >/dev/null 2>&1; then
-                  echo "⚠️  WARNING: Network $NETWORK_NAME still exists but will be recreated by docker-compose"
-                else
-                  echo "✅ Network removed via prune"
-                fi
-              fi
-            else
-              echo "✅ No network found to remove"
-            fi
+            # Network cleanup already done earlier, docker-compose will create it fresh
+            echo "✅ Network cleanup completed earlier, docker-compose will create network fresh"
             
             # One final container check - check by exact names to be absolutely sure
             echo "🔍 Final container check before docker-compose up..."
@@ -374,19 +318,16 @@ jobs:
             
             # Verify all are gone
             sleep 2
-            remaining=$(docker ps -a --filter "name=gisul-" --format "{{.Names}}" | grep -v "gisul-aiml-agent-service" | wc -l)
-            if [ "$remaining" -gt 0 ]; then
+            remaining=$(docker ps -a --filter "name=gisul-" --format "{{.Names}}" | grep -v "gisul-aiml-agent-service" | wc -l | tr -d ' ')
+            # Ensure remaining is a number, default to 0 if empty
+            remaining=${remaining:-0}
+            if [ "$remaining" -gt 0 ] 2>/dev/null; then
               echo "❌ ERROR: Containers still exist after final cleanup!"
               docker ps -a --filter "name=gisul-"
               echo "Force removing all..."
               docker ps -a --filter "name=gisul-" --format "{{.ID}}" | grep -v "$(docker ps -a --filter "name=gisul-aiml-agent-service" --format "{{.ID}}")" | xargs -r docker rm -f 2>/dev/null || true
               sleep 2
             fi
-            
-            # Use docker-compose down first to ensure clean state, then up
-            echo "🧹 Running docker-compose down to ensure clean state..."
-            docker compose down --remove-orphans 2>/dev/null || true
-            sleep 2
             
             # Final check one more time - use exact name matching
             echo "🔍 Absolute final check - removing any remaining containers..."
@@ -442,6 +383,32 @@ jobs:
                 docker rm -f "$container_name" 2>/dev/null || true
               done
               exit 1
+            fi
+            
+            # Wait for network to be fully ready before containers start
+            echo "⏳ Waiting for network to be ready..."
+            NETWORK_READY=false
+            NETWORK_RETRIES=10
+            NETWORK_RETRY=0
+            while [ $NETWORK_RETRY -lt $NETWORK_RETRIES ]; do
+              # Find the actual network name
+              NETWORK_NAME=$(docker network ls --format "{{.Name}}" | grep -E "(aptor|gisul).*microservices-network" | head -1 || echo "")
+              if [ -n "$NETWORK_NAME" ] && docker network inspect "$NETWORK_NAME" >/dev/null 2>&1; then
+                # Check if network is ready (has bridge driver and is not in error state)
+                NETWORK_STATE=$(docker network inspect "$NETWORK_NAME" --format '{{.Driver}}' 2>/dev/null || echo "")
+                if [ "$NETWORK_STATE" = "bridge" ]; then
+                  NETWORK_READY=true
+                  echo "✅ Network $NETWORK_NAME is ready"
+                  break
+                fi
+              fi
+              NETWORK_RETRY=$((NETWORK_RETRY + 1))
+              echo "Waiting for network... (attempt $NETWORK_RETRY/$NETWORK_RETRIES)"
+              sleep 1
+            done
+            
+            if [ "$NETWORK_READY" = "false" ]; then
+              echo "⚠️  WARNING: Network may not be fully ready, but continuing..."
             fi
             
             # Wait for services
