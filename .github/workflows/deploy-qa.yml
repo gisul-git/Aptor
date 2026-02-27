@@ -337,11 +337,6 @@ jobs:
               sleep 2
             fi
             
-            # Use docker-compose down first to ensure clean state, then up
-            echo "🧹 Running docker-compose down to ensure clean state..."
-            docker compose down --remove-orphans 2>/dev/null || true
-            sleep 2
-            
             # Final check one more time - use exact name matching
             echo "🔍 Absolute final check - removing any remaining containers..."
             for container_name in gisul-frontend gisul-api-gateway gisul-auth-service \
