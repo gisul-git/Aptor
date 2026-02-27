@@ -53,6 +53,10 @@ export function useTabSwitchProctor({
   
   // Track fullscreen state
   const wasFullscreenRef = useRef(false);
+  
+  // Throttling for FOCUS_LOST events (prevent rapid duplicate events)
+  const lastFocusLostTimeRef = useRef<number>(0);
+  const FOCUS_LOST_THROTTLE_MS = 2000; // 2 seconds between FOCUS_LOST events
 
   // Function to record a violation
   const recordViolation = useCallback(async (
@@ -116,6 +120,15 @@ export function useTabSwitchProctor({
       // Only record if not already tracked by visibility change
       // This handles cases like switching to another app on desktop
       if (!document.hidden && !isBlurredRef.current) {
+        const now = Date.now();
+        
+        // Throttle: Only record if enough time has passed since last FOCUS_LOST event
+        if (now - lastFocusLostTimeRef.current < FOCUS_LOST_THROTTLE_MS) {
+          console.log("[Proctor] FOCUS_LOST throttled - too soon after previous event");
+          return;
+        }
+        
+        lastFocusLostTimeRef.current = now;
         recordViolation("FOCUS_LOST");
         isBlurredRef.current = true;
       }

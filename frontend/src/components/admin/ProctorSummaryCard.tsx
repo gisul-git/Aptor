@@ -16,6 +16,13 @@ const DEFAULT_EVENT_TYPE_LABELS: Record<string, string> = {
   GAZE_AWAY: "Gaze away detected",
   MULTI_FACE: "Multiple faces detected",
   SPOOF_DETECTED: "Spoof attempt detected",
+  // Activity pattern events
+  RAPID_CLICKING: "Rapid clicking detected",
+  COPY_PASTE_DETECTED: "Copy-paste pattern detected",
+  EXCESSIVE_MOUSE_MOVEMENT: "Excessive mouse movement",
+  PROLONGED_INACTIVITY: "Prolonged inactivity",
+  SUSPICIOUS_KEYBOARD_PATTERN: "Suspicious keyboard pattern",
+  EXCESSIVE_SCROLLING: "Excessive scrolling",
 };
 
 // Order of event types for display (most important first)
@@ -34,6 +41,13 @@ const EVENT_TYPE_ORDER = [
   "GAZE_AWAY",
   "MULTI_FACE",
   "SPOOF_DETECTED",
+  // Activity pattern events
+  "RAPID_CLICKING",
+  "COPY_PASTE_DETECTED",
+  "EXCESSIVE_MOUSE_MOVEMENT",
+  "PROLONGED_INACTIVITY",
+  "SUSPICIOUS_KEYBOARD_PATTERN",
+  "EXCESSIVE_SCROLLING",
 ];
 
 interface ProctorSummaryCardProps {

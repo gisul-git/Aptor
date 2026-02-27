@@ -135,7 +135,7 @@ jobs:
             for container in gisul-frontend gisul-api-gateway gisul-auth-service \
                             gisul-ai-assessment-service gisul-custom-mcq-service \
                             gisul-aiml-service gisul-dsa-service gisul-proctoring-service \
-                            gisul-super-admin-service gisul-employee-service gisul-redis; do
+                            gisul-super-admin-service gisul-employee-service gisul-demo-service gisul-redis; do
               # Try multiple times to ensure removal
               for attempt in 1 2 3; do
                 if docker ps -a --format "{{.Names}}" | grep -q "^${container}$"; then
@@ -201,7 +201,7 @@ jobs:
             
             # Final verification - ensure no conflicting containers exist
             echo "🔍 Final verification before build..."
-            conflicting_ids=$(docker ps -a --filter "name=gisul-" --format "{{.ID}} {{.Names}}" | grep -v "gisul-aiml-agent-service" | grep -E "(gisul-frontend|gisul-api-gateway|gisul-auth-service|gisul-ai-assessment-service|gisul-custom-mcq-service|gisul-aiml-service|gisul-dsa-service|gisul-proctoring-service|gisul-super-admin-service|gisul-employee-service|gisul-redis)" | awk '{print $1}' | tr '\n' ' ')
+            conflicting_ids=$(docker ps -a --filter "name=gisul-" --format "{{.ID}} {{.Names}}" | grep -v "gisul-aiml-agent-service" | grep -E "(gisul-frontend|gisul-api-gateway|gisul-auth-service|gisul-ai-assessment-service|gisul-custom-mcq-service|gisul-aiml-service|gisul-dsa-service|gisul-proctoring-service|gisul-super-admin-service|gisul-employee-service|gisul-demo-service|gisul-redis)" | awk '{print $1}' | tr '\n' ' ')
             if [ -n "$conflicting_ids" ]; then
               echo "❌ ERROR: Conflicting containers still exist, force removing by ID..."
               for id in $conflicting_ids; do
@@ -302,7 +302,7 @@ jobs:
             for container_name in gisul-frontend gisul-api-gateway gisul-auth-service \
                                  gisul-ai-assessment-service gisul-custom-mcq-service \
                                  gisul-aiml-service gisul-dsa-service gisul-proctoring-service \
-                                 gisul-super-admin-service gisul-employee-service gisul-redis; do
+                                 gisul-super-admin-service gisul-employee-service gisul-demo-service gisul-redis; do
               # Use grep for exact match instead of Docker filter (which doesn't support regex)
               container_id=$(docker ps -a --format "{{.ID}} {{.Names}}" | grep -E "^[a-f0-9]+ ${container_name}$" | awk '{print $1}' | head -1)
               if [ -n "$container_id" ]; then
@@ -347,7 +347,7 @@ jobs:
             for container_name in gisul-frontend gisul-api-gateway gisul-auth-service \
                                  gisul-ai-assessment-service gisul-custom-mcq-service \
                                  gisul-aiml-service gisul-dsa-service gisul-proctoring-service \
-                                 gisul-super-admin-service gisul-employee-service gisul-redis; do
+                                 gisul-super-admin-service gisul-employee-service gisul-demo-service gisul-redis; do
               # Check by exact name match
               if docker ps -a --format "{{.Names}}" | grep -qE "^${container_name}$"; then
                 echo "Force removing: $container_name"
@@ -365,7 +365,7 @@ jobs:
             
             # Last check - verify NO containers exist before docker-compose up
             echo "🔍 Last verification - ensuring zero containers exist..."
-            all_containers=$(docker ps -a --format "{{.Names}}" | grep -E "^(gisul-frontend|gisul-api-gateway|gisul-auth-service|gisul-ai-assessment-service|gisul-custom-mcq-service|gisul-aiml-service|gisul-dsa-service|gisul-proctoring-service|gisul-super-admin-service|gisul-employee-service|gisul-redis)$" | grep -v "gisul-aiml-agent-service" || true)
+            all_containers=$(docker ps -a --format "{{.Names}}" | grep -E "^(gisul-frontend|gisul-api-gateway|gisul-auth-service|gisul-ai-assessment-service|gisul-custom-mcq-service|gisul-aiml-service|gisul-dsa-service|gisul-proctoring-service|gisul-super-admin-service|gisul-employee-service|gisul-demo-service|gisul-redis)$" | grep -v "gisul-aiml-agent-service" || true)
             if [ -n "$all_containers" ]; then
               echo "❌ CRITICAL: Containers still exist right before docker-compose up!"
               echo "$all_containers"
@@ -392,7 +392,7 @@ jobs:
               for container_name in gisul-frontend gisul-api-gateway gisul-auth-service \
                                    gisul-ai-assessment-service gisul-custom-mcq-service \
                                    gisul-aiml-service gisul-dsa-service gisul-proctoring-service \
-                                   gisul-super-admin-service gisul-employee-service gisul-redis; do
+                                   gisul-super-admin-service gisul-employee-service gisul-demo-service gisul-redis; do
                 docker rm -f "$container_name" 2>/dev/null || true
               done
               exit 1

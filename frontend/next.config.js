@@ -27,6 +27,16 @@ const nextConfig = {
       ];
     }
     
+    // Suppress Face-API webpack warning about require() usage
+    // This is a known issue with @vladmandic/face-api and doesn't affect functionality
+    config.ignoreWarnings = [
+      ...(config.ignoreWarnings || []),
+      {
+        module: /node_modules\/@vladmandic\/face-api/,
+        message: /Critical dependency: require function is used in a way in which dependencies cannot be statically extracted/,
+      },
+    ];
+    
     return config;
   },
   // Proxy API requests to backend server (exclude NextAuth routes)

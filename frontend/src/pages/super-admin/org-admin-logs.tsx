@@ -109,6 +109,9 @@ export default function OrgAdminLogsPage() {
             >
               Org Admin Logs
             </Link>
+            <Link href="/super-admin/request-demos" style={{ padding: "0.75rem", textDecoration: "none", color: "#1f2937" }}>
+              Request Demos
+            </Link>
           </nav>
         </aside>
 
