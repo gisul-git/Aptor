@@ -231,27 +231,37 @@ jobs:
             
             # Remove network if it exists (will be recreated) - more aggressive cleanup
             echo "🧹 Cleaning up network..."
-            # Disconnect all containers from network first
-            if docker network inspect aptor_microservices-network >/dev/null 2>&1; then
-              echo "Disconnecting containers from network..."
-              docker network inspect aptor_microservices-network --format '{{range .Containers}}{{.Name}} {{end}}' | tr ' ' '\n' | grep -v '^$' | while read container; do
-                if [ -n "$container" ]; then
-                  docker network disconnect -f aptor_microservices-network "$container" 2>/dev/null || true
-                fi
-              done
+            # Find the actual network name (Docker Compose may prefix it with directory name)
+            NETWORK_NAME=$(docker network ls --format "{{.Name}}" | grep -E "(aptor|gisul).*microservices-network" | head -1 || echo "")
+            if [ -z "$NETWORK_NAME" ]; then
+              # Try common variations
+              if docker network inspect aptor_microservices-network >/dev/null 2>&1; then
+                NETWORK_NAME="aptor_microservices-network"
+              elif docker network inspect aptor-microservices-network >/dev/null 2>&1; then
+                NETWORK_NAME="aptor-microservices-network"
+              fi
+            fi
+            
+            # Disconnect all containers from network first (including aiml-agent-service)
+            if [ -n "$NETWORK_NAME" ] && docker network inspect "$NETWORK_NAME" >/dev/null 2>&1; then
+              echo "Disconnecting all containers from network: $NETWORK_NAME..."
+              CONTAINERS=$(docker network inspect "$NETWORK_NAME" --format '{{range .Containers}}{{.Name}} {{end}}' 2>/dev/null || echo "")
+              if [ -n "$CONTAINERS" ]; then
+                echo "$CONTAINERS" | tr ' ' '\n' | grep -v '^$' | while read container; do
+                  if [ -n "$container" ]; then
+                    echo "Disconnecting container: $container"
+                    docker network disconnect -f "$NETWORK_NAME" "$container" 2>/dev/null || true
+                  fi
+                done
+                sleep 2
+              fi
+              # Remove network
+              docker network rm "$NETWORK_NAME" 2>/dev/null || true
               sleep 1
             fi
-            # Remove network
-            docker network rm aptor_microservices-network 2>/dev/null || true
             # Prune unused networks to ensure it's gone
             docker network prune -f 2>/dev/null || true
-            # Wait and verify network is removed
             sleep 2
-            if docker network inspect aptor_microservices-network >/dev/null 2>&1; then
-              echo "⚠️  Network still exists, force removing again..."
-              docker network rm -f aptor_microservices-network 2>/dev/null || true
-              sleep 1
-            fi
             
             # Build and start services
             echo "🔨 Building services..."
@@ -275,23 +285,61 @@ jobs:
             
             # Final check - ensure network doesn't exist before starting
             echo "🔍 Final network check before starting services..."
-            max_network_retries=3
-            network_retry=0
-            while [ $network_retry -lt $max_network_retries ] && docker network inspect aptor_microservices-network >/dev/null 2>&1; do
-              echo "⚠️  Network still exists (attempt $((network_retry + 1))/$max_network_retries), removing..."
-              docker network rm -f aptor_microservices-network 2>/dev/null || true
-              sleep 2
-              network_retry=$((network_retry + 1))
-            done
+            # Find the actual network name (Docker Compose may prefix it with directory name)
+            NETWORK_NAME=$(docker network ls --format "{{.Name}}" | grep -E "(aptor|gisul).*microservices-network" | head -1 || echo "aptor_microservices-network")
+            if [ -z "$NETWORK_NAME" ] || [ "$NETWORK_NAME" = "aptor_microservices-network" ]; then
+              # Try common variations
+              if docker network inspect aptor_microservices-network >/dev/null 2>&1; then
+                NETWORK_NAME="aptor_microservices-network"
+              elif docker network inspect aptor-microservices-network >/dev/null 2>&1; then
+                NETWORK_NAME="aptor-microservices-network"
+              else
+                NETWORK_NAME=""
+              fi
+            fi
             
-            # Verify network is gone
-            if docker network inspect aptor_microservices-network >/dev/null 2>&1; then
-              echo "❌ ERROR: Network still exists after cleanup attempts!"
-              echo "Force pruning all unused networks..."
-              docker network prune -f
-              sleep 1
+            if [ -n "$NETWORK_NAME" ] && docker network inspect "$NETWORK_NAME" >/dev/null 2>&1; then
+              echo "Found network: $NETWORK_NAME"
+              # Disconnect ALL containers including aiml-agent-service
+              echo "Disconnecting all containers from network..."
+              CONTAINERS=$(docker network inspect "$NETWORK_NAME" --format '{{range .Containers}}{{.Name}} {{end}}' 2>/dev/null || echo "")
+              if [ -n "$CONTAINERS" ]; then
+                echo "$CONTAINERS" | tr ' ' '\n' | grep -v '^$' | while read container; do
+                  if [ -n "$container" ]; then
+                    echo "Disconnecting container: $container"
+                    docker network disconnect -f "$NETWORK_NAME" "$container" 2>/dev/null || true
+                  fi
+                done
+                sleep 2
+              fi
+              
+              # Try to remove network with retries
+              max_network_retries=3
+              network_retry=0
+              while [ $network_retry -lt $max_network_retries ]; do
+                if ! docker network inspect "$NETWORK_NAME" >/dev/null 2>&1; then
+                  echo "✅ Network $NETWORK_NAME successfully removed"
+                  break
+                fi
+                network_retry=$((network_retry + 1))
+                echo "⚠️  Network still exists (attempt $network_retry/$max_network_retries), removing..."
+                docker network rm -f "$NETWORK_NAME" 2>/dev/null || true
+                sleep 2
+              done
+              
+              # Final check and force prune if still exists
+              if docker network inspect "$NETWORK_NAME" >/dev/null 2>&1; then
+                echo "⚠️  Network still exists after retries, force pruning..."
+                docker network prune -f 2>/dev/null || true
+                sleep 1
+                if docker network inspect "$NETWORK_NAME" >/dev/null 2>&1; then
+                  echo "⚠️  WARNING: Network $NETWORK_NAME still exists but will be recreated by docker-compose"
+                else
+                  echo "✅ Network removed via prune"
+                fi
+              fi
             else
-              echo "✅ Network successfully removed"
+              echo "✅ No network found to remove"
             fi
             
             # One final container check - check by exact names to be absolutely sure
