@@ -133,7 +133,7 @@ jobs:
             for container in gisul-frontend gisul-api-gateway gisul-auth-service \
                             gisul-ai-assessment-service gisul-custom-mcq-service \
                             gisul-aiml-service gisul-dsa-service gisul-proctoring-service \
-                            gisul-super-admin-service gisul-employee-service gisul-demo-service gisul-redis; do
+                            gisul-super-admin-service gisul-employee-service gisul-redis; do
               # Try multiple times to ensure removal
               for attempt in 1 2 3; do
                 if docker ps -a --format "{{.Names}}" | grep -q "^${container}$"; then
@@ -199,7 +199,7 @@ jobs:
             
             # Final verification - ensure no conflicting containers exist
             echo "🔍 Final verification before build..."
-            conflicting_ids=$(docker ps -a --filter "name=gisul-" --format "{{.ID}} {{.Names}}" | grep -v "gisul-aiml-agent-service" | grep -E "(gisul-frontend|gisul-api-gateway|gisul-auth-service|gisul-ai-assessment-service|gisul-custom-mcq-service|gisul-aiml-service|gisul-dsa-service|gisul-proctoring-service|gisul-super-admin-service|gisul-employee-service|gisul-demo-service|gisul-redis)" | awk '{print $1}' | tr '\n' ' ')
+            conflicting_ids=$(docker ps -a --filter "name=gisul-" --format "{{.ID}} {{.Names}}" | grep -v "gisul-aiml-agent-service" | grep -E "(gisul-frontend|gisul-api-gateway|gisul-auth-service|gisul-ai-assessment-service|gisul-custom-mcq-service|gisul-aiml-service|gisul-dsa-service|gisul-proctoring-service|gisul-super-admin-service|gisul-employee-service|gisul-redis)" | awk '{print $1}' | tr '\n' ' ')
             if [ -n "$conflicting_ids" ]; then
               echo "❌ ERROR: Conflicting containers still exist, force removing by ID..."
               for id in $conflicting_ids; do
@@ -231,37 +231,27 @@ jobs:
             
             # Remove network if it exists (will be recreated) - more aggressive cleanup
             echo "🧹 Cleaning up network..."
-            # Find the actual network name (Docker Compose may prefix it with directory name)
-            NETWORK_NAME=$(docker network ls --format "{{.Name}}" | grep -E "(aptor|gisul).*microservices-network" | head -1 || echo "")
-            if [ -z "$NETWORK_NAME" ]; then
-              # Try common variations
-              if docker network inspect aptor_microservices-network >/dev/null 2>&1; then
-                NETWORK_NAME="aptor_microservices-network"
-              elif docker network inspect aptor-microservices-network >/dev/null 2>&1; then
-                NETWORK_NAME="aptor-microservices-network"
-              fi
-            fi
-            
-            # Disconnect all containers from network first (including aiml-agent-service)
-            if [ -n "$NETWORK_NAME" ] && docker network inspect "$NETWORK_NAME" >/dev/null 2>&1; then
-              echo "Disconnecting all containers from network: $NETWORK_NAME..."
-              CONTAINERS=$(docker network inspect "$NETWORK_NAME" --format '{{range .Containers}}{{.Name}} {{end}}' 2>/dev/null || echo "")
-              if [ -n "$CONTAINERS" ]; then
-                echo "$CONTAINERS" | tr ' ' '\n' | grep -v '^$' | while read container; do
-                  if [ -n "$container" ]; then
-                    echo "Disconnecting container: $container"
-                    docker network disconnect -f "$NETWORK_NAME" "$container" 2>/dev/null || true
-                  fi
-                done
-                sleep 2
-              fi
-              # Remove network
-              docker network rm "$NETWORK_NAME" 2>/dev/null || true
+            # Disconnect all containers from network first
+            if docker network inspect aptor_microservices-network >/dev/null 2>&1; then
+              echo "Disconnecting containers from network..."
+              docker network inspect aptor_microservices-network --format '{{range .Containers}}{{.Name}} {{end}}' | tr ' ' '\n' | grep -v '^$' | while read container; do
+                if [ -n "$container" ]; then
+                  docker network disconnect -f aptor_microservices-network "$container" 2>/dev/null || true
+                fi
+              done
               sleep 1
             fi
+            # Remove network
+            docker network rm aptor_microservices-network 2>/dev/null || true
             # Prune unused networks to ensure it's gone
             docker network prune -f 2>/dev/null || true
+            # Wait and verify network is removed
             sleep 2
+            if docker network inspect aptor_microservices-network >/dev/null 2>&1; then
+              echo "⚠️  Network still exists, force removing again..."
+              docker network rm -f aptor_microservices-network 2>/dev/null || true
+              sleep 1
+            fi
             
             # Build and start services
             echo "🔨 Building services..."
@@ -283,8 +273,26 @@ jobs:
               sleep 1
             fi
             
-            # Network cleanup already done earlier, docker-compose will create it fresh
-            echo "✅ Network cleanup completed earlier, docker-compose will create network fresh"
+            # Final check - ensure network doesn't exist before starting
+            echo "🔍 Final network check before starting services..."
+            max_network_retries=3
+            network_retry=0
+            while [ $network_retry -lt $max_network_retries ] && docker network inspect aptor_microservices-network >/dev/null 2>&1; do
+              echo "⚠️  Network still exists (attempt $((network_retry + 1))/$max_network_retries), removing..."
+              docker network rm -f aptor_microservices-network 2>/dev/null || true
+              sleep 2
+              network_retry=$((network_retry + 1))
+            done
+            
+            # Verify network is gone
+            if docker network inspect aptor_microservices-network >/dev/null 2>&1; then
+              echo "❌ ERROR: Network still exists after cleanup attempts!"
+              echo "Force pruning all unused networks..."
+              docker network prune -f
+              sleep 1
+            else
+              echo "✅ Network successfully removed"
+            fi
             
             # One final container check - check by exact names to be absolutely sure
             echo "🔍 Final container check before docker-compose up..."
@@ -292,7 +300,7 @@ jobs:
             for container_name in gisul-frontend gisul-api-gateway gisul-auth-service \
                                  gisul-ai-assessment-service gisul-custom-mcq-service \
                                  gisul-aiml-service gisul-dsa-service gisul-proctoring-service \
-                                 gisul-super-admin-service gisul-employee-service gisul-demo-service gisul-redis; do
+                                 gisul-super-admin-service gisul-employee-service gisul-redis; do
               # Use grep for exact match instead of Docker filter (which doesn't support regex)
               container_id=$(docker ps -a --format "{{.ID}} {{.Names}}" | grep -E "^[a-f0-9]+ ${container_name}$" | awk '{print $1}' | head -1)
               if [ -n "$container_id" ]; then
@@ -318,10 +326,8 @@ jobs:
             
             # Verify all are gone
             sleep 2
-            remaining=$(docker ps -a --filter "name=gisul-" --format "{{.Names}}" | grep -v "gisul-aiml-agent-service" | wc -l | tr -d ' ')
-            # Ensure remaining is a number, default to 0 if empty
-            remaining=${remaining:-0}
-            if [ "$remaining" -gt 0 ] 2>/dev/null; then
+            remaining=$(docker ps -a --filter "name=gisul-" --format "{{.Names}}" | grep -v "gisul-aiml-agent-service" | wc -l)
+            if [ "$remaining" -gt 0 ]; then
               echo "❌ ERROR: Containers still exist after final cleanup!"
               docker ps -a --filter "name=gisul-"
               echo "Force removing all..."
@@ -329,12 +335,17 @@ jobs:
               sleep 2
             fi
             
+            # Use docker-compose down first to ensure clean state, then up
+            echo "🧹 Running docker-compose down to ensure clean state..."
+            docker compose down --remove-orphans 2>/dev/null || true
+            sleep 2
+            
             # Final check one more time - use exact name matching
             echo "🔍 Absolute final check - removing any remaining containers..."
             for container_name in gisul-frontend gisul-api-gateway gisul-auth-service \
                                  gisul-ai-assessment-service gisul-custom-mcq-service \
                                  gisul-aiml-service gisul-dsa-service gisul-proctoring-service \
-                                 gisul-super-admin-service gisul-employee-service gisul-demo-service gisul-redis; do
+                                 gisul-super-admin-service gisul-employee-service gisul-redis; do
               # Check by exact name match
               if docker ps -a --format "{{.Names}}" | grep -qE "^${container_name}$"; then
                 echo "Force removing: $container_name"
@@ -352,7 +363,7 @@ jobs:
             
             # Last check - verify NO containers exist before docker-compose up
             echo "🔍 Last verification - ensuring zero containers exist..."
-            all_containers=$(docker ps -a --format "{{.Names}}" | grep -E "^(gisul-frontend|gisul-api-gateway|gisul-auth-service|gisul-ai-assessment-service|gisul-custom-mcq-service|gisul-aiml-service|gisul-dsa-service|gisul-proctoring-service|gisul-super-admin-service|gisul-employee-service|gisul-demo-service|gisul-redis)$" | grep -v "gisul-aiml-agent-service" || true)
+            all_containers=$(docker ps -a --format "{{.Names}}" | grep -E "^(gisul-frontend|gisul-api-gateway|gisul-auth-service|gisul-ai-assessment-service|gisul-custom-mcq-service|gisul-aiml-service|gisul-dsa-service|gisul-proctoring-service|gisul-super-admin-service|gisul-employee-service|gisul-redis)$" | grep -v "gisul-aiml-agent-service" || true)
             if [ -n "$all_containers" ]; then
               echo "❌ CRITICAL: Containers still exist right before docker-compose up!"
               echo "$all_containers"
@@ -379,36 +390,10 @@ jobs:
               for container_name in gisul-frontend gisul-api-gateway gisul-auth-service \
                                    gisul-ai-assessment-service gisul-custom-mcq-service \
                                    gisul-aiml-service gisul-dsa-service gisul-proctoring-service \
-                                   gisul-super-admin-service gisul-employee-service gisul-demo-service gisul-redis; do
+                                   gisul-super-admin-service gisul-employee-service gisul-redis; do
                 docker rm -f "$container_name" 2>/dev/null || true
               done
               exit 1
-            fi
-            
-            # Wait for network to be fully ready before containers start
-            echo "⏳ Waiting for network to be ready..."
-            NETWORK_READY=false
-            NETWORK_RETRIES=10
-            NETWORK_RETRY=0
-            while [ $NETWORK_RETRY -lt $NETWORK_RETRIES ]; do
-              # Find the actual network name
-              NETWORK_NAME=$(docker network ls --format "{{.Name}}" | grep -E "(aptor|gisul).*microservices-network" | head -1 || echo "")
-              if [ -n "$NETWORK_NAME" ] && docker network inspect "$NETWORK_NAME" >/dev/null 2>&1; then
-                # Check if network is ready (has bridge driver and is not in error state)
-                NETWORK_STATE=$(docker network inspect "$NETWORK_NAME" --format '{{.Driver}}' 2>/dev/null || echo "")
-                if [ "$NETWORK_STATE" = "bridge" ]; then
-                  NETWORK_READY=true
-                  echo "✅ Network $NETWORK_NAME is ready"
-                  break
-                fi
-              fi
-              NETWORK_RETRY=$((NETWORK_RETRY + 1))
-              echo "Waiting for network... (attempt $NETWORK_RETRY/$NETWORK_RETRIES)"
-              sleep 1
-            done
-            
-            if [ "$NETWORK_READY" = "false" ]; then
-              echo "⚠️  WARNING: Network may not be fully ready, but continuing..."
             fi
             
             # Wait for services
