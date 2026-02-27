@@ -8,6 +8,7 @@ from typing import List, Optional, Dict, Any
 from fastapi import APIRouter, HTTPException, Depends, Query, UploadFile, File, BackgroundTasks
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
+from bson import ObjectId
 from datetime import datetime
 
 from app.models.design import (
@@ -189,7 +190,7 @@ async def toggle_publish_status(question_id: str, request: PublishStatusRequest)
         # Update question publish status
         db = design_repository.db
         result = await db.design_questions.update_one(
-            {"_id": question_id},
+            {"_id": ObjectId(question_id)},
             {"$set": {"is_published": is_published, "updated_at": datetime.utcnow()}}
         )
         
@@ -215,7 +216,7 @@ async def delete_question(question_id: str):
             await design_repository.initialize()
         
         db = design_repository.db
-        result = await db.design_questions.delete_one({"_id": question_id})
+        result = await db.design_questions.delete_one({"_id": ObjectId(question_id)})
         
         if result.deleted_count == 0:
             raise HTTPException(status_code=404, detail="Question not found")
@@ -245,7 +246,7 @@ async def update_question(question_id: str, request: Dict[str, Any]):
         update_data['updated_at'] = datetime.utcnow()
         
         result = await db.design_questions.update_one(
-            {"_id": question_id},
+            {"_id": ObjectId(question_id)},
             {"$set": update_data}
         )
         
@@ -283,7 +284,7 @@ async def create_test_new(request: CreateTestRequest):
         
         # Validate that all questions exist
         for question_id in question_ids:
-            question = await db.design_questions.find_one({"_id": question_id})
+            question = await db.design_questions.find_one({"_id": ObjectId(question_id)})
             if not question:
                 raise HTTPException(status_code=404, detail=f"Question {question_id} not found")
         
