@@ -38,6 +38,10 @@ class GenerateQuestionRequest(BaseModel):
     created_by: str = "system"
 
 
+class PublishStatusRequest(BaseModel):
+    is_published: bool
+
+
 class CreateTestRequest(BaseModel):
     class Config:
         extra = "allow"  # Allow any extra fields
@@ -174,13 +178,13 @@ async def get_question(question_id: str):
 
 
 @router.patch("/questions/{question_id}/publish")
-async def toggle_publish_status(question_id: str, request: Dict[str, Any]):
+async def toggle_publish_status(question_id: str, request: PublishStatusRequest):
     """Toggle question publish status"""
     try:
         if design_repository.db is None:
             await design_repository.initialize()
         
-        is_published = request.get("is_published", False)
+        is_published = request.is_published
         
         # Update question publish status
         db = design_repository.db
@@ -224,6 +228,38 @@ async def delete_question(question_id: str):
         raise
     except Exception as e:
         logger.error(f"Failed to delete question: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.put("/questions/{question_id}")
+async def update_question(question_id: str, request: Dict[str, Any]):
+    """Update a design question"""
+    try:
+        if design_repository.db is None:
+            await design_repository.initialize()
+        
+        db = design_repository.db
+        
+        # Remove _id from update data if present
+        update_data = {k: v for k, v in request.items() if k != '_id'}
+        update_data['updated_at'] = datetime.utcnow()
+        
+        result = await db.design_questions.update_one(
+            {"_id": question_id},
+            {"$set": update_data}
+        )
+        
+        if result.matched_count == 0:
+            raise HTTPException(status_code=404, detail="Question not found")
+        
+        logger.info(f"Question {question_id} updated successfully")
+        
+        return {"message": "Question updated successfully"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to update question: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
