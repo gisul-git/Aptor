@@ -27,6 +27,15 @@ export type ProctoringEventType =
   // Fullscreen Events
   | "FULLSCREEN_EXIT"
   | "FULLSCREEN_ENABLED"
+  // Activity Pattern Events
+  | "RAPID_CLICKING"
+  | "EXCESSIVE_MOUSE_MOVEMENT"
+  | "PROLONGED_INACTIVITY"
+  | "SUSPICIOUS_KEYBOARD_PATTERN"
+  | "EXCESSIVE_SCROLLING"
+  // Copy-Paste Events
+  | "COPY_PASTE_DETECTED"
+  | "COPY_PASTE_CONTENT"
   // System Events
   | "PROCTORING_STARTED"
   | "PROCTORING_STOPPED"

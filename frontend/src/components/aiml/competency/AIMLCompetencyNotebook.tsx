@@ -42,6 +42,10 @@ interface AIMLCompetencyNotebookProps {
   onSubmit?: (allCode: string, outputs: string[]) => void
   readOnly?: boolean
   showSubmit?: boolean
+  // Proctoring props
+  userId?: string
+  assessmentId?: string
+  onPasteViolation?: (violation: { eventType: string; timestamp: string; metadata?: any }) => void
 }
 
 export default function AIMLCompetencyNotebook({
@@ -52,6 +56,9 @@ export default function AIMLCompetencyNotebook({
   onSubmit,
   readOnly = false,
   showSubmit = true,
+  userId,
+  assessmentId,
+  onPasteViolation,
 }: AIMLCompetencyNotebookProps) {
   const [cells, setCells] = useState<Cell[]>([])
   const [runningCells, setRunningCells] = useState<Set<string>>(new Set())
@@ -825,6 +832,9 @@ export default function AIMLCompetencyNotebook({
                     onRegisterRun={registerCellRun}
                     onEditorReady={handleEditorReady}
                     readOnly={readOnly}
+                    userId={userId}
+                    assessmentId={assessmentId}
+                    onPasteViolation={onPasteViolation}
                   />
                 ))}
               </div>
@@ -979,10 +989,13 @@ export default function AIMLCompetencyNotebook({
                 autoFocus={cell.id === focusedCellId}
                 canMoveUp={idx > 0}
                 canMoveDown={idx < cells.length - 1}
-                sessionId={sessionId}
-                onRegisterRun={registerCellRun}
-                onEditorReady={handleEditorReady}
-                readOnly={readOnly}
+                    sessionId={sessionId}
+                    onRegisterRun={registerCellRun}
+                    onEditorReady={handleEditorReady}
+                    readOnly={readOnly}
+                    userId={userId}
+                    assessmentId={assessmentId}
+                    onPasteViolation={onPasteViolation}
               />
             ))}
           </div>

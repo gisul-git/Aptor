@@ -811,38 +811,70 @@ export class AIProctoringService {
     let isGazeAway = false;
 
     if (this.faceMesh && newStableFaceCount === 1) {
-      try {
-        const results = await new Promise<any>((resolve) => {
-          this.faceMesh.onResults((r: any) => resolve(r));
-          this.faceMesh.send({ image: video });
-        });
+      // Validate video is ready before calling FaceMesh (prevents WASM abort errors)
+      const isVideoReady = 
+        video &&
+        video.readyState >= 2 && // HAVE_CURRENT_DATA or higher
+        video.videoWidth > 0 &&
+        video.videoHeight > 0 &&
+        !video.paused &&
+        !video.ended;
 
-        if (results?.multiFaceLandmarks?.[0]) {
-          const landmarks = results.multiFaceLandmarks[0];
-          const { yaw, pitch } = this.computeHeadPose(landmarks);
+      if (!isVideoReady) {
+        // Video not ready - skip FaceMesh this frame
+        debugLog('[AIProctoringService] Video not ready for FaceMesh, skipping gaze detection');
+      } else {
+        try {
+          const results = await new Promise<any>((resolve, reject) => {
+            // Set timeout to prevent hanging if FaceMesh doesn't respond
+            const timeout = setTimeout(() => {
+              reject(new Error('FaceMesh timeout'));
+            }, 2000);
 
-          // Special case: Ignore brief 'down' gaze during typing
-          const isLookingDown = pitch > LOOKING_DOWN_THRESHOLD;
-          const isTyping = this.isLikelyTyping();
-          
-          // Gaze is away if: outside thresholds OR (looking down but NOT typing)
-          isGazeAway = 
-            Math.abs(yaw) > YAW_THRESHOLD || 
-            Math.abs(pitch) > PITCH_THRESHOLD ||
-            (isLookingDown && !isTyping);
+            this.faceMesh.onResults((r: any) => {
+              clearTimeout(timeout);
+              resolve(r);
+            });
+            
+            try {
+              this.faceMesh.send({ image: video });
+            } catch (sendError) {
+              clearTimeout(timeout);
+              reject(sendError);
+            }
+          });
 
-          // Update gaze direction state
-          if (Math.abs(yaw) > YAW_THRESHOLD || Math.abs(pitch) > PITCH_THRESHOLD) {
-            const direction = Math.abs(yaw) > Math.abs(pitch)
-              ? (yaw > 0 ? 'right' : 'left')
-              : (pitch > 0 ? 'down' : 'up');
-            this.updateState({ gazeDirection: { direction, confidence: 0.8 } });
-          } else {
-            this.updateState({ gazeDirection: { direction: 'center', confidence: 0.9 } });
+          if (results?.multiFaceLandmarks?.[0]) {
+            const landmarks = results.multiFaceLandmarks[0];
+            const { yaw, pitch } = this.computeHeadPose(landmarks);
+
+            // Special case: Ignore brief 'down' gaze during typing
+            const isLookingDown = pitch > LOOKING_DOWN_THRESHOLD;
+            const isTyping = this.isLikelyTyping();
+            
+            // Gaze is away if: outside thresholds OR (looking down but NOT typing)
+            isGazeAway = 
+              Math.abs(yaw) > YAW_THRESHOLD || 
+              Math.abs(pitch) > PITCH_THRESHOLD ||
+              (isLookingDown && !isTyping);
+
+            // Update gaze direction state
+            if (Math.abs(yaw) > YAW_THRESHOLD || Math.abs(pitch) > PITCH_THRESHOLD) {
+              const direction = Math.abs(yaw) > Math.abs(pitch)
+                ? (yaw > 0 ? 'right' : 'left')
+                : (pitch > 0 ? 'down' : 'up');
+              this.updateState({ gazeDirection: { direction, confidence: 0.8 } });
+            } else {
+              this.updateState({ gazeDirection: { direction: 'center', confidence: 0.9 } });
+            }
+          }
+        } catch (faceMeshError) {
+          // FaceMesh error - skip gaze detection this frame
+          // Log only in debug mode to avoid console spam
+          if (this.config.debugMode) {
+            console.warn('[AIProctoringService] FaceMesh error (non-critical):', faceMeshError);
           }
         }
-      } catch (faceMeshError) {
-        // FaceMesh error - skip gaze detection this frame
       }
     }
 
