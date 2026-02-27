@@ -377,10 +377,10 @@ jobs:
             fi
             
             echo "🚀 Starting services..."
-            # Don't use --force-recreate to avoid double creation
-            # The cleanup above ensures containers don't exist
+            # Use --force-recreate to ensure any containers in "Creating" or "Created" state are removed first
+            # This prevents conflicts when docker compose tries to create containers that already exist
             # If docker-compose fails, clean up and exit to prevent partial state
-            if ! docker compose up -d --remove-orphans; then
+            if ! docker compose up -d --force-recreate --remove-orphans; then
               echo "❌ docker-compose up failed, cleaning up and exiting..."
               docker compose down --remove-orphans 2>/dev/null || true
               # Remove any containers that were created by exact name
