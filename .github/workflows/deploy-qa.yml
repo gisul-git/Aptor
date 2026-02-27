@@ -419,14 +419,20 @@ jobs:
             # Retry up to 2 times if it fails due to container conflicts
             max_retries=2
             retry_count=0
+            compose_success=false
             while [ $retry_count -lt $max_retries ]; do
+              # Wait a bit to avoid "removal already in progress" errors
+              sleep 2
               if docker compose up -d --remove-orphans --force-recreate; then
                 echo "✅ Services started successfully"
+                compose_success=true
                 break
               else
                 retry_count=$((retry_count + 1))
                 if [ $retry_count -lt $max_retries ]; then
-                  echo "⚠️  docker compose up failed, cleaning up and retrying (attempt $retry_count/$max_retries)..."
+                  echo "⚠️  docker compose up failed, cleaning up and retrying (attempt ${retry_count}/${max_retries})..."
+                  # Wait for any in-progress removals to complete
+                  sleep 3
                   # Remove any containers that were created
                   for container_name in gisul-frontend gisul-api-gateway gisul-auth-service \
                                        gisul-ai-assessment-service gisul-custom-mcq-service \
@@ -441,7 +447,7 @@ jobs:
                   docker compose down --remove-orphans 2>/dev/null || true
                   sleep 3
                 else
-                  echo "❌ docker compose up failed after $max_retries attempts, cleaning up and exiting..."
+                  echo "❌ docker compose up failed after ${max_retries} attempts, cleaning up and exiting..."
                   docker compose down --remove-orphans 2>/dev/null || true
                   # Remove any containers that were created by exact name
                   for container_name in gisul-frontend gisul-api-gateway gisul-auth-service \
@@ -454,7 +460,10 @@ jobs:
                 fi
               fi
             done
-              echo "❌ docker-compose up failed, cleaning up and exiting..."
+            
+            # Verify docker compose up succeeded
+            if [ "$compose_success" != "true" ]; then
+              echo "❌ docker compose up failed, cleaning up and exiting..."
               docker compose down --remove-orphans 2>/dev/null || true
               # Remove any containers that were created by exact name
               for container_name in gisul-frontend gisul-api-gateway gisul-auth-service \
