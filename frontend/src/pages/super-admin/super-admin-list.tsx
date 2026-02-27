@@ -101,6 +101,9 @@ export default function SuperAdminListPage() {
             <Link href="/super-admin/org-admin-logs" style={{ padding: "0.75rem", textDecoration: "none", color: "#1f2937" }}>
               Org Admin Logs
             </Link>
+            <Link href="/super-admin/request-demos" style={{ padding: "0.75rem", textDecoration: "none", color: "#1f2937" }}>
+              Request Demos
+            </Link>
           </nav>
         </aside>
 

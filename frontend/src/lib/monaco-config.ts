@@ -8,8 +8,9 @@ if (typeof window !== 'undefined') {
   // Configure Monaco Environment before any Monaco components load
   (window as any).MonacoEnvironment = {
     getWorkerUrl: function (moduleId: string, label: string) {
-      // Use unpkg.com CDN - more reliable than jsdelivr
-      const baseUrl = 'https://unpkg.com/monaco-editor@0.55.1/esm/vs';
+      // Use jsdelivr CDN - better CORS support than unpkg for workers
+      // jsdelivr properly sets CORS headers for worker scripts
+      const baseUrl = 'https://cdn.jsdelivr.net/npm/monaco-editor@0.55.1/esm/vs';
       
       switch (label) {
         case 'json':
@@ -37,7 +38,7 @@ if (typeof window !== 'undefined') {
       try {
         (window as any).require.config({
           paths: {
-            vs: 'https://unpkg.com/monaco-editor@0.55.1/min/vs'
+            vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.55.1/min/vs'
           }
         });
         console.log('[Monaco Config] ✅ Configured Monaco loader to use unpkg.com');

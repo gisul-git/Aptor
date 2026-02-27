@@ -28,6 +28,7 @@ import {
   CandidateLiveService,
   resolveUserIdForProctoring,
   type ProctoringViolation,
+  type ProctoringEventType,
 } from "@/universal-proctoring";
 import { stopStream } from "@/universal-proctoring/live";
 import WebcamPreview from "@/components/WebcamPreview";
@@ -36,6 +37,10 @@ import { ViolationToast, pushViolationToast } from "@/components/ViolationToast"
 // Fullscreen Lock imports
 import { FullscreenLockOverlay } from "@/components/FullscreenLockOverlay";
 import { useFullscreenLock } from "@/hooks/proctoring/useFullscreenLock";
+// Activity Pattern Proctor imports
+import { useActivityPatternProctor } from "@/hooks/proctoring/useActivityPatternProctor";
+// Monaco Paste Detector imports
+import { useMonacoPasteDetector } from "@/hooks/proctoring/useMonacoPasteDetector";
 
 // Lazy load Monaco Editor
 const MonacoEditor = dynamic(() => import("@monaco-editor/react"), {
@@ -381,6 +386,42 @@ export default function CandidateAssessmentPage() {
     onViolation: handleUniversalViolation,
     onWarning: handleUniversalWarning,
     debug: debugMode,
+  });
+
+  // Activity Pattern Proctor - monitors mouse, keyboard, scroll patterns
+  useActivityPatternProctor({
+    userId: candidateIdStr,
+    assessmentId: assessmentIdStr,
+    onViolation: (violation) => {
+      console.log('[Assessment Take] Activity pattern violation:', violation);
+      handleUniversalViolation({
+        eventType: violation.eventType,
+        timestamp: violation.timestamp,
+        assessmentId: violation.assessmentId,
+        userId: violation.userId,
+        metadata: violation.metadata,
+      });
+    },
+    enabled: appState === 'ready' && isClient, // Only enable when assessment is ready
+    copyPasteThreshold: 20, // Lower threshold for easier detection (default: 50)
+  });
+
+  // Monaco Paste Detector - captures actual pasted content in Monaco editor
+  const { attachToMonacoEditor } = useMonacoPasteDetector({
+    userId: candidateIdStr,
+    assessmentId: assessmentIdStr,
+    onViolation: (violation) => {
+      console.log('[Assessment Take] Monaco paste violation:', violation);
+      handleUniversalViolation({
+        eventType: violation.eventType,
+        timestamp: violation.timestamp,
+        assessmentId: violation.assessmentId,
+        userId: violation.userId,
+        metadata: violation.metadata,
+      });
+    },
+    enabled: appState === 'ready' && isClient,
+    threshold: 20, // Minimum characters to trigger (default: 20)
   });
 
   // Unlock fullscreen when assessment is submitted/finished
@@ -3462,6 +3503,17 @@ export default function CandidateAssessmentPage() {
                             visibleTestcases={visibleTestcases}
                             publicResults={publicResults[questionIdStr] || []}
                             hiddenSummary={hiddenSummary[questionIdStr] || null}
+                            userId={candidateIdStr}
+                            assessmentId={assessmentIdStr}
+                            onPasteViolation={(violation) => {
+                              handleUniversalViolation({
+                                eventType: violation.eventType as ProctoringEventType,
+                                timestamp: violation.timestamp,
+                                assessmentId: assessmentIdStr,
+                                userId: candidateIdStr,
+                                metadata: violation.metadata,
+                              });
+                            }}
                           />
                         );
                       })()}

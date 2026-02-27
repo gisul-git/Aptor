@@ -159,7 +159,9 @@ type TabType =
   | "GAZE_AWAY"
   | "NO_FACE"
   | "MULTIPLE_FACE"
-  | "FACE_MISMATCH";
+  | "FACE_MISMATCH"
+  | "ACTIVITY_PATTERNS"
+  | "COPY_PASTE";
 
 const TAB_CONFIG: Record<TabType, { label: string; icon: string; eventTypes: string[] }> = {
   VISUAL_EVIDENCE: {
@@ -207,6 +209,16 @@ const TAB_CONFIG: Record<TabType, { label: string; icon: string; eventTypes: str
     icon: "🔒",
     eventTypes: ["FACE_MISMATCH"],
   },
+  ACTIVITY_PATTERNS: {
+    label: "🖱️ Activity Patterns",
+    icon: "🖱️",
+    eventTypes: ["RAPID_CLICKING", "EXCESSIVE_MOUSE_MOVEMENT", "PROLONGED_INACTIVITY", "SUSPICIOUS_KEYBOARD_PATTERN", "EXCESSIVE_SCROLLING"],
+  },
+  COPY_PASTE: {
+    label: "📋 Copy-Paste Violations",
+    icon: "📋",
+    eventTypes: ["COPY_PASTE_CONTENT", "COPY_PASTE_DETECTED"],
+  },
 };
 
 const getSeverityStyle = (severity?: string) => {
@@ -251,6 +263,8 @@ export const ProctorLogsReview: React.FC<ProctorLogsReviewProps> = ({ logs, cand
       NO_FACE: 0,
       MULTIPLE_FACE: 0,
       FACE_MISMATCH: 0,
+      ACTIVITY_PATTERNS: 0,
+      COPY_PASTE: 0,
     };
 
     logs.forEach((log) => {
