@@ -416,56 +416,161 @@ jobs:
             echo "🚀 Starting services..."
             # Use --force-recreate to ensure any containers in "Creating" or "Created" state are removed first
             # This prevents conflicts when docker compose tries to create containers that already exist
-            # Retry up to 2 times if it fails due to container conflicts
-            max_retries=2
+            # Retry up to 3 times if it fails due to container conflicts
+            max_retries=3
             retry_count=0
             compose_success=false
+            
+            echo "📋 Starting docker compose up with retry mechanism (max ${max_retries} attempts)"
+            
             while [ $retry_count -lt $max_retries ]; do
+              echo ""
+              echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+              echo "🔄 RETRY LOOP: Attempt $((retry_count + 1))/$max_retries"
+              echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+              
               # Wait a bit to avoid "removal already in progress" errors
+              echo "⏳ Waiting 3 seconds to avoid removal conflicts..."
+              sleep 3
+              
+              # Aggressive cleanup before each attempt
+              echo "🧹 Step 1: Running docker compose down..."
+              docker compose down --remove-orphans 2>&1 | head -20 || echo "⚠️  docker compose down had issues (continuing anyway)"
               sleep 2
-              if docker compose up -d --remove-orphans --force-recreate; then
-                echo "✅ Services started successfully"
+              
+              echo "🧹 Step 2: Removing containers by name..."
+              removed_count=0
+              for container_name in gisul-frontend gisul-api-gateway gisul-auth-service \
+                                   gisul-ai-assessment-service gisul-custom-mcq-service \
+                                   gisul-aiml-service gisul-dsa-service gisul-proctoring-service \
+                                   gisul-super-admin-service gisul-employee-service gisul-demo-service gisul-redis; do
+                # Try by name first
+                if docker rm -f "$container_name" 2>/dev/null; then
+                  echo "  ✅ Removed by name: $container_name"
+                  removed_count=$((removed_count + 1))
+                fi
+                # Try by inspect (catches ghost containers)
+                container_id=$(docker inspect "$container_name" --format "{{.Id}}" 2>/dev/null || true)
+                if [ -n "$container_id" ]; then
+                  if docker rm -f "$container_id" 2>/dev/null; then
+                    echo "  ✅ Removed by ID (ghost): $container_name ($container_id)"
+                    removed_count=$((removed_count + 1))
+                  fi
+                fi
+              done
+              echo "  📊 Removed $removed_count containers by name/ID"
+              
+              echo "🧹 Step 3: Removing containers by filter (any state)..."
+              filter_removed=0
+              docker ps -a --filter "name=gisul-" --format "{{.ID}} {{.Names}} {{.Status}}" | grep -v "gisul-aiml-agent-service" | while read line; do
+                if [ -n "$line" ]; then
+                  container_id=$(echo "$line" | awk '{print $1}')
+                  container_name=$(echo "$line" | awk '{print $2}')
+                  container_status=$(echo "$line" | awk '{for(i=3;i<=NF;i++) printf "%s ", $i; print ""}')
+                  echo "  🔍 Found container: $container_name (ID: $container_id, Status: $container_status)"
+                  if docker rm -f "$container_id" 2>/dev/null; then
+                    echo "  ✅ Force removed: $container_name"
+                    filter_removed=$((filter_removed + 1))
+                  else
+                    echo "  ⚠️  Failed to remove: $container_name (may be in use)"
+                  fi
+                fi
+              done
+              
+              echo "🧹 Step 4: Removing network..."
+              if docker network inspect aptor_microservices-network >/dev/null 2>&1; then
+                echo "  🔍 Network exists, removing..."
+                docker network rm aptor_microservices-network 2>&1 || echo "  ⚠️  Network removal had issues"
+              else
+                echo "  ✅ Network does not exist"
+              fi
+              docker network prune -f 2>&1 | head -5 || true
+              sleep 3
+              
+              echo "🧹 Step 5: Verifying cleanup..."
+              remaining_list=$(docker ps -a --filter "name=gisul-" --format "{{.Names}} {{.Status}}" | grep -v "gisul-aiml-agent-service" || true)
+              remaining=$(echo "$remaining_list" | grep -v "^$" | wc -l | tr -d ' ')
+              remaining=${remaining:-0}
+              
+              if [ "$remaining" -gt 0 ]; then
+                echo "  ⚠️  WARNING: $remaining containers still exist after cleanup:"
+                echo "$remaining_list" | while read line; do
+                  if [ -n "$line" ]; then
+                    echo "    - $line"
+                  fi
+                done
+                echo "  🔧 Force removing remaining containers..."
+                docker ps -a --filter "name=gisul-" --format "{{.ID}}" | grep -v "$(docker ps -a --filter "name=gisul-aiml-agent-service" --format "{{.ID}}")" | while read id; do
+                  if [ -n "$id" ]; then
+                    name=$(docker ps -a --filter "id=$id" --format "{{.Names}}")
+                    echo "    🗑️  Force removing: $name ($id)"
+                    docker rm -f "$id" 2>&1 || echo "    ⚠️  Failed to remove $id"
+                  fi
+                done
+                sleep 2
+              else
+                echo "  ✅ Cleanup verified: No containers remaining"
+              fi
+              
+              echo "🚀 Step 6: Attempting docker compose up..."
+              echo "  Command: docker compose up -d --remove-orphans --force-recreate"
+              
+              # Capture both stdout and stderr
+              compose_output=$(docker compose up -d --remove-orphans --force-recreate 2>&1)
+              compose_exit_code=$?
+              
+              echo "  📝 Docker compose output:"
+              echo "$compose_output" | head -50
+              
+              if [ $compose_exit_code -eq 0 ]; then
+                echo ""
+                echo "✅ ✅ ✅ docker compose up SUCCEEDED ✅ ✅ ✅"
+                echo "  Exit code: $compose_exit_code"
                 compose_success=true
                 break
               else
+                echo ""
+                echo "❌ ❌ ❌ docker compose up FAILED ❌ ❌ ❌"
+                echo "  Exit code: $compose_exit_code"
                 retry_count=$((retry_count + 1))
-                if [ $retry_count -lt $max_retries ]; then
-                  echo "⚠️  docker compose up failed, cleaning up and retrying (attempt ${retry_count}/${max_retries})..."
-                  # Wait for any in-progress removals to complete
-                  sleep 3
-                  # Remove any containers that were created
-                  for container_name in gisul-frontend gisul-api-gateway gisul-auth-service \
-                                       gisul-ai-assessment-service gisul-custom-mcq-service \
-                                       gisul-aiml-service gisul-dsa-service gisul-proctoring-service \
-                                       gisul-super-admin-service gisul-employee-service gisul-demo-service gisul-redis; do
-                    container_id=$(docker inspect "$container_name" --format "{{.Id}}" 2>/dev/null || true)
-                    if [ -n "$container_id" ]; then
-                      echo "🧹 Removing failed container: $container_name ($container_id)"
-                      docker rm -f "$container_id" 2>/dev/null || true
+                
+                # Show what containers exist after failure
+                echo "  🔍 Checking containers after failure..."
+                failed_containers=$(docker ps -a --filter "name=gisul-" --format "{{.Names}} {{.Status}}" | grep -v "gisul-aiml-agent-service" || true)
+                if [ -n "$failed_containers" ]; then
+                  echo "  📋 Containers that exist after failure:"
+                  echo "$failed_containers" | while read line; do
+                    if [ -n "$line" ]; then
+                      echo "    - $line"
                     fi
                   done
-                  docker compose down --remove-orphans 2>/dev/null || true
-                  sleep 3
+                fi
+                
+                if [ $retry_count -ge $max_retries ]; then
+                  echo "  ❌ Max retries (${max_retries}) reached"
+                  compose_success=false
+                  break
                 else
-                  echo "❌ docker compose up failed after ${max_retries} attempts, cleaning up and exiting..."
-                  docker compose down --remove-orphans 2>/dev/null || true
-                  # Remove any containers that were created by exact name
-                  for container_name in gisul-frontend gisul-api-gateway gisul-auth-service \
-                                       gisul-ai-assessment-service gisul-custom-mcq-service \
-                                       gisul-aiml-service gisul-dsa-service gisul-proctoring-service \
-                                       gisul-super-admin-service gisul-employee-service gisul-demo-service gisul-redis; do
-                    docker rm -f "$container_name" 2>/dev/null || true
-                  done
-                  exit 1
+                  echo "  ⏳ Will retry in 5 seconds (attempt ${retry_count}/${max_retries})..."
+                  sleep 5
                 fi
               fi
             done
             
-            # Verify docker compose up succeeded
+            echo ""
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            echo "📊 FINAL STATUS CHECK"
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            echo "  compose_success flag: $compose_success"
+            echo "  retry_count: $retry_count"
+            echo "  max_retries: $max_retries"
+            
+            # Final check - exit if failed
             if [ "$compose_success" != "true" ]; then
-              echo "❌ docker compose up failed, cleaning up and exiting..."
-              docker compose down --remove-orphans 2>/dev/null || true
-              # Remove any containers that were created by exact name
+              echo ""
+              echo "❌ ❌ ❌ FINAL RESULT: docker compose up FAILED after all retries ❌ ❌ ❌"
+              echo "  Cleaning up and exiting..."
+              docker compose down --remove-orphans 2>&1 | head -20 || true
               for container_name in gisul-frontend gisul-api-gateway gisul-auth-service \
                                    gisul-ai-assessment-service gisul-custom-mcq-service \
                                    gisul-aiml-service gisul-dsa-service gisul-proctoring-service \
@@ -473,6 +578,10 @@ jobs:
                 docker rm -f "$container_name" 2>/dev/null || true
               done
               exit 1
+            else
+              echo ""
+              echo "✅ ✅ ✅ FINAL RESULT: docker compose up SUCCEEDED ✅ ✅ ✅"
+              echo "  Proceeding to service verification..."
             fi
             
             # Wait for services
