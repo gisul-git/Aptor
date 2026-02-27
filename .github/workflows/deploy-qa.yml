@@ -386,11 +386,74 @@ jobs:
             done
             sleep 2
             
+            # Run docker compose down to ensure clean state, then immediately clean any containers it might create
+            echo "🧹 Running docker compose down for final cleanup..."
+            docker compose down --remove-orphans 2>/dev/null || true
+            sleep 2
+            # Clean up any containers that might have been created by docker compose down
+            for container_name in gisul-frontend gisul-api-gateway gisul-auth-service \
+                                 gisul-ai-assessment-service gisul-custom-mcq-service \
+                                 gisul-aiml-service gisul-dsa-service gisul-proctoring-service \
+                                 gisul-super-admin-service gisul-employee-service gisul-demo-service gisul-redis; do
+              container_id=$(docker inspect "$container_name" --format "{{.Id}}" 2>/dev/null || true)
+              if [ -n "$container_id" ]; then
+                echo "🧹 Removing container created by docker compose down: $container_name ($container_id)"
+                docker rm -f "$container_id" 2>/dev/null || true
+              fi
+            done
+            # Also remove containers in "Creating" state that docker ps might not show
+            echo "🧹 Removing containers in Creating state..."
+            docker ps -a --filter "status=created" --filter "name=gisul-" --format "{{.ID}} {{.Names}}" | grep -v "gisul-aiml-agent-service" | while read line; do
+              if [ -n "$line" ]; then
+                container_id=$(echo "$line" | awk '{print $1}')
+                container_name=$(echo "$line" | awk '{print $2}')
+                echo "🧹 Removing Created container: $container_name ($container_id)"
+                docker rm -f "$container_id" 2>/dev/null || true
+              fi
+            done
+            sleep 2
+            
             echo "🚀 Starting services..."
             # Use --force-recreate to ensure any containers in "Creating" or "Created" state are removed first
             # This prevents conflicts when docker compose tries to create containers that already exist
-            # If docker-compose fails, clean up and exit to prevent partial state
-            if ! docker compose up -d --remove-orphans --force-recreate; then
+            # Retry up to 2 times if it fails due to container conflicts
+            max_retries=2
+            retry_count=0
+            while [ $retry_count -lt $max_retries ]; do
+              if docker compose up -d --remove-orphans --force-recreate; then
+                echo "✅ Services started successfully"
+                break
+              else
+                retry_count=$((retry_count + 1))
+                if [ $retry_count -lt $max_retries ]; then
+                  echo "⚠️  docker compose up failed, cleaning up and retrying (attempt $retry_count/$max_retries)..."
+                  # Remove any containers that were created
+                  for container_name in gisul-frontend gisul-api-gateway gisul-auth-service \
+                                       gisul-ai-assessment-service gisul-custom-mcq-service \
+                                       gisul-aiml-service gisul-dsa-service gisul-proctoring-service \
+                                       gisul-super-admin-service gisul-employee-service gisul-demo-service gisul-redis; do
+                    container_id=$(docker inspect "$container_name" --format "{{.Id}}" 2>/dev/null || true)
+                    if [ -n "$container_id" ]; then
+                      echo "🧹 Removing failed container: $container_name ($container_id)"
+                      docker rm -f "$container_id" 2>/dev/null || true
+                    fi
+                  done
+                  docker compose down --remove-orphans 2>/dev/null || true
+                  sleep 3
+                else
+                  echo "❌ docker compose up failed after $max_retries attempts, cleaning up and exiting..."
+                  docker compose down --remove-orphans 2>/dev/null || true
+                  # Remove any containers that were created by exact name
+                  for container_name in gisul-frontend gisul-api-gateway gisul-auth-service \
+                                       gisul-ai-assessment-service gisul-custom-mcq-service \
+                                       gisul-aiml-service gisul-dsa-service gisul-proctoring-service \
+                                       gisul-super-admin-service gisul-employee-service gisul-demo-service gisul-redis; do
+                    docker rm -f "$container_name" 2>/dev/null || true
+                  done
+                  exit 1
+                fi
+              fi
+            done
               echo "❌ docker-compose up failed, cleaning up and exiting..."
               docker compose down --remove-orphans 2>/dev/null || true
               # Remove any containers that were created by exact name
