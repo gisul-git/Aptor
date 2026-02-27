@@ -15,6 +15,7 @@ import {
   Settings
 } from "lucide-react";
 import Link from "next/link";
+import SuccessModal from "@/components/SuccessModal";
 
 interface Question {
   id: string;
@@ -30,6 +31,10 @@ export default function CreateAIMLCompetencyPage() {
   const [aiProctoringEnabled, setAiProctoringEnabled] = useState(true);
   const [faceMismatchEnabled, setFaceMismatchEnabled] = useState(false);
   const [liveProctoringEnabled, setLiveProctoringEnabled] = useState(false);
+  const [successModal, setSuccessModal] = useState<{ isOpen: boolean; message: string; testId?: string }>({
+    isOpen: false,
+    message: '',
+  });
   
   // Timer mode state (mirrors DSA)
   type TimerMode = "GLOBAL" | "PER_QUESTION";
@@ -228,12 +233,13 @@ export default function CreateAIMLCompetencyPage() {
       console.log("[AIML Create Test] Derived testId for redirect:", testId);
 
       // New tests should start unpublished; editor will publish from AIML Test Management.
-      alert("Test created successfully!");
-      if (testId) {
-        router.push(`/aiml/tests?testId=${encodeURIComponent(String(testId))}`);
-      } else {
-        router.push("/aiml/tests");
-      }
+      // Show success modal instead of alert
+      setSuccessModal({
+        isOpen: true,
+        message: "Test created successfully!",
+        testId: testId ? String(testId) : undefined,
+      });
+      setLoading(false);
     } catch (error: any) {
       alert(error.response?.data?.detail || error.response?.data?.message || "Failed to create AIML competency test");
       setLoading(false);
@@ -298,7 +304,7 @@ export default function CreateAIMLCompetencyPage() {
 
   return (
     <div style={{ backgroundColor: "#FAFCFB", minHeight: "100vh", fontFamily: "system-ui, -apple-system, sans-serif" }}>
-      <div style={{ maxWidth: "1100px", margin: "0 auto", padding: "3rem 1.5rem" }}>
+      <div style={{ maxWidth: "1200px", margin: "0 auto", padding: "3rem 1.5rem" }}>
         
         {/* Back Button */}
         <div style={{ marginBottom: "2rem" }}>
@@ -732,6 +738,22 @@ export default function CreateAIMLCompetencyPage() {
           </div>
         </form>
       </div>
+
+      {/* Success Modal */}
+      <SuccessModal
+        isOpen={successModal.isOpen}
+        title="Success"
+        message={successModal.message}
+        confirmText="OK"
+        onConfirm={() => {
+          setSuccessModal({ isOpen: false, message: '' });
+          if (successModal.testId) {
+            router.push(`/aiml/tests?testId=${encodeURIComponent(successModal.testId)}`);
+          } else {
+            router.push("/aiml/tests");
+          }
+        }}
+      />
     </div>
   );
 }

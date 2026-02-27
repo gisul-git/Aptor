@@ -7,6 +7,8 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import dynamic from 'next/dynamic'
 import { executeCode } from './agentClient'
+// Monaco Paste Detector
+import { useMonacoPasteDetector } from '../../../hooks/proctoring/useMonacoPasteDetector'
 
 const MonacoEditor = dynamic(() => import('@monaco-editor/react'), {
   ssr: false,
@@ -34,6 +36,10 @@ interface NotebookCellProps {
   onRegisterRun?: (cellId: string, runFn: () => Promise<void>) => void
   onEditorReady?: (cellId: string, insertText: (text: string) => void) => void
   readOnly?: boolean
+  // Proctoring props
+  userId?: string
+  assessmentId?: string
+  onPasteViolation?: (violation: { eventType: string; timestamp: string; metadata?: any }) => void
 }
 
 declare global {
@@ -64,7 +70,22 @@ export default function NotebookCell({
   onRegisterRun,
   onEditorReady,
   readOnly = false,
+  userId,
+  assessmentId,
+  onPasteViolation,
 }: NotebookCellProps) {
+  // Monaco Paste Detector - captures actual pasted content
+  const { attachToMonacoEditor } = useMonacoPasteDetector({
+    userId: userId || '',
+    assessmentId: assessmentId || '',
+    onViolation: (violation) => {
+      if (onPasteViolation) {
+        onPasteViolation(violation);
+      }
+    },
+    enabled: !!userId && !!assessmentId,
+    threshold: 20,
+  });
   const [editorHeight, setEditorHeight] = useState(300)
   const editorRef = useRef<any>(null)
   // Track latest code synchronously to avoid race conditions with controlled component
@@ -188,6 +209,17 @@ export default function NotebookCell({
     editorRef.current = editor
     // Initialize ref with current editor content
     latestCodeRef.current = editor.getValue() || code
+
+    // Attach paste detection to Monaco editor
+    if (userId && assessmentId) {
+      console.log('[NotebookCell] Attaching paste detector to Monaco editor', {
+        cellId,
+        userId,
+        assessmentId,
+        hasEditor: !!editor,
+      });
+      attachToMonacoEditor(editor);
+    }
 
     // Shift+Enter to run and create new cell
     editor.addCommand(

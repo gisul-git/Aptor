@@ -62,18 +62,25 @@ if (typeof window !== 'undefined') {
   }, 60000); // Check every minute
 }
 
-// Cleanup old connections every 10 seconds
+// Cleanup old connections every 30 seconds
+// PRODUCTION FIX: Increased timeout from 10s to 60s to prevent premature cleanup
+// during React Strict Mode double mounting in development
 if (typeof window !== 'undefined') {
   setInterval(() => {
     const now = Date.now();
     for (const [channelId, conn] of Array.from(GLOBAL_AGORA_CONNECTIONS.entries())) {
-      if (!conn.isActive && now - conn.timestamp > 10000) {
-        console.log(`[Admin] 🗑️ Cleaning up stale connection for ${channelId}`);
+      // Only cleanup connections that are inactive AND older than 60 seconds
+      // This gives enough time for React Strict Mode remounts to reuse the connection
+      if (!conn.isActive && now - conn.timestamp > 60000) {
+        // Only log in development to reduce console noise in production
+        if (process.env.NODE_ENV === 'development') {
+          console.log(`[Admin] 🗑️ Cleaning up stale connection for ${channelId}`);
+        }
         GLOBAL_AGORA_CONNECTIONS.delete(channelId);
         PENDING_CONNECTIONS.delete(channelId); // Also clean up pending
       }
     }
-  }, 10000);
+  }, 30000); // Check every 30 seconds instead of 10
 }
 
 import type {
@@ -183,6 +190,8 @@ export class AdminLiveService {
    * 
    * Production-level: Handles multiple video tracks per user (webcam + screen).
    * Also subscribes to remote users that aren't subscribed yet.
+   * 
+   * PRODUCTION FIX: Validates connection state and remote user validity before subscribing.
    */
   private async rebuildCandidateStreamsFromRemoteUsers(): Promise<void> {
     if (!this.client) {
@@ -191,36 +200,148 @@ export class AdminLiveService {
 
     this.log("🔄 Rebuilding candidate streams from existing remote users...");
 
+    // PRODUCTION FIX: Check connection state before proceeding
+    // Agora client connection states: "DISCONNECTED" | "CONNECTING" | "CONNECTED" | "RECONNECTING" | "DISCONNECTING" | "FAILED"
+    try {
+      // Get current connection state (Agora SDK tracks this internally)
+      // We can't directly query it, but we can check if client is in a valid state
+      // by checking if remoteUsers array is accessible and client hasn't been destroyed
+      
+      // Validate client is still active and not in a disconnected state
+      // If client was destroyed or connection is broken, remoteUsers might be stale
+      if (!this.client.remoteUsers) {
+        this.log("⚠️ Cannot access remoteUsers - client may be disconnected");
+        // Clear mappings and return early (connection is broken)
+        this.remoteTracks.clear();
+        this.candidateStreams.clear();
+        this.uidToSessionId.clear();
+        this.sessionIdToUid.clear();
+        return;
+      }
+      
+      // PRODUCTION FIX: Having no remote users is NORMAL when no candidates have joined yet
+      // Don't return early - just log and continue (monitoring should stay active)
+      if (this.client.remoteUsers.length === 0) {
+        this.log("ℹ️ No remote users found (no candidates have joined yet - this is normal)");
+        // Clear mappings but continue - monitoring should stay active to wait for candidates
+        this.remoteTracks.clear();
+        this.candidateStreams.clear();
+        this.uidToSessionId.clear();
+        this.sessionIdToUid.clear();
+        // Don't return - continue to end of function to allow monitoring to stay active
+      }
+    } catch (error) {
+      // If we can't access remoteUsers, client is likely disconnected
+      this.log("⚠️ Cannot access remoteUsers - client may be disconnected:", error);
+      this.remoteTracks.clear();
+      this.candidateStreams.clear();
+      this.uidToSessionId.clear();
+      this.sessionIdToUid.clear();
+      return; // Return early only if we can't access remoteUsers (connection broken)
+    }
+
     // Clear existing mappings
     this.remoteTracks.clear();
     this.candidateStreams.clear();
     this.uidToSessionId.clear();
     this.sessionIdToUid.clear();
 
-    // First, subscribe to any remote users that aren't subscribed yet
+    // PRODUCTION FIX: Filter and validate remote users before subscribing
+    // Only attempt subscription for users that:
+    // 1. Have video available (hasVideo = true)
+    // 2. Don't already have a videoTrack (not subscribed yet)
+    // 3. Are still in the channel (we'll validate this during subscription)
     const usersToSubscribe: UID[] = [];
+    const validRemoteUsers: typeof this.client.remoteUsers = [];
+    
     for (const remoteUser of this.client.remoteUsers) {
-      // Check if user has video but no videoTrack (not subscribed)
+      // Validate remote user object is still valid
+      if (!remoteUser || typeof remoteUser.uid === 'undefined') {
+        this.log(`⚠️ Skipping invalid remote user`);
+        continue;
+      }
+      
+      // Track valid users for later processing
+      validRemoteUsers.push(remoteUser);
+      
+      // Check if user has video but no videoTrack (needs subscription)
       if (remoteUser.hasVideo && !remoteUser.videoTrack) {
         usersToSubscribe.push(remoteUser.uid);
       }
     }
 
-    // Subscribe to users that need subscription
-    for (const uid of usersToSubscribe) {
-      try {
-        this.log(`Subscribing to remote user ${uid} during rebuild...`);
-        await this.client.subscribe(uid, "video");
-        this.log(`✅ Subscribed to remote user ${uid}`);
-      } catch (error) {
-        this.log(`⚠️ Failed to subscribe to ${uid} during rebuild:`, error);
-        // Continue with other users even if one fails
+    // PRODUCTION FIX: Subscribe to users with proper error handling and state validation
+    // Only subscribe if we have valid users and client is still active
+    if (usersToSubscribe.length > 0) {
+      this.log(`📡 Attempting to subscribe to ${usersToSubscribe.length} remote user(s)...`);
+      
+      for (const uid of usersToSubscribe) {
+        try {
+          // PRODUCTION FIX: Validate client is still valid before each subscription
+          if (!this.client) {
+            this.log("⚠️ Client destroyed during rebuild, stopping subscription attempts");
+            break;
+          }
+          
+          // PRODUCTION FIX: Check if remote user still exists in remoteUsers array
+          // If user left the channel, they won't be in remoteUsers anymore
+          const userStillExists = this.client.remoteUsers.some(u => u.uid === uid);
+          if (!userStillExists) {
+            this.log(`⚠️ User ${uid} no longer in channel, skipping subscription`);
+            continue;
+          }
+          
+          this.log(`Subscribing to remote user ${uid} during rebuild...`);
+          
+          // PRODUCTION FIX: Use try-catch with specific error handling
+          // This will catch:
+          // - INVALID_OPERATION: peerConnection disconnected
+          // - INVALID_REMOTE_USER: user not in channel
+          await this.client.subscribe(uid, "video");
+          this.log(`✅ Subscribed to remote user ${uid}`);
+        } catch (error: any) {
+          // PRODUCTION FIX: Handle specific Agora errors gracefully
+          const errorMessage = error?.message || String(error);
+          const errorCode = error?.code;
+          
+          // These errors are expected when connection is unstable or user left
+          if (errorMessage.includes("peerConnection disconnected") || 
+              errorMessage.includes("INVALID_OPERATION")) {
+            this.log(`⚠️ Cannot subscribe to ${uid}: peerConnection disconnected (connection may be unstable)`);
+            // Don't continue subscribing if connection is broken
+            break;
+          } else if (errorMessage.includes("not in the channel") || 
+                     errorMessage.includes("INVALID_REMOTE_USER")) {
+            this.log(`⚠️ User ${uid} is not in the channel anymore, skipping`);
+            // Continue with other users
+            continue;
+          } else {
+            this.log(`⚠️ Failed to subscribe to ${uid} during rebuild:`, errorMessage);
+            // For other errors, continue with remaining users
+            continue;
+          }
+        }
       }
+    } else {
+      this.log("ℹ️ No users need subscription (all already subscribed or no video available)");
     }
 
+    // PRODUCTION FIX: Use validated remote users list (filtered above)
     // Group remoteUsers by UID (in case same user has multiple tracks)
     const usersByUid = new Map<UID, typeof this.client.remoteUsers>();
+    
+    // Re-validate remoteUsers before grouping (they might have changed during subscription)
+    if (!this.client || !this.client.remoteUsers) {
+      this.log("⚠️ Client or remoteUsers no longer available after subscription");
+      return;
+    }
+    
     for (const remoteUser of this.client.remoteUsers) {
+      // PRODUCTION FIX: Validate each remote user before processing
+      if (!remoteUser || typeof remoteUser.uid === 'undefined') {
+        continue;
+      }
+      
       const uid = remoteUser.uid;
       if (!usersByUid.has(uid)) {
         usersByUid.set(uid, []);
@@ -465,26 +586,50 @@ export class AdminLiveService {
 
       // 2. ✅ CHECK FOR EXISTING OR PENDING CONNECTION
       const existingConnection = GLOBAL_AGORA_CONNECTIONS.get(this.config.assessmentId);
-      if (existingConnection?.adminId === this.config.adminId && existingConnection?.isActive) {
+      if (existingConnection?.adminId === this.config.adminId) {
         const age = Date.now() - existingConnection.timestamp;
-        this.log(`⚠️ Connection already exists (age: ${age}ms), reusing...`);
+        const isRecent = age < 60000; // Connection is recent if less than 60 seconds old
         
-        this.client = existingConnection.client;
-        this.setupClientCallbacks();
-        this.ownsConnection = false; // We're reusing, not owning
+        // PRODUCTION FIX: Validate connection before reuse
+        // Check if client exists and is still connected
+        const isClientValid = existingConnection.client && 
+          existingConnection.client.connectionState !== 'DISCONNECTED' &&
+          existingConnection.client.connectionState !== 'FAILED';
         
-        // 🔥 PRODUCTION FIX: Rebuild candidateStreams from existing client's remoteUsers
-        await this.rebuildCandidateStreamsFromRemoteUsers();
-        
-        this.updateState({
-          candidateStreams: new Map(this.candidateStreams),
-          activeSessions: Array.from(this.candidateStreams.keys()),
-          isMonitoring: true,
-          isLoading: false,
-        });
-        
-        this.log("✅ Reusing existing Agora connection with restored candidate streams");
-        return { success: true, connectionReused: true };
+        // Only reuse if connection is active AND client is valid
+        // OR if connection is recently inactive but client is still valid (React Strict Mode case)
+        if (isClientValid && (existingConnection.isActive || (isRecent && !existingConnection.isActive))) {
+          if (!existingConnection.isActive) {
+            // Reactivate the connection if it was recently inactive
+            existingConnection.isActive = true;
+            existingConnection.timestamp = Date.now();
+            this.log(`🔄 Reactivating recently inactive connection (age: ${age}ms)`);
+          } else {
+            this.log(`⚠️ Connection already exists (age: ${age}ms), reusing...`);
+          }
+          
+          this.client = existingConnection.client;
+          this.setupClientCallbacks();
+          this.ownsConnection = existingConnection.isActive; // Own if we reactivated it
+          
+          // 🔥 PRODUCTION FIX: Rebuild candidateStreams from existing client's remoteUsers
+          await this.rebuildCandidateStreamsFromRemoteUsers();
+          
+          this.updateState({
+            candidateStreams: new Map(this.candidateStreams),
+            activeSessions: Array.from(this.candidateStreams.keys()),
+            isMonitoring: true,
+            isLoading: false,
+          });
+          
+          this.log("✅ Reusing existing Agora connection with restored candidate streams");
+          return { success: true, connectionReused: true };
+        } else if (!isClientValid) {
+          // Client is dead, remove from map and create new connection
+          this.log("⚠️ Existing connection has dead client, removing and creating new...");
+          GLOBAL_AGORA_CONNECTIONS.delete(this.config.assessmentId);
+          // Fall through to create new connection
+        }
       }
 
       // 3. Check if another mount is already creating a connection
@@ -497,23 +642,47 @@ export class AdminLiveService {
         
         // After waiting, check if connection now exists
         const nowExisting = GLOBAL_AGORA_CONNECTIONS.get(this.config.assessmentId);
-        if (nowExisting?.isActive) {
-          this.log("✅ Pending connection completed, reusing...");
-          this.client = nowExisting.client;
-          this.setupClientCallbacks();
-          this.ownsConnection = false; // We're reusing, not owning
+        if (nowExisting) {
+          const age = Date.now() - nowExisting.timestamp;
+          const isRecent = age < 60000;
           
-          // 🔥 PRODUCTION FIX: Rebuild candidateStreams from existing client's remoteUsers
-          await this.rebuildCandidateStreamsFromRemoteUsers();
+          // PRODUCTION FIX: Validate connection before reuse
+          const isClientValid = nowExisting.client && 
+            nowExisting.client.connectionState !== 'DISCONNECTED' &&
+            nowExisting.client.connectionState !== 'FAILED';
           
-      this.updateState({
-            candidateStreams: new Map(this.candidateStreams),
-            activeSessions: Array.from(this.candidateStreams.keys()),
-            isMonitoring: true,
-            isLoading: false,
-          });
-          
-          return { success: true, connectionReused: true };
+          // Only reuse if client is valid AND (active OR recently inactive)
+          if (isClientValid && (nowExisting.isActive || (isRecent && !nowExisting.isActive))) {
+            if (!nowExisting.isActive) {
+              // Reactivate the connection
+              nowExisting.isActive = true;
+              nowExisting.timestamp = Date.now();
+              this.log("🔄 Reactivating recently inactive connection from pending");
+            } else {
+              this.log("✅ Pending connection completed, reusing...");
+            }
+            
+            this.client = nowExisting.client;
+            this.setupClientCallbacks();
+            this.ownsConnection = nowExisting.isActive;
+            
+            // 🔥 PRODUCTION FIX: Rebuild candidateStreams from existing client's remoteUsers
+            await this.rebuildCandidateStreamsFromRemoteUsers();
+            
+            this.updateState({
+              candidateStreams: new Map(this.candidateStreams),
+              activeSessions: Array.from(this.candidateStreams.keys()),
+              isMonitoring: true,
+              isLoading: false,
+            });
+            
+            return { success: true, connectionReused: true };
+          } else if (!isClientValid) {
+            // Client is dead, remove from map and create new connection
+            this.log("⚠️ Pending connection has dead client, removing and creating new...");
+            GLOBAL_AGORA_CONNECTIONS.delete(this.config.assessmentId);
+            // Fall through to create new connection
+          }
         }
       }
 
@@ -595,19 +764,31 @@ export class AdminLiveService {
     // If we're reusing a connection, don't disconnect it (other instances might be using it)
     if (this.client && this.ownsConnection) {
       try {
-        // Remove all event listeners before leaving
-        this.client.removeAllListeners();
-        await this.client.leave();
+        // PRODUCTION FIX: Check if already disconnected to prevent double leave
+        const connectionState = this.client.connectionState;
+        if (connectionState === 'DISCONNECTED' || connectionState === 'DISCONNECTING') {
+          this.log("⚠️ Connection already disconnected, skipping leave()");
+        } else {
+          // Remove all event listeners before leaving
+          this.client.removeAllListeners();
+          await this.client.leave();
+        }
         
-        // Mark connection as inactive (will be cleaned up by interval)
+        // PRODUCTION FIX: Remove connection from map immediately when we own it
+        // This prevents other instances from trying to reuse a dead connection
         const conn = GLOBAL_AGORA_CONNECTIONS.get(this.config.assessmentId);
-        if (conn) {
-          conn.isActive = false;
-          conn.timestamp = Date.now();
-          this.log("🔒 Marked connection as inactive");
+        if (conn && conn.adminId === this.config.adminId) {
+          // Only remove if we're the owner
+          GLOBAL_AGORA_CONNECTIONS.delete(this.config.assessmentId);
+          this.log("🗑️ Removed connection from global map (owned by this instance)");
         }
       } catch (error) {
         this.log("Error leaving channel", error);
+        // Still remove from map even if leave() failed
+        const conn = GLOBAL_AGORA_CONNECTIONS.get(this.config.assessmentId);
+        if (conn && conn.adminId === this.config.adminId) {
+          GLOBAL_AGORA_CONNECTIONS.delete(this.config.assessmentId);
+        }
       }
       this.client = null;
       this.ownsConnection = false;
@@ -977,14 +1158,17 @@ export class AdminLiveService {
       const candidateEmail = candidateInfo?.candidateEmail || candidateId;
       const candidateName = candidateInfo?.candidateName;
 
-      // Capture snapshot from webcam stream if available
-      let snapshotBase64: string | null = null;
-      try {
-        const candidateInfo = this.candidateStreams.get(candidateId);
-        const webcamStream = candidateInfo?.webcamStream;
-        if (webcamStream && typeof window !== 'undefined') {
+      // Capture snapshots from both webcam and screen streams if available
+      let snapshotBase64: string | null = null; // Primary snapshot (webcam) for backward compatibility
+      const evidenceArray: Array<{ type: string; format: string; data: string }> = [];
+      
+      // Helper function to capture snapshot from a stream
+      const captureSnapshot = async (stream: MediaStream | null, type: 'webcam' | 'screen'): Promise<string | null> => {
+        if (!stream || typeof window === 'undefined') return null;
+        
+        try {
           const videoElement = document.createElement('video');
-          videoElement.srcObject = webcamStream;
+          videoElement.srcObject = stream;
           videoElement.play();
           
           await new Promise((resolve) => setTimeout(resolve, 200)); // Wait for video to load
@@ -996,19 +1180,50 @@ export class AdminLiveService {
             const ctx = canvas.getContext('2d');
             if (ctx && videoElement.videoWidth > 0 && videoElement.videoHeight > 0) {
               ctx.drawImage(videoElement, 0, 0);
-              snapshotBase64 = canvas.toDataURL('image/jpeg', 0.8).split(',')[1];
+              const base64Data = canvas.toDataURL('image/jpeg', 0.8).split(',')[1];
+              return base64Data;
             }
           }
+        } catch (error) {
+          this.log(`Failed to capture ${type} snapshot:`, error);
+        }
+        return null;
+      };
+      
+      // Capture webcam snapshot
+      try {
+        const webcamStream = candidateInfo?.webcamStream ?? null;
+        const webcamBase64 = await captureSnapshot(webcamStream, 'webcam');
+        if (webcamBase64) {
+          snapshotBase64 = webcamBase64; // Keep for backward compatibility
+          evidenceArray.push({ type: 'webcam', format: 'jpeg', data: webcamBase64 });
         }
       } catch (snapshotError) {
-        this.log('Failed to capture snapshot for flag:', snapshotError);
+        this.log('Failed to capture webcam snapshot for flag:', snapshotError);
         // Continue without snapshot
+      }
+      
+      // Capture screen snapshot
+      try {
+        const screenStream = candidateInfo?.screenStream ?? null;
+        const screenBase64 = await captureSnapshot(screenStream, 'screen');
+        if (screenBase64) {
+          evidenceArray.push({ type: 'screen', format: 'jpeg', data: screenBase64 });
+        }
+      } catch (snapshotError) {
+        this.log('Failed to capture screen snapshot for flag:', snapshotError);
+        // Continue without screen snapshot
       }
 
       // Prepare payload for /api/proctor/record (same endpoint as AI proctoring violations)
       // This ensures flags appear in analytics page alongside AI violations
+      // Use same userId format as AI violations: "email:candidateEmail" for consistency
+      const userId = candidateEmail.includes('@') 
+        ? `email:${candidateEmail}` 
+        : candidateEmail; // If not an email, use as-is (might be token or ID)
+      
       const payload = {
-        userId: candidateEmail, // Use candidateEmail directly (analytics filters by metadata.candidateEmail too)
+        userId: userId, // Use "email:email" format to match AI violations
         assessmentId: this.config.assessmentId,
         eventType: 'ADMIN_FLAGGED',
         timestamp: new Date().toISOString(),
@@ -1016,11 +1231,13 @@ export class AdminLiveService {
           reason: reason,
           severity: severity, // 'low' | 'medium' | 'high'
           candidateName: candidateName,
-          candidateEmail: candidateEmail, // For analytics filtering
+          candidateEmail: candidateEmail, // For analytics filtering (backup)
           flagType: 'admin_flag',
           source: 'live-proctor',
+          // Store both webcam and screen snapshots in evidence array for dual display
+          ...(evidenceArray.length > 0 && { evidence: evidenceArray }),
         },
-        snapshotBase64: snapshotBase64 || null,
+        snapshotBase64: snapshotBase64 || null, // Keep for backward compatibility (webcam as primary)
       };
 
       // Send to /api/proctor/record (same endpoint as AI proctoring violations)

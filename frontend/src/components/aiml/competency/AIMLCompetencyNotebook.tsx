@@ -7,7 +7,7 @@
 
 import { useState, useCallback, useRef, useEffect } from 'react'
 import NotebookCell from './NotebookCell'
-import { connect, interruptKernel, restartKernel, isConnected, executeCode } from './agentClient'
+import { connect, interruptKernel, restartKernel, isConnected, executeCode, isAgentUnavailable } from './agentClient'
 import DatasetViewer from './DatasetViewer'
 
 interface Cell {
@@ -42,6 +42,10 @@ interface AIMLCompetencyNotebookProps {
   onSubmit?: (allCode: string, outputs: string[]) => void
   readOnly?: boolean
   showSubmit?: boolean
+  // Proctoring props
+  userId?: string
+  assessmentId?: string
+  onPasteViolation?: (violation: { eventType: string; timestamp: string; metadata?: any }) => void
 }
 
 export default function AIMLCompetencyNotebook({
@@ -52,6 +56,9 @@ export default function AIMLCompetencyNotebook({
   onSubmit,
   readOnly = false,
   showSubmit = true,
+  userId,
+  assessmentId,
+  onPasteViolation,
 }: AIMLCompetencyNotebookProps) {
   const [cells, setCells] = useState<Cell[]>([])
   const [runningCells, setRunningCells] = useState<Set<string>>(new Set())
@@ -144,6 +151,15 @@ export default function AIMLCompetencyNotebook({
     
     const attemptConnection = async () => {
       try {
+        // PRODUCTION FIX: Check if agent is permanently unavailable before attempting connection
+        if (isAgentUnavailable()) {
+          console.warn('[AIMLNotebook] Agent is permanently unavailable. Stopping retry attempts.')
+          if (isMounted) {
+            setConnected(false)
+          }
+          return // Don't retry if agent is permanently unavailable
+        }
+        
         // Check if already connected
         if (isConnected()) {
           // If already connected, check if we need to warmup
@@ -174,10 +190,16 @@ export default function AIMLCompetencyNotebook({
           setConnected(false)
           // Reset warmup flag on connection failure so we retry warmup on reconnect
           kernelWarmedUpRef.current = false
-          // Retry connection after a delay
-          interval = setTimeout(() => {
-            attemptConnection()
-          }, 3000) // Retry every 3 seconds
+          
+          // PRODUCTION FIX: Only retry if agent is not permanently unavailable
+          if (!isAgentUnavailable()) {
+            // Retry connection after a delay
+            interval = setTimeout(() => {
+              attemptConnection()
+            }, 3000) // Retry every 3 seconds
+          } else {
+            console.warn('[AIMLNotebook] Agent is permanently unavailable. Stopping retry attempts.')
+          }
         }
       }
     }
@@ -188,6 +210,12 @@ export default function AIMLCompetencyNotebook({
     // Also check connection status periodically to handle disconnections
     const statusCheckInterval = setInterval(() => {
       if (isMounted) {
+        // PRODUCTION FIX: Don't check if agent is permanently unavailable
+        if (isAgentUnavailable()) {
+          setConnected(false)
+          return // Don't attempt reconnection if agent is unavailable
+        }
+        
         const currentlyConnected = isConnected()
         setConnected(currentlyConnected)
         
@@ -804,6 +832,9 @@ export default function AIMLCompetencyNotebook({
                     onRegisterRun={registerCellRun}
                     onEditorReady={handleEditorReady}
                     readOnly={readOnly}
+                    userId={userId}
+                    assessmentId={assessmentId}
+                    onPasteViolation={onPasteViolation}
                   />
                 ))}
               </div>
@@ -958,10 +989,13 @@ export default function AIMLCompetencyNotebook({
                 autoFocus={cell.id === focusedCellId}
                 canMoveUp={idx > 0}
                 canMoveDown={idx < cells.length - 1}
-                sessionId={sessionId}
-                onRegisterRun={registerCellRun}
-                onEditorReady={handleEditorReady}
-                readOnly={readOnly}
+                    sessionId={sessionId}
+                    onRegisterRun={registerCellRun}
+                    onEditorReady={handleEditorReady}
+                    readOnly={readOnly}
+                    userId={userId}
+                    assessmentId={assessmentId}
+                    onPasteViolation={onPasteViolation}
               />
             ))}
           </div>

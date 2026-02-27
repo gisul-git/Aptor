@@ -265,6 +265,8 @@ export const config = {
      * - api/auth (NextAuth routes)
      * - api/assessment (Candidate assessment API)
      * - api/proctor (Proctoring API - candidates aren't logged in)
+     * - api/config (Runtime configuration API)
+     * - api/v1 (All API v1 routes - handled by API Gateway with its own auth)
      * - api/v1/candidate (Candidate API routes - reference photo, etc.)
      * - mediapipe (MediaPipe assets)
      * - _next/static (static files)
@@ -273,7 +275,7 @@ export const config = {
      * - favicon.ico (favicon file)
      * - public files (public folder)
      */
-    "/((?!api/auth|api/assessment|api/proctor|api/config|api/v1/candidate|mediapipe|_next/static|_next/image|_next/data|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|js|wasm|data|binarypb)$).*)",
+    "/((?!api/auth|api/assessment|api/proctor|api/config|api/v1|api/v1/candidate|mediapipe|_next/static|_next/image|_next/data|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|js|wasm|data|binarypb)$).*)",
   ],
 };
 

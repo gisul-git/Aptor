@@ -174,9 +174,16 @@ export default function CandidateAnalyticsPage() {
                     return true;
                   }
                 }
-                // Fallback: Check if userId contains email (for email: format)
+                // Fallback 1: Check if userId contains email (for email: format)
                 if (log.userId && log.userId.startsWith('email:')) {
                   const userIdEmail = log.userId.replace('email:', '').trim().toLowerCase();
+                  if (userIdEmail === emailLower) {
+                    return true;
+                  }
+                }
+                // Fallback 2: Check if userId is the email directly (for flags saved with plain email)
+                if (log.userId && log.userId.includes('@')) {
+                  const userIdEmail = String(log.userId).trim().toLowerCase();
                   if (userIdEmail === emailLower) {
                     return true;
                   }
