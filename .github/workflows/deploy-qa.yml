@@ -8,7 +8,7 @@ on:
     types: [closed]
     branches:
       - QA
-  workflow_dispatch: # Allow manual triggerings
+  workflow_dispatch: # Allow manual triggeringss
 
 env:
   VM_HOST: ${{ secrets.QA_VM_HOST }}
