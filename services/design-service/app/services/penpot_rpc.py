@@ -121,9 +121,14 @@ class PenpotRPCService:
         try:
             session_id = str(uuid.uuid4())
             
-            # Template IDs
-            template_team_id = "72b215ed-dedf-8032-8007-87e4c4104a6f"
-            template_project_id = "72b215ed-dedf-8032-8007-87ee503f626c"
+            # Get actual team and project IDs from authentication
+            # These will be extracted from the login response
+            cookies = await self.authenticate()
+            
+            # For now, use the admin's default team and project
+            # In production, you might want to create a dedicated team/project for assessments
+            template_team_id = "08f5f2c6-f89a-81a5-8007-9a55a628c47c"
+            template_project_id = "08f5f2c6-f89a-81a5-8007-9a55a642c1ad"
             
             logger.info(f"Creating isolated workspace for user {user_id}")
             
@@ -131,10 +136,13 @@ class PenpotRPCService:
                 logger.error("Transit format not available")
                 raise Exception("Transit format support required. Install transit-python.")
             
-            # Authenticate first
+            # Get actual team and project IDs from authentication
             cookies = await self.authenticate()
             
-            # Create a new blank file for this candidate
+            # For now, use the admin's default team and project
+            # In production, you might want to create a dedicated team/project for assessments
+            template_team_id = "08f5f2c6-f89a-81a5-8007-9a55a628c47c"
+            template_project_id = "08f5f2c6-f89a-81a5-8007-9a55a642c1ad"
             new_file_id = await self._create_file_with_transit(
                 template_project_id,
                 f"{question_title}_{user_id[:8]}_{session_id[:8]}",

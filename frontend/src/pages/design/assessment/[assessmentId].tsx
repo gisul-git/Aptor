@@ -60,20 +60,35 @@ export default function DesignAssessmentPage() {
       const questionData = await questionRes.json();
       setQuestion(questionData);
       
-      // Create workspace
+      // Create isolated Penpot workspace via backend API
+      const userId = 'candidate-' + Date.now();
+      
+      console.log('🔧 Creating isolated Penpot workspace...');
       const workspaceRes = await fetch('http://localhost:3006/api/v1/design/workspace/create', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          user_id: 'candidate-' + Date.now(),
+          user_id: userId,
           assessment_id: assessmentId,
-          question_id: assessmentId
+          question_id: questionData._id || questionData.id || assessmentId
         })
       });
       
-      if (!workspaceRes.ok) throw new Error('Failed to create workspace');
+      if (!workspaceRes.ok) {
+        const errorData = await workspaceRes.json().catch(() => ({ detail: 'Unknown error' }));
+        throw new Error(`Failed to create workspace: ${errorData.detail || workspaceRes.statusText}`);
+      }
+      
       const workspaceData = await workspaceRes.json();
-      setWorkspace(workspaceData);
+      console.log('✅ Workspace created:', workspaceData);
+      
+      setWorkspace({
+        session_id: workspaceData.session_id,
+        workspace_url: workspaceData.workspace_url,
+        file_id: workspaceData.file_id,
+        project_id: workspaceData.project_id,
+        user_id: userId
+      });
       
       // Set timer based on question time limit
       if (questionData.time_limit_minutes) {
@@ -91,7 +106,7 @@ export default function DesignAssessmentPage() {
       
       setLoading(false);
     } catch (err: any) {
-      console.error('Initialization error:', err);
+      console.error('❌ Initialization error:', err);
       setError(err.message);
       setLoading(false);
     }
@@ -134,82 +149,182 @@ export default function DesignAssessmentPage() {
     if (!workspace) return;
     
     try {
-      // Get the Penpot iframe
-      const iframe = document.querySelector('iframe[title="Penpot Design Workspace"]') as HTMLIFrameElement;
-      if (!iframe) {
-        console.warn('Penpot iframe not found');
-        return;
+      console.log('📸 Capturing screenshot via Penpot export...');
+      
+      // Use Penpot's export API to get the design as an image
+      // This is more reliable than trying to capture iframe content
+      const exportUrl = `http://localhost:6060/api/export/${workspace.file_id}/page/latest`;
+      
+      try {
+        // Try to fetch the exported image from Penpot
+        const response = await fetch(exportUrl, {
+          method: 'GET',
+          credentials: 'include'
+        });
+        
+        if (response.ok) {
+          const blob = await response.blob();
+          const reader = new FileReader();
+          
+          reader.onloadend = async () => {
+            const imageData = reader.result as string;
+            setLatestScreenshot(imageData);
+            
+            console.log('📸 Screenshot captured from Penpot export');
+            
+            // Send to backend for evaluation
+            await fetch('http://localhost:3006/api/v1/design/screenshot', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                session_id: workspace.session_id,
+                timestamp: new Date().toISOString(),
+                image_data: imageData
+              })
+            });
+          };
+          
+          reader.readAsDataURL(blob);
+        } else {
+          // Fallback: Create a metadata screenshot
+          console.log('📸 Using metadata screenshot (Penpot export not available)');
+          await captureMetadataScreenshot();
+        }
+      } catch (exportError) {
+        console.warn('Penpot export failed, using metadata screenshot:', exportError);
+        await captureMetadataScreenshot();
       }
-      
-      // Create canvas to capture iframe content
-      const canvas = canvasRef.current;
-      if (!canvas) return;
-      
-      const ctx = canvas.getContext('2d');
-      if (!ctx) return;
-      
-      // Set canvas size
-      canvas.width = iframe.offsetWidth;
-      canvas.height = iframe.offsetHeight;
-      
-      // Draw iframe content (note: cross-origin restrictions may apply)
-      // For now, we'll capture a placeholder and rely on Penpot export
-      ctx.fillStyle = '#f0f0f0';
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-      ctx.fillStyle = '#333';
-      ctx.font = '20px Arial';
-      ctx.textAlign = 'center';
-      ctx.fillText('Design Screenshot', canvas.width / 2, canvas.height / 2);
-      
-      // Convert to base64
-      const imageData = canvas.toDataURL('image/jpeg', 0.8);
-      setLatestScreenshot(imageData);
-      
-      console.log('📸 Screenshot captured for evaluation');
-      
-      // Send to backend for evaluation
-      await fetch('http://localhost:3006/api/v1/design/screenshot', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          session_id: workspace.session_id,
-          timestamp: new Date().toISOString(),
-          image_data: imageData
-        })
-      });
       
     } catch (err) {
       console.error('Screenshot capture error:', err);
     }
   };
   
+  const captureMetadataScreenshot = async () => {
+    // Create a canvas with metadata about the design session
+    const canvas = canvasRef.current;
+    if (!canvas || !workspace) return;
+    
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    
+    // Set canvas size
+    canvas.width = 800;
+    canvas.height = 600;
+    
+    // Draw background
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    
+    // Draw border
+    ctx.strokeStyle = '#e0e0e0';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(10, 10, canvas.width - 20, canvas.height - 20);
+    
+    // Draw title
+    ctx.fillStyle = '#333';
+    ctx.font = 'bold 24px Arial';
+    ctx.textAlign = 'center';
+    ctx.fillText('Design Assessment Screenshot', canvas.width / 2, 60);
+    
+    // Draw metadata
+    ctx.font = '16px Arial';
+    ctx.textAlign = 'left';
+    ctx.fillStyle = '#666';
+    
+    const metadata = [
+      `Session ID: ${workspace.session_id.substring(0, 20)}...`,
+      `File ID: ${workspace.file_id}`,
+      `Timestamp: ${new Date().toLocaleString()}`,
+      `Time Remaining: ${formatTime(timeRemaining)}`,
+      '',
+      'Note: This is a metadata screenshot.',
+      'Actual design will be evaluated from Penpot file data.'
+    ];
+    
+    let y = 120;
+    metadata.forEach(line => {
+      ctx.fillText(line, 40, y);
+      y += 30;
+    });
+    
+    // Draw Penpot logo text
+    ctx.font = 'bold 20px Arial';
+    ctx.fillStyle = '#3b82f6';
+    ctx.textAlign = 'center';
+    ctx.fillText('🎨 Penpot Design Workspace', canvas.width / 2, canvas.height - 40);
+    
+    // Convert to base64
+    const imageData = canvas.toDataURL('image/jpeg', 0.9);
+    setLatestScreenshot(imageData);
+    
+    console.log('📸 Metadata screenshot created');
+    
+    // Send to backend
+    await fetch('http://localhost:3006/api/v1/design/screenshot', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        session_id: workspace.session_id,
+        timestamp: new Date().toISOString(),
+        image_data: imageData
+      })
+    });
+  };
+  
   const startEventTracking = () => {
     console.log('🎯 Event tracking started');
     
-    // Track mouse clicks
-    document.addEventListener('click', handleClick);
+    // Track mouse clicks on the entire page
+    document.addEventListener('click', handleClick, true); // Use capture phase
     
     // Track keyboard events (for undo/redo)
-    document.addEventListener('keydown', handleKeyDown);
+    document.addEventListener('keydown', handleKeyDown, true);
     
     // Track mouse movement (for activity detection)
     document.addEventListener('mousemove', handleMouseMove);
     
+    // Track focus on Penpot iframe (indicates user is designing)
+    const iframe = document.querySelector('iframe[title="Penpot Design Workspace"]');
+    if (iframe) {
+      iframe.addEventListener('mouseenter', () => {
+        console.log('🎨 User entered Penpot workspace');
+        const event = {
+          type: 'workspace_enter',
+          timestamp: new Date().toISOString()
+        };
+        setEvents(prev => [...prev, event]);
+        sendEvent(event);
+      });
+    }
+    
     // Check for idle time every 10 seconds
     idleCheckIntervalRef.current = setInterval(checkIdleTime, 10000);
+    
+    console.log('✅ Event tracking initialized - capturing clicks, keyboard, and activity');
   };
   
   const handleClick = (e: MouseEvent) => {
+    const target = e.target as HTMLElement;
+    const isIframe = target.tagName === 'IFRAME';
+    const isPenpotArea = target.closest('iframe[title="Penpot Design Workspace"]') !== null;
+    
     const event = {
       type: 'click',
       timestamp: new Date().toISOString(),
       x: e.clientX,
       y: e.clientY,
-      target: (e.target as HTMLElement)?.tagName || 'unknown'
+      target: target.tagName || 'unknown',
+      is_penpot_area: isIframe || isPenpotArea
     };
     
     setEvents(prev => [...prev, event]);
     lastActivityRef.current = Date.now();
+    
+    // Log to console for debugging
+    if (isIframe || isPenpotArea) {
+      console.log('🎨 Click on Penpot workspace detected');
+    }
     
     // Send to backend
     sendEvent(event);
@@ -258,7 +373,7 @@ export default function DesignAssessmentPage() {
     if (!workspace) return;
     
     try {
-      await fetch('http://localhost:3006/api/v1/design/event', {
+      const response = await fetch('http://localhost:3006/api/v1/design/event', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -266,6 +381,12 @@ export default function DesignAssessmentPage() {
           ...event
         })
       });
+      
+      if (response.ok) {
+        console.log(`✅ Event sent: ${event.type}`);
+      } else {
+        console.warn(`⚠️ Event send failed: ${response.status}`);
+      }
     } catch (err) {
       console.error('Failed to send event:', err);
     }
@@ -351,8 +472,8 @@ export default function DesignAssessmentPage() {
       if (idleCheckIntervalRef.current) {
         clearInterval(idleCheckIntervalRef.current);
       }
-      document.removeEventListener('click', handleClick);
-      document.removeEventListener('keydown', handleKeyDown);
+      document.removeEventListener('click', handleClick, true);
+      document.removeEventListener('keydown', handleKeyDown, true);
       document.removeEventListener('mousemove', handleMouseMove);
     };
   }, []);
@@ -408,6 +529,14 @@ export default function DesignAssessmentPage() {
         </div>
         
         <div className="flex items-center gap-4">
+          {/* Tracking Status Indicator */}
+          <div className="flex items-center gap-2 px-3 py-1 bg-green-50 border border-green-200 rounded-lg">
+            <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+            <span className="text-xs text-green-700 font-medium">
+              Recording: {events.length} events
+            </span>
+          </div>
+          
           {/* Timer */}
           <div className="flex items-center gap-2">
             <span className="text-2xl">⏱️</span>
@@ -474,7 +603,7 @@ export default function DesignAssessmentPage() {
             </div>
             
             {/* Instructions */}
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
               <h3 className="text-sm font-semibold text-blue-800 mb-2">📝 Instructions</h3>
               <ul className="space-y-1 text-xs text-blue-700">
                 <li>• Design in Penpot (right panel)</li>
@@ -482,6 +611,24 @@ export default function DesignAssessmentPage() {
                 <li>• Submit before time runs out</li>
                 <li>• Your work is auto-saved</li>
               </ul>
+            </div>
+            
+            {/* Tracking Status */}
+            <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+              <h3 className="text-sm font-semibold text-green-800 mb-2">📊 Activity Tracking</h3>
+              <div className="space-y-2 text-xs text-green-700">
+                <div className="flex items-center justify-between">
+                  <span>Events Captured:</span>
+                  <span className="font-semibold">{events.length}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span>Screenshots:</span>
+                  <span className="font-semibold">{latestScreenshot ? 'Active ✓' : 'Starting...'}</span>
+                </div>
+                <div className="text-xs text-green-600 mt-2 pt-2 border-t border-green-200">
+                  Your design activity is being recorded for evaluation purposes.
+                </div>
+              </div>
             </div>
           </div>
         </div>

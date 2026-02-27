@@ -41,10 +41,10 @@ class Settings(BaseSettings):
     
     # Penpot Configuration
     PENPOT_URL: str = os.getenv("PENPOT_URL", "http://localhost:9001")
-    PENPOT_API_URL: str = os.getenv("PENPOT_API_URL", "http://localhost:9001/api")
+    PENPOT_API_URL: str = os.getenv("PENPOT_API_URL", "http://localhost:6060")
     PENPOT_ACCESS_TOKEN: str = os.getenv("PENPOT_ACCESS_TOKEN", "")
-    PENPOT_ADMIN_EMAIL: str = os.getenv("PENPOT_ADMIN_EMAIL", "admin@penpot.local")
-    PENPOT_ADMIN_PASSWORD: str = os.getenv("PENPOT_ADMIN_PASSWORD", "admin123")
+    PENPOT_ADMIN_EMAIL: str = os.getenv("PENPOT_ADMIN_EMAIL", "admin@penpot.app")
+    PENPOT_ADMIN_PASSWORD: str = os.getenv("PENPOT_ADMIN_PASSWORD", "12312312")
     
     # Redis
     REDIS_HOST: str = os.getenv("REDIS_HOST", "localhost")

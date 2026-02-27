@@ -38,6 +38,15 @@ class GenerateQuestionRequest(BaseModel):
     created_by: str = "system"
 
 
+class CreateTestRequest(BaseModel):
+    class Config:
+        extra = "allow"  # Allow any extra fields
+    
+    title: str
+    description: Optional[str] = None
+    question_ids: List[str] = []
+
+
 class CreateSessionRequest(BaseModel):
     user_id: str
     assessment_id: str
@@ -161,6 +170,202 @@ async def get_question(question_id: str):
         raise
     except Exception as e:
         logger.error(f"Failed to get question {question_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.patch("/questions/{question_id}/publish")
+async def toggle_publish_status(question_id: str, request: Dict[str, Any]):
+    """Toggle question publish status"""
+    try:
+        if design_repository.db is None:
+            await design_repository.initialize()
+        
+        is_published = request.get("is_published", False)
+        
+        # Update question publish status
+        db = design_repository.db
+        result = await db.design_questions.update_one(
+            {"_id": question_id},
+            {"$set": {"is_published": is_published, "updated_at": datetime.utcnow()}}
+        )
+        
+        if result.matched_count == 0:
+            raise HTTPException(status_code=404, detail="Question not found")
+        
+        logger.info(f"Question {question_id} publish status updated to {is_published}")
+        
+        return {"message": "Publish status updated successfully", "is_published": is_published}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to update publish status: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/questions/{question_id}")
+async def delete_question(question_id: str):
+    """Delete a design question"""
+    try:
+        if design_repository.db is None:
+            await design_repository.initialize()
+        
+        db = design_repository.db
+        result = await db.design_questions.delete_one({"_id": question_id})
+        
+        if result.deleted_count == 0:
+            raise HTTPException(status_code=404, detail="Question not found")
+        
+        logger.info(f"Question {question_id} deleted successfully")
+        
+        return {"message": "Question deleted successfully"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to delete question: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# Test/Assessment Management
+@router.post("/tests/create")
+async def create_test_new(request: CreateTestRequest):
+    """Create a new design assessment/test"""
+    try:
+        if design_repository.db is None:
+            await design_repository.initialize()
+        
+        db = design_repository.db
+        
+        # Convert to dict to access all fields
+        request_dict = request.dict()
+        
+        # Extract fields from request
+        title = request.title
+        description = request.description
+        question_ids = request.question_ids
+        
+        # Validate that all questions exist
+        for question_id in question_ids:
+            question = await db.design_questions.find_one({"_id": question_id})
+            if not question:
+                raise HTTPException(status_code=404, detail=f"Question {question_id} not found")
+        
+        # Extract proctoring settings from nested object or flat fields
+        proctoring_settings = request_dict.get("proctoringSettings", {})
+        ai_proctoring = proctoring_settings.get("aiProctoringEnabled", request_dict.get("aiProctoringEnabled", request_dict.get("ai_proctoring", False)))
+        face_mismatch = proctoring_settings.get("faceMismatchEnabled", request_dict.get("faceMismatchEnabled", request_dict.get("face_mismatch_detection", False)))
+        live_proctoring = proctoring_settings.get("liveProctoringEnabled", request_dict.get("liveProctoringEnabled", request_dict.get("live_proctoring", False)))
+        
+        # Extract schedule settings
+        schedule = request_dict.get("schedule", {})
+        candidate_reqs = schedule.get("candidateRequirements", {})
+        
+        # Determine duration
+        duration = request_dict.get("duration") or request_dict.get("duration_minutes") or schedule.get("duration", 60)
+        
+        # Determine exam window
+        exam_mode = request_dict.get("examMode") or request_dict.get("exam_window_type", "strict")
+        start_time = request_dict.get("start_time") or request_dict.get("startTime") or request_dict.get("exam_start_time") or schedule.get("startTime")
+        end_time = request_dict.get("end_time") or request_dict.get("endTime") or request_dict.get("exam_end_time") or schedule.get("endTime")
+        
+        # Determine candidate requirements
+        require_phone = candidate_reqs.get("requirePhone", request_dict.get("require_phone", False))
+        require_resume = candidate_reqs.get("requireResume", request_dict.get("require_resume", False))
+        require_linkedin = candidate_reqs.get("requireLinkedIn", request_dict.get("require_linkedin", False))
+        require_github = candidate_reqs.get("requireGithub", request_dict.get("require_github", False))
+        
+        # Timer mode
+        timer_mode = request_dict.get("timer_mode", "GLOBAL")
+        question_timings = request_dict.get("question_timings", [])
+        
+        # Create test document
+        test_doc = {
+            "_id": str(datetime.utcnow().timestamp()).replace(".", ""),
+            "title": title,
+            "description": description,
+            "question_ids": question_ids,
+            "duration_minutes": duration,
+            "timer_mode": timer_mode,
+            "question_timings": question_timings,
+            "proctoring_enabled": ai_proctoring or face_mismatch or live_proctoring,
+            "ai_proctoring": ai_proctoring,
+            "face_mismatch_detection": face_mismatch,
+            "live_proctoring": live_proctoring,
+            "exam_window_type": exam_mode,
+            "exam_start_time": start_time,
+            "exam_end_time": end_time,
+            "require_phone": require_phone,
+            "require_resume": require_resume,
+            "require_linkedin": require_linkedin,
+            "require_github": require_github,
+            "created_by": request_dict.get("created_by", "system"),
+            "created_at": datetime.utcnow(),
+            "updated_at": datetime.utcnow(),
+            "is_active": True
+        }
+        
+        result = await db.design_tests.insert_one(test_doc)
+        
+        logger.info(f"Created design test: {test_doc['_id']}")
+        
+        return {
+            "id": test_doc["_id"],
+            "message": "Test created successfully",
+            "test": test_doc
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to create test: {e}")
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/tests")
+async def get_tests(
+    limit: int = Query(50, le=100),
+    skip: int = Query(0, ge=0)
+):
+    """Get all design tests"""
+    try:
+        if design_repository.db is None:
+            await design_repository.initialize()
+        
+        db = design_repository.db
+        
+        tests = await db.design_tests.find(
+            {"is_active": True}
+        ).sort("created_at", -1).skip(skip).limit(limit).to_list(length=None)
+        
+        return tests
+        
+    except Exception as e:
+        logger.error(f"Failed to get tests: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/tests/{test_id}")
+async def get_test(test_id: str):
+    """Get specific design test"""
+    try:
+        if design_repository.db is None:
+            await design_repository.initialize()
+        
+        db = design_repository.db
+        
+        test = await db.design_tests.find_one({"_id": test_id})
+        if not test:
+            raise HTTPException(status_code=404, detail="Test not found")
+        
+        return test
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get test: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
