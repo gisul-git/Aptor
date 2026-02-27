@@ -10,4 +10,5 @@ python-multipart==0.0.9
 pydantic-settings==2.4.0
 pyotp==2.9.0
 cryptography==42.0.5
+requests==2.31.0
 
