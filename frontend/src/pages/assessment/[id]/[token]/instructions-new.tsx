@@ -176,14 +176,14 @@ export default function AssessmentInstructionsPage() {
         display: "flex", 
         alignItems: "center", 
         justifyContent: "center",
-        backgroundColor: "#f7f3e8"
+        backgroundColor: "#ffffff" // Changed to white
       }}>
         <div style={{ textAlign: "center" }}>
           <div style={{
             width: "48px",
             height: "48px",
-            border: "4px solid #e2e8f0",
-            borderTopColor: "#6953a3",
+            border: "4px solid #E1F2E9", // Light mint border
+            borderTopColor: "#00684A", // Emerald spinner
             borderRadius: "50%",
             animation: "spin 1s linear infinite",
             margin: "0 auto 1rem"
@@ -203,7 +203,7 @@ export default function AssessmentInstructionsPage() {
   return (
     <div style={{ 
       minHeight: "100vh", 
-      backgroundColor: "#f7f3e8",
+      backgroundColor: "#ffffff", // Changed to white
       padding: "2rem"
     }}>
       <div style={{ maxWidth: "900px", margin: "0 auto" }}>
@@ -211,11 +211,12 @@ export default function AssessmentInstructionsPage() {
           backgroundColor: "#ffffff",
           borderRadius: "1rem",
           padding: "2rem",
-          boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.1)"
+          border: "1px solid #D1D5DB", // Added subtle border
+          boxShadow: "0 1px 2px 0 rgba(0, 0, 0, 0.05)" // Softened shadow
         }}>
           {/* Header */}
           <div style={{ textAlign: "center", marginBottom: "2rem" }}>
-            <h1 style={{ fontSize: "2rem", fontWeight: 700, color: "#1e293b", marginBottom: "0.5rem" }}>
+            <h1 style={{ fontSize: "2rem", fontWeight: 700, color: "#00684A", marginBottom: "0.5rem" }}>
               Assessment Instructions
             </h1>
             {name && email && (
@@ -229,11 +230,11 @@ export default function AssessmentInstructionsPage() {
           <div style={{
             marginBottom: "2rem",
             padding: "1.5rem",
-            backgroundColor: "#f8fafc",
+            backgroundColor: "#F0F9F4", // Mint background
             borderRadius: "0.5rem",
-            border: "1px solid #e5e7eb"
+            border: "1px solid #E1F2E9" // Mint border
           }}>
-            <h2 style={{ fontSize: "1.25rem", fontWeight: 600, marginBottom: "1rem", color: "#1e293b" }}>
+            <h2 style={{ fontSize: "1.25rem", fontWeight: 600, marginBottom: "1rem", color: "#00684A" }}>
               Please read the following instructions carefully:
             </h2>
             
@@ -272,7 +273,7 @@ export default function AssessmentInstructionsPage() {
             </div>
           </div>
           
-          {/* Rules Section */}
+          {/* Rules Section (Kept Red/Pink for Warning UX) */}
           <div style={{
             marginBottom: "2rem",
             padding: "1.5rem",
@@ -296,16 +297,16 @@ export default function AssessmentInstructionsPage() {
           <div style={{
             marginBottom: "2rem",
             padding: "1rem",
-            backgroundColor: "#f0fdf4",
+            backgroundColor: "#F0F9F4", // Mint background
             borderRadius: "0.5rem",
-            border: "1px solid #bbf7d0"
+            border: "1px solid #E1F2E9" // Mint border
           }}>
             <label style={{ 
               display: "flex", 
               alignItems: "center",
               cursor: "pointer",
               fontSize: "1rem",
-              color: "#065f46"
+              color: "#00684A" // Emerald text
             }}>
               <input
                 type="checkbox"
@@ -328,18 +329,22 @@ export default function AssessmentInstructionsPage() {
           <button
             onClick={handleAcknowledge}
             disabled={!acknowledged || isNavigating}
+            className={`transition-all ${
+              acknowledged && !isNavigating 
+                ? "hover:bg-[#084A2A] hover:shadow-md" 
+                : ""
+            }`}
             style={{
               width: "100%",
               padding: "1rem 2rem",
-              backgroundColor: (acknowledged && !isNavigating) ? "#6953a3" : "#e2e8f0",
-              color: (acknowledged && !isNavigating) ? "#ffffff" : "#94a3b8",
+              backgroundColor: (acknowledged && !isNavigating) ? "#00684A" : "#D1D5DB", // Emerald or disabled Gray
+              color: (acknowledged && !isNavigating) ? "#ffffff" : "#6B7280",
               border: "none",
               borderRadius: "0.5rem",
               fontSize: "1.125rem",
-              fontWeight: 600,
+              fontWeight: 500, // Matched font-medium from Tailwind
               cursor: (acknowledged && !isNavigating) ? "pointer" : "not-allowed",
-              boxShadow: (acknowledged && !isNavigating) ? "0 4px 6px -1px rgba(105, 83, 163, 0.3)" : "none",
-              transition: "all 0.2s ease",
+              boxShadow: (acknowledged && !isNavigating) ? "0 1px 2px 0 rgba(0, 0, 0, 0.05)" : "none", // Matched shadow-sm from Tailwind
               opacity: isNavigating ? 0.7 : 1,
             }}
           >

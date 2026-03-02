@@ -162,6 +162,35 @@ export function getNavigationPaths(type: AssessmentType, status: DisplayStatus, 
 }
 
 /**
+ * Assign path (candidates / assign flow) - same as edit for competency tests; assessments use configure or edit
+ */
+export function getAssignPath(type: AssessmentType, id: string): string {
+  if (type === 'dsa') return `/dsa/tests/${id}/edit`;
+  if (type === 'aiml') return `/aiml/tests/${id}/edit`;
+  if (type === 'custom_mcq') return `/custom-mcq/create?id=${id}`;
+  if (type === 'design') return `/design/tests/${id}/edit`;
+  if (type === 'data_engineering') return `/data-engineering/tests/${id}/edit`;
+  if (type === 'cloud') return `/cloud/tests/${id}/edit`;
+  if (type === 'devops') return `/devops/tests/${id}/edit`;
+  return `/assessments/${id}/configure`;
+}
+
+/**
+ * Competency gradient for card icons (FAANG-style)
+ * Tailwind-style from-X to-Y for bg-gradient-to-br
+ */
+export const COMPETENCY_GRADIENTS: Record<AssessmentType, string> = {
+  assessment: 'from-purple-400 to-purple-600',
+  dsa: 'from-mint-400 to-mint-600',
+  aiml: 'from-orange-400 to-orange-600',
+  custom_mcq: 'from-purple-400 to-purple-600',
+  design: 'from-pink-400 to-pink-600',
+  data_engineering: 'from-teal-400 to-teal-600',
+  cloud: 'from-sky-400 to-sky-600',
+  devops: 'from-indigo-400 to-indigo-600',
+};
+
+/**
  * Get button visibility rules based on status
  */
 export interface ButtonVisibility {
@@ -182,5 +211,23 @@ export function getButtonVisibility(status: DisplayStatus): ButtonVisibility {
     showResume: status === 'paused',
     showClone: true // Always show clone
   };
+}
+
+/** Pure helper to get display status for filtering/sorting (same logic as useDashboardCard) */
+export function getDisplayStatus(input: {
+  status?: string;
+  isDraft?: boolean;
+  is_published?: boolean;
+  is_active?: boolean;
+  pausedAt?: string;
+}): DisplayStatus {
+  if (input.pausedAt) return 'paused';
+  if (input.isDraft) return 'draft';
+  if (input.status === 'ready' || input.status === 'draft') return 'draft';
+  if (input.status === 'scheduled') return 'scheduled';
+  if (input.status === 'active' || input.is_active) return 'active';
+  if (input.is_published) return 'published';
+  if (input.status === 'completed') return 'completed';
+  return 'draft';
 }
 

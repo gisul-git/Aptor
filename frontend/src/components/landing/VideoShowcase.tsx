@@ -91,7 +91,7 @@ export default function VideoShowcase() {
   return (
     <motion.section
       ref={sectionRef}
-      className="relative -mt-20 md:-mt-32 px-4 md:px-26 py-20 md:py-32 bg-gradient-to-b from-white via-[#F8FDF9] to-[#F0FDF4] overflow-hidden max-w-[100dvw] max-h-[100dvh]"
+      className="relative -mt-20 md:-mt-32 px-4 md:px-8 lg:px-12 xl:px-16 py-20 md:py-32 bg-gradient-to-b from-white via-[#F8FDF9] to-[#F0FDF4] overflow-hidden"
       variants={containerVariants}
       initial="hidden"
       animate={isInView ? 'visible' : 'hidden'}
@@ -126,8 +126,7 @@ export default function VideoShowcase() {
 
       {/* Video Container */}
       <motion.div
-        className="mx-auto w-[90vw] md:w-[85vw] relative"
-        style={{ height: '54.8897vh', maxWidth: '91.6176vw' }}
+        className="mx-auto w-full max-w-6xl relative aspect-video"
         variants={videoVariants}
       >
         {/* Glassmorphic Frame */}
@@ -153,7 +152,7 @@ export default function VideoShowcase() {
             poster={poster}
             onLoadedData={() => setIsLoaded(true)}
             className={[
-              'w-full h-full object-cover object-top rounded-[12px] md:rounded-[24px]',
+              'w-full h-full object-cover object-center rounded-[12px] md:rounded-[24px]',
               'transition-all duration-1000',
               isLoaded ? 'blur-0' : 'blur-md',
             ].join(' ')}
@@ -167,7 +166,7 @@ export default function VideoShowcase() {
             animate={prefersReducedMotion ? { opacity: 1 } : { opacity: 1, x: 0 }}
             transition={prefersReducedMotion ? undefined : { delay: 1.2, duration: 0.6 }}
           >
-            ✨ Live Demo
+            Live Demo
           </motion.div>
 
           <motion.div

@@ -59,6 +59,11 @@ export default withAuth(
         // Protect all routes except public ones
         const { pathname } = req.nextUrl;
         
+        // Always allow root route (landing page) - must be first check
+        if (pathname === "/") {
+          return true;
+        }
+        
         // DEBUG: Log candidate reference photo routes
         if (pathname.startsWith("/api/v1/candidate/get-reference-photo") ||
             pathname.startsWith("/api/v1/candidate/save-reference-face")) {
@@ -85,14 +90,18 @@ export default withAuth(
         
         // Public routes that don't require authentication
         const publicRoutes = [
-          "/",
           "/auth/signin",
           "/auth/signup",
+          "/auth/forgot-password",  // Forgot password page
+          "/auth/reset-password",  // Reset password page
           "/auth/set-password",  // Employee set password page
           "/auth/employee-login",  // Employee login page
           "/super-admin/mfa",  // MFA page - user is in the middle of login flow
+          "/schedule-demo",  // Schedule demo page - public landing page
+          "/thank-you",  // Thank you page after demo submission
           "/api/auth",
           "/api/assessment",
+          "/api/schedule-demo",  // Schedule demo API endpoint - public form submission
           "/api/proctor",  // Proctoring API routes (validated server-side)
           "/api/config",  // Runtime configuration API routes (used by candidate pages)
           "/employee",  // Employee routes - handled by component with modal
@@ -264,6 +273,8 @@ export const config = {
      * - api/auth (NextAuth routes)
      * - api/assessment (Candidate assessment API)
      * - api/proctor (Proctoring API - candidates aren't logged in)
+     * - api/config (Runtime configuration API)
+     * - api/v1 (All API v1 routes - handled by API Gateway with its own auth)
      * - api/v1/candidate (Candidate API routes - reference photo, etc.)
      * - mediapipe (MediaPipe assets)
      * - _next/static (static files)
@@ -273,7 +284,7 @@ export const config = {
      * - public files (public folder)
      * - *.html (static HTML files like test-workspace.html)
      */
-    "/((?!api/auth|api/assessment|api/proctor|api/config|api/v1/candidate|mediapipe|_next/static|_next/image|_next/data|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|js|wasm|data|binarypb|html)$).*)",
+    "/((?!api/auth|api/assessment|api/proctor|api/config|api/v1|api/v1/candidate|mediapipe|_next/static|_next/image|_next/data|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|js|wasm|data|binarypb|html)$).*)",
   ],
 };
 

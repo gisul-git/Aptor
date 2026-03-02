@@ -12,7 +12,7 @@ require('dotenv').config();
 const app = express();
 const PORT = process.env.PORT || 80;
 
-// Service URLs from environment variables
+// Service URLs from environment variabless
 const SERVICES = {
   auth: process.env.AUTH_SERVICE_URL || 'http://localhost:4000',
   aiAssessment: process.env.AI_ASSESSMENT_SERVICE_URL || 'http://localhost:3001',
@@ -22,8 +22,10 @@ const SERVICES = {
   proctoring: process.env.PROCTORING_SERVICE_URL || 'http://localhost:3005',
   design: process.env.DESIGN_SERVICE_URL || 'http://localhost:3006',
   users: process.env.USER_SERVICE_URL || 'http://localhost:3006',
-  superAdmin: process.env.SUPER_ADMIN_SERVICE_URL || 'http://localhost:3007',
+  superAdmin: process.env.SUPER_ADMIN_SERVICE_URL || 'http://localhost:3006',
   employee: process.env.EMPLOYEE_SERVICE_URL || 'http://localhost:4005',
+  demo: process.env.DEMO_SERVICE_URL || 'http://localhost:3008',
+  aimlAgent: process.env.AIML_AGENT_SERVICE_URL || 'http://aiml-agent-service:8889',
 };
 
 // Middleware
@@ -74,7 +76,10 @@ async function verifyToken(req, res, next) {
     '/api/v1/auth/superadmin-signup',
     '/api/v1/auth/oauth-login',
     '/api/v1/auth/refresh-token',
-    '/api/v1/auth/verify', 
+    '/api/v1/auth/verify',
+    '/api/v1/auth/forgot-password',
+    '/api/v1/auth/reset-password',
+    '/api/v1/auth/verify-reset-token',
     '/api/v1/super-admin/login', 
     '/api/v1/super-admin/verify-mfa', 
     '/api/v1/candidate', 
@@ -83,7 +88,8 @@ async function verifyToken(req, res, next) {
     '/api/v1/aiml/candidate', 
     '/api/v1/dsa/assessment',
     '/api/v1/assessments/start-session', 
-    '/api/v1/assessment', 
+    '/api/v1/assessment',
+    '/api/v1/demo/schedule', // Demo request form - public 
   ];
 
   let pathToCheck = (req.originalUrl || req.url || req.path || '').split('?')[0];
@@ -410,7 +416,7 @@ const proxyOptions = {
       targetServiceUrl = SERVICES.auth;
     } else if (path.includes('/api/v1/super-admin')) {
       serviceName = 'Super Admin Service';
-      targetHost = 'localhost:3007';
+      targetHost = 'localhost:3006';
       targetServiceUrl = SERVICES.superAdmin;
     } else if (path.includes('/api/v1/employees')) {
       serviceName = 'Employee Service';
@@ -642,6 +648,29 @@ console.log('🔵 [API Gateway] Setting up AIML service proxy:', {
   target: SERVICES.aiml,
 });
 
+// Special configuration for generate-ai endpoint (longer timeout for OpenAI generation)
+const aimlGenerateAIProxyOptions = {
+  ...proxyOptions,
+  target: SERVICES.aiml,
+  timeout: 300000, // 5 minutes for AI question generation
+  proxyTimeout: 300000,
+  logLevel: 'debug',
+  logProvider: () => ({
+    log: (msg) => console.log('🟡 [HPM-AIML-GenerateAI]', msg),
+    debug: (msg) => console.log('🔵 [HPM-AIML-GenerateAI]', msg),
+    info: (msg) => console.log('🟢 [HPM-AIML-GenerateAI]', msg),
+    warn: (msg) => console.warn('🟠 [HPM-AIML-GenerateAI]', msg),
+    error: (msg) => console.error('🔴 [HPM-AIML-GenerateAI]', msg),
+  }),
+};
+
+// Apply longer timeout specifically for generate-ai endpoint
+app.use(
+  '/api/v1/aiml/questions/generate-ai',
+  createProxyMiddleware(aimlGenerateAIProxyOptions)
+);
+
+// Regular proxy for other AIML endpoints
 app.use(
   '/api/v1/aiml',
   (req, res, next) => {
@@ -821,11 +850,53 @@ app.use(
 );
 
 // Route: Super Admin endpoints
+console.log('🔵 [API Gateway] Setting up super-admin service proxy:', {
+  route: '/api/v1/super-admin',
+  target: SERVICES.superAdmin,
+});
+
 app.use(
   '/api/v1/super-admin',
+  (req, res, next) => {
+    console.log('🟡 [API Gateway] Super Admin service route matched:', {
+      method: req.method,
+      url: req.url,
+      originalUrl: req.originalUrl,
+      path: req.path,
+      target: SERVICES.superAdmin,
+      timestamp: new Date().toISOString(),
+    });
+    next();
+  },
   createProxyMiddleware({
     ...proxyOptions,
     target: SERVICES.superAdmin, // Super Admin Service
+    logLevel: 'debug',
+    logProvider: () => ({
+      log: (msg) => console.log('🟡 [HPM-SuperAdmin]', msg),
+      debug: (msg) => console.log('🔵 [HPM-SuperAdmin]', msg),
+      info: (msg) => console.log('🟢 [HPM-SuperAdmin]', msg),
+      warn: (msg) => console.warn('🟠 [HPM-SuperAdmin]', msg),
+      error: (msg) => console.error('🔴 [HPM-SuperAdmin]', msg),
+    }),
+    onError: (err, req, res) => {
+      console.error('🔴 [API Gateway] Super Admin service error:', {
+        error: err.message,
+        code: err.code,
+        url: req.url,
+        originalUrl: req.originalUrl,
+        target: SERVICES.superAdmin,
+      });
+      // Return error response
+      if (!res.headersSent) {
+        res.status(503).json({
+          success: false,
+          message: 'Super Admin Service unavailable',
+          detail: err.message,
+          service: 'Super Admin Service',
+        });
+      }
+    },
   })
 );
 
@@ -835,6 +906,15 @@ app.use(
   createProxyMiddleware({
     ...proxyOptions,
     target: SERVICES.employee,
+  })
+);
+
+// Route: Demo Service
+app.use(
+  '/api/v1/demo',
+  createProxyMiddleware({
+    ...proxyOptions,
+    target: SERVICES.demo,
   })
 );
 
@@ -1235,6 +1315,76 @@ app.get('/api/v1/employee/all-tests',
   }
 );
 
+// ============================================================================
+// WEBSOCKET PROXY FOR AIML AGENT SERVICE
+// ============================================================================
+// This route proxies WebSocket connections to the AIML agent service
+// Frontend connects to: wss://qa.aaptor.com/ws/aiml-agent
+// This gets proxied to: ws://aiml-agent-service:8889
+// ============================================================================
+
+const aimlAgentWsProxy = createProxyMiddleware({
+  target: SERVICES.aimlAgent,
+  ws: true, // Enable WebSocket proxying
+  changeOrigin: true,
+  logLevel: 'debug',
+  logProvider: () => ({
+    log: (msg) => console.log('🟡 [WS-Proxy]', msg),
+    debug: (msg) => console.log('🔵 [WS-Proxy]', msg),
+    info: (msg) => console.log('🟢 [WS-Proxy]', msg),
+    warn: (msg) => console.warn('🟠 [WS-Proxy]', msg),
+    error: (msg) => console.error('🔴 [WS-Proxy]', msg),
+  }),
+  onProxyReq: (proxyReq, req, res) => {
+    console.log('🔵 [API Gateway] WebSocket proxy request:', {
+      method: req.method,
+      url: req.url,
+      originalUrl: req.originalUrl,
+      path: req.path,
+      headers: req.headers,
+      target: SERVICES.aimlAgent,
+    });
+  },
+  onProxyReqWs: (proxyReq, req, socket, options, head) => {
+    console.log('🟢 [API Gateway] WebSocket upgrade request:', {
+      url: req.url,
+      originalUrl: req.originalUrl,
+      path: req.path,
+      target: SERVICES.aimlAgent,
+    });
+  },
+  onError: (err, req, res) => {
+    console.error('🔴 [API Gateway] WebSocket proxy error:', {
+      error: err.message,
+      code: err.code,
+      url: req.url,
+      target: SERVICES.aimlAgent,
+    });
+    
+    // If it's a WebSocket upgrade request, we can't send a JSON response
+    // The error will be handled by the WebSocket connection itself
+    if (req.headers.upgrade === 'websocket') {
+      if (res.writeHead) {
+        res.writeHead(503, {
+          'Content-Type': 'text/plain',
+        });
+        res.end('WebSocket proxy error: ' + err.message);
+      }
+    } else {
+      res.status(503).json({
+        success: false,
+        message: 'WebSocket proxy error',
+        detail: err.message,
+        service: 'AIML Agent Service',
+        target: SERVICES.aimlAgent,
+      });
+    }
+  },
+});
+
+// Apply WebSocket proxy to /ws/aiml-agent route
+app.use('/ws/aiml-agent', aimlAgentWsProxy);
+
 // 404 handler
 app.use((req, res) => {
   res.status(404).json({
@@ -1254,11 +1404,34 @@ app.use((err, req, res, next) => {
   });
 });
 
-app.listen(PORT, () => {
+// Create HTTP server explicitly to handle WebSocket upgrades
+const http = require('http');
+const server = http.createServer(app);
+
+// Handle WebSocket upgrade events
+// http-proxy-middleware requires explicit attachment to server upgrade event
+server.on('upgrade', (req, socket, head) => {
+  // Check if this is a WebSocket request for the AIML agent
+  if (req.url && req.url.startsWith('/ws/aiml-agent')) {
+    console.log('🟢 [API Gateway] WebSocket upgrade request received:', {
+      url: req.url,
+      headers: req.headers,
+    });
+    // Use the proxy middleware's upgrade handler
+    aimlAgentWsProxy.upgrade(req, socket, head);
+  } else {
+    // Not a WebSocket request we handle, destroy the socket
+    socket.destroy();
+  }
+});
+
+// Start server
+server.listen(PORT, () => {
   console.log(`🚀 API Gateway running on port ${PORT}`);
   console.log('📡 Service endpoints:');
   Object.entries(SERVICES).forEach(([name, url]) => {
     console.log(`   ${name}: ${url}`);
   });
+  console.log(`🔌 WebSocket proxy available at: /ws/aiml-agent -> ${SERVICES.aimlAgent}`);
 });
 

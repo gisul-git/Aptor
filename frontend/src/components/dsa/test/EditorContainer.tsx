@@ -8,6 +8,8 @@ import { EditorToolbar } from './EditorToolbar'
 import { ExpectedOutputsPanel } from './ExpectedOutputsPanel'
 import { OutputConsole } from './OutputConsole'
 import { ChevronDown, ChevronUp, Lightbulb, TrendingUp, AlertCircle, AlertTriangle, CheckCircle2, Target } from 'lucide-react'
+// Monaco Paste Detector
+import { useMonacoPasteDetector } from '../../../hooks/proctoring/useMonacoPasteDetector'
 
 // Lazy load Monaco Editor with loading optimization
 // Start loading immediately when component mounts (don't wait for user interaction)
@@ -326,6 +328,10 @@ interface EditorContainerProps {
   publicResults?: SubmissionTestcaseResult[]
   // Hidden test case summary (only shown after submit)
   hiddenSummary?: { total: number; passed: number } | null
+  // Proctoring props
+  userId?: string
+  assessmentId?: string
+  onPasteViolation?: (violation: { eventType: string; timestamp: string; metadata?: any }) => void
 }
 
 export function EditorContainer({
@@ -345,7 +351,23 @@ export function EditorContainer({
   visibleTestcases = [],
   publicResults = [],
   hiddenSummary = null,
+  userId,
+  assessmentId,
+  onPasteViolation,
 }: EditorContainerProps) {
+  // Monaco Paste Detector - captures actual pasted content
+  const { attachToMonacoEditor } = useMonacoPasteDetector({
+    userId: userId || '',
+    assessmentId: assessmentId || '',
+    onViolation: (violation) => {
+      if (onPasteViolation) {
+        onPasteViolation(violation);
+      }
+    },
+    enabled: !!userId && !!assessmentId,
+    threshold: 20,
+  });
+
   const editorContainerRef = useRef<HTMLDivElement>(null)
   const [editorHeight, setEditorHeight] = useState(600)
   const [activeTab, setActiveTab] = useState('code')
@@ -472,6 +494,22 @@ export function EditorContainer({
                   language={MONACO_LANGUAGES[language] || 'python'}
                   value={code || ''}
                   onChange={(value) => onCodeChange(value || '')}
+                  onMount={(editor) => {
+                    // Attach paste detection to Monaco editor
+                    if (userId && assessmentId) {
+                      console.log('[EditorContainer] Attaching paste detector to Monaco editor', {
+                        userId,
+                        assessmentId,
+                        hasEditor: !!editor,
+                      });
+                      attachToMonacoEditor(editor);
+                    } else {
+                      console.warn('[EditorContainer] Cannot attach paste detector - missing userId or assessmentId', {
+                        userId,
+                        assessmentId,
+                      });
+                    }
+                  }}
                   theme="vs-dark"
                   options={{
                     minimap: { enabled: true },

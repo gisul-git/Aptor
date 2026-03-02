@@ -23,6 +23,7 @@ class EvaluateSubmissionRequest(BaseModel):
     difficulty: str = "medium"
     skill: Optional[str] = None
     dataset_info: Optional[Dict[str, Any]] = None
+    test_cases: Optional[List[Dict[str, Any]]] = None
 
 
 @router.post("/evaluate")
@@ -60,6 +61,7 @@ async def evaluate_submission(
             difficulty=request.difficulty,
             skill=request.skill,
             dataset_info=request.dataset_info,
+            test_cases=request.test_cases,
         )
         
         logger.info(f"Evaluation completed. Score: {evaluation_result.get('overall_score', 0)}")

@@ -1,6 +1,17 @@
 import { useState, useRef } from "react";
 import { CustomMCQAssessment, Candidate } from "../../types/custom-mcq";
-import { customMCQApi } from "../../lib/custom-mcq/api";
+import { 
+  UserPlus, 
+  UploadCloud, 
+  FileDown, 
+  Trash2, 
+  Users, 
+  Mail, 
+  User, 
+  ShieldCheck, 
+  Info,
+  CheckCircle2
+} from "lucide-react";
 
 interface Station4Props {
   assessmentData: Partial<CustomMCQAssessment>;
@@ -21,20 +32,15 @@ export default function Station4AddCandidates({ assessmentData, updateAssessment
       alert("Please enter both name and email");
       return;
     }
-
-    // Validate email format
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(manualEmail)) {
       alert("Please enter a valid email address");
       return;
     }
-
-    // Check for duplicate email
     if (candidates.some((c) => c.email.toLowerCase() === manualEmail.toLowerCase())) {
       alert("A candidate with this email already exists");
       return;
     }
-
     const newCandidates = [...candidates, { name: manualName.trim(), email: manualEmail.trim().toLowerCase() }];
     updateAssessmentData({ candidates: newCandidates });
     setManualName("");
@@ -46,35 +52,27 @@ export default function Station4AddCandidates({ assessmentData, updateAssessment
     updateAssessmentData({ candidates: newCandidates });
   };
 
-  // Helper function to parse CSV line properly handling quoted fields
   const parseCSVLine = (line: string): string[] => {
     const result: string[] = [];
     let current = "";
     let inQuotes = false;
-
     for (let i = 0; i < line.length; i++) {
       const char = line[i];
       const nextChar = line[i + 1];
-
       if (char === '"') {
         if (inQuotes && nextChar === '"') {
-          // Escaped quote inside quoted field
           current += '"';
-          i++; // Skip next quote
+          i++;
         } else {
-          // Toggle quote state
           inQuotes = !inQuotes;
         }
       } else if (char === ',' && !inQuotes) {
-        // End of field
         result.push(current.trim());
         current = "";
       } else {
         current += char;
       }
     }
-    
-    // Add last field
     result.push(current.trim());
     return result;
   };
@@ -82,80 +80,38 @@ export default function Station4AddCandidates({ assessmentData, updateAssessment
   const handleFileUpload = async (file: File) => {
     try {
       setUploading(true);
-
-      // Read CSV file
       let text = await file.text();
-      
-      // Remove BOM (Byte Order Mark) if present (common in Excel exports)
-      if (text.charCodeAt(0) === 0xFEFF) {
-        text = text.slice(1);
-      }
-      
+      if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
       const lines = text.split(/\r?\n/).filter((line) => line.trim());
-      
       if (lines.length < 2) {
         alert("CSV file must have at least a header and one data row");
         return;
       }
-
-      // Parse CSV header properly handling quoted fields
       const rawHeaders = parseCSVLine(lines[0]);
-      const headers = rawHeaders.map((h) => {
-        // Remove surrounding quotes if present and clean up
-        let cleaned = h.replace(/^["']|["']$/g, '').trim();
-        // Remove any BOM or special characters
-        cleaned = cleaned.replace(/^\uFEFF/, '');
-        // Handle extra spaces and normalize
-        cleaned = cleaned.toLowerCase().replace(/\s+/g, ' ').trim();
-        return cleaned;
-      });
-      
-      // Try to find name and email columns (flexible matching)
-      const nameIndex = headers.findIndex((h) => {
-        const normalized = h.toLowerCase().trim();
-        return normalized === "name" || normalized === "candidate name" || normalized === "full name" || normalized === "student name";
-      });
-      
-      const emailIndex = headers.findIndex((h) => {
-        const normalized = h.toLowerCase().trim();
-        return normalized === "email" || normalized === "email address" || normalized === "e-mail" || normalized === "email id";
-      });
+      const headers = rawHeaders.map((h) => h.replace(/^["']|["']$/g, '').trim().toLowerCase().replace(/\s+/g, ' '));
+      const nameIndex = headers.findIndex((h) => h === "name" || h === "candidate name" || h === "full name" || h === "student name");
+      const emailIndex = headers.findIndex((h) => h === "email" || h === "email address" || h === "e-mail" || h === "email id");
 
       if (nameIndex === -1 || emailIndex === -1) {
-        const foundColumns = headers.length > 0 ? headers.join(', ') : 'none detected';
-        alert(`CSV must have 'name' and 'email' columns.\n\nFound columns: ${foundColumns}\n\nPlease ensure your CSV has a header row with 'name' and 'email' columns (case-insensitive).`);
-        console.error("CSV parsing error - Headers found:", headers);
-        console.error("Raw first line:", lines[0]);
+        alert(`CSV must have 'name' and 'email' columns.\n\nFound columns: ${headers.join(', ')}`);
         return;
       }
-
       const newCandidates: Candidate[] = [];
       const existingEmails = new Set(candidates.map((c) => c.email.toLowerCase()));
-
       for (let i = 1; i < lines.length; i++) {
-        const values = parseCSVLine(lines[i]).map((v) => {
-          // Remove surrounding quotes if present
-          return v.replace(/^"|"$/g, '').trim();
-        });
-        
+        const values = parseCSVLine(lines[i]).map((v) => v.replace(/^"|"$/g, '').trim());
         const name = values[nameIndex];
         const email = values[emailIndex]?.toLowerCase();
-
-        if (name && email) {
-          // Validate email
-          const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-          if (emailRegex.test(email) && !existingEmails.has(email)) {
-            newCandidates.push({ name, email });
-            existingEmails.add(email);
-          }
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (name && email && emailRegex.test(email) && !existingEmails.has(email)) {
+          newCandidates.push({ name, email });
+          existingEmails.add(email);
         }
       }
-
       if (newCandidates.length === 0) {
         alert("No valid candidates found in CSV file");
         return;
       }
-
       updateAssessmentData({ candidates: [...candidates, ...newCandidates] });
       alert(`Successfully added ${newCandidates.length} candidates`);
     } catch (err: any) {
@@ -167,34 +123,17 @@ export default function Station4AddCandidates({ assessmentData, updateAssessment
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
-      handleFileUpload(file);
-    }
+    if (file) handleFileUpload(file);
   };
 
   const handleDownloadSampleCSV = () => {
-    // Create sample CSV content
-    const sampleData = [
-      ["name", "email"],
-      ["John Doe", "john.doe@example.com"],
-      ["Jane Smith", "jane.smith@example.com"],
-      ["Robert Johnson", "robert.johnson@example.com"],
-    ];
-
-    // Convert to CSV format
-    const csvContent = sampleData.map(row => 
-      row.map(cell => `"${cell}"`).join(",")
-    ).join("\n");
-
-    // Create blob and download
+    const sampleData = [["name", "email"], ["John Doe", "john.doe@example.com"], ["Jane Smith", "jane.smith@example.com"]];
+    const csvContent = sampleData.map(row => row.map(cell => `"${cell}"`).join(",")).join("\n");
     const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-    const link = document.createElement("a");
     const url = URL.createObjectURL(blob);
-    
+    const link = document.createElement("a");
     link.setAttribute("href", url);
     link.setAttribute("download", "sample_candidates.csv");
-    link.style.visibility = "hidden";
-    
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -202,14 +141,24 @@ export default function Station4AddCandidates({ assessmentData, updateAssessment
 
   if (accessMode === "public") {
     return (
-      <div>
-        <h2 style={{ marginBottom: "1.5rem", color: "#1E5A3B" }}>👥 Add Candidates</h2>
-        <p style={{ marginBottom: "2rem", color: "#2D7A52" }}>
-          Since you selected <strong>Public</strong> access mode, anyone with the assessment link can take the test.
-          You can skip adding candidates manually, or add them for reference.
-        </p>
-        <div style={{ padding: "1.5rem", backgroundColor: "#E8FAF0", borderRadius: "0.5rem", border: "1px solid #A8E8BC" }}>
-          <p style={{ color: "#2D7A52", margin: 0 }}>
+      <div className="w-full max-w-4xl mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
+        <div className="space-y-2">
+          <div className="flex items-center gap-3">
+            <div className="p-3 bg-[#C9F4D4] rounded-2xl text-[#1E5A3B] shadow-sm">
+              <Users size={28} strokeWidth={2.5} />
+            </div>
+            <h2 className="text-3xl font-extrabold text-gray-900 tracking-tight"> Add Candidates</h2>
+          </div>
+          <p className="text-gray-600 text-lg font-medium leading-relaxed">
+            Since you selected <strong>Public</strong> access mode, anyone with the assessment link can take the test. You can skip adding candidates manually, or add them for reference.
+          </p>
+        </div>
+
+        <div className="p-8 bg-[#E8FAF0] rounded-[2rem] border-2 border-[#A8E8BC]/30 flex items-start gap-4">
+          <div className="p-2 bg-white rounded-full text-[#2D7A52] shrink-0">
+            <ShieldCheck size={24} />
+          </div>
+          <p className="text-[#2D7A52] text-lg font-semibold leading-relaxed m-0">
             <strong>Note:</strong> In public mode, candidates are not restricted. You can still add candidates below for your reference.
           </p>
         </div>
@@ -218,134 +167,129 @@ export default function Station4AddCandidates({ assessmentData, updateAssessment
   }
 
   return (
-    <div>
-      <h2 style={{ marginBottom: "1.5rem", color: "#1E5A3B" }}>👥 Add Candidates</h2>
-      <p style={{ marginBottom: "2rem", color: "#2D7A52" }}>
-        Add candidates who can take this assessment. You can add them manually or upload a CSV file.
-      </p>
+    <div className="w-full max-w-4xl mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
+      {/* Header Section */}
+      <div className="space-y-2">
+        <div className="flex items-center gap-3">
+          <div className="p-3 bg-[#C9F4D4] rounded-2xl text-[#1E5A3B] shadow-sm">
+            <Users size={28} strokeWidth={2.5} />
+          </div>
+          <h2 className="text-3xl font-extrabold text-gray-900 tracking-tight"> Add Candidates</h2>
+        </div>
+        <p className="text-gray-600 text-lg font-medium leading-relaxed">
+          Add candidates who can take this assessment. You can add them manually or upload a CSV file.
+        </p>
+      </div>
 
-      <div style={{ display: "flex", flexDirection: "column", gap: "2rem" }}>
-        {/* Manual Entry */}
-        <div style={{ padding: "1.5rem", border: "1px solid #A8E8BC", borderRadius: "0.5rem" }}>
-          <h3 style={{ marginBottom: "1rem", color: "#1E5A3B" }}>Add Candidate Manually</h3>
-          <div style={{ display: "flex", gap: "1rem", flexWrap: "wrap" }}>
-            <input
-              type="text"
-              value={manualName}
-              onChange={(e) => setManualName(e.target.value)}
-              placeholder="Candidate Name"
-              style={{ flex: 1, minWidth: "200px", padding: "0.75rem", border: "1px solid #A8E8BC", borderRadius: "0.5rem" }}
-              onKeyPress={(e) => {
-                if (e.key === "Enter") {
-                  handleAddCandidate();
-                }
-              }}
-            />
-            <input
-              type="email"
-              value={manualEmail}
-              onChange={(e) => setManualEmail(e.target.value)}
-              placeholder="Candidate Email"
-              style={{ flex: 1, minWidth: "200px", padding: "0.75rem", border: "1px solid #A8E8BC", borderRadius: "0.5rem" }}
-              onKeyPress={(e) => {
-                if (e.key === "Enter") {
-                  handleAddCandidate();
-                }
-              }}
-            />
-            <button type="button" onClick={handleAddCandidate} className="btn-primary">
+      <div className="grid grid-cols-1 gap-8">
+        {/* Manual Entry Section */}
+        <section className="bg-white p-8 rounded-[2rem] border-2 border-slate-100 shadow-sm transition-all hover:shadow-md">
+          <div className="flex items-center gap-2 mb-6">
+            <UserPlus size={20} className="text-[#1E5A3B]" />
+            <h3 className="text-xl font-bold text-gray-800  uppercase  tracking-widest opacity-60">Add Candidate Manually</h3>
+          </div>
+          <div className="flex flex-col md:flex-row gap-4">
+            <div className="relative flex-1 group">
+              <User className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-[#1E5A3B] transition-colors" size={18} />
+              <input
+                type="text"
+                value={manualName}
+                onChange={(e) => setManualName(e.target.value)}
+                placeholder="Candidate Name"
+                className="w-full pl-12 pr-4 py-3.5 bg-slate-50 border-2 border-transparent focus:border-[#10b981] focus:bg-white rounded-xl outline-none transition-all font-semibold"
+                onKeyPress={(e) => e.key === "Enter" && handleAddCandidate()}
+              />
+            </div>
+            <div className="relative flex-1 group">
+              <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-[#1E5A3B] transition-colors" size={18} />
+              <input
+                type="email"
+                value={manualEmail}
+                onChange={(e) => setManualEmail(e.target.value)}
+                placeholder="Candidate Email"
+                className="w-full pl-12 pr-4 py-3.5 bg-slate-50 border-2 border-transparent focus:border-[#10b981] focus:bg-white rounded-xl outline-none transition-all font-semibold"
+                onKeyPress={(e) => e.key === "Enter" && handleAddCandidate()}
+              />
+            </div>
+            <button 
+              type="button" 
+              onClick={handleAddCandidate} 
+              className="px-8 py-3.5 bg-[#C9F4D4] text-[#1E5A3B] rounded-xl font-black text-sm uppercase tracking-wider transition-all hover:opacity-90 active:scale-95 shadow-lg shadow-[#C9F4D4]/20"
+            >
               Add Candidate
             </button>
           </div>
-        </div>
+        </section>
 
-        {/* Bulk Upload */}
-        <div style={{ padding: "1.5rem", border: "1px solid #A8E8BC", borderRadius: "0.5rem" }}>
-          <h3 style={{ marginBottom: "1rem", color: "#1E5A3B" }}>Bulk Upload from CSV</h3>
-          <p style={{ marginBottom: "1rem", color: "#2D7A52", fontSize: "0.875rem" }}>
-            Upload a CSV file with columns: <strong>name, email</strong>
-            <br />
-            <span style={{ fontSize: "0.75rem", color: "#64748b" }}>
-              Note: If you have an Excel file, please export it as CSV format first (File → Save As → CSV)
+        {/* Bulk Upload Section */}
+        <section className="bg-slate-50 p-8 rounded-[2rem] border-2 border-dashed border-slate-200 group transition-all hover:border-[#10b981]">
+          <div className="flex items-center gap-2 mb-2">
+            <UploadCloud size={20} className="text-[#1E5A3B]" />
+            <h3 className="text-xl font-bold text-gray-800 tracking-tight uppercase  opacity-60">Bulk Upload from CSV</h3>
+          </div>
+          <p className="mb-6 text-slate-500 text-sm font-medium leading-relaxed">
+            Upload a CSV file with columns: <strong className="text-slate-800">name, email</strong>
+            <br/>
+            <span className="text-xs opacity-70 italic flex items-center gap-1 mt-1">
+              <Info size={12} /> Note: If you have an Excel file, please export it as CSV format first (File → Save As → CSV)
             </span>
           </p>
-          <div style={{ display: "flex", gap: "1rem", flexWrap: "wrap", alignItems: "center" }}>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".csv"
-              onChange={handleFileChange}
-              style={{ display: "none" }}
-            />
+          <div className="flex flex-wrap gap-4 items-center">
+            <input ref={fileInputRef} type="file" accept=".csv" onChange={handleFileChange} className="hidden" />
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
               disabled={uploading}
-              className="btn-primary"
+              className="flex items-center gap-2 px-8 py-3.5 bg-[#C9F4D4] text-[#1E5A3B] border-2 border-transparent rounded-xl font-black text-xs uppercase tracking-widest transition-all hover:opacity-90 active:scale-95 shadow-md"
             >
-              {uploading ? "Uploading..." : "📤 Upload CSV File"}
+              {uploading ? "Uploading..." : <><UploadCloud size={18} />  Upload CSV File</>}
             </button>
             <button
               type="button"
               onClick={handleDownloadSampleCSV}
-              className="btn-secondary"
-              style={{
-                padding: "0.75rem 1.5rem",
-                border: "1px solid #A8E8BC",
-                backgroundColor: "#ffffff",
-                color: "#2D7A52",
-                borderRadius: "0.5rem",
-                cursor: "pointer",
-                fontWeight: 500,
-              }}
+              className="flex items-center gap-2 px-8 py-3.5 bg-[#C9F4D4] text-[#1E5A3B] border-2 border-transparent rounded-xl font-black text-xs uppercase tracking-widest transition-all hover:opacity-90 active:scale-95 shadow-md"
             >
-              📥 Download Sample CSV
+              <FileDown size={18} />  Download Sample CSV
             </button>
           </div>
-        </div>
+        </section>
 
-        {/* Candidates List */}
-        <div>
-          <h3 style={{ marginBottom: "1rem", color: "#1E5A3B" }}>
-            Candidates ({candidates.length})
-          </h3>
+        {/* Candidates List Section */}
+        <div className="space-y-4">
+          <div className="flex items-center justify-between px-2">
+            <h3 className="text-xl font-black text-gray-900 tracking-tight">
+              Candidates <span className="ml-2 text-sm font-bold bg-[#C9F4D4] text-[#1E5A3B] px-3 py-1 rounded-full">{candidates.length}</span>
+            </h3>
+          </div>
+
           {candidates.length === 0 ? (
-            <div style={{ padding: "2rem", textAlign: "center", color: "#4A9A6A", backgroundColor: "#E8FAF0", borderRadius: "0.5rem" }}>
-              No candidates added yet. Add candidates manually or upload a CSV file.
+            <div className="flex flex-col items-center justify-center py-16 bg-white rounded-[2rem] border-2 border-dashed border-slate-100 text-center space-y-3">
+              <Users size={48} className="text-slate-200" />
+              <p className="font-bold text-slate-400 max-w-xs">No candidates added yet. Add candidates manually or upload a CSV file.</p>
             </div>
           ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
               {candidates.map((candidate, idx) => (
                 <div
                   key={idx}
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                    padding: "1rem",
-                    backgroundColor: "#ffffff",
-                    border: "1px solid #A8E8BC",
-                    borderRadius: "0.5rem",
-                  }}
+                  className="flex justify-between items-center p-5 bg-white border-2 border-slate-50 rounded-2xl hover:border-[#C9F4D4] hover:shadow-lg transition-all group"
                 >
-                  <div>
-                    <strong style={{ color: "#1E5A3B" }}>{candidate.name}</strong>
-                    <span style={{ color: "#2D7A52", marginLeft: "1rem" }}>{candidate.email}</span>
+                  <div className="flex items-center gap-4">
+                    <div className="w-10 h-10 bg-slate-100 rounded-full flex items-center justify-center font-bold text-slate-500 group-hover:bg-[#C9F4D4] group-hover:text-[#1E5A3B] transition-colors">
+                      {candidate.name.charAt(0).toUpperCase()}
+                    </div>
+                    <div>
+                      <h4 className="font-black text-slate-800 leading-none mb-1">{candidate.name}</h4>
+                      <p className="text-xs font-bold text-slate-400">{candidate.email}</p>
+                    </div>
                   </div>
                   <button
                     type="button"
                     onClick={() => handleRemoveCandidate(candidate.email)}
-                    style={{
-                      padding: "0.5rem 1rem",
-                      backgroundColor: "#ef4444",
-                      color: "#fff",
-                      border: "none",
-                      borderRadius: "0.25rem",
-                      cursor: "pointer",
-                      fontSize: "0.875rem",
-                    }}
+                    className="p-2 text-slate-300 hover:text-red-500 transition-colors"
+                    title="Remove candidate"
                   >
-                    Remove
+                    <Trash2 size={18} />
                   </button>
                 </div>
               ))}
@@ -356,4 +300,3 @@ export default function Station4AddCandidates({ assessmentData, updateAssessment
     </div>
   );
 }
-

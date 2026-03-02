@@ -15,6 +15,7 @@ import { useDSATest, useDSACandidates, useDSACandidateAnalytics, useAddDSACandid
 import { useEmployees, type Employee } from '@/hooks/api/useEmployees'
 import { isSQLQuestion } from '@/hooks/api/useSQL'
 import SQLAnalyticsView from '@/components/dsa/analytics/SQLAnalyticsView'
+import SuccessModal from '@/components/SuccessModal'
 
 interface AIFeedback {
   overall_score?: number
@@ -112,7 +113,11 @@ export default function AnalyticsPage() {
   const [testInfo, setTestInfo] = useState<any>(null)
   const [employeeSearch, setEmployeeSearch] = useState("")
   const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null) 
-  const [selectedEmployees, setSelectedEmployees] = useState<Employee[]>([]) 
+  const [selectedEmployees, setSelectedEmployees] = useState<Employee[]>([])
+  const [successModal, setSuccessModal] = useState<{ isOpen: boolean; message: string }>({
+    isOpen: false,
+    message: '',
+  }) 
 
   // Fetch all employees (not just first page) when modal is open
   const { data: employeesData, isLoading: employeesLoading } = useEmployees({
@@ -1152,7 +1157,10 @@ export default function AnalyticsPage() {
                     onClick={() => {
                       const testUrl = `${typeof window !== 'undefined' ? window.location.origin : ''}/test/${testId}?token=${testInfo.test_token}`;
                       navigator.clipboard.writeText(testUrl);
-                      alert("Test URL copied to clipboard!");
+                      setSuccessModal({
+                        isOpen: true,
+                        message: "Test URL copied to clipboard!",
+                      });
                     }}
                     style={{ marginTop: 0, whiteSpace: "nowrap", padding: "0.75rem 1.5rem" }}
                   >
@@ -2771,6 +2779,17 @@ export default function AnalyticsPage() {
           adminId={session.user.email || session.user.id || 'admin'}
         />
       )}
+
+      {/* Success Modal */}
+      <SuccessModal
+        isOpen={successModal.isOpen}
+        title="Success"
+        message={successModal.message}
+        confirmText="OK"
+        onConfirm={() => {
+          setSuccessModal({ isOpen: false, message: '' })
+        }}
+      />
       <style jsx>{`
         @keyframes spin {
           from {

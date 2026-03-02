@@ -27,18 +27,29 @@ const nextConfig = {
       ];
     }
     
+    // Suppress Face-API webpack warning about require() usage
+    // This is a known issue with @vladmandic/face-api and doesn't affect functionality
+    config.ignoreWarnings = [
+      ...(config.ignoreWarnings || []),
+      {
+        module: /node_modules\/@vladmandic\/face-api/,
+        message: /Critical dependency: require function is used in a way in which dependencies cannot be statically extracted/,
+      },
+    ];
+    
     return config;
   },
   // Proxy API requests to backend server (exclude NextAuth routes)
   async rewrites() {
     // Try to get API Gateway URL from environment
     // Priority: API_GATEWAY_URL (server-side, runtime) > NEXT_PUBLIC_API_URL (build-time)
-    // Default: Use service name for Azure Container Apps, fallback to 127.0.0.1 (IPv4) for localhost
+    // Default: Use service name for Azure Container Apps, fallback to localhost:80 for local development
+    // NOTE: API Gateway runs on port 80, NOT port 3000 (Next.js runs on 3000, Gateway on 80)
     const apiUrl = process.env.API_GATEWAY_URL || 
                    process.env.NEXT_PUBLIC_API_URL || 
                    (process.env.NODE_ENV === 'production' 
                      ? 'http://api-gateway:80'  // Azure Container Apps service name
-                     : 'http://127.0.0.1:80');  // IPv4 localhost for local development
+                     : 'http://localhost:80');  // API Gateway on port 80 for local development
     
     return [
       {

@@ -2082,25 +2082,27 @@ async def process_ai_evaluation_background(
             total_score += question_score
             
             # Store evaluation with submission
+            # Ensure question_id is string for consistent lookup
+            question_id_str = str(question_id)
             submission_data = {
-                "question_id": question_id,
+                "question_id": question_id_str,  # Store as string for consistent lookup
                 "source_code": submission.get("source_code", ""),
                 "outputs": submission.get("outputs", []),
                 "submitted_at": submission.get("submitted_at", datetime.utcnow()),
-                "status": "evaluated",
+                "status": "evaluated",  # Explicitly set status to "evaluated"
                 "ai_feedback": evaluation,
                 "score": question_score
             }
             
             evaluations.append({
-                "question_id": question_id,
+                "question_id": question_id_str,
                 "question_title": question.get("title", "Unknown"),
                 "score": question_score,
                 "feedback": evaluation
             })
             
-            # Update in existing_submissions
-            existing_submissions[question_id] = submission_data
+            # Update in existing_submissions (use string key)
+            existing_submissions[question_id_str] = submission_data
         
         # Calculate final score out of 100
         final_score = round((total_score / max_possible_score) * 100) if max_possible_score > 0 else 0
@@ -2251,8 +2253,10 @@ async def submit_test(
                     existing_submissions[question_id]["source_code"] = answer["source_code"]
             else:
                 # Add new submission
-                existing_submissions[question_id] = {
-                    "question_id": question_id,
+                # Ensure question_id is string for consistent lookup
+                question_id_str = str(question_id)
+                existing_submissions[question_id_str] = {
+                    "question_id": question_id_str,  # Store as string
                     "source_code": answer.get("source_code", ""),
                     "outputs": answer.get("outputs", []),
                     "submitted_at": datetime.utcnow(),
@@ -2955,9 +2959,16 @@ async def send_invitation(
         "companyName": "",
         "message": "You have been invited to take an AIML competency assessment. Please click the link below to start.",
         "footer": "",
-        "sentBy": "AI Assessment Platform"
+        "sentBy": "AAPtor"
     }
     template_to_use = stored_template if stored_template else default_template
+    
+    # Get test details for email
+    test_title = test.get("title", "AIML Assessment")
+    test_description = test.get("description", "")
+    duration_minutes = test.get("duration_minutes")
+    schedule = test.get("schedule", {})
+    end_time = test.get("end_time") or (schedule.get("endTime") if schedule else None)
     
     if not settings.sendgrid_api_key or not settings.sendgrid_from_email:
         raise HTTPException(status_code=500, detail="Email service is not configured")
@@ -2978,7 +2989,45 @@ async def send_invitation(
     logo_url = template_to_use.get("logoUrl", "")
     company_name = template_to_use.get("companyName", "")
     footer = template_to_use.get("footer", "")
-    sent_by = template_to_use.get("sentBy", "AI Assessment Platform")
+    sent_by = template_to_use.get("sentBy", "AAPtor")
+    
+    # Format duration
+    duration_text = ""
+    if duration_minutes:
+        hours = duration_minutes // 60
+        minutes = duration_minutes % 60
+        if hours > 0:
+            duration_text = f"{hours} hour{'s' if hours > 1 else ''}"
+            if minutes > 0:
+                duration_text += f" {minutes} minute{'s' if minutes > 1 else ''}"
+        else:
+            duration_text = f"{minutes} minute{'s' if minutes > 1 else ''}"
+    
+    # Format deadline
+    deadline_text = ""
+    if end_time:
+        try:
+            if isinstance(end_time, str):
+                # Handle ISO format strings
+                if end_time.endswith('Z'):
+                    end_dt = datetime.fromisoformat(end_time.replace('Z', '+00:00'))
+                else:
+                    end_dt = datetime.fromisoformat(end_time)
+            elif isinstance(end_time, datetime):
+                end_dt = end_time
+            else:
+                end_dt = None
+            
+            if end_dt:
+                # Convert to UTC if timezone-aware, otherwise assume UTC
+                if end_dt.tzinfo is None:
+                    end_dt = end_dt.replace(tzinfo=timezone.utc)
+                else:
+                    end_dt = end_dt.astimezone(timezone.utc)
+                deadline_text = end_dt.strftime("%B %d, %Y at %I:%M %p UTC")
+        except Exception as e:
+            logger.warning(f"Failed to format deadline: {e}")
+            deadline_text = ""
     
     html_content = f"""
     <!DOCTYPE html>
@@ -2994,6 +3043,8 @@ async def send_invitation(
             .button {{ display: inline-block; padding: 12px 24px; background-color: #10b981; color: #ffffff; text-decoration: none; border-radius: 6px; margin: 20px 0; }}
             .footer {{ text-align: center; color: #64748b; font-size: 0.875rem; margin-top: 30px; }}
             .candidate-info {{ background-color: #ffffff; padding: 15px; border-radius: 6px; margin: 15px 0; border-left: 4px solid #10b981; }}
+            .assessment-title {{ font-size: 1.5rem; font-weight: bold; color: #10b981; margin: 15px 0; text-align: center; }}
+            .assessment-details {{ background-color: #ffffff; padding: 15px; border-radius: 6px; margin: 15px 0; border-left: 4px solid #10b981; }}
         </style>
     </head>
     <body>
@@ -3004,6 +3055,10 @@ async def send_invitation(
             </div>
             <div class="content">
                 <p>Dear {candidate_name},</p>
+                <div class="assessment-title">{test_title}</div>
+                {f'<div class="assessment-details"><p><strong>Description:</strong> {test_description}</p></div>' if test_description else ''}
+                {f'<div class="assessment-details"><p><strong>Duration:</strong> {duration_text}</p></div>' if duration_text else ''}
+                {f'<div class="assessment-details"><p><strong>Deadline:</strong> {deadline_text}</p></div>' if deadline_text else ''}
                 <p>{email_body}</p>
                 <div class="candidate-info">
                     <p><strong>Your Details:</strong></p>
@@ -3023,7 +3078,7 @@ async def send_invitation(
     </html>
     """
     
-    subject = f"AIML Assessment Invitation - {company_name if company_name else 'AI Assessment Platform'}"
+    subject = f"AIML Assessment Invitation - {test_title}"
     await email_service.send_email(candidate_email, subject, html_content)
     
     await db.test_candidates.update_one(
@@ -3183,9 +3238,16 @@ async def send_invitations_to_all(
         "companyName": "",
         "message": "You have been invited to take an AIML competency assessment. Please click the link below to start.",
         "footer": "",
-        "sentBy": "AI Assessment Platform"
+        "sentBy": "AAPtor"
     }
     template_to_use = stored_template if stored_template else default_template
+    
+    # Get test details for email
+    test_title = test.get("title", "AIML Assessment")
+    test_description = test.get("description", "")
+    duration_minutes = test.get("duration_minutes")
+    schedule = test.get("schedule", {})
+    end_time = test.get("end_time") or (schedule.get("endTime") if schedule else None)
     
     success_count = 0
     failed_count = 0
@@ -3219,7 +3281,45 @@ async def send_invitations_to_all(
             logo_url = template_to_use.get("logoUrl", "")
             company_name = template_to_use.get("companyName", "")
             footer = template_to_use.get("footer", "")
-            sent_by = template_to_use.get("sentBy", "AI Assessment Platform")
+            sent_by = template_to_use.get("sentBy", "AAPtor")
+            
+            # Format duration
+            duration_text = ""
+            if duration_minutes:
+                hours = duration_minutes // 60
+                minutes = duration_minutes % 60
+                if hours > 0:
+                    duration_text = f"{hours} hour{'s' if hours > 1 else ''}"
+                    if minutes > 0:
+                        duration_text += f" {minutes} minute{'s' if minutes > 1 else ''}"
+                else:
+                    duration_text = f"{minutes} minute{'s' if minutes > 1 else ''}"
+            
+            # Format deadline
+            deadline_text = ""
+            if end_time:
+                try:
+                    if isinstance(end_time, str):
+                        # Handle ISO format strings
+                        if end_time.endswith('Z'):
+                            end_dt = datetime.fromisoformat(end_time.replace('Z', '+00:00'))
+                        else:
+                            end_dt = datetime.fromisoformat(end_time)
+                    elif isinstance(end_time, datetime):
+                        end_dt = end_time
+                    else:
+                        end_dt = None
+                    
+                    if end_dt:
+                        # Convert to UTC if timezone-aware, otherwise assume UTC
+                        if end_dt.tzinfo is None:
+                            end_dt = end_dt.replace(tzinfo=timezone.utc)
+                        else:
+                            end_dt = end_dt.astimezone(timezone.utc)
+                        deadline_text = end_dt.strftime("%B %d, %Y at %I:%M %p UTC")
+                except Exception as e:
+                    logger.warning(f"Failed to format deadline: {e}")
+                    deadline_text = ""
             
             html_content = f"""
             <!DOCTYPE html>
@@ -3235,6 +3335,8 @@ async def send_invitations_to_all(
                     .button {{ display: inline-block; padding: 12px 24px; background-color: #10b981; color: #ffffff; text-decoration: none; border-radius: 6px; margin: 20px 0; }}
                     .footer {{ text-align: center; color: #64748b; font-size: 0.875rem; margin-top: 30px; }}
                     .candidate-info {{ background-color: #ffffff; padding: 15px; border-radius: 6px; margin: 15px 0; border-left: 4px solid #10b981; }}
+                    .assessment-title {{ font-size: 1.5rem; font-weight: bold; color: #10b981; margin: 15px 0; text-align: center; }}
+                    .assessment-details {{ background-color: #ffffff; padding: 15px; border-radius: 6px; margin: 15px 0; border-left: 4px solid #10b981; }}
                 </style>
             </head>
             <body>
@@ -3245,6 +3347,10 @@ async def send_invitations_to_all(
                     </div>
                     <div class="content">
                         <p>Dear {candidate.get("name")},</p>
+                        <div class="assessment-title">{test_title}</div>
+                        {f'<div class="assessment-details"><p><strong>Description:</strong> {test_description}</p></div>' if test_description else ''}
+                        {f'<div class="assessment-details"><p><strong>Duration:</strong> {duration_text}</p></div>' if duration_text else ''}
+                        {f'<div class="assessment-details"><p><strong>Deadline:</strong> {deadline_text}</p></div>' if deadline_text else ''}
                         <p>{email_body}</p>
                         <div class="candidate-info">
                             <p><strong>Your Details:</strong></p>
@@ -3264,7 +3370,7 @@ async def send_invitations_to_all(
             </html>
             """
             
-            subject = f"AIML Assessment Invitation - {company_name if company_name else 'AI Assessment Platform'}"
+            subject = f"AIML Assessment Invitation - {test_title}"
             
             await email_service.send_email(candidate.get("email"), subject, html_content)
             
@@ -3429,20 +3535,25 @@ async def get_candidate_analytics(
                 if not ObjectId.is_valid(qid):
                     continue
                 
-                question = questions_dict.get(qid)
+                qid_str = str(qid)  # Convert to string for dictionary lookup
+                question = questions_dict.get(qid_str)
                 if not question:
-                    logger.warning(f"[{request_id}] Question {qid} not found in batch fetch")
+                    logger.warning(f"[{request_id}] Question {qid_str} not found in batch fetch")
                     continue
                 
-                # O(1) lookup instead of O(n) loop
-                question_submission = submissions_dict.get(qid)
+                # O(1) lookup instead of O(n) loop - use string key
+                question_submission = submissions_dict.get(qid_str)
+                
+                # Debug logging
+                if not question_submission:
+                    logger.warning(f"[{request_id}] No submission found for question {qid_str}. Available keys: {list(submissions_dict.keys())}")
                 
                 # Get AI feedback from submission if available
                 ai_feedback = question_submission.get("ai_feedback") if question_submission else None
                 question_score = question_submission.get("score", 0) if question_submission else 0
                 
                 question_analytics.append({
-                    "question_id": str(qid),
+                    "question_id": qid_str,
                     "question_title": question.get("title", ""),
                     "description": question.get("description", ""),
                     "tasks": question.get("tasks", []),

@@ -1,4 +1,5 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
 
 /* Tailwind CSS directives - these are valid and processed by Tailwind */
 /* @tailwind directives are processed by PostCSS/Tailwind during build */
@@ -7,41 +8,64 @@
 @tailwind utilities;
 
 :root {
-  /* Mint Cream Theme - Primary Colors */
-  --mint-50: #E8FAF0; /* Backgrounds, subtle sections */
-  --mint-100: #C9F4D4; /* PRIMARY BRAND COLOR - Cards, buttons, main elements */
-  --mint-200: #B0EFC0; /* Hover states, interactions */
-  --mint-300: #9DE8B0; /* Active/pressed states */
-  --mint-400: #A8E8BC; /* Borders, dividers */
-  
-  /* Mint Cream Theme - Text Colors */
-  --text-primary: #1E5A3B; /* Body text, headings - WCAG AAA compliant (8.2:1) */
-  --text-secondary: #2D7A52; /* Subheadings, labels - WCAG AA compliant (5.8:1) */
-  --text-subtle: #4A9A6A; /* Captions, metadata - Large text only (3.5:1) */
-  
-  /* Mint Cream Theme - Complementary Colors */
-  --blush-pink: #FFE5EC; /* Romantic, gentle accent */
-  --butter-yellow: #FFFEC0; /* Warm, cheerful highlights */
-  --powder-blue: #D4E4F7; /* Cool, professional balance */
-  --warm-beige: #F5F1E8; /* Natural, earthy grounding */
-  
-  /* Background & Surface Colors */
-  --background: #ffffff; /* Main background - white for clean look */
+  /* Primary & secondary (brand) */
+  --primary: #0A5F38;        /* Deep forest green */
+  --secondary: #047857;      /* Emerald green */
+  --accent: #2DD4BF;
+  --brand-primary: #0A5F38;
+  --brand-secondary: #88B89D; /* Sage green */
+  --brand-accent: #0D9488;
+
+  /* Text */
+  --text-primary: #065F46;
+  --text-secondary: #047857;
+  --text-subtle: #059669;
+
+  /* Mint (legacy) */
+  --mint-50: #F5FFFA;
+  --mint-100: #C9F4D4;
+  --mint-200: #80EFC0;
+  --mint-300: #9DE8B0;
+  --mint-400: #6AE8BC;
+  --mint-500: #10B981;
+  --mint-600: #059669;
+
+  /* Forest (green scale) */
+  --forest-50: #ECFDF5;
+  --forest-100: #D1FAE5;
+  --forest-200: #A7F3D0;
+  --forest-300: #6EE7B7;
+  --forest-400: #34D399;
+  --forest-500: #10B981;
+  --forest-600: #059669;
+  --forest-700: #047857;
+  --forest-800: #065F46;
+  --forest-900: #064E3B;
+
+  /* Complementary */
+  --blush-pink: #FFE5EC;
+  --butter-yellow: #FFFEC0;
+  --powder-blue: #D4E4F7;
+  --warm-beige: #F5F1E8;
+
+  /* Background & surface */
+  --background: #ffffff;
   --surface: #ffffff;
   --surface-elevated: #ffffff;
-  --background-subtle: var(--mint-50); /* Subtle sections */
-  
-  /* Border Colors */
+  --background-subtle: var(--mint-50);
+
+  /* Border */
   --border: var(--mint-400);
   --border-light: var(--mint-50);
-  
-  /* Status Colors (preserved for alerts, notifications) */
+
+  /* Semantic */
   --success: #10b981;
   --error: #ef4444;
   --warning: #f59e0b;
   --info: #3b82f6;
-  
-  /* Legacy support (deprecated - use Mint Cream colors instead) */
+  --destructive: #EF4444;
+
+  /* Legacy aliases */
   --brand-purple: var(--mint-100);
   --brand-purple-dark: var(--mint-200);
   --brand-purple-light: var(--mint-300);
@@ -50,6 +74,10 @@
 
 * {
   box-sizing: border-box;
+}
+
+.pt-24 {
+  padding-top: 8rem;
 }
 
 html,
@@ -62,6 +90,7 @@ body {
   line-height: 1.7; /* Improved readability for body text */
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  font-family: 'Inter', "Inter Fallback";
 }
 
 /* Typography Scale - Mint Cream Theme */
@@ -143,6 +172,39 @@ h4 {
   .hero-3d-container {
     height: 600px;
   }
+}
+
+/* Floating animations for login page cards - preserves existing transforms */
+@keyframes float {
+  0%, 100% { 
+    transform: translateY(0px);
+  }
+  50% { 
+    transform: translateY(-15px);
+  }
+}
+
+@keyframes floatSlow {
+  0%, 100% { 
+    transform: translateY(0px);
+  }
+  50% { 
+    transform: translateY(-20px);
+  }
+}
+
+@keyframes floatFast {
+  0%, 100% { 
+    transform: translateY(0px);
+  }
+  50% { 
+    transform: translateY(-12px);
+  }
+}
+
+/* Card wrapper for preserving rotation with float animation */
+.login-card-float {
+  animation: float 6s ease-in-out infinite;
 }
 
 @keyframes glow-pulse {
@@ -262,6 +324,14 @@ button {
   max-width: 90%;
   width: 90%;
   margin: 0 auto;
+  padding: 2rem 1.5rem;
+}
+
+/* Assessments page: 30px vertical margin for alignment */
+.assessments-container {
+  max-width: 90%;
+  width: 90%;
+  margin: 30px auto;
   padding: 2rem 1.5rem;
 }
 
@@ -773,6 +843,33 @@ label {
   .grid-mobile-1 {
     grid-template-columns: 1fr !important;
   }
+
+/* Custom Scrollbar Styling for Login Page */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #E8FAF0;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #C9F4D4;
+  border-radius: 4px;
+  border: 1px solid #E8FAF0;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #B0EFC0;
+}
+
+/* Firefox scrollbar */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #C9F4D4 #E8FAF0;
+}
   
   /* Stack flex items on mobile */
   .flex-mobile-stack {
@@ -806,3 +903,98 @@ label {
     flex-wrap: wrap;
   }
 }
+
+/*  Tushar's Style for assessments dashboard */
+
+
+/* --- ANIMATIONS --- */
+@keyframes sidebarSmoothSlide {
+  0% { opacity: 0; transform: translateX(-20px); }
+  100% { opacity: 1; transform: translateX(0); }
+}
+.animate-sidebar-smooth { animation: sidebarSmoothSlide 0.6s cubic-bezier(0.2, 0.8, 0.2, 1) forwards; }
+
+@keyframes logoPop {
+  0% { transform: scale(0.9); opacity: 0; }
+  100% { transform: scale(1); opacity: 1; }
+}
+.animate-logo-pop { animation: logoPop 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) forwards; }
+
+@keyframes contentFadeUp {
+  0% { opacity: 0; transform: translateY(10px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+.animate-content-fade { opacity: 0; animation: contentFadeUp 0.8s cubic-bezier(0.2, 0.8, 0.2, 1) forwards; }
+
+@keyframes letterReveal {
+  0% { opacity: 0; transform: translateY(20px) rotateX(10deg); }
+  100% { opacity: 1; transform: translateY(0) rotateX(0deg); }
+}
+.animate-letter-reveal { animation: letterReveal 0.6s cubic-bezier(0.2, 0.8, 0.2, 1) forwards; }
+
+@keyframes modalUp {
+  0% { opacity: 0; transform: scale(0.95) translateY(20px); }
+  100% { opacity: 1; transform: scale(1) translateY(0); }
+}
+.animate-modal-up { animation: modalUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+
+@keyframes expandWidth { from { width: 0; opacity: 0; } to { width: auto; opacity: 1; } }
+.animate-expand { animation: expandWidth 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+
+@keyframes dropdownSlide {
+  0% { opacity: 0; transform: translateY(-10px) scale(0.95); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+.animate-dropdown-enter { animation: dropdownSlide 0.2s cubic-bezier(0.2, 0.8, 0.2, 1) forwards; }
+
+@keyframes popIn {
+  0% { transform: scale(0); }
+  70% { transform: scale(1.1); }
+  100% { transform: scale(1); }
+}
+.animate-pop-in { animation: popIn 0.3s ease-out forwards; }
+
+@keyframes fadeInRight {
+  0% { opacity: 0; transform: translateX(10px); }
+  100% { opacity: 1; transform: translateX(0); }
+}
+.animate-fade-in-right { animation: fadeInRight 0.3s ease-out forwards; }
+
+/* Number Input Cleanup */
+input[type=number]::-webkit-inner-spin-button, 
+input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+
+
+/* Animation Style  for create-new-assessment (Skill Adding) */
+/* src/globals.css */
+
+@keyframes popIn {
+  0% { opacity: 0; transform: scale(0.9); }
+  70% { transform: scale(1.05); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+.animate-pop-in {
+  animation: popIn 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+}
+
+/* Custom File Input Styling for CSV Upload */
+.mint-file-input::file-selector-button {
+  background-color: #1E5A3B; /* Primary Text Color */
+  color: white;
+  padding: 0.5rem 1rem;
+  border: none;
+  border-radius: 0.5rem;
+  font-weight: 600;
+  margin-right: 1rem;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.mint-file-input::file-selector-button:hover {
+  background-color: #15422B; /* Darker shade for hover */
+}
+
+
+
+

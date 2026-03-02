@@ -2,163 +2,218 @@ import { useRouter } from "next/router";
 import { GetServerSideProps } from "next";
 import { requireAuth } from "../../lib/auth";
 import Link from "next/link";
+import { 
+  ArrowLeft, 
+  BookOpen, 
+  Edit3, 
+  Globe, 
+  FilePlus, 
+  Bot, 
+  PenTool, 
+  ClipboardList, 
+  Timer, 
+  ListChecks 
+} from "lucide-react";
 
 export default function AIMLMainPage() {
   const router = useRouter();
 
   return (
-    <div style={{ backgroundColor: "#ffffff", minHeight: "100vh" }}>
-      <div className="container" style={{ paddingTop: "2rem", paddingBottom: "4rem" }}>
-        <div style={{ maxWidth: "800px", margin: "0 auto" }}>
-          {/* Back Button */}
-          <div style={{ marginBottom: "2rem" }}>
-            <button
-              type="button"
-              className="btn-secondary"
-              onClick={() => router.push("/dashboard")}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "0.5rem",
-                padding: "0.5rem 1rem",
-                fontSize: "0.875rem",
-              }}
-            >
-              ← Back to Dashboard
-            </button>
-          </div>
+    <div style={{ backgroundColor: "#FAFCFB", minHeight: "100vh", fontFamily: "system-ui, -apple-system, sans-serif" }}>
+      <div className="container" style={{ paddingTop: "3rem", paddingBottom: "4rem", maxWidth: "1100px", margin: "0 auto", padding: "3rem 2rem" }}>
+        
+        {/* Back Button */}
+        <div style={{ marginBottom: "2rem" }}>
+          <button
+            type="button"
+            onClick={() => router.push("/competency")}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "0.5rem",
+              padding: "0.5rem 0",
+              fontSize: "0.875rem",
+              color: "#4B5563",
+              backgroundColor: "transparent",
+              border: "none",
+              fontWeight: 500,
+              cursor: "pointer",
+              transition: "color 0.2s",
+            }}
+            onMouseOver={(e) => e.currentTarget.style.color = "#00684A"}
+            onMouseOut={(e) => e.currentTarget.style.color = "#4B5563"}
+          >
+            <ArrowLeft size={16} strokeWidth={2.5} /> Back to Dashboard
+          </button>
+        </div>
 
-          <h1 style={{ marginBottom: "3rem", color: "#1a1625", textAlign: "center", fontSize: "2.5rem" }}>
+        {/* Dashboard Header */}
+        <div style={{ marginBottom: "3rem" }}>
+          <h1 style={{ margin: "0 0 0.5rem 0", color: "#111827", fontSize: "2rem", fontWeight: 700 }}>
             AIML Competency Management
           </h1>
+          <p style={{ margin: 0, color: "#6B7280", fontSize: "1rem" }}>
+            Create, manage, and configure your AI/ML technical assessments.
+          </p>
+        </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "2rem", marginBottom: "2rem" }}>
-            {/* Question Management Option */}
-            <Link href="/aiml/questions" style={{ textDecoration: "none" }}>
-              <div
-                className="card"
-                style={{
-                  padding: "2.5rem",
-                  textAlign: "center",
-                  cursor: "pointer",
-                  transition: "all 0.3s ease",
-                  border: "2px solid #A8E8BC",
-                  height: "100%",
-                  display: "flex",
-                  flexDirection: "column",
-                  justifyContent: "center",
-                  alignItems: "center",
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.borderColor = "#2D7A52";
-                  e.currentTarget.style.transform = "translateY(-5px)";
-                  e.currentTarget.style.boxShadow = "0 10px 25px rgba(45, 122, 82, 0.2)";
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.borderColor = "#A8E8BC";
-                  e.currentTarget.style.transform = "translateY(0)";
-                  e.currentTarget.style.boxShadow = "none";
-                }}
-              >
-                <div style={{ fontSize: "3rem", marginBottom: "1.5rem" }}>📚</div>
-                <h2 style={{ marginBottom: "1.5rem", color: "#1a1625", fontSize: "1.5rem" }}>
-                  Question Management
-                </h2>
-                <div style={{ display: "flex", gap: "0.5rem", justifyContent: "center", flexWrap: "wrap" }}>
-                  <span style={{ fontSize: "0.875rem", color: "#2D7A52", backgroundColor: "#E8FAF0", padding: "0.25rem 0.75rem", borderRadius: "0.375rem" }}>
-                    ✏️ Edit Questions
-                  </span>
-                  <span style={{ fontSize: "0.875rem", color: "#2D7A52", backgroundColor: "#E8FAF0", padding: "0.25rem 0.75rem", borderRadius: "0.375rem" }}>
-                    📢 Publish/Unpublish
-                  </span>
-                </div>
+        {/* Action Grid */}
+        <div style={{ 
+          display: "grid", 
+          gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", 
+          gap: "1.5rem" 
+        }}>
+          
+          {/* 1. Question Management Option */}
+          <Link href="/aiml/questions" style={{ textDecoration: "none" }}>
+            <div
+              style={{
+                backgroundColor: "#ffffff",
+                padding: "2rem",
+                borderRadius: "1rem",
+                cursor: "pointer",
+                transition: "all 0.2s ease",
+                border: "1px solid #E1F2E9",
+                height: "100%",
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "flex-start",
+                boxShadow: "0 1px 3px rgba(0,0,0,0.05)",
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.borderColor = "#00684A";
+                e.currentTarget.style.transform = "translateY(-4px)";
+                e.currentTarget.style.boxShadow = "0 10px 25px rgba(0, 104, 74, 0.1)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.borderColor = "#E1F2E9";
+                e.currentTarget.style.transform = "translateY(0)";
+                e.currentTarget.style.boxShadow = "0 1px 3px rgba(0,0,0,0.05)";
+              }}
+            >
+              <div style={{ 
+                backgroundColor: "#F0F9F4", 
+                padding: "1rem", 
+                borderRadius: "0.75rem", 
+                color: "#00684A",
+                marginBottom: "1.5rem" 
+              }}>
+                <BookOpen size={32} strokeWidth={1.5} />
               </div>
-            </Link>
-            {/* Create Questions Option */}
-            <Link href="/aiml/questions/create" style={{ textDecoration: "none" }}>
-              <div
-                className="card"
-                style={{
-                  padding: "2.5rem",
-                  textAlign: "center",
-                  cursor: "pointer",
-                  transition: "all 0.3s ease",
-                  border: "2px solid #A8E8BC",
-                  height: "100%",
-                  display: "flex",
-                  flexDirection: "column",
-                  justifyContent: "center",
-                  alignItems: "center",
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.borderColor = "#2D7A52";
-                  e.currentTarget.style.transform = "translateY(-5px)";
-                  e.currentTarget.style.boxShadow = "0 10px 25px rgba(45, 122, 82, 0.2)";
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.borderColor = "#A8E8BC";
-                  e.currentTarget.style.transform = "translateY(0)";
-                  e.currentTarget.style.boxShadow = "none";
-                }}
-              >
-                <div style={{ fontSize: "3rem", marginBottom: "1.5rem" }}>📝</div>
-                <h2 style={{ marginBottom: "1.5rem", color: "#1a1625", fontSize: "1.5rem" }}>
-                  Create Questions
-                </h2>
-                <div style={{ display: "flex", gap: "0.5rem", justifyContent: "center", flexWrap: "wrap" }}>
-                  <span style={{ fontSize: "0.875rem", color: "#2D7A52", backgroundColor: "#E8FAF0", padding: "0.25rem 0.75rem", borderRadius: "0.375rem" }}>
-                    🤖 AI Generation
-                  </span>
-                  <span style={{ fontSize: "0.875rem", color: "#2D7A52", backgroundColor: "#E8FAF0", padding: "0.25rem 0.75rem", borderRadius: "0.375rem" }}>
-                    ✏️ Manual Creation
-                  </span>
-                </div>
+              <h2 style={{ margin: "0 0 1rem 0", color: "#111827", fontSize: "1.25rem", fontWeight: 600 }}>
+                Question Management
+              </h2>
+              <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", marginTop: "auto" }}>
+                <span style={{ display: "flex", alignItems: "center", gap: "0.375rem", fontSize: "0.75rem", fontWeight: 600, color: "#00684A", backgroundColor: "#F0F9F4", padding: "0.375rem 0.75rem", borderRadius: "0.5rem", border: "1px solid #E1F2E9" }}>
+                  <Edit3 size={14} /> Edit Questions
+                </span>
+                <span style={{ display: "flex", alignItems: "center", gap: "0.375rem", fontSize: "0.75rem", fontWeight: 600, color: "#00684A", backgroundColor: "#F0F9F4", padding: "0.375rem 0.75rem", borderRadius: "0.5rem", border: "1px solid #E1F2E9" }}>
+                  <Globe size={14} /> Publish/Unpublish
+                </span>
               </div>
-            </Link>
+            </div>
+          </Link>
 
-            {/* Create Assessment Option */}
-            <Link href="/aiml/create" style={{ textDecoration: "none" }}>
-              <div
-                className="card"
-                style={{
-                  padding: "2.5rem",
-                  textAlign: "center",
-                  cursor: "pointer",
-                  transition: "all 0.3s ease",
-                  border: "2px solid #A8E8BC",
-                  height: "100%",
-                  display: "flex",
-                  flexDirection: "column",
-                  justifyContent: "center",
-                  alignItems: "center",
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.borderColor = "#2D7A52";
-                  e.currentTarget.style.transform = "translateY(-5px)";
-                  e.currentTarget.style.boxShadow = "0 10px 25px rgba(45, 122, 82, 0.2)";
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.borderColor = "#A8E8BC";
-                  e.currentTarget.style.transform = "translateY(0)";
-                  e.currentTarget.style.boxShadow = "none";
-                }}
-              >
-                <div style={{ fontSize: "3rem", marginBottom: "1.5rem" }}>📋</div>
-                <h2 style={{ marginBottom: "1.5rem", color: "#1a1625", fontSize: "1.5rem" }}>
-                  Create New Assessment
-                </h2>
-                <div style={{ display: "flex", gap: "0.5rem", justifyContent: "center", flexWrap: "wrap" }}>
-                  <span style={{ fontSize: "0.875rem", color: "#2D7A52", backgroundColor: "#E8FAF0", padding: "0.25rem 0.75rem", borderRadius: "0.375rem" }}>
-                    ⏱️ Duration Settings
-                  </span>
-                  <span style={{ fontSize: "0.875rem", color: "#2D7A52", backgroundColor: "#E8FAF0", padding: "0.25rem 0.75rem", borderRadius: "0.375rem" }}>
-                    📊 Question Selection
-                  </span>
-                </div>
+          {/* 2. Create Questions Option */}
+          <Link href="/aiml/questions/create" style={{ textDecoration: "none" }}>
+            <div
+              style={{
+                backgroundColor: "#ffffff",
+                padding: "2rem",
+                borderRadius: "1rem",
+                cursor: "pointer",
+                transition: "all 0.2s ease",
+                border: "1px solid #E1F2E9",
+                height: "100%",
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "flex-start",
+                boxShadow: "0 1px 3px rgba(0,0,0,0.05)",
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.borderColor = "#00684A";
+                e.currentTarget.style.transform = "translateY(-4px)";
+                e.currentTarget.style.boxShadow = "0 10px 25px rgba(0, 104, 74, 0.1)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.borderColor = "#E1F2E9";
+                e.currentTarget.style.transform = "translateY(0)";
+                e.currentTarget.style.boxShadow = "0 1px 3px rgba(0,0,0,0.05)";
+              }}
+            >
+              <div style={{ 
+                backgroundColor: "#F0F9F4", 
+                padding: "1rem", 
+                borderRadius: "0.75rem", 
+                color: "#00684A",
+                marginBottom: "1.5rem" 
+              }}>
+                <FilePlus size={32} strokeWidth={1.5} />
               </div>
-            </Link>
+              <h2 style={{ margin: "0 0 1rem 0", color: "#111827", fontSize: "1.25rem", fontWeight: 600 }}>
+                Create Questions
+              </h2>
+              <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", marginTop: "auto" }}>
+                <span style={{ display: "flex", alignItems: "center", gap: "0.375rem", fontSize: "0.75rem", fontWeight: 600, color: "#00684A", backgroundColor: "#F0F9F4", padding: "0.375rem 0.75rem", borderRadius: "0.5rem", border: "1px solid #E1F2E9" }}>
+                  <Bot size={14} /> AI Generation
+                </span>
+                <span style={{ display: "flex", alignItems: "center", gap: "0.375rem", fontSize: "0.75rem", fontWeight: 600, color: "#00684A", backgroundColor: "#F0F9F4", padding: "0.375rem 0.75rem", borderRadius: "0.5rem", border: "1px solid #E1F2E9" }}>
+                  <PenTool size={14} /> Manual Creation
+                </span>
+              </div>
+            </div>
+          </Link>
 
-          </div>
+          {/* 3. Create Assessment Option */}
+          <Link href="/aiml/create" style={{ textDecoration: "none" }}>
+            <div
+              style={{
+                backgroundColor: "#ffffff",
+                padding: "2rem",
+                borderRadius: "1rem",
+                cursor: "pointer",
+                transition: "all 0.2s ease",
+                border: "1px solid #E1F2E9",
+                height: "100%",
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "flex-start",
+                boxShadow: "0 1px 3px rgba(0,0,0,0.05)",
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.borderColor = "#00684A";
+                e.currentTarget.style.transform = "translateY(-4px)";
+                e.currentTarget.style.boxShadow = "0 10px 25px rgba(0, 104, 74, 0.1)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.borderColor = "#E1F2E9";
+                e.currentTarget.style.transform = "translateY(0)";
+                e.currentTarget.style.boxShadow = "0 1px 3px rgba(0,0,0,0.05)";
+              }}
+            >
+              <div style={{ 
+                backgroundColor: "#F0F9F4", 
+                padding: "1rem", 
+                borderRadius: "0.75rem", 
+                color: "#00684A",
+                marginBottom: "1.5rem" 
+              }}>
+                <ClipboardList size={32} strokeWidth={1.5} />
+              </div>
+              <h2 style={{ margin: "0 0 1rem 0", color: "#111827", fontSize: "1.25rem", fontWeight: 600 }}>
+                Create New Assessment
+              </h2>
+              <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", marginTop: "auto" }}>
+                <span style={{ display: "flex", alignItems: "center", gap: "0.375rem", fontSize: "0.75rem", fontWeight: 600, color: "#00684A", backgroundColor: "#F0F9F4", padding: "0.375rem 0.75rem", borderRadius: "0.5rem", border: "1px solid #E1F2E9" }}>
+                  <Timer size={14} /> Duration Settings
+                </span>
+                <span style={{ display: "flex", alignItems: "center", gap: "0.375rem", fontSize: "0.75rem", fontWeight: 600, color: "#00684A", backgroundColor: "#F0F9F4", padding: "0.375rem 0.75rem", borderRadius: "0.5rem", border: "1px solid #E1F2E9" }}>
+                  <ListChecks size={14} /> Question Selection
+                </span>
+              </div>
+            </div>
+          </Link>
+
         </div>
       </div>
     </div>
@@ -166,4 +221,3 @@ export default function AIMLMainPage() {
 }
 
 export const getServerSideProps: GetServerSideProps = requireAuth;
-

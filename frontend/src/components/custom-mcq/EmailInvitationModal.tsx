@@ -1,5 +1,17 @@
 import { useState } from "react";
 import { Candidate } from "../../types/custom-mcq";
+import { 
+  X, 
+  Send, 
+  Mail, 
+  User, 
+  Info, 
+  CheckCircle2, 
+  AlertCircle,
+  Type,
+  AlignLeft,
+  FileText
+} from "lucide-react";
 
 interface EmailInvitationModalProps {
   isOpen: boolean;
@@ -53,7 +65,6 @@ export default function EmailInvitationModal({
       setTimeout(() => {
         onClose();
         setSuccess(false);
-        // Reset to defaults
         setSubject(`Assessment Invitation - ${assessmentTitle}`);
         setMessage(
           `Dear {{candidate_name}},\n\nYou have been invited to take the assessment: ${assessmentTitle}.\n\nPlease click the button below to start the assessment.`
@@ -77,220 +88,152 @@ export default function EmailInvitationModal({
   };
 
   return (
-    <div
-      style={{
-        position: "fixed",
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        backgroundColor: "rgba(0, 0, 0, 0.5)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        zIndex: 1000,
-        padding: "2rem",
-      }}
-      onClick={handleClose}
-    >
-      <div
-        style={{
-          backgroundColor: "#ffffff",
-          borderRadius: "0.75rem",
-          padding: "2rem",
-          maxWidth: "700px",
-          width: "100%",
-          maxHeight: "90vh",
-          overflowY: "auto",
-          boxShadow: "0 10px 25px rgba(0, 0, 0, 0.2)",
-        }}
+    <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[1000] flex items-center justify-center p-4 md:p-6 animate-in fade-in duration-300">
+      <div 
+        className="bg-white w-full max-w-2xl rounded-[2rem] shadow-2xl border border-white/20 flex flex-col overflow-hidden max-h-[90vh] animate-in zoom-in-95 duration-200"
         onClick={(e) => e.stopPropagation()}
       >
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1.5rem" }}>
-          <h2 style={{ color: "#1E5A3B", margin: 0 }}>Send Invitation Email</h2>
-          <button
-            onClick={handleClose}
+        {/* Header: Fixed */}
+        <div className="px-8 py-6 border-b border-slate-100 flex justify-between items-center shrink-0 bg-white">
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 bg-[#C9F4D4] rounded-xl text-[#0A5F38]">
+              <Mail size={24} strokeWidth={2.5} />
+            </div>
+            <div>
+              <h2 className="text-xl font-black text-slate-800 tracking-tight">Send Invitation Email</h2>
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest leading-none mt-1">Campaign Configuration</p>
+            </div>
+          </div>
+          <button 
+            onClick={handleClose} 
             disabled={sending}
-            style={{
-              background: "none",
-              border: "none",
-              fontSize: "1.5rem",
-              cursor: sending ? "not-allowed" : "pointer",
-              color: "#64748b",
-              padding: "0.25rem 0.5rem",
-            }}
+            className="p-2 hover:bg-slate-100 rounded-full text-slate-400 transition-colors"
           >
-            ×
+            <X size={24} />
           </button>
         </div>
 
-        {success && (
-          <div
-            style={{
-              padding: "1rem",
-              backgroundColor: "#dcfce7",
-              border: "1px solid #10b981",
-              borderRadius: "0.5rem",
-              color: "#166534",
-              marginBottom: "1.5rem",
-            }}
-          >
-            ✓ Invitations sent successfully!
-          </div>
-        )}
+        {/* Body: Scrollable */}
+        <div className="p-8 overflow-y-auto grow space-y-6 custom-scrollbar">
+          {success && (
+            <div className="flex items-center gap-3 p-4 bg-emerald-50 border border-emerald-200 rounded-2xl text-emerald-800 animate-in slide-in-from-top-2">
+              <CheckCircle2 size={20} />
+              <p className="text-sm font-bold">✓ Invitations sent successfully!</p>
+            </div>
+          )}
 
-        {error && (
-          <div
-            style={{
-              padding: "1rem",
-              backgroundColor: "#fee2e2",
-              border: "1px solid #ef4444",
-              borderRadius: "0.5rem",
-              color: "#991b1b",
-              marginBottom: "1.5rem",
-            }}
-          >
-            {error}
-          </div>
-        )}
+          {error && (
+            <div className="flex items-center gap-3 p-4 bg-red-50 border border-red-200 rounded-2xl text-red-800 animate-in slide-in-from-top-2">
+              <AlertCircle size={20} />
+              <p className="text-sm font-bold">{error}</p>
+            </div>
+          )}
 
+          <div className="space-y-6">
+            {/* Email Subject */}
+            <div className="space-y-2 group">
+              <label className="flex items-center gap-2 text-[10px] font-black text-slate-400 uppercase tracking-widest px-1 group-focus-within:text-[#0A5F38] transition-colors">
+                <Type size={14} /> Email Subject
+              </label>
+              <input
+                type="text"
+                value={subject}
+                onChange={(e) => setSubject(e.target.value)}
+                disabled={sending}
+                className="w-full px-5 py-3.5 bg-slate-50 border-2 border-slate-100 rounded-2xl focus:border-[#0A5F38] focus:bg-white outline-none transition-all font-bold text-slate-700"
+                placeholder="Assessment Invitation - {{assessment_title}}"
+              />
+              <p className="text-[10px] text-slate-400 font-bold italic px-1 flex items-center gap-1">
+                <Info size={10}/> Available placeholders: {"{{"}assessment_title{"}}"}
+              </p>
+            </div>
 
-        <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
-          <div>
-            <label style={{ display: "block", marginBottom: "0.5rem", fontWeight: 600, color: "#1E5A3B" }}>
-              Email Subject
-            </label>
-            <input
-              type="text"
-              value={subject}
-              onChange={(e) => setSubject(e.target.value)}
-              disabled={sending}
-              style={{
-                width: "100%",
-                padding: "0.75rem",
-                border: "1px solid #A8E8BC",
-                borderRadius: "0.5rem",
-                fontSize: "1rem",
-              }}
-              placeholder="Assessment Invitation - {{assessment_title}}"
-            />
-            <p style={{ fontSize: "0.75rem", color: "#64748b", marginTop: "0.25rem" }}>
-              Available placeholders: {"{"}
-              {"{"}assessment_title{"}"}
-              {"}"}
-            </p>
-          </div>
+            {/* Email Message */}
+            <div className="space-y-2 group">
+              <label className="flex items-center gap-2 text-[10px] font-black text-slate-400 uppercase tracking-widest px-1 group-focus-within:text-[#0A5F38] transition-colors">
+                <AlignLeft size={14} /> Email Message
+              </label>
+              <textarea
+                value={message}
+                onChange={(e) => setMessage(e.target.value)}
+                disabled={sending}
+                rows={6}
+                className="w-full px-5 py-4 bg-slate-50 border-2 border-slate-100 rounded-2xl focus:border-[#0A5F38] focus:bg-white outline-none transition-all resize-none font-medium text-slate-700 leading-relaxed shadow-inner"
+                placeholder="Dear {{candidate_name}},&#10;&#10;You have been invited..."
+              />
+              <p className="text-[10px] text-slate-400 font-bold italic px-1 flex items-center gap-1">
+                <Info size={10}/> Available placeholders: {"{{"}candidate_name{"}}"}, {"{{"}candidate_email{"}}"}, {"{{"}assessment_title{"}}"}
+              </p>
+            </div>
 
-          <div>
-            <label style={{ display: "block", marginBottom: "0.5rem", fontWeight: 600, color: "#1E5A3B" }}>
-              Email Message
-            </label>
-            <textarea
-              value={message}
-              onChange={(e) => setMessage(e.target.value)}
-              disabled={sending}
-              rows={8}
-              style={{
-                width: "100%",
-                padding: "0.75rem",
-                border: "1px solid #A8E8BC",
-                borderRadius: "0.5rem",
-                fontSize: "1rem",
-                fontFamily: "inherit",
-                resize: "vertical",
-              }}
-              placeholder="Dear {{candidate_name}},&#10;&#10;You have been invited..."
-            />
-            <p style={{ fontSize: "0.75rem", color: "#64748b", marginTop: "0.25rem" }}>
-              Available placeholders: {"{"}
-              {"{"}candidate_name{"}"}
-              {"}"}, {"{"}
-              {"{"}candidate_email{"}"}
-              {"}"}, {"{"}
-              {"{"}assessment_title{"}"}
-              {"}"}
-            </p>
-          </div>
+            {/* Footer Optional */}
+            <div className="space-y-2 group">
+              <label className="flex items-center gap-2 text-[10px] font-black text-slate-400 uppercase tracking-widest px-1 group-focus-within:text-[#0A5F38] transition-colors">
+                <FileText size={14} /> Footer (Optional)
+              </label>
+              <textarea
+                value={footer}
+                onChange={(e) => setFooter(e.target.value)}
+                disabled={sending}
+                rows={2}
+                className="w-full px-5 py-3 bg-slate-50 border-2 border-slate-100 rounded-2xl focus:border-[#0A5F38] focus:bg-white outline-none transition-all resize-none font-medium text-slate-600"
+                placeholder="Additional footer text..."
+              />
+            </div>
 
-          <div>
-            <label style={{ display: "block", marginBottom: "0.5rem", fontWeight: 600, color: "#1E5A3B" }}>
-              Footer (Optional)
-            </label>
-            <textarea
-              value={footer}
-              onChange={(e) => setFooter(e.target.value)}
-              disabled={sending}
-              rows={3}
-              style={{
-                width: "100%",
-                padding: "0.75rem",
-                border: "1px solid #A8E8BC",
-                borderRadius: "0.5rem",
-                fontSize: "1rem",
-                fontFamily: "inherit",
-              }}
-              placeholder="Additional footer text..."
-            />
-          </div>
-
-          <div>
-            <label style={{ display: "block", marginBottom: "0.5rem", fontWeight: 600, color: "#1E5A3B" }}>
-              Sent By
-            </label>
-            <input
-              type="text"
-              value={sentBy}
-              onChange={(e) => setSentBy(e.target.value)}
-              disabled={sending}
-              style={{
-                width: "100%",
-                padding: "0.75rem",
-                border: "1px solid #A8E8BC",
-                borderRadius: "0.5rem",
-                fontSize: "1rem",
-              }}
-              placeholder="AI Assessment Platform"
-            />
+            {/* Sent By */}
+            <div className="space-y-2 group">
+              <label className="flex items-center gap-2 text-[10px] font-black text-slate-400 uppercase tracking-widest px-1 group-focus-within:text-[#0A5F38] transition-colors">
+                <User size={14} /> Sent By
+              </label>
+              <input
+                type="text"
+                value={sentBy}
+                onChange={(e) => setSentBy(e.target.value)}
+                disabled={sending}
+                className="w-full px-5 py-3 bg-slate-50 border-2 border-slate-100 rounded-2xl focus:border-[#0A5F38] focus:bg-white outline-none transition-all font-bold text-slate-700"
+                placeholder="AI Assessment Platform"
+              />
+            </div>
           </div>
         </div>
 
-        <div style={{ display: "flex", gap: "1rem", marginTop: "2rem", justifyContent: "flex-end" }}>
-          <button
-            type="button"
-            onClick={handleClose}
+        {/* Footer: Fixed */}
+        <div className="p-8 bg-slate-50 border-t border-slate-100 flex flex-col sm:flex-row gap-3 shrink-0">
+          <button 
+            onClick={handleClose} 
             disabled={sending}
-            className="btn-secondary"
-            style={{
-              padding: "0.75rem 1.5rem",
-              opacity: sending ? 0.5 : 1,
-              cursor: sending ? "not-allowed" : "pointer",
-            }}
+            className="px-8 py-4 bg-white border-2 border-slate-200 text-slate-500 rounded-2xl font-black uppercase text-xs tracking-widest hover:bg-slate-50 transition-all active:scale-95"
           >
             Cancel
           </button>
-          <button
-            type="button"
+          <button 
             onClick={handleSend}
             disabled={sending || candidates.length === 0 || (invitationsSent && !hasNewCandidates)}
-            className="btn-primary"
-            style={{
-              padding: "0.75rem 1.5rem",
-              opacity: sending || candidates.length === 0 || (invitationsSent && !hasNewCandidates) ? 0.5 : 1,
-              cursor: sending || candidates.length === 0 || (invitationsSent && !hasNewCandidates) ? "not-allowed" : "pointer",
-              backgroundColor: invitationsSent && !hasNewCandidates ? "#94a3b8" : undefined,
-            }}
+            className={`flex-1 flex items-center justify-center gap-3 py-4 rounded-2xl font-black uppercase text-xs tracking-widest transition-all shadow-xl shadow-[#0A5F38]/10 active:scale-[0.98] ${
+              invitationsSent && !hasNewCandidates 
+              ? 'bg-slate-200 text-slate-400 cursor-not-allowed border-2 border-slate-300 shadow-none' 
+              : 'bg-[#0A5F38] text-white hover:bg-slate-900 border-2 border-transparent'
+            }`}
             title={invitationsSent && !hasNewCandidates ? "Invitations already sent. Add new candidates to enable." : ""}
           >
-            {sending 
-              ? "Sending..." 
-              : invitationsSent && !hasNewCandidates 
-                ? `✓ Invitations Already Sent` 
-                : `Send to ${candidates.length} Candidate(s)`
-            }
+            {sending ? (
+              <>
+                <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                Sending...
+              </>
+            ) : invitationsSent && !hasNewCandidates ? (
+              <>
+                <CheckCircle2 size={16} /> Invitations Already Sent
+              </>
+            ) : (
+              <>
+                <Send size={16} /> Send to {candidates.length} Candidate{candidates.length !== 1 ? 's' : ''}
+              </>
+            )}
           </button>
         </div>
       </div>
     </div>
   );
 }
-
