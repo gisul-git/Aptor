@@ -5,13 +5,19 @@ type CloudQuestion = {
   title: string;
   prompt: string;
   starterCommand: string;
-  expectedTokens: string[];
+  rightCommand: string;
+  mode: "aws" | "terraform";
+  terraformAction?: "init" | "plan" | "apply" | "destroy" | "validate";
 };
 
 type RunResult = {
-  stdout: string;
-  stderr: string;
   exit_code: number;
+};
+
+type TaskResult = {
+  hasRun: boolean;
+  passed: boolean;
+  message: string;
 };
 
 const QUESTIONS: CloudQuestion[] = [
@@ -19,28 +25,54 @@ const QUESTIONS: CloudQuestion[] = [
     id: "q1",
     title: "Identity Check",
     prompt:
-      "Run an AWS command to verify the active identity in LocalStack. Expected output should include UserId, Account, and Arn.",
+      "Task 1: Verify active identity in LocalStack.",
     starterCommand: "sts get-caller-identity",
-    expectedTokens: ["UserId", "Account", "Arn"],
+    rightCommand: "sts get-caller-identity",
+    mode: "aws",
   },
   {
     id: "q2",
     title: "EC2 Region Discovery",
     prompt:
-      "Run a command to list available EC2 regions. The output should contain a Regions array and at least one RegionName.",
+      "Task 2: List EC2 regions in us-east-1.",
     starterCommand: "ec2 describe-regions --region us-east-1",
-    expectedTokens: ["Regions", "RegionName"],
+    rightCommand: "ec2 describe-regions --region us-east-1",
+    mode: "aws",
+  },
+  {
+    id: "q3",
+    title: "Terraform Validate",
+    prompt: "Task 3: Submit the exact Terraform configuration and run validate.",
+    starterCommand: 'terraform { required_version = ">= 1.3.0" }',
+    rightCommand: 'terraform { required_version = ">= 1.3.0" }',
+    mode: "terraform",
+    terraformAction: "validate",
   },
 ];
 
+function normalizeCommand(input: string): string {
+  return input.trim().replace(/\s+/g, " ").toLowerCase();
+}
+
+function isCloudCommand(input: string): boolean {
+  const trimmed = input.trim().toLowerCase();
+  if (!trimmed) return false;
+  const cloudPrefixes = ["sts ", "ec2 ", "s3 ", "iam ", "lambda ", "dynamodb ", "cloudformation "];
+  return cloudPrefixes.some((prefix) => trimmed.startsWith(prefix));
+}
+
+function normalizeTerraformCode(input: string): string {
+  return input.trim().replace(/\s+/g, " ").toLowerCase();
+}
+
 export default function CloudPlaygroundPage() {
   const [activeId, setActiveId] = useState<string>(QUESTIONS[0].id);
-  const [localstackHost, setLocalstackHost] = useState<string>("localstack");
+  const localstackHost = "localstack";
   const [commands, setCommands] = useState<Record<string, string>>(
     Object.fromEntries(QUESTIONS.map((q) => [q.id, q.starterCommand]))
   );
-  const [results, setResults] = useState<Record<string, RunResult | null>>(
-    Object.fromEntries(QUESTIONS.map((q) => [q.id, null]))
+  const [results, setResults] = useState<Record<string, TaskResult>>(
+    Object.fromEntries(QUESTIONS.map((q) => [q.id, { hasRun: false, passed: false, message: "" }]))
   );
   const [isRunning, setIsRunning] = useState(false);
   const [submitSummary, setSubmitSummary] = useState<string>("");
@@ -53,16 +85,58 @@ export default function CloudPlaygroundPage() {
   const runCommand = async () => {
     setIsRunning(true);
     setSubmitSummary("");
+    const currentCommand = commands[activeQuestion.id] || "";
+
+    if (activeQuestion.mode === "aws" && !isCloudCommand(currentCommand)) {
+      setResults((prev) => ({
+        ...prev,
+        [activeQuestion.id]: {
+          hasRun: true,
+          passed: false,
+          message: "Command could not run.",
+        },
+      }));
+      setIsRunning(false);
+      return;
+    }
+
+    const inputMatches =
+      activeQuestion.mode === "aws"
+        ? normalizeCommand(currentCommand) === normalizeCommand(activeQuestion.rightCommand)
+        : normalizeTerraformCode(currentCommand) === normalizeTerraformCode(activeQuestion.rightCommand);
+
+    if (!inputMatches) {
+      setResults((prev) => ({
+        ...prev,
+        [activeQuestion.id]: {
+          hasRun: true,
+          passed: false,
+          message: "Command could not run.",
+        },
+      }));
+      setIsRunning(false);
+      return;
+    }
 
     try {
       const response = await fetch("/api/cloud-execution/execute", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          session_id: `demo-${activeQuestion.id}-${Date.now()}`,
-          command: commands[activeQuestion.id] || "",
-          localstack_host: localstackHost,
-        }),
+        body: JSON.stringify(
+          activeQuestion.mode === "aws"
+            ? {
+                session_id: `demo-${activeQuestion.id}-${Date.now()}`,
+                mode: "aws",
+                command: currentCommand,
+                localstack_host: localstackHost,
+              }
+            : {
+                session_id: `demo-${activeQuestion.id}-${Date.now()}`,
+                mode: "terraform",
+                terraform_action: activeQuestion.terraformAction || "validate",
+                terraform_code: currentCommand,
+              }
+        ),
       });
 
       const data = (await response.json()) as RunResult & { detail?: string; error?: string };
@@ -70,20 +144,27 @@ export default function CloudPlaygroundPage() {
         setResults((prev) => ({
           ...prev,
           [activeQuestion.id]: {
-            stdout: "",
-            stderr: data.detail || data.error || "Execution failed",
-            exit_code: 1,
+            hasRun: true,
+            passed: false,
+            message: "Command could not run.",
           },
         }));
         return;
       }
 
-      setResults((prev) => ({ ...prev, [activeQuestion.id]: data }));
+      setResults((prev) => ({
+        ...prev,
+        [activeQuestion.id]: {
+          hasRun: true,
+          passed: data.exit_code === 0,
+          message: data.exit_code === 0 ? "Command run successful." : "Command could not run.",
+        },
+      }));
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown client error";
       setResults((prev) => ({
         ...prev,
-        [activeQuestion.id]: { stdout: "", stderr: message, exit_code: 1 },
+        [activeQuestion.id]: { hasRun: true, passed: false, message: message ? "Command could not run." : "" },
       }));
     } finally {
       setIsRunning(false);
@@ -91,30 +172,24 @@ export default function CloudPlaygroundPage() {
   };
 
   const submitAll = () => {
-    const scoreCard = QUESTIONS.map((question) => {
-      const result = results[question.id];
-      const hasRun = !!result;
-      const successExit = result?.exit_code === 0;
-      const output = result?.stdout || "";
-      const tokensOk = question.expectedTokens.every((token) => output.includes(token));
-      return {
-        questionId: question.id,
-        passed: hasRun && successExit && tokensOk,
-        hasRun,
-      };
-    });
+    const scoreCard = QUESTIONS.map((question) => results[question.id]);
 
     const passedCount = scoreCard.filter((item) => item.passed).length;
     const missingRuns = scoreCard.filter((item) => !item.hasRun).length;
 
     if (missingRuns > 0) {
       setSubmitSummary(
-        `Submit blocked: run all questions first (${QUESTIONS.length - missingRuns}/${QUESTIONS.length} completed).`
+        `Submit blocked: run all tasks first (${QUESTIONS.length - missingRuns}/${QUESTIONS.length} completed).`
       );
       return;
     }
 
-    setSubmitSummary(`Submitted. Score: ${passedCount}/${QUESTIONS.length} passed.`);
+    if (passedCount === QUESTIONS.length) {
+      setSubmitSummary("All tasks submitted successfully.");
+      return;
+    }
+
+    setSubmitSummary(`Whole submission completed. Result: ${passedCount}/${QUESTIONS.length} tasks passed.`);
   };
 
   const activeResult = results[activeQuestion.id];
@@ -124,7 +199,7 @@ export default function CloudPlaygroundPage() {
       <div style={{ maxWidth: "1400px", margin: "0 auto" }}>
         <h1 style={{ margin: 0, fontSize: "1.8rem" }}>Cloud Command Playground</h1>
         <p style={{ marginTop: "8px", color: "#8da2b8" }}>
-          LeetCode-style demo: left panel question, right panel command runner powered by your execution engine.
+          Task-based cloud command runner. Each task requires one exact valid cloud command.
         </p>
 
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1.3fr", gap: "16px", marginTop: "16px" }}>
@@ -147,6 +222,13 @@ export default function CloudPlaygroundPage() {
                 >
                   <div style={{ fontSize: "0.75rem", color: "#91a8bf" }}>Question {index + 1}</div>
                   <div>{question.title}</div>
+                  <div style={{ marginTop: "4px", fontSize: "0.75rem", color: results[question.id]?.passed ? "#7ae7a2" : "#9db4c8" }}>
+                    {results[question.id]?.hasRun
+                      ? results[question.id]?.passed
+                        ? "Passed"
+                        : "Failed"
+                      : "Not Run"}
+                  </div>
                 </button>
               ))}
             </div>
@@ -154,27 +236,12 @@ export default function CloudPlaygroundPage() {
             <h3 style={{ marginBottom: "8px", fontSize: "1rem" }}>{activeQuestion.title}</h3>
             <p style={{ marginTop: 0, color: "#9cb1c6", lineHeight: 1.5 }}>{activeQuestion.prompt}</p>
             <div style={{ color: "#8ca3ba", fontSize: "0.85rem" }}>
-              Expected tokens: {activeQuestion.expectedTokens.join(", ")}
+              Required {activeQuestion.mode === "terraform" ? "Terraform code" : "command"}: <code>{activeQuestion.rightCommand}</code>
             </div>
           </section>
 
           <section style={{ border: "1px solid #1f2a35", background: "#111922", borderRadius: "10px", padding: "14px" }}>
             <div style={{ display: "flex", justifyContent: "space-between", gap: "10px", marginBottom: "10px", flexWrap: "wrap" }}>
-              <label style={{ display: "flex", alignItems: "center", gap: "8px", color: "#9cb1c6" }}>
-                LocalStack Host
-                <input
-                  value={localstackHost}
-                  onChange={(e) => setLocalstackHost(e.target.value)}
-                  style={{
-                    background: "#0d141b",
-                    border: "1px solid #263443",
-                    borderRadius: "6px",
-                    color: "#dce6ef",
-                    padding: "6px 8px",
-                  }}
-                />
-              </label>
-
               <div style={{ display: "flex", gap: "8px" }}>
                 <button
                   onClick={runCommand}
@@ -231,48 +298,26 @@ export default function CloudPlaygroundPage() {
 
             <div style={{ marginTop: "12px", display: "grid", gap: "10px" }}>
               <div>
-                <div style={{ fontSize: "0.75rem", color: "#8da2b8", marginBottom: "5px" }}>STDOUT</div>
+                <div style={{ fontSize: "0.75rem", color: "#8da2b8", marginBottom: "5px" }}>Run Status</div>
                 <pre
                   style={{
                     margin: 0,
-                    minHeight: "110px",
-                    maxHeight: "220px",
-                    overflow: "auto",
+                    minHeight: "80px",
                     background: "#0b1219",
                     border: "1px solid #233140",
                     borderRadius: "8px",
                     padding: "10px",
-                    color: "#bfecce",
+                    color: activeResult?.passed ? "#7ae7a2" : "#f2c2c2",
                     fontFamily: "JetBrains Mono, monospace",
                   }}
                 >
-                  {activeResult?.stdout || "(empty)"}
-                </pre>
-              </div>
-
-              <div>
-                <div style={{ fontSize: "0.75rem", color: "#8da2b8", marginBottom: "5px" }}>STDERR / Logs</div>
-                <pre
-                  style={{
-                    margin: 0,
-                    minHeight: "110px",
-                    maxHeight: "220px",
-                    overflow: "auto",
-                    background: "#0b1219",
-                    border: "1px solid #233140",
-                    borderRadius: "8px",
-                    padding: "10px",
-                    color: "#f2c2c2",
-                    fontFamily: "JetBrains Mono, monospace",
-                  }}
-                >
-                  {activeResult?.stderr || "(empty)"}
+                  {activeResult?.message || "(run a command)"}
                 </pre>
               </div>
             </div>
 
             <div style={{ marginTop: "10px", color: "#8da2b8" }}>
-              Exit code: {typeof activeResult?.exit_code === "number" ? activeResult.exit_code : "-"}
+              Output logs hidden in demo mode.
             </div>
 
             {submitSummary && (

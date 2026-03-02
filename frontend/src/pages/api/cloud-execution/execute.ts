@@ -5,8 +5,11 @@ const EXECUTION_API_KEY = process.env.EXECUTION_API_KEY || "";
 
 type ExecuteRequest = {
   session_id: string;
-  command: string;
-  localstack_host: string;
+  command?: string;
+  localstack_host?: string;
+  mode?: "aws" | "terraform";
+  terraform_code?: string;
+  terraform_action?: "init" | "plan" | "apply" | "destroy" | "validate";
 };
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
@@ -16,8 +19,18 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   const payload = req.body as ExecuteRequest;
-  if (!payload?.session_id || !payload?.command || !payload?.localstack_host) {
-    return res.status(400).json({ error: "session_id, command, and localstack_host are required" });
+  const mode = payload?.mode || "aws";
+
+  if (!payload?.session_id) {
+    return res.status(400).json({ error: "session_id is required" });
+  }
+
+  if (mode === "terraform") {
+    if (!payload?.terraform_code) {
+      return res.status(400).json({ error: "terraform_code is required for terraform mode" });
+    }
+  } else if (!payload?.command) {
+    return res.status(400).json({ error: "command is required for aws mode" });
   }
 
   const controller = new AbortController();
