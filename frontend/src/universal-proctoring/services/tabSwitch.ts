@@ -41,6 +41,10 @@ export class TabSwitchService {
 
   // Tracking
   private isBlurred: boolean = false;
+  
+  // Throttling for FOCUS_LOST events (prevent rapid duplicate events)
+  private lastFocusLostTime: number = 0;
+  private readonly FOCUS_LOST_THROTTLE_MS = 2000; // 2 seconds between FOCUS_LOST events
 
   // State
   private state: TabSwitchState = {
@@ -178,11 +182,21 @@ export class TabSwitchService {
 
   /**
    * Handle window blur (window loses focus).
+   * Throttled to prevent rapid duplicate events.
    */
   private handleWindowBlur(): void {
     // Only record if not already tracked by visibility change
     // This handles cases like switching to another app on desktop
     if (!document.hidden && !this.isBlurred) {
+      const now = Date.now();
+      
+      // Throttle: Only record if enough time has passed since last FOCUS_LOST event
+      if (now - this.lastFocusLostTime < this.FOCUS_LOST_THROTTLE_MS) {
+        debugLog("FOCUS_LOST throttled - too soon after previous event");
+        return;
+      }
+      
+      this.lastFocusLostTime = now;
       this.state.focusLostCount += 1;
       this.recordViolation("FOCUS_LOST", {
         totalFocusLost: this.state.focusLostCount,

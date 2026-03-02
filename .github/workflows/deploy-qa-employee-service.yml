@@ -59,11 +59,19 @@ jobs:
             git checkout QA
             git pull origin QA
             
+            # Clean up existing container (including Created state)
+            echo "🧹 Cleaning up existing Employee Service container..."
+            if docker ps -a --format "{{.Names}}" | grep -q "^gisul-employee-service$"; then
+              echo "Removing existing container: gisul-employee-service"
+              docker stop gisul-employee-service 2>/dev/null || true
+              docker rm -f gisul-employee-service 2>/dev/null || true
+            fi
+            
             echo "🔨 Rebuilding Employee Service..."
             docker-compose build employee-service
             
-            echo "🔄 Restarting Employee Service..."
-            docker-compose up -d --no-deps employee-service
+            echo "🔄 Starting Employee Service..."
+            docker-compose up -d --force-recreate --no-deps employee-service
             
             sleep 5
             

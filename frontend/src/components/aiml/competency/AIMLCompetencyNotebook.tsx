@@ -7,7 +7,7 @@
 
 import { useState, useCallback, useRef, useEffect } from 'react'
 import NotebookCell from './NotebookCell'
-import { connect, interruptKernel, restartKernel, isConnected, executeCode } from './agentClient'
+import { connect, interruptKernel, restartKernel, isConnected, executeCode, isAgentUnavailable } from './agentClient'
 import DatasetViewer from './DatasetViewer'
 
 interface Cell {
@@ -42,6 +42,10 @@ interface AIMLCompetencyNotebookProps {
   onSubmit?: (allCode: string, outputs: string[]) => void
   readOnly?: boolean
   showSubmit?: boolean
+  // Proctoring props
+  userId?: string
+  assessmentId?: string
+  onPasteViolation?: (violation: { eventType: string; timestamp: string; metadata?: any }) => void
 }
 
 export default function AIMLCompetencyNotebook({
@@ -52,6 +56,9 @@ export default function AIMLCompetencyNotebook({
   onSubmit,
   readOnly = false,
   showSubmit = true,
+  userId,
+  assessmentId,
+  onPasteViolation,
 }: AIMLCompetencyNotebookProps) {
   const [cells, setCells] = useState<Cell[]>([])
   const [runningCells, setRunningCells] = useState<Set<string>>(new Set())
@@ -61,6 +68,7 @@ export default function AIMLCompetencyNotebook({
   const [showQuestion, setShowQuestion] = useState(true)
   const [showRestartModal, setShowRestartModal] = useState(false)
   const [restartMessage, setRestartMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null)
+  const [pendingOutputSync, setPendingOutputSync] = useState<string[] | null>(null)
   
   const nextCellIdRef = useRef(1)
   const cellRunFunctionsRef = useRef<Map<string, () => Promise<void>>>(new Map())
@@ -143,6 +151,15 @@ export default function AIMLCompetencyNotebook({
     
     const attemptConnection = async () => {
       try {
+        // PRODUCTION FIX: Check if agent is permanently unavailable before attempting connection
+        if (isAgentUnavailable()) {
+          console.warn('[AIMLNotebook] Agent is permanently unavailable. Stopping retry attempts.')
+          if (isMounted) {
+            setConnected(false)
+          }
+          return // Don't retry if agent is permanently unavailable
+        }
+        
         // Check if already connected
         if (isConnected()) {
           // If already connected, check if we need to warmup
@@ -173,10 +190,16 @@ export default function AIMLCompetencyNotebook({
           setConnected(false)
           // Reset warmup flag on connection failure so we retry warmup on reconnect
           kernelWarmedUpRef.current = false
-          // Retry connection after a delay
-          interval = setTimeout(() => {
-            attemptConnection()
-          }, 3000) // Retry every 3 seconds
+          
+          // PRODUCTION FIX: Only retry if agent is not permanently unavailable
+          if (!isAgentUnavailable()) {
+            // Retry connection after a delay
+            interval = setTimeout(() => {
+              attemptConnection()
+            }, 3000) // Retry every 3 seconds
+          } else {
+            console.warn('[AIMLNotebook] Agent is permanently unavailable. Stopping retry attempts.')
+          }
         }
       }
     }
@@ -187,6 +210,12 @@ export default function AIMLCompetencyNotebook({
     // Also check connection status periodically to handle disconnections
     const statusCheckInterval = setInterval(() => {
       if (isMounted) {
+        // PRODUCTION FIX: Don't check if agent is permanently unavailable
+        if (isAgentUnavailable()) {
+          setConnected(false)
+          return // Don't attempt reconnection if agent is unavailable
+        }
+        
         const currentlyConnected = isConnected()
         setConnected(currentlyConnected)
         
@@ -226,7 +255,19 @@ export default function AIMLCompetencyNotebook({
         onCodeChangeRef.current(allCode)
       }
     }
-  }, [cells]) // Only depend on cells, not onCodeChange
+  }, [cells])
+
+  // Sync outputs to parent after render (avoids React warning about updating during render)
+  useEffect(() => {
+    if (pendingOutputSync !== null && onOutputChange) {
+      console.log(`%c[NOTEBOOK] 🟢 Syncing outputs to parent (deferred)`, 'color: #00aa00; font-weight: bold; font-size: 14px', {
+        outputsCount: pendingOutputSync.length,
+        outputs: pendingOutputSync.map((o, idx) => ({ index: idx, length: o.length, preview: o.substring(0, 50) }))
+      })
+      onOutputChange(pendingOutputSync)
+      setPendingOutputSync(null)
+    }
+  }, [pendingOutputSync, onOutputChange]) // Only depend on cells, not onCodeChange
 
 
   const generateStarterCode = (q: AIMLQuestion): string => {
@@ -335,11 +376,11 @@ export default function AIMLCompetencyNotebook({
         }))
       })
       
-      // Immediately sync all outputs to parent state whenever any cell's output changes
+      // Schedule output sync after render to avoid React warning
       // This ensures outputs are available in parent state when time expires
       if (onOutputChange) {
         const allOutputs = updatedCells.map(c => c.output || '').filter(o => o && o !== '' && o !== '(No output)')
-        console.log(`%c[NOTEBOOK] ${allOutputs.length > 0 ? '🟢' : '🟠'} Syncing outputs to parent`, 
+        console.log(`%c[NOTEBOOK] ${allOutputs.length > 0 ? '🟢' : '🟠'} Scheduling output sync to parent`, 
           allOutputs.length > 0 ? 'color: #00aa00; font-weight: bold; font-size: 14px' : 'color: #ff6600; font-weight: bold; font-size: 14px', {
           totalCells: updatedCells.length,
           cellsWithOutput: allOutputs.length,
@@ -359,7 +400,8 @@ export default function AIMLCompetencyNotebook({
         
         // Only sync if we have actual outputs (not when clearing)
         if (allOutputs.length > 0 || isClearing) {
-          onOutputChange(allOutputs)
+          // Defer to next tick to avoid updating parent during render
+          setPendingOutputSync(allOutputs)
         } else {
           console.log('%c[NOTEBOOK] ⏭️ Skipping sync - no valid outputs', 'color: #ff6600; font-weight: bold; font-size: 12px')
         }
@@ -790,6 +832,9 @@ export default function AIMLCompetencyNotebook({
                     onRegisterRun={registerCellRun}
                     onEditorReady={handleEditorReady}
                     readOnly={readOnly}
+                    userId={userId}
+                    assessmentId={assessmentId}
+                    onPasteViolation={onPasteViolation}
                   />
                 ))}
               </div>
@@ -944,10 +989,13 @@ export default function AIMLCompetencyNotebook({
                 autoFocus={cell.id === focusedCellId}
                 canMoveUp={idx > 0}
                 canMoveDown={idx < cells.length - 1}
-                sessionId={sessionId}
-                onRegisterRun={registerCellRun}
-                onEditorReady={handleEditorReady}
-                readOnly={readOnly}
+                    sessionId={sessionId}
+                    onRegisterRun={registerCellRun}
+                    onEditorReady={handleEditorReady}
+                    readOnly={readOnly}
+                    userId={userId}
+                    assessmentId={assessmentId}
+                    onPasteViolation={onPasteViolation}
               />
             ))}
           </div>

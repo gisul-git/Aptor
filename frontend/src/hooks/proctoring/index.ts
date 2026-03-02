@@ -6,6 +6,7 @@
 
 export { useCameraProctor } from './useCameraProctor';
 export { useTabSwitchProctor } from './useTabSwitchProctor';
+export { useActivityPatternProctor } from './useActivityPatternProctor';
 export { useFullscreenLock } from './useFullscreenLock';
 export { useProctor } from './useProctor';
 export { useProctorPolling } from './useProctorPolling';
@@ -23,6 +24,12 @@ export type {
 export type {
   ProctorEventType,
 } from './useTabSwitchProctor';
+
+export type {
+  ActivityPatternEventType,
+  ActivityPatternViolation,
+  ActivityPatternProctorOptions,
+} from './useActivityPatternProctor';
 
 export type {
   UseFullscreenLockReturn,

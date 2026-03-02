@@ -64,6 +64,7 @@ import {
 import { useDashboardAssessments } from "@/hooks/useDashboardAssessments";
 import { FloatingTopBar } from "@/components/dashboard/FloatingTopBar";
 import { FloatingTabs } from "@/components/dashboard/FloatingTabs";
+import ConfirmationModal from "@/components/ConfirmationModal";
 
 interface AssessmentsPageProps {
   session: any;
@@ -136,6 +137,18 @@ export default function AssessmentsPage({ session: serverSession }: AssessmentsP
   const [uiError, setUiError] = useState<string | null>(null);
   const [resuming, setResuming] = useState<{ show: boolean; testName: string }>({ show: false, testName: "" });
   const [pausing, setPausing] = useState<{ show: boolean; testName: string }>({ show: false, testName: "" });
+  const [deleteModal, setDeleteModal] = useState<{ 
+    isOpen: boolean; 
+    assessmentId: string | null; 
+    assessmentTitle: string; 
+    assessmentType?: 'assessment' | 'dsa' | 'custom_mcq' | 'aiml' | 'design' | 'data_engineering' | 'cloud' | 'devops';
+    isDeleting: boolean;
+  }>({
+    isOpen: false,
+    assessmentId: null,
+    assessmentTitle: '',
+    isDeleting: false,
+  });
 
   useEffect(() => {
     // Close menu when clicking outside
@@ -233,13 +246,26 @@ export default function AssessmentsPage({ session: serverSession }: AssessmentsP
     }
   }, [router.query.refresh, refetchAssessments, refetchCustomMCQ, refetchDSA, refetchAIML, refetchDesign, refetchDataEngineering, refetchCloud, refetchDevOps, router]);
 
-  const handleDeleteAssessment = async (assessmentId: string, assessmentTitle: string, assessmentType?: 'assessment' | 'dsa' | 'custom_mcq' | 'aiml' | 'design' | 'data_engineering' | 'cloud' | 'devops') => {
-    if (!confirm(`Are you sure you want to delete "${assessmentTitle}"? This action cannot be undone.`)) {
-      return;
-    }
+  const handleDeleteAssessment = (assessmentId: string, assessmentTitle: string, assessmentType?: 'assessment' | 'dsa' | 'custom_mcq' | 'aiml' | 'design' | 'data_engineering' | 'cloud' | 'devops') => {
+    // Open delete confirmation modal instead of browser confirm
+    setDeleteModal({
+      isOpen: true,
+      assessmentId,
+      assessmentTitle,
+      assessmentType,
+      isDeleting: false,
+    });
+  };
+
+  const confirmDeleteAssessment = async () => {
+    if (!deleteModal.assessmentId) return;
 
     try {
+      setDeleteModal(prev => ({ ...prev, isDeleting: true }));
       setUiError(null);
+      
+      const assessmentId = deleteModal.assessmentId;
+      const assessmentType = deleteModal.assessmentType;
       
       if (assessmentType === 'dsa') {
         await deleteDSATestMutation.mutateAsync(assessmentId);
@@ -258,11 +284,28 @@ export default function AssessmentsPage({ session: serverSession }: AssessmentsP
       } else {
         await deleteAssessmentMutation.mutateAsync(assessmentId);
       }
-      // React Query will automatically refetch and update the UI
+      
+      // Close modal and React Query will automatically refetch and update the UI
+      setDeleteModal({
+        isOpen: false,
+        assessmentId: null,
+        assessmentTitle: '',
+        isDeleting: false,
+      });
     } catch (err: any) {
       console.error("Error deleting assessment:", err);
       setUiError(err.message || "Failed to delete assessment");
+      setDeleteModal(prev => ({ ...prev, isDeleting: false }));
     }
+  };
+
+  const cancelDeleteAssessment = () => {
+    setDeleteModal({
+      isOpen: false,
+      assessmentId: null,
+      assessmentTitle: '',
+      isDeleting: false,
+    });
   };
 
   const handlePauseAssessment = async (assessmentId: string, e: React.MouseEvent) => {
@@ -419,18 +462,15 @@ export default function AssessmentsPage({ session: serverSession }: AssessmentsP
 
 
   return (
-    <div style={{ backgroundColor: "#ffffff", minHeight: "100vh" }}>
+    <div className="min-h-screen bg-gradient-to-br from-mint-50/90 via-white to-forest-50/70 relative overflow-hidden">
+      {/* Soft decorative blobs - mint cream ambience */}
+      <div className="pointer-events-none absolute -top-40 -right-40 w-[500px] h-[500px] rounded-full bg-mint-100/40 blur-3xl" aria-hidden />
+      <div className="pointer-events-none absolute top-1/3 -left-32 w-[400px] h-[400px] rounded-full bg-forest-100/30 blur-3xl" aria-hidden />
+      <div className="pointer-events-none absolute bottom-20 right-1/4 w-[300px] h-[300px] rounded-full bg-mint-200/25 blur-3xl" aria-hidden />
       <FloatingTopBar />
       <FloatingTabs />
-      <div className="container" style={{ paddingTop: "6rem" }}>
-        {loading ? (
-          <div className="card">
-            <div style={{ textAlign: "center", padding: "3rem" }}>
-              <div className="spinner" style={{ fontSize: "2rem", marginBottom: "1rem" }}>⟳</div>
-              <p style={{ color: "#2D7A52" }}>Loading assessments...</p>
-            </div>
-          </div>
-        ) : (error || uiError) ? (
+      <div className="assessments-container relative z-10" style={{ paddingTop: "6rem" }}>
+        {(error || uiError) ? (
           <div className="card">
             <div className="alert alert-error">{error || uiError}</div>
             <button 
@@ -469,6 +509,7 @@ export default function AssessmentsPage({ session: serverSession }: AssessmentsP
               });
               setOpenMenuId(null);
             }}
+            isLoading={loading}
           />
         )}
       </div>
@@ -852,6 +893,21 @@ export default function AssessmentsPage({ session: serverSession }: AssessmentsP
         </div>
       )}
 
+      {/* Delete Confirmation Modal */}
+      <ConfirmationModal
+        isOpen={deleteModal.isOpen}
+        title="Delete Assessment"
+        message={`Are you sure you want to delete "${deleteModal.assessmentTitle}"? This action cannot be undone.`}
+        confirmText="Delete"
+        cancelText="Cancel"
+        onConfirm={confirmDeleteAssessment}
+        onCancel={cancelDeleteAssessment}
+        isLoading={deleteModal.isDeleting}
+        confirmButtonStyle={{
+          backgroundColor: '#ef4444',
+          color: '#ffffff',
+        }}
+      />
     </div>
   );
 }

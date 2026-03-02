@@ -58,6 +58,27 @@ export default withAuth(
       authorized: ({ token, req }) => {
         // Protect all routes except public ones
         const { pathname } = req.nextUrl;
+        const hostname = req.nextUrl.hostname;
+        const isLocalhost =
+          hostname === "localhost" ||
+          hostname === "127.0.0.1" ||
+          hostname === "::1";
+
+        // Local DevOps sandbox routes: allow without NextAuth login
+        if (
+          isLocalhost &&
+          (
+            pathname === "/cloud" ||
+            pathname.startsWith("/cloud/") ||
+            pathname.startsWith("/api/cloud-execution/") ||
+            pathname === "/devops" ||
+            pathname.startsWith("/devops/") ||
+            pathname.startsWith("/api/devops/") ||
+            pathname.startsWith("/api/v1/devops/")
+          )
+        ) {
+          return true;
+        }
         
         // Always allow root route (landing page) - must be first check
         if (pathname === "/") {
@@ -84,6 +105,7 @@ export default withAuth(
         // Public routes that don't require authentication
         const publicRoutes = [
           "/auth/signin",
+          "/auth/error",
           "/auth/signup",
           "/auth/forgot-password",  // Forgot password page
           "/auth/reset-password",  // Reset password page
@@ -243,6 +265,8 @@ export const config = {
      * - api/auth (NextAuth routes)
      * - api/assessment (Candidate assessment API)
      * - api/proctor (Proctoring API - candidates aren't logged in)
+     * - api/config (Runtime configuration API)
+     * - api/v1 (All API v1 routes - handled by API Gateway with its own auth)
      * - api/v1/candidate (Candidate API routes - reference photo, etc.)
      * - mediapipe (MediaPipe assets)
      * - _next/static (static files)
@@ -251,7 +275,8 @@ export const config = {
      * - favicon.ico (favicon file)
      * - public files (public folder)
      */
-    "/((?!api/auth|api/assessment|api/proctor|api/config|api/v1/candidate|mediapipe|_next/static|_next/image|_next/data|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|js|wasm|data|binarypb)$).*)",
+    "/((?!api/auth|api/assessment|api/proctor|api/config|api/v1|api/v1/candidate|mediapipe|_next/static|_next/image|_next/data|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|js|wasm|data|binarypb)$).*)",
   ],
 };
+
 

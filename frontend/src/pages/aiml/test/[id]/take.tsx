@@ -7,14 +7,17 @@ import dynamic from 'next/dynamic'
 import axios from 'axios'
 import aimlApi from '../../../../lib/aiml/api'
 import { useAIMLTestForCandidate, useSubmitAIMLAnswer, useSubmitAIMLTest } from '@/hooks/api/useAIML'
-import { useUniversalProctoring, CandidateLiveService, resolveUserIdForProctoring, type ProctoringViolation } from '@/universal-proctoring'
+import { useUniversalProctoring, CandidateLiveService, resolveUserIdForProctoring, type ProctoringViolation, type ProctoringEventType } from '@/universal-proctoring'
 import WebcamPreview from '../../../../components/WebcamPreview'
 import { ViolationToast, pushViolationToast } from '@/components/ViolationToast'
+import { Timer } from 'lucide-react';
 
 // Fullscreen Lock imports
 import { FullscreenLockOverlay } from "@/components/FullscreenLockOverlay";
 import { useFullscreenLock } from "@/hooks/proctoring/useFullscreenLock";
 import { useAITimer } from "@/hooks/useAITimer";
+// Activity Pattern Proctor imports
+import { useActivityPatternProctor } from "@/hooks/proctoring/useActivityPatternProctor";
 
 const AIMLCompetencyNotebook = dynamic(
   () => import('../../../../components/aiml/competency/AIMLCompetencyNotebook'),
@@ -246,6 +249,24 @@ export default function AIMLTestTakePage() {
     onWarning: handleUniversalWarning,
     debug: debugMode,
   })
+
+  // Activity Pattern Proctor - monitors mouse, keyboard, scroll patterns
+  useActivityPatternProctor({
+    userId: userId || '',
+    assessmentId: String(testId || ''),
+    onViolation: (violation) => {
+      console.log('[AIML Take] Activity pattern violation:', violation);
+      handleUniversalViolation({
+        eventType: violation.eventType,
+        timestamp: violation.timestamp,
+        assessmentId: violation.assessmentId,
+        userId: violation.userId,
+        metadata: violation.metadata,
+      });
+    },
+    enabled: !!userId && !!testId && !submitted, // Only enable when test is active
+    copyPasteThreshold: 20, // Lower threshold for easier detection (default: 50)
+  });
 
   // Unlock fullscreen when test is submitted
   useEffect(() => {
@@ -1415,44 +1436,43 @@ export default function AIMLTestTakePage() {
           </div>
           
           <div className="flex items-center gap-4">
-            {/* Timer - Show GLOBAL or PER_QUESTION timer */}
-            {test.timer_mode === 'PER_QUESTION' && currentQuestion && examStarted ? (
-              (() => {
-                const questionTime = timer.questionTimeRemaining[currentQuestion.id] || 0
-                return questionTime > 0 ? (
-                  <div className={`px-4 py-2 rounded-lg font-mono text-lg font-semibold ${
-                    questionTime < 60 
-                      ? 'bg-red-100 text-red-700' 
-                      : questionTime < 180 
-                        ? 'bg-amber-100 text-amber-700' 
-                        : 'bg-emerald-100 text-emerald-700'
-                  }`}>
-                    ⏱️ Q{currentQuestionIndex + 1}: {Math.floor(questionTime / 60)}:{String(questionTime % 60).padStart(2, '0')}
-                  </div>
-                ) : null
-              })()
-            ) : (
-              timeRemaining !== null && !isNaN(timeRemaining) && timeRemaining >= 0 && (
-                (() => {
-                  const displayTime = `${Math.floor(timeRemaining / 60)}:${String(timeRemaining % 60).padStart(2, '0')}`
-                  // Use key prop with timeRemaining to force React to re-render when value changes
-                  return (
-                    <div 
-                      key={`timer-${timeRemaining}`}
-                      className={`px-4 py-2 rounded-lg font-mono text-lg font-semibold ${
-                        timeRemaining < 300 
-                          ? 'bg-red-100 text-red-700' 
-                          : timeRemaining < 600 
-                            ? 'bg-amber-100 text-amber-700' 
-                            : 'bg-emerald-100 text-emerald-700'
-                      }`}
-                    >
-                      ⏱️ {displayTime}
-                    </div>
-                  )
-                })()
-              )
-            )}
+            {/* Timer */}
+{test.timer_mode === 'PER_QUESTION' && currentQuestion && examStarted ? (
+  (() => {
+    const questionTime = timer.questionTimeRemaining[currentQuestion.id] || 0;
+    return questionTime > 0 ? (
+      <div className={`px-4 py-1.5 rounded text-sm font-mono font-bold flex items-center gap-2 border ${
+        questionTime < 60 ? 'bg-red-50 text-red-700 border-red-200' : 
+        questionTime < 180 ? 'bg-amber-50 text-amber-700 border-amber-200' : 
+        'bg-[#F0F9F4] text-[#00684A] border-[#E1F2E9]'
+      }`}>
+        <Timer className="w-4 h-4 opacity-70" strokeWidth={2.5} />
+        {Math.floor(questionTime / 60)}:{String(questionTime % 60).padStart(2, '0')}
+      </div>
+    ) : null;
+  })()
+) : (
+  timeRemaining !== null && !isNaN(timeRemaining) && timeRemaining >= 0 && (
+    (() => {
+      const displayTime = `${Math.floor(timeRemaining / 60)}:${String(timeRemaining % 60).padStart(2, '0')}`;
+      return (
+        <div 
+          key={`timer-${timeRemaining}`}
+          className={`px-4 py-1.5 rounded text-sm font-mono font-bold flex items-center gap-2 border ${
+            timeRemaining < 300 ? 'bg-red-50 text-red-700 border-red-200' : 
+            timeRemaining < 600 ? 'bg-amber-50 text-amber-700 border-amber-200' : 
+            'bg-gray-50 text-gray-700 border-gray-200'
+          }`}
+          title="Total Time Remaining"
+        >
+          <Timer className="w-4 h-4 opacity-70" strokeWidth={2.5} />
+          {displayTime}
+        </div>
+      );
+    })()
+  )
+)}
+            
             
             {examStarted && (() => {
               // Check if all questions have been submitted
@@ -1611,6 +1631,17 @@ export default function AIMLTestTakePage() {
             sessionId={`test_${testId}_user_${userId}_q_${currentQuestion.id}`}
             onCodeChange={handleCodeChange}
             onOutputChange={handleOutputChange}
+            userId={userId || ''}
+            assessmentId={String(testId || '')}
+            onPasteViolation={(violation) => {
+              handleUniversalViolation({
+                eventType: violation.eventType as ProctoringEventType,
+                timestamp: violation.timestamp,
+                assessmentId: String(testId || ''),
+                userId: userId || '',
+                metadata: violation.metadata,
+              });
+            }}
             onSubmit={handleSubmitQuestion}
             showSubmit={true}
             readOnly={expiredQuestions.has(currentQuestion.id)}

@@ -157,6 +157,17 @@ export default function SuperAdminDashboardPage({ session: serverSession }: Dash
             >
               Org Admin Logs
             </Link>
+            <Link
+              href="/super-admin/request-demos"
+              style={{
+                padding: "0.75rem",
+                borderRadius: "0.375rem",
+                textDecoration: "none",
+                color: "#1f2937",
+              }}
+            >
+              Request Demos
+            </Link>
           </nav>
         </aside>
 

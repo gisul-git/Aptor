@@ -59,11 +59,19 @@ jobs:
             git checkout QA
             git pull origin QA
             
+            # Clean up existing container (including Created state)
+            echo "🧹 Cleaning up existing Auth Service container..."
+            if docker ps -a --format "{{.Names}}" | grep -q "^gisul-auth-service$"; then
+              echo "Removing existing container: gisul-auth-service"
+              docker stop gisul-auth-service 2>/dev/null || true
+              docker rm -f gisul-auth-service 2>/dev/null || true
+            fi
+            
             echo "🔨 Rebuilding Auth Service..."
             docker-compose build auth-service
             
-            echo "🔄 Restarting Auth Service..."
-            docker-compose up -d --no-deps auth-service
+            echo "🔄 Starting Auth Service..."
+            docker-compose up -d --force-recreate --no-deps auth-service
             
             sleep 5
             

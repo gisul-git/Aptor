@@ -90,7 +90,7 @@ export default function Hero() {
 
   return (
     <motion.section
-      className="relative min-h-[calc(100vh-80px)] mt-20 flex flex-col items-center justify-center px-6 md:px-12 lg:px-16 pt-20 pb-0 md:pt-32 md:pb-10 overflow-hidden"
+      className="relative min-h-[calc(100vh-80px)] mt-20 flex flex-col items-center justify-center px-4 sm:px-6 md:px-12 lg:px-16 pt-16 sm:pt-20 md:pt-32 pb-8 sm:pb-0 md:pb-10 overflow-hidden"
       variants={heroVariants}
       initial="hidden"
       animate="visible"

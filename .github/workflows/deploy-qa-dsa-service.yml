@@ -59,11 +59,19 @@ jobs:
             git checkout QA
             git pull origin QA
             
+            # Clean up existing container (including Created state)
+            echo "🧹 Cleaning up existing DSA Service container..."
+            if docker ps -a --format "{{.Names}}" | grep -q "^gisul-dsa-service$"; then
+              echo "Removing existing container: gisul-dsa-service"
+              docker stop gisul-dsa-service 2>/dev/null || true
+              docker rm -f gisul-dsa-service 2>/dev/null || true
+            fi
+            
             echo "🔨 Rebuilding DSA Service..."
             docker-compose build dsa-service
             
-            echo "🔄 Restarting DSA Service..."
-            docker-compose up -d --no-deps dsa-service
+            echo "🔄 Starting DSA Service..."
+            docker-compose up -d --force-recreate --no-deps dsa-service
             
             sleep 5
             

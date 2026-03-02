@@ -32,9 +32,9 @@ export default function Features() {
   };
 
   return (
-    <section id="features" className="py-20 md:py-24 bg-white">
+    <section id="features" className="py-16 sm:py-20 md:py-24 bg-white">
       <motion.div
-        className="max-w-6xl px-6 mx-auto"
+        className="max-w-6xl px-4 sm:px-6 md:px-8 lg:px-12 mx-auto"
         variants={containerVariants}
         initial="hidden"
         whileInView="visible"
