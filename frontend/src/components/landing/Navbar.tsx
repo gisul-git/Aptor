@@ -168,7 +168,7 @@ export default function Navbar() {
                     setIsOpen(false)
                     router.push('/schedule-demo')
                   }}
-                  className="block w-full px-4 py-2 rounded-full bg-[#C9F4D4] text-[#1E5A3B] text-sm font-semibold shadow-[0_10px_30px_rgba(157,232,176,0.35)] border border-[#9DE8B0] flex items-center justify-center gap-2 hover:bg-[#B0EFC0] transition-colors"
+                  className=" w-full px-4 py-2 rounded-full bg-[#C9F4D4] text-[#1E5A3B] text-sm font-semibold shadow-[0_10px_30px_rgba(157,232,176,0.35)] border border-[#9DE8B0] flex items-center justify-center gap-2 hover:bg-[#B0EFC0] transition-colors"
                 >
                   <span>Schedule a Demo</span>
                   <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-white text-[#1E5A3B] shadow-[0_4px_14px_rgba(30,90,59,0.25)]">
