@@ -1,4 +1,4 @@
-# Gisul-AI-Assessment-Production Aaptor
+# Gisul-AI-Assessment-Production Aaptor platform
 
 ## Optional: Speed up TFJS Face models (avoid Kaggle → GCS redirects)
 
