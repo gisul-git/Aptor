@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/router'
-import { Card, CardContent } from '../../../components/dsa/ui/card'
-import { Button } from '../../../components/dsa/ui/button'
 import { useAIMLTests, usePublishAIMLTest, useAddAIMLCandidate, useBulkAddAIMLCandidates } from '@/hooks/api/useAIML'
-import { Clock, Eye, EyeOff, Users, Mail, Edit, Upload, List } from 'lucide-react'
+import { 
+  Clock, Eye, EyeOff, Users, Mail, Edit3, Upload, List, 
+  ArrowLeft, Copy, CheckCircle2, Calendar, AlertCircle, FileSpreadsheet, X 
+} from 'lucide-react'
 import Link from 'next/link'
 
 // Helper function to format dates (converts UTC to IST - UTC+5:30)
@@ -183,196 +184,255 @@ export default function AIMLTestsListPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-background">
-        <div className="container mx-auto px-4 py-8">
-          <div className="text-center">Loading...</div>
+      <div style={{ backgroundColor: "#FAFCFB", minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "1rem", color: "#00684A" }}>
+          <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-[#00684A]"></div>
+          <span style={{ fontWeight: 500 }}>Loading tests...</span>
         </div>
       </div>
     )
   }
 
   return (
-   <div className="min-h-screen bg-background">
-      <div className="container mx-auto px-4 py-8">
+   <div style={{ backgroundColor: "#FAFCFB", minHeight: "100vh", fontFamily: "system-ui, -apple-system, sans-serif" }}>
+      <div style={{ maxWidth: "1100px", margin: "0 auto", padding: "3rem 1.5rem" }}>
+        
         {/* Back Button */}
-        <div style={{ marginBottom: "1.5rem" }}>
+        <div style={{ marginBottom: "2rem" }}>
           <button
             type="button"
-            className="btn-secondary"
             onClick={() => router.push("/aiml")}
             style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "0.5rem",
-              padding: "0.5rem 1rem",
-              fontSize: "0.875rem",
+              display: "flex", alignItems: "center", gap: "0.5rem", padding: "0.5rem 0",
+              fontSize: "0.875rem", color: "#6B7280", backgroundColor: "transparent",
+              border: "none", fontWeight: 600, cursor: "pointer", transition: "color 0.2s ease"
             }}
+            onMouseOver={(e) => e.currentTarget.style.color = "#00684A"}
+            onMouseOut={(e) => e.currentTarget.style.color = "#6B7280"}
           >
-            ← Back
+            <ArrowLeft size={16} strokeWidth={2.5} /> Back
           </button>
         </div>
 
-        <div className="mb-6 flex items-start justify-between gap-4">
+        {/* Header */}
+        <div style={{ marginBottom: "2.5rem", display: "flex", justifyContent: "space-between", alignItems: "flex-end" }}>
           <div>
-            <h1 className="text-4xl font-bold">Test Management</h1>
-            <p className="text-muted-foreground mt-1">Manage tests and candidates</p>
+            <h1 style={{ margin: "0 0 0.5rem 0", color: "#111827", fontSize: "2.25rem", fontWeight: 800, letterSpacing: "-0.025em" }}>
+              Test Management
+            </h1>
+            <p style={{ color: "#6B7280", fontSize: "1rem", margin: 0 }}>
+              Manage your AI/ML assessments, invite candidates, and review configurations.
+            </p>
           </div>
-          <Button
-            variant="default"
+          <button
             onClick={() => router.push("/dashboard")}
+            style={{ 
+              padding: "0.625rem 1.5rem", fontSize: "0.875rem", fontWeight: 600, color: "#ffffff",
+              backgroundColor: "#00684A", border: "none", borderRadius: "9999px", cursor: "pointer", 
+              boxShadow: "0 4px 6px -1px rgba(0, 104, 74, 0.2)", transition: "all 0.2s ease"
+            }}
+            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = "#084A2A"}
+            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = "#00684A"}
             title="Save and go back to dashboard"
           >
-            Save
-          </Button>
+            Save & Exit
+          </button>
         </div>
 
         {filteredTests.length === 0 ? (
-          <Card>
-            <CardContent className="p-8 text-center">
-              <p className="text-muted-foreground">
-                {router.query.testId ? 'Test not found.' : 'No tests available. Create tests from the dashboard.'}
-              </p>
-            </CardContent>
-          </Card>
+          <div style={{ backgroundColor: "#ffffff", padding: "4rem 2rem", borderRadius: "1rem", border: "1px dashed #D1D5DB", textAlign: "center" }}>
+            <AlertCircle size={40} color="#9CA3AF" style={{ margin: "0 auto 1rem auto" }} />
+            <h3 style={{ margin: "0 0 0.5rem 0", color: "#111827", fontSize: "1.125rem", fontWeight: 600 }}>No tests found</h3>
+            <p style={{ margin: 0, color: "#6B7280", fontSize: "0.95rem" }}>
+              {router.query.testId ? 'The requested test could not be found.' : 'You haven\'t created any tests yet. Head to the dashboard to create one.'}
+            </p>
+          </div>
         ) : (
-          <div className="space-y-4">
+          <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
             {filteredTests.map((test) => (
-              <Card key={test.id}>
-                <CardContent className="p-4">
-                  <div className="flex items-center justify-between">
-                    <div className="flex-1">
-                      <h3 className="font-semibold text-lg">{test.title}</h3>
-                      <p className="text-sm text-muted-foreground mt-1">{test.description}</p>
-                      <div className="flex items-center gap-4 mt-2 text-sm">
-                        <div className="flex items-center gap-1">
-                          <Clock className="h-4 w-4" />
-                          {test.duration_minutes} minutes
-                        </div>
-                        <div>
-                          Start: {formatDate(test.schedule?.startTime || test.start_time, 'MMM dd, yyyy HH:mm')}
-                        </div>
-                        <div>
-                          End: {formatDate(test.schedule?.endTime || test.end_time, 'MMM dd, yyyy HH:mm')}
-                        </div>
-                        <span
-                          className={`px-2 py-1 rounded text-xs ${
-                            test.is_active
-                              ? 'bg-green-500/20 text-green-500'
-                              : 'bg-gray-500/20 text-gray-500'
-                          }`}
-                        >
-                          {test.is_active ? 'Active' : 'Inactive'}
+              <div key={test.id} style={{ 
+                backgroundColor: "#ffffff", borderRadius: "1rem", border: "1px solid #E5E7EB", 
+                boxShadow: "0 1px 3px rgba(0,0,0,0.05)", padding: "2rem", transition: "all 0.2s ease" 
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.borderColor = "#00684A";
+                e.currentTarget.style.boxShadow = "0 8px 16px rgba(0, 104, 74, 0.08)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.borderColor = "#E5E7EB";
+                e.currentTarget.style.boxShadow = "0 1px 3px rgba(0,0,0,0.05)";
+              }}
+              >
+                <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "2rem", flexWrap: "wrap" }}>
+                  
+                  {/* Left Side: Test Info */}
+                  <div style={{ flex: 1, minWidth: "300px" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginBottom: "0.5rem" }}>
+                      <h3 style={{ margin: 0, color: "#111827", fontSize: "1.25rem", fontWeight: 700 }}>{test.title}</h3>
+                      
+                      <span style={{ display: "inline-flex", alignItems: "center", gap: "0.375rem", padding: "0.25rem 0.625rem", borderRadius: "2rem", fontSize: "0.75rem", fontWeight: 600, color: test.is_active ? "#059669" : "#4B5563", backgroundColor: test.is_active ? "#D1FAE5" : "#F3F4F6", border: `1px solid ${test.is_active ? "#A7F3D0" : "#E5E7EB"}` }}>
+                        <span style={{ width: "6px", height: "6px", borderRadius: "50%", backgroundColor: test.is_active ? "#059669" : "#6B7280" }} />
+                        {test.is_active ? 'Active' : 'Inactive'}
+                      </span>
+                      
+                      <span style={{ display: "inline-flex", alignItems: "center", gap: "0.375rem", padding: "0.25rem 0.625rem", borderRadius: "2rem", fontSize: "0.75rem", fontWeight: 600, color: test.is_published ? "#00684A" : "#6B7280", backgroundColor: test.is_published ? "#E8FAF0" : "#F3F4F6", border: `1px solid ${test.is_published ? "#A8E8BC" : "#E5E7EB"}` }}>
+                        {test.is_published ? 'Published' : 'Draft'}
+                      </span>
+
+                      {test.pausedAt && (
+                        <span style={{ display: "inline-flex", alignItems: "center", padding: "0.25rem 0.625rem", borderRadius: "2rem", fontSize: "0.75rem", fontWeight: 600, color: "#B45309", backgroundColor: "#FEF3C7", border: "1px solid #FDE68A" }}>
+                          Paused
                         </span>
-                        <span
-                          className={`px-2 py-1 rounded text-xs ${
-                            test.is_published
-                              ? 'bg-blue-500/20 text-blue-500'
-                              : 'bg-gray-500/20 text-gray-500'
-                          }`}
-                        >
-                          {test.is_published ? 'Published' : 'Draft'}
-                        </span>
-                        {test.pausedAt && (
-                          <span className="px-2 py-1 rounded text-xs bg-amber-500/20 text-amber-700">
-                            Paused
-                          </span>
-                        )}
-                        <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                          <Users className="h-3 w-3" />
-                          {test.invited_users?.length || 0} candidates
-                        </div>
-                        <div className="text-xs text-muted-foreground">
-                          {test.question_ids?.length || 0} questions
-                        </div>
-                      </div>
-                      {test.is_published && test.test_token && (
-                        <div className="mt-3 p-3 bg-blue-500/10 border border-blue-500/20 rounded-md">
-                          <div className="text-xs font-medium text-blue-400 mb-2">Shared Test Link:</div>
-                          <div className="flex gap-2">
-                            <input
-                              type="text"
-                              value={`${typeof window !== 'undefined' ? window.location.origin : ''}/aiml/test/${test.id}?token=${test.test_token}`}
-                              readOnly
-                              className="flex-1 p-2 border rounded-md bg-background text-xs font-mono"
-                            />
-                            <Button
-                              size="sm"
-                              onClick={async () => {
-                                const link = `${window.location.origin}/aiml/test/${test.id}?token=${test.test_token}`
-                                try {
-                                  await navigator.clipboard.writeText(link)
-                                  alert('Link copied to clipboard!')
-                                } catch (err) {
-                                  const input = document.createElement('input')
-                                  input.value = link
-                                  document.body.appendChild(input)
-                                  input.select()
-                                  document.execCommand('copy')
-                                  document.body.removeChild(input)
-                                  alert('Link copied to clipboard!')
-                                }
-                              }}
-                            >
-                              Copy
-                            </Button>
-                          </div>
-                          <p className="text-xs text-muted-foreground mt-2">
-                            Share this single link with all candidates. They will enter their email and name to verify.
-                          </p>
-                        </div>
                       )}
                     </div>
-                    <div className="flex gap-2">
-                      <Button
-                        variant={test.is_published ? "outline" : "default"}
-                        size="sm"
-                        onClick={() => handlePublish(test.id, test.is_published || false)}
-                        disabled={!test.question_ids || test.question_ids.length === 0}
-                        title={!test.question_ids || test.question_ids.length === 0 ? "Add questions to the test first" : test.is_published ? "Click to unpublish the test" : "Click to publish the test"}
-                      >
-                        {test.is_published ? (
-                          <>
-                            <EyeOff className="h-4 w-4 mr-2" />
-                            Unpublish
-                          </>
-                        ) : (
-                          <>
-                            <Eye className="h-4 w-4 mr-2" />
-                            Publish
-                          </>
-                        )}
-                      </Button>
-                      <Link href={`/aiml/tests/${test.id}/edit`}>
-                        <Button variant="outline" size="sm">
-                          <Edit className="h-4 w-4 mr-2" />
-                          Edit
-                        </Button>
-                      </Link>
-                      <Link href={`/aiml/tests/${test.id}/candidates`}>
-                        <Button variant="outline" size="sm" disabled={!test.is_published}>
-                          <List className="h-4 w-4 mr-2" />
-                          Candidates
-                        </Button>
-                      </Link>
-                      <Button
-                        variant="default"
-                        size="sm"
-                        onClick={() => {
-                          setInviteModal({ testId: test.id, open: true })
-                          setGeneratedLink(null)
-                          setCandidateName('')
-                          setCandidateEmail('')
-                        }}
-                        disabled={!test.is_published}
-                        title={!test.is_published ? "Test must be published to add candidates" : "Add a candidate"}
-                      >
-                        <Mail className="h-4 w-4 mr-2" />
-                        Add Candidate
-                      </Button>
+                    
+                    <p style={{ margin: "0 0 1.25rem 0", color: "#4B5563", fontSize: "0.95rem", lineHeight: "1.5" }}>
+                      {test.description}
+                    </p>
+                    
+                    {/* Metadata Badges */}
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: "0.75rem", marginBottom: "1rem" }}>
+                      <span style={{ display: "flex", alignItems: "center", gap: "0.375rem", fontSize: "0.8rem", color: "#6B7280", backgroundColor: "#F9FAFB", padding: "0.375rem 0.75rem", borderRadius: "0.5rem", border: "1px solid #E5E7EB", fontWeight: 500 }}>
+                        <Clock size={14} /> {test.duration_minutes} mins
+                      </span>
+                      <span style={{ display: "flex", alignItems: "center", gap: "0.375rem", fontSize: "0.8rem", color: "#6B7280", backgroundColor: "#F9FAFB", padding: "0.375rem 0.75rem", borderRadius: "0.5rem", border: "1px solid #E5E7EB", fontWeight: 500 }}>
+                        <Calendar size={14} /> {formatDate(test.schedule?.startTime || test.start_time, 'MMM dd, yyyy HH:mm')} - {formatDate(test.schedule?.endTime || test.end_time, 'MMM dd, yyyy HH:mm')}
+                      </span>
+                      <span style={{ display: "flex", alignItems: "center", gap: "0.375rem", fontSize: "0.8rem", color: "#6B7280", backgroundColor: "#F9FAFB", padding: "0.375rem 0.75rem", borderRadius: "0.5rem", border: "1px solid #E5E7EB", fontWeight: 500 }}>
+                        <Users size={14} /> {test.invited_users?.length || 0} Candidates
+                      </span>
+                      <span style={{ display: "flex", alignItems: "center", gap: "0.375rem", fontSize: "0.8rem", color: "#6B7280", backgroundColor: "#F9FAFB", padding: "0.375rem 0.75rem", borderRadius: "0.5rem", border: "1px solid #E5E7EB", fontWeight: 500 }}>
+                        <List size={14} /> {test.question_ids?.length || 0} Questions
+                      </span>
                     </div>
+
+                    {/* Shared Link Box */}
+                    {test.is_published && test.test_token && (
+                      <div style={{ padding: "1rem", backgroundColor: "#F0F9F4", border: "1px solid #A8E8BC", borderRadius: "0.5rem", marginTop: "1rem" }}>
+                        <label style={{ display: "block", fontSize: "0.75rem", fontWeight: 700, color: "#00684A", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "0.5rem" }}>
+                          Assessment Link
+                        </label>
+                        <div style={{ display: "flex", gap: "0.5rem" }}>
+                          <input
+                            type="text"
+                            value={`${typeof window !== 'undefined' ? window.location.origin : ''}/aiml/test/${test.id}?token=${test.test_token}`}
+                            readOnly
+                            style={{ flex: 1, padding: "0.5rem 0.75rem", border: "1px solid #D1D5DB", borderRadius: "0.375rem", backgroundColor: "#ffffff", fontSize: "0.875rem", fontFamily: "monospace", color: "#374151", outline: "none" }}
+                          />
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              const link = `${window.location.origin}/aiml/test/${test.id}?token=${test.test_token}`
+                              try {
+                                await navigator.clipboard.writeText(link)
+                                alert('Link copied to clipboard!')
+                              } catch (err) {
+                                const input = document.createElement('input')
+                                input.value = link
+                                document.body.appendChild(input)
+                                input.select()
+                                document.execCommand('copy')
+                                document.body.removeChild(input)
+                                alert('Link copied to clipboard!')
+                              }
+                            }}
+                            style={{ display: "flex", alignItems: "center", gap: "0.375rem", padding: "0.5rem 1rem", backgroundColor: "#ffffff", border: "1px solid #D1D5DB", borderRadius: "0.375rem", color: "#374151", fontSize: "0.875rem", fontWeight: 600, cursor: "pointer", transition: "all 0.2s" }}
+                            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = "#F9FAFB"}
+                            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = "#ffffff"}
+                          >
+                            <Copy size={14} /> Copy
+                          </button>
+                        </div>
+                        <p style={{ margin: "0.5rem 0 0 0", fontSize: "0.75rem", color: "#2D7A52" }}>
+                          Share this universal link with your candidates. They will verify identity upon entry.
+                        </p>
+                      </div>
+                    )}
                   </div>
-                </CardContent>
-              </Card>
+
+                  {/* Right Side: Action Buttons */}
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem", alignItems: "flex-start", justifyContent: "flex-end", minWidth: "220px" }}>
+                    <button
+                      onClick={() => handlePublish(test.id, test.is_published || false)}
+                      disabled={!test.question_ids || test.question_ids.length === 0}
+                      title={!test.question_ids || test.question_ids.length === 0 ? "Add questions to the test first" : test.is_published ? "Click to unpublish" : "Click to publish"}
+                      style={{ 
+                        display: "flex", alignItems: "center", gap: "0.375rem", width: "100%", justifyContent: "center",
+                        padding: "0.5rem 1rem", fontSize: "0.875rem", fontWeight: 600, 
+                        color: test.is_published ? "#D97706" : "#00684A", 
+                        backgroundColor: test.is_published ? "#FEF3C7" : "#F0F9F4", 
+                        border: `1px solid ${test.is_published ? "#FCD34D" : "#E1F2E9"}`, 
+                        borderRadius: "0.5rem", cursor: (!test.question_ids || test.question_ids.length === 0) ? "not-allowed" : "pointer", 
+                        opacity: (!test.question_ids || test.question_ids.length === 0) ? 0.5 : 1, transition: "all 0.2s" 
+                      }}
+                      onMouseEnter={(e) => {
+                        if (test.question_ids && test.question_ids.length > 0) {
+                          e.currentTarget.style.backgroundColor = test.is_published ? "#FDE68A" : "#E1F2E9"
+                        }
+                      }}
+                      onMouseLeave={(e) => {
+                        if (test.question_ids && test.question_ids.length > 0) {
+                          e.currentTarget.style.backgroundColor = test.is_published ? "#FEF3C7" : "#F0F9F4"
+                        }
+                      }}
+                    >
+                      {test.is_published ? <EyeOff size={16} /> : <Eye size={16} />}
+                      {test.is_published ? 'Unpublish' : 'Publish'}
+                    </button>
+                    
+                    <button
+                      onClick={() => router.push(`/aiml/tests/${test.id}/edit`)}
+                      style={{ 
+                        display: "flex", alignItems: "center", gap: "0.375rem", flex: 1, justifyContent: "center",
+                        padding: "0.5rem 1rem", fontSize: "0.875rem", fontWeight: 600, color: "#374151", 
+                        backgroundColor: "#ffffff", border: "1px solid #D1D5DB", borderRadius: "0.5rem", 
+                        cursor: "pointer", transition: "all 0.2s" 
+                      }}
+                      onMouseEnter={(e) => e.currentTarget.style.backgroundColor = "#F9FAFB"}
+                      onMouseLeave={(e) => e.currentTarget.style.backgroundColor = "#ffffff"}
+                    >
+                      <Edit3 size={16} /> Edit
+                    </button>
+
+                    <button
+                      onClick={() => router.push(`/aiml/tests/${test.id}/candidates`)}
+                      disabled={!test.is_published}
+                      style={{ 
+                        display: "flex", alignItems: "center", gap: "0.375rem", flex: 1, justifyContent: "center",
+                        padding: "0.5rem 1rem", fontSize: "0.875rem", fontWeight: 600, color: "#374151", 
+                        backgroundColor: "#ffffff", border: "1px solid #D1D5DB", borderRadius: "0.5rem", 
+                        cursor: !test.is_published ? "not-allowed" : "pointer", opacity: !test.is_published ? 0.5 : 1, transition: "all 0.2s" 
+                      }}
+                      onMouseEnter={(e) => { if (test.is_published) e.currentTarget.style.backgroundColor = "#F9FAFB" }}
+                      onMouseLeave={(e) => { if (test.is_published) e.currentTarget.style.backgroundColor = "#ffffff" }}
+                    >
+                      <Users size={16} /> View
+                    </button>
+
+                    <button
+                      onClick={() => {
+                        setInviteModal({ testId: test.id, open: true })
+                        setGeneratedLink(null)
+                        setCandidateName('')
+                        setCandidateEmail('')
+                      }}
+                      disabled={!test.is_published}
+                      title={!test.is_published ? "Publish test to add candidates" : "Add a candidate"}
+                      style={{ 
+                        display: "flex", alignItems: "center", gap: "0.375rem", width: "100%", justifyContent: "center",
+                        padding: "0.5rem 1rem", fontSize: "0.875rem", fontWeight: 600, color: "#ffffff", 
+                        backgroundColor: "#00684A", border: "1px solid #00684A", borderRadius: "0.5rem", 
+                        cursor: !test.is_published ? "not-allowed" : "pointer", opacity: !test.is_published ? 0.5 : 1, transition: "all 0.2s" 
+                      }}
+                      onMouseEnter={(e) => { if (test.is_published) e.currentTarget.style.backgroundColor = "#084A2A" }}
+                      onMouseLeave={(e) => { if (test.is_published) e.currentTarget.style.backgroundColor = "#00684A" }}
+                    >
+                      <Mail size={16} /> Invite Candidates
+                    </button>
+                  </div>
+
+                </div>
+              </div>
             ))}
           </div>
         )}
@@ -381,7 +441,7 @@ export default function AIMLTestsListPage() {
       {/* Add Candidate Modal */}
       {inviteModal.open && (
         <div
-          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
+          style={{ position: "fixed", inset: 0, backgroundColor: "rgba(17, 24, 39, 0.7)", backdropFilter: "blur(4px)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50, padding: "1rem" }}
           onClick={(e) => {
             if (e.target === e.currentTarget) {
               setInviteModal({ testId: '', open: false })
@@ -391,138 +451,150 @@ export default function AIMLTestsListPage() {
             }
           }}
         >
-          <Card className="w-full max-w-md" onClick={(e) => e.stopPropagation()}>
-            <CardContent className="p-6">
-              <h3 className="text-lg font-semibold mb-4">Add Candidate</h3>
+          <div style={{ backgroundColor: "#ffffff", borderRadius: "1rem", width: "100%", maxWidth: "450px", padding: "2rem", boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.25)" }} onClick={(e) => e.stopPropagation()}>
+            
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1.5rem" }}>
+              <h3 style={{ margin: 0, fontSize: "1.25rem", fontWeight: 700, color: "#111827" }}>Add Candidates</h3>
+              <button onClick={() => setInviteModal({ testId: '', open: false })} style={{ background: "transparent", border: "none", color: "#9CA3AF", cursor: "pointer" }}>
+                <X size={20} />
+              </button>
+            </div>
 
-              {/* CSV Upload Section */}
-              <div className="mb-4 p-4 border rounded-md" style={{ backgroundColor: '#f8f9fa', borderColor: '#A8E8BC' }}>
-                <h4 className="text-sm font-medium mb-2" style={{ color: '#1a1625' }}>Bulk Upload (CSV)</h4>
-                <p className="text-xs mb-3" style={{ color: '#6b7280' }}>
-                  Upload a CSV file with 'name' and 'email' columns
-                </p>
-                <input
-                  type="file"
-                  accept=".csv"
-                  onChange={async (e) => {
-                    const file = e.target.files?.[0]
-                    if (!file) return
-
-                    const formData = new FormData()
-                    formData.append('file', file)
-
-                    try {
-                      const response = await bulkAddCandidatesMutation.mutateAsync({
-                        testId: inviteModal.testId,
-                        formData,
-                      })
-
-                      alert(
-                        `Bulk upload completed!\n` +
-                        `Success: ${response.data?.success_count || 0}\n` +
-                        `Failed: ${response.data?.failed_count || 0}\n` +
-                        `Duplicates: ${response.data?.duplicate_count || 0}`
-                      )
-
-                      await refetchTests()
-
-                      e.target.value = ''
-                    } catch (error: any) {
-                      alert(error.response?.data?.detail || 'Failed to upload CSV')
-                      e.target.value = ''
-                    }
-                  }}
-                  className="text-sm"
-                  style={{
-                    width: '100%',
-                    padding: '0.5rem',
-                    border: '1px solid #A8E8BC',
-                    borderRadius: '0.375rem',
-                    backgroundColor: '#ffffff',
-                    cursor: 'pointer'
-                  }}
-                />
+            {/* CSV Upload Section */}
+            <div style={{ marginBottom: "1.5rem", padding: "1.25rem", backgroundColor: "#F9FAFB", border: "1px dashed #D1D5DB", borderRadius: "0.75rem" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.5rem" }}>
+                <FileSpreadsheet size={18} color="#00684A" />
+                <h4 style={{ margin: 0, fontSize: "0.95rem", fontWeight: 600, color: "#374151" }}>Bulk Upload (CSV)</h4>
               </div>
+              <p style={{ margin: "0 0 1rem 0", fontSize: "0.8rem", color: "#6B7280" }}>
+                Upload a CSV file containing <code style={{ backgroundColor: "#E5E7EB", padding: "0.1rem 0.3rem", borderRadius: "0.25rem" }}>name</code> and <code style={{ backgroundColor: "#E5E7EB", padding: "0.1rem 0.3rem", borderRadius: "0.25rem" }}>email</code> columns.
+              </p>
+              <input
+                type="file"
+                accept=".csv"
+                onChange={async (e) => {
+                  const file = e.target.files?.[0]
+                  if (!file) return
 
-              {generatedLink && generatedLink.testId === inviteModal.testId ? (
-                <div className="space-y-4">
-                  <div className="p-4 bg-green-500/10 border border-green-500/20 rounded-md">
-                    <p className="text-sm font-medium mb-2">Candidate Added Successfully!</p>
-                    <p className="text-xs text-muted-foreground">
-                      {generatedLink.name} ({generatedLink.email}) has been added.
+                  const formData = new FormData()
+                  formData.append('file', file)
+
+                  try {
+                    const response = await bulkAddCandidatesMutation.mutateAsync({
+                      testId: inviteModal.testId,
+                      formData,
+                    })
+
+                    alert(
+                      `Bulk upload completed!\n` +
+                      `Success: ${response.data?.success_count || 0}\n` +
+                      `Failed: ${response.data?.failed_count || 0}\n` +
+                      `Duplicates: ${response.data?.duplicate_count || 0}`
+                    )
+
+                    await refetchTests()
+                    e.target.value = ''
+                  } catch (error: any) {
+                    alert(error.response?.data?.detail || 'Failed to upload CSV')
+                    e.target.value = ''
+                  }
+                }}
+                style={{
+                  width: '100%', padding: '0.625rem', border: '1px solid #D1D5DB', borderRadius: '0.5rem',
+                  backgroundColor: '#ffffff', cursor: 'pointer', fontSize: "0.875rem", color: "#4B5563"
+                }}
+              />
+            </div>
+
+            <div style={{ display: "flex", alignItems: "center", margin: "1.5rem 0" }}>
+              <div style={{ flex: 1, height: "1px", backgroundColor: "#E5E7EB" }}></div>
+              <span style={{ padding: "0 1rem", color: "#9CA3AF", fontSize: "0.75rem", fontWeight: 600, textTransform: "uppercase" }}>OR SINGLE INVITE</span>
+              <div style={{ flex: 1, height: "1px", backgroundColor: "#E5E7EB" }}></div>
+            </div>
+
+            {generatedLink && generatedLink.testId === inviteModal.testId ? (
+              <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+                <div style={{ padding: "1rem", backgroundColor: "#F0FDF4", border: "1px solid #A7F3D0", borderRadius: "0.5rem", display: "flex", gap: "0.75rem", alignItems: "flex-start" }}>
+                  <CheckCircle2 size={20} color="#059669" style={{ marginTop: "0.1rem" }} />
+                  <div>
+                    <p style={{ margin: "0 0 0.25rem 0", fontSize: "0.95rem", fontWeight: 600, color: "#065F46" }}>Candidate Added Successfully!</p>
+                    <p style={{ margin: 0, fontSize: "0.875rem", color: "#047857" }}>
+                      {generatedLink.name} ({generatedLink.email}) has been invited.
                     </p>
                   </div>
-                  <div className="flex gap-2">
-                    <Button
-                      variant="default"
-                      onClick={() => {
-                        setInviteModal({ testId: '', open: false })
-                        setGeneratedLink(null)
-                        setCandidateName('')
-                        setCandidateEmail('')
-                        refetchTests()
-                      }}
-                      className="flex-1"
-                    >
-                      Done
-                    </Button>
-                  </div>
                 </div>
-              ) : (
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-medium mb-1">Candidate Name</label>
-                    <input
-                      type="text"
-                      className="input w-full"
-                      value={candidateName}
-                      onChange={(e) => setCandidateName(e.target.value)}
-                      placeholder="Enter candidate name"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium mb-1">Candidate Email</label>
-                    <input
-                      type="email"
-                      className="input w-full"
-                      value={candidateEmail}
-                      onChange={(e) => setCandidateEmail(e.target.value)}
-                      placeholder="Enter candidate email"
-                    />
-                  </div>
-                  <div className="flex gap-2">
-                    <Button
-                      variant="outline"
-                      onClick={() => {
-                        setInviteModal({ testId: '', open: false })
-                        setGeneratedLink(null)
-                        setCandidateName('')
-                        setCandidateEmail('')
-                      }}
-                      className="flex-1"
-                      disabled={addingCandidate}
-                    >
-                      Cancel
-                    </Button>
-                    <Button
-                      variant="default"
-                      onClick={() => handleAddCandidate(inviteModal.testId)}
-                      className="flex-1"
-                      disabled={addingCandidate}
-                    >
-                      {addingCandidate ? 'Adding...' : 'Add Candidate'}
-                    </Button>
-                  </div>
+                <button
+                  onClick={() => {
+                    setInviteModal({ testId: '', open: false })
+                    setGeneratedLink(null)
+                    setCandidateName('')
+                    setCandidateEmail('')
+                    refetchTests()
+                  }}
+                  style={{ width: "100%", padding: "0.75rem", backgroundColor: "#ffffff", border: "1px solid #D1D5DB", borderRadius: "0.5rem", fontWeight: 600, color: "#374151", cursor: "pointer", transition: "all 0.2s" }}
+                  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = "#F9FAFB"}
+                  onMouseLeave={(e) => e.currentTarget.style.backgroundColor = "#ffffff"}
+                >
+                  Done
+                </button>
+              </div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+                <div>
+                  <label style={{ display: "block", fontSize: "0.875rem", fontWeight: 600, color: "#374151", marginBottom: "0.5rem" }}>Candidate Name</label>
+                  <input
+                    type="text"
+                    value={candidateName}
+                    onChange={(e) => setCandidateName(e.target.value)}
+                    placeholder="e.g., John Doe"
+                    style={{ width: "100%", padding: "0.75rem", border: "1px solid #D1D5DB", borderRadius: "0.5rem", outline: "none", boxSizing: "border-box", fontSize: "0.95rem" }}
+                    onFocus={(e) => e.currentTarget.style.borderColor = "#00684A"}
+                    onBlur={(e) => e.currentTarget.style.borderColor = "#D1D5DB"}
+                  />
                 </div>
-              )}
-            </CardContent>
-          </Card>
+                <div>
+                  <label style={{ display: "block", fontSize: "0.875rem", fontWeight: 600, color: "#374151", marginBottom: "0.5rem" }}>Candidate Email</label>
+                  <input
+                    type="email"
+                    value={candidateEmail}
+                    onChange={(e) => setCandidateEmail(e.target.value)}
+                    placeholder="e.g., john@example.com"
+                    style={{ width: "100%", padding: "0.75rem", border: "1px solid #D1D5DB", borderRadius: "0.5rem", outline: "none", boxSizing: "border-box", fontSize: "0.95rem" }}
+                    onFocus={(e) => e.currentTarget.style.borderColor = "#00684A"}
+                    onBlur={(e) => e.currentTarget.style.borderColor = "#D1D5DB"}
+                  />
+                </div>
+                <div style={{ display: "flex", gap: "0.75rem", marginTop: "0.5rem" }}>
+                  <button
+                    onClick={() => {
+                      setInviteModal({ testId: '', open: false })
+                      setGeneratedLink(null)
+                      setCandidateName('')
+                      setCandidateEmail('')
+                    }}
+                    disabled={addingCandidate}
+                    style={{ flex: 1, padding: "0.75rem", backgroundColor: "#ffffff", border: "1px solid #D1D5DB", borderRadius: "0.5rem", fontWeight: 600, color: "#374151", cursor: addingCandidate ? "not-allowed" : "pointer", opacity: addingCandidate ? 0.7 : 1, transition: "all 0.2s" }}
+                    onMouseEnter={(e) => { if(!addingCandidate) e.currentTarget.style.backgroundColor = "#F9FAFB" }}
+                    onMouseLeave={(e) => { if(!addingCandidate) e.currentTarget.style.backgroundColor = "#ffffff" }}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={() => handleAddCandidate(inviteModal.testId)}
+                    disabled={addingCandidate || !candidateName || !candidateEmail}
+                    style={{ flex: 1, padding: "0.75rem", backgroundColor: "#00684A", border: "1px solid #00684A", borderRadius: "0.5rem", fontWeight: 600, color: "#ffffff", cursor: (addingCandidate || !candidateName || !candidateEmail) ? "not-allowed" : "pointer", opacity: (addingCandidate || !candidateName || !candidateEmail) ? 0.7 : 1, transition: "all 0.2s" }}
+                    onMouseEnter={(e) => { if(!(addingCandidate || !candidateName || !candidateEmail)) e.currentTarget.style.backgroundColor = "#084A2A" }}
+                    onMouseLeave={(e) => { if(!(addingCandidate || !candidateName || !candidateEmail)) e.currentTarget.style.backgroundColor = "#00684A" }}
+                  >
+                    {addingCandidate ? 'Adding...' : 'Add Candidate'}
+                  </button>
+                </div>
+              </div>
+            )}
+            
+          </div>
         </div>
       )}
     </div>
   )
 }
-
-
-
-
