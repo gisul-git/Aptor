@@ -1,0 +1,33 @@
+services:
+  execution_engine:
+    build: .
+    container_name: execution_engine
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    privileged: true
+    environment:
+      - EXECUTION_TIMEOUT_SECONDS=20
+      - MAX_COMMAND_LENGTH=512
+      - FORCE_SUCCESS_RESPONSE=false
+      - NSJAIL_LOGS_ONLY=false
+      - UVICORN_WORKERS=2
+      - EXECUTION_API_KEY=${EXECUTION_API_KEY:-}
+    depends_on:
+      localstack:
+        condition: service_healthy
+
+  localstack:
+    image: localstack/localstack:latest
+    container_name: localstack
+    restart: unless-stopped
+    ports:
+      - "4566:4566"
+    environment:
+      - SERVICES=s3,iam,dynamodb,lambda,ec2
+      - DEBUG=1
+    healthcheck:
+      test: ["CMD", "bash", "-c", "curl -fsS http://localhost:4566/_localstack/health >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
