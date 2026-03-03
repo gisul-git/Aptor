@@ -121,7 +121,7 @@ export default function DesignResultsPage() {
         <div className="container" style={{ paddingTop: "2rem", paddingBottom: "2rem" }}>
           <div style={{ textAlign: "center", padding: "3rem" }}>
             <div style={{ fontSize: "3rem", marginBottom: "1rem" }}>❌</div>
-            <h2 style={{ fo }}>
+            <h2 style={{ fontSize: "1.5rem", fontWeight: 600, marginBottom: "0.5rem", color: "#DC2626" }}>
               Error Loading Results
             </h2>
             <p style={{ color: "#64748b", marginBottom: "1.5rem" }}>
