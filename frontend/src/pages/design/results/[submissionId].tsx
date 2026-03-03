@@ -398,26 +398,3 @@ export const getServerSideProps: GetServerSideProps = requireAuth(async (context
     props: {},
   }
 })
-         }}
-                >
-                  Back to Tests
-                </button>
-                <button
-                  onClick={() => window.print()}
-                  style={{
-                    padding: "0.75rem 1.5rem",
-                    border: "none",
-                    borderRadius: "0.5rem",
-                    backgroundColor: "#10B981",
-                    color: "#ffffff",
-                    fontWeight: 600,
-                    cursor: "pointer"
-                  }}
-                                   padding: "0.75rem 1.5rem",
-                    border: "1px solid #7C3AED",
-                    borderRadius: "0.5rem",
-                    backgroundColor: "#ffffff",
-                    color: "#7C3AED",
-                    fontWeight: 600,
-                    cursor: "pointer"
-         
