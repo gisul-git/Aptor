@@ -186,7 +186,7 @@ export default function DesignResultsPage() {
                   }}>
                     {Math.round(submission.final_score)}
                   </div>
-                  <div style={{ fontr: "#64748b" }}>out of 100</div>
+                  <div style={{ fontSize: "0.875rem", color: "#64748b" }}>out of 100</div>
                 </div>
 
                 <div style={{ 
@@ -198,7 +198,7 @@ export default function DesignResultsPage() {
                   <div style={{ fontSize: "0.875rem", color: "#7C3AED", fontWeight: 600, marginBottom: "0.5rem" }}>
                     Rule-Based Score
                   </div>
-                  <div style={{ fontSi 700, color: "#1a1625" }}>
+                  <div style={{ fontSize: "2rem", fontWeight: 700, color: "#1a1625" }}>
                     {Math.round(submission.rule_based_score)}
                   </div>
                   <div style={{ fontSize: "0.875rem", color: "#64748b" }}>Technical metrics</div>
@@ -210,7 +210,7 @@ export default function DesignResultsPage() {
                   borderRadius: "0.5rem", 
                   textAlign: "center" 
                 }}>
-                  <div style={{ fontSize:r: "#7C3AED", fontWeight: 600, marginBottom: "0.5rem" }}>
+                  <div style={{ fontSize: "0.875rem", color: "#7C3AED", fontWeight: 600, marginBottom: "0.5rem" }}>
                     AI-Based Score
                   </div>
                   <div style={{ fontSize: "2rem", fontWeight: 700, color: "#1a1625" }}>
@@ -221,7 +221,7 @@ export default function DesignResultsPage() {
               </div>
 
               {/* Overall Summary */}
-              {submission.feedback?.rule_baoverall_summary && (
+              {submission.feedback?.rule_based?.overall_summary && (
                 <div style={{ marginBottom: "2rem" }}>
                   <div style={{ 
                     padding: "1.5rem", 
@@ -253,7 +253,7 @@ export default function DesignResultsPage() {
                     </h3>
                     <div style={{ fontSize: "0.875rem", color: "#64748b" }}>
                       <p><strong>Title:</strong> {submission.feedback.question_context.title}</p>
-                      <p><strong>Role:</strong> {submision.feedback.question_context.role?.replace(/_/g, ' ')}</p>
+                      <p><strong>Role:</strong> {submission.feedback.question_context.role?.replace(/_/g, ' ')}</p>
                       <p><strong>Difficulty:</strong> {submission.feedback.question_context.difficulty}</p>
                       <p><strong>Task Type:</strong> {submission.feedback.question_context.task_type?.replace(/_/g, ' ')}</p>
                     </div>
@@ -262,14 +262,14 @@ export default function DesignResultsPage() {
               )}
 
               {/* Rule-Based Feedback */}
-              {submiseedback.rule_based.feedback).length > 0 && (
+              {submission.feedback?.rule_based?.feedback && Object.keys(submission.feedback.rule_based.feedback).length > 0 && (
                 <div style={{ marginBottom: "2rem" }}>
                   <h2 style={{ fontSize: "1.5rem", fontWeight: 600, marginBottom: "1rem", color: "#7C3AED" }}>
                     📊 Technical Analysis
                   </h2>
                   <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
                     {Object.entries(submission.feedback.rule_based.feedback).map(([key, feedbackText]: [string, any]) => {
- score = submission.feedback?.rule_based?.scores?.[key] || 0;
+                      const score = submission.feedback?.rule_based?.scores?.[key] || 0;
                       return (
                         <div 
                           key={key}
@@ -280,7 +280,7 @@ export default function DesignResultsPage() {
                             backgroundColor: "#F9F5FF"
                           }}
                         >
-                          <div style={{ dislex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.5rem" }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.5rem" }}>
                             <h3 style={{ fontSize: "1rem", fontWeight: 600, color: "#1a1625", textTransform: "capitalize" }}>
                               {key.replace(/_/g, ' ')}
                             </h3>
@@ -332,7 +332,7 @@ export default function DesignResultsPage() {
                         ✅ Strengths
                       </h3>
                       <ul style={{ paddingLeft: "1.5rem", color: "#64748b" }}>
-               idx: number) => (
+                        {submission.feedback.ai_based.strengths.map((strength: string, idx: number) => (
                           <li key={idx} style={{ marginBottom: "0.25rem" }}>{strength}</li>
                         ))}
                       </ul>
@@ -342,7 +342,7 @@ export default function DesignResultsPage() {
                   {submission.feedback.ai_based.improvements && submission.feedback.ai_based.improvements.length > 0 && (
                     <div>
                       <h3 style={{ fontSize: "1rem", fontWeight: 600, marginBottom: "0.5rem", color: "#D97706" }}>
-                     mprovement
+                        💡 Areas for Improvement
                       </h3>
                       <ul style={{ paddingLeft: "1.5rem", color: "#64748b" }}>
                         {submission.feedback.ai_based.improvements.map((improvement: string, idx: number) => (
@@ -355,11 +355,33 @@ export default function DesignResultsPage() {
               )}
 
               {/* Action Buttons */}
-   <div style={{ display: "flex", gap: "1rem", justifyContent: "center", marginTop: "2rem" }}>
+              <div style={{ display: "flex", gap: "1rem", justifyContent: "center", marginTop: "2rem" }}>
                 <button
                   onClick={() => router.push('/design/tests')}
                   style={{
- >
+                    padding: "0.75rem 1.5rem",
+                    border: "1px solid #7C3AED",
+                    borderRadius: "0.5rem",
+                    backgroundColor: "#ffffff",
+                    color: "#7C3AED",
+                    fontWeight: 600,
+                    cursor: "pointer"
+                  }}
+                >
+                  Back to Tests
+                </button>
+                <button
+                  onClick={() => window.print()}
+                  style={{
+                    padding: "0.75rem 1.5rem",
+                    border: "none",
+                    borderRadius: "0.5rem",
+                    backgroundColor: "#10B981",
+                    color: "#ffffff",
+                    fontWeight: 600,
+                    cursor: "pointer"
+                  }}
+                >
                   📥 Download Results
                 </button>
               </div>
