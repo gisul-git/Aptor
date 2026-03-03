@@ -37,26 +37,28 @@ export default function DesignAssessmentTakePage() {
       setError(null);
 
       try {
-        // Step 1: Generate AI question
-        const qResponse = await fetch(`${API_URL}/questions/generate`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            role: 'ui_designer',
-            difficulty: 'intermediate',
-            task_type: 'dashboard',
-            topic: 'food delivery',
-            created_by: 'candidate'
-          })
-        });
-
+        // Step 1: Get test details with assigned questions
+        const testResponse = await fetch(`${API_URL}/tests/${testId}`);
+        if (!testResponse.ok) {
+          throw new Error('Failed to load test details');
+        }
+        const testData = await testResponse.json();
+        
+        // Get the first question from the test
+        const questionIds = testData.question_ids || [];
+        if (questionIds.length === 0) {
+          throw new Error('No questions assigned to this test');
+        }
+        
+        // Step 2: Fetch the first question details
+        const qResponse = await fetch(`${API_URL}/questions/${questionIds[0]}`);
         if (!qResponse.ok) {
-          throw new Error('Failed to generate question');
+          throw new Error('Failed to load question');
         }
         const questionData = await qResponse.json();
         setQuestion(questionData);
 
-        // Step 2: Create Penpot workspace
+        // Step 3: Create Penpot workspace
         const wResponse = await fetch(`${API_URL}/workspace/create`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
