@@ -393,8 +393,4 @@ export default function DesignResultsPage() {
   )
 }
 
-export const getServerSideProps: GetServerSideProps = requireAuth(async (context) => {
-  return {
-    props: {},
-  }
-})
+export const getServerSideProps: GetServerSideProps = requireAuth
