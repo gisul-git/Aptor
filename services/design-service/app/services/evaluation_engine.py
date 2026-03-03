@@ -113,6 +113,7 @@ class DesignEvaluationEngine:
                 moderate_threshold = 15
                 limited_threshold = 8
             
+            # More granular scoring for better differentiation
             if total_shapes >= excellent_threshold:
                 scores["components"] = 20.0
                 feedback["components"] = f"Excellent - Rich design with {total_shapes} components for a {difficulty} level {task_type} challenge"
@@ -126,14 +127,20 @@ class DesignEvaluationEngine:
                 scores["components"] = 10.0
                 feedback["components"] = f"Moderate - Only {total_shapes} elements. The {task_type} challenge needs more components"
             elif total_shapes >= 5:
-                scores["components"] = 5.0
+                # More granular scoring for 5-7 elements
+                scores["components"] = 5.0 + (total_shapes - 5) * 0.5
                 feedback["components"] = f"Limited - {total_shapes} elements is insufficient for '{question_title}'"
             elif total_shapes >= 3:
-                scores["components"] = 2.0
+                # More granular scoring for 3-4 elements
+                scores["components"] = 2.0 + (total_shapes - 3) * 1.0
                 feedback["components"] = f"Minimal - Only {total_shapes} shapes. This {difficulty} level challenge requires much more work"
+            elif total_shapes >= 1:
+                # Granular scoring for 1-2 elements
+                scores["components"] = total_shapes * 0.5
+                feedback["components"] = f"Almost nothing - Only {total_shapes} element(s). This is not a complete submission for '{question_title}'"
             else:
                 scores["components"] = 0.0
-                feedback["components"] = f"Incomplete - Almost no design work submitted for '{question_title}'"
+                feedback["components"] = f"Empty - No design work submitted for '{question_title}'"
             
             # 2. Layout Complexity (15 points)
             if page_count > 1 and total_shapes > 20:
@@ -154,9 +161,16 @@ class DesignEvaluationEngine:
             elif total_shapes > 5:
                 scores["layout"] = 4.0
                 feedback["layout"] = f"Simple layout - {task_type} requires more complexity"
+            elif total_shapes >= 3:
+                # More granular for 3-5 elements
+                scores["layout"] = 1.0 + (total_shapes - 3) * 0.5
+                feedback["layout"] = f"Very simple layout - '{question_title}' requires significant structural work"
+            elif total_shapes >= 1:
+                scores["layout"] = 0.5
+                feedback["layout"] = f"Almost no layout - Only {total_shapes} element(s) present"
             else:
-                scores["layout"] = 1.0
-                feedback["layout"] = f"Minimal layout - '{question_title}' requires significant structural work"
+                scores["layout"] = 0.0
+                feedback["layout"] = f"No layout - Empty submission"
             
             # 3. Design Completeness (15 points) - Check against deliverables
             deliverables_count = len(deliverables)
@@ -175,9 +189,16 @@ class DesignEvaluationEngine:
             elif total_shapes >= 5:
                 scores["completeness"] = 4.0
                 feedback["completeness"] = f"Basic elements only - '{question_title}' requires much more detail"
+            elif total_shapes >= 3:
+                # More granular for 3-4 elements
+                scores["completeness"] = 1.0 + (total_shapes - 3) * 0.5
+                feedback["completeness"] = f"Very incomplete - only {total_shapes} elements, far from meeting requirements"
+            elif total_shapes >= 1:
+                scores["completeness"] = 0.5
+                feedback["completeness"] = f"Almost nothing - only {total_shapes} element(s), does not meet requirements"
             else:
-                scores["completeness"] = 1.0
-                feedback["completeness"] = f"Incomplete - does not meet the requirements of '{question_title}'"
+                scores["completeness"] = 0.0
+                feedback["completeness"] = f"Empty - does not meet the requirements of '{question_title}'"
             
             # 4. Visual Hierarchy (20 points) - Critical for role-specific evaluation
             role_hierarchy_note = ""
@@ -199,8 +220,12 @@ class DesignEvaluationEngine:
                 scores["hierarchy"] = 6.0
                 feedback["hierarchy"] = f"Limited hierarchy{role_hierarchy_note} - critical weakness in '{question_title}'"
             elif total_shapes >= 3:
-                scores["hierarchy"] = 2.0
+                # More granular for 3-4 elements
+                scores["hierarchy"] = 2.0 + (total_shapes - 3) * 0.5
                 feedback["hierarchy"] = f"Minimal hierarchy{role_hierarchy_note} - major issue for {task_type}"
+            elif total_shapes >= 1:
+                scores["hierarchy"] = 0.5
+                feedback["hierarchy"] = f"No hierarchy{role_hierarchy_note} - only {total_shapes} element(s)"
             else:
                 scores["hierarchy"] = 0.0
                 feedback["hierarchy"] = f"No clear hierarchy{role_hierarchy_note} - fundamental requirement missing"
@@ -229,9 +254,16 @@ class DesignEvaluationEngine:
             elif total_shapes >= 5:
                 scores["execution"] = 4.0
                 feedback["execution"] = f"Basic execution - insufficient for {difficulty} level {task_type}.{role_execution_note}"
+            elif total_shapes >= 3:
+                # More granular for 3-4 elements
+                scores["execution"] = 1.0 + (total_shapes - 3) * 0.5
+                feedback["execution"] = f"Very poor execution - only {total_shapes} elements.{role_execution_note}"
+            elif total_shapes >= 1:
+                scores["execution"] = 0.5
+                feedback["execution"] = f"Almost no execution - only {total_shapes} element(s).{role_execution_note}"
             else:
-                scores["execution"] = 1.0
-                feedback["execution"] = f"Poor execution - does not meet standards for '{question_title}'.{role_execution_note}"
+                scores["execution"] = 0.0
+                feedback["execution"] = f"No execution - does not meet standards for '{question_title}'.{role_execution_note}"
             
             # 6. Design System Thinking (15 points) - Check against constraints
             constraints_count = len(constraints)
@@ -247,8 +279,15 @@ class DesignEvaluationEngine:
             elif total_shapes >= 5:
                 scores["system"] = 4.0
                 feedback["system"] = f"Basic consistency - {constraints_count} constraints not properly addressed"
+            elif total_shapes >= 3:
+                # More granular for 3-4 elements
+                scores["system"] = 1.0 + (total_shapes - 3) * 0.5
+                feedback["system"] = f"Very limited consistency - only {total_shapes} elements, constraints not followed"
+            elif total_shapes >= 1:
+                scores["system"] = 0.5
+                feedback["system"] = f"No design system - only {total_shapes} element(s)"
             else:
-                scores["system"] = 1.0
+                scores["system"] = 0.0
                 feedback["system"] = f"No design system thinking - constraints for '{question_title}' not followed"
             
             # Calculate total score (out of 100)

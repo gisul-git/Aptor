@@ -52,7 +52,7 @@ class AIQuestionGenerator:
             else:
                 raise ValueError(f"Unsupported AI provider: {self.provider}")
             
-            return self._parse_ai_response(response, role, difficulty, task_type, created_by)
+            return self._parse_ai_response(response, role, difficulty, task_type, created_by, topic)
             
         except Exception as e:
             logger.error(f"AI question generation failed: {e}")
@@ -103,64 +103,116 @@ Topic: {topic_str}
 Question Type: UI design task
 
 ### QUESTION GENERATION RULES:
-1. Role-Focused: Tailor the challenge strictly based on {role_str}. Match the thinking style, responsibilities, and workflow of that role.
-2. Difficulty-Based Complexity Control:
-   - Easy: Single screen or simple task, minimal constraints, basic layout
-   - Medium: Multi-section screens or simple flows, moderate constraints
-   - High: Complete user flows or complex UX scenarios, strong reasoning
-   - Expert: Product-level or system-level thinking, multi-step workflows
-3. Clear Deliverables: Explicitly define what the candidate must submit
-4. Real-World Practicality: Questions must reflect real product and business scenarios
-5. Constraint Design: Add realistic constraints based on difficulty level
 
-### OUTPUT FORMAT (STRICT):
-Generate a complete design challenge following this structure:
+1. **Role-Focused Excellence**: 
+   - {role_str} questions must reflect the EXACT responsibilities, thinking patterns, and deliverables of that role
+   - UI Designer: Focus on visual design, pixel-perfect execution, typography, color theory, component design
+   - UX Designer: Focus on user flows, information architecture, usability, accessibility, problem-solving
+   - Product Designer: Focus on business goals, user research, end-to-end experience, strategic thinking
+   - Visual Designer: Focus on brand identity, visual storytelling, creative expression, aesthetic innovation
 
-**Role:** {role_str}
-**Level:** {difficulty_str}
-**Topic:** {topic_str}
+2. **Difficulty-Based Complexity Control**:
+   - Easy: Single screen or simple component, 3-5 constraints, basic layout and hierarchy, 45 minutes
+   - Medium: Multi-section screen or simple flow, 5-7 constraints, interactive states, 60 minutes
+   - High: Complete user journey or complex system, 7-10 constraints, edge cases and strategic thinking, 90 minutes
 
-**Design Challenge:**
-(Write a complete, real-world design problem statement including scenario, constraints, and expectations)
+3. **Real-World Practicality**: 
+   - Questions must reflect actual product scenarios from real companies
+   - Include business context, user problems, and technical constraints
+   - Avoid generic or academic scenarios
+   - Use specific industries (fintech, healthcare, e-commerce, education, etc.)
 
-**Constraints:**
-- List 4-8 structured constraints based on difficulty level
+4. **Clear and Measurable Deliverables**:
+   - Explicitly state what files/screens/documents the candidate must submit
+   - Make deliverables role-appropriate and difficulty-appropriate
+   - Easy: 1-2 deliverables, Medium: 2-3 deliverables, High: 3-5 deliverables
 
-**Expected Deliverables:**
-- Clear list of outputs the candidate must submit
+5. **Realistic Constraints**:
+   - Add platform constraints (mobile iOS/Android, web responsive, tablet)
+   - Add design constraints (color palette, accessibility, brand guidelines)
+   - Add business constraints (time to market, technical limitations, user demographics)
+   - Add user constraints (elderly users, first-time users, power users)
 
-### QUALITY CHECK:
-- Is the task role-specific? ✓
-- Is the difficulty level properly reflected? ✓
-- Are the constraints realistic? ✓
-- Are the deliverables clear and measurable? ✓
+6. **Industry-Specific Context**:
+   - For {topic_str}, research and include industry-specific challenges
+   - Reference real product patterns and user expectations
+   - Include domain-specific terminology and requirements
 
-Now generate ONE complete, well-structured design question following the format above.
+### OUTPUT FORMAT (STRICT JSON):
 
-IMPORTANT: Return ONLY a JSON object with this structure:
+Generate a complete design challenge as a JSON object with these exact fields:
+
 {{
-    "title": "Brief descriptive title (max 100 chars)",
-    "description": "Complete design challenge text from the 'Design Challenge' section",
-    "constraints": ["constraint1", "constraint2", "constraint3", "constraint4"],
-    "deliverables": ["deliverable1", "deliverable2", "deliverable3"],
-    "evaluation_criteria": ["Visual hierarchy and clarity", "User experience and usability", "Design consistency", "Technical feasibility"],
-    "time_limit_minutes": 60
+    "title": "Concise, descriptive title that includes the topic and role (max 80 chars)",
+    "description": "A comprehensive, real-world design problem statement (300-500 words) that includes:
+        - Business context and goals
+        - User problem or need
+        - Target audience and demographics
+        - Success criteria
+        - Any relevant background information
+        Make it feel like a real project brief from a real company.",
+    "constraints": [
+        "List 4-8 specific, realistic constraints based on difficulty level",
+        "Include platform constraints (e.g., 'Design for iOS mobile, following Apple HIG')",
+        "Include accessibility constraints (e.g., 'Ensure WCAG 2.1 AA compliance')",
+        "Include business constraints (e.g., 'Must work for users with slow internet')",
+        "Include design constraints (e.g., 'Use maximum 3 primary colors')",
+        "Make each constraint specific and measurable"
+    ],
+    "deliverables": [
+        "List 2-4 clear, role-specific deliverables",
+        "For UI Designer: High-fidelity screens, component specs, style guide",
+        "For UX Designer: User flows, wireframes, UX rationale document",
+        "For Product Designer: User personas, journey maps, product strategy doc",
+        "For Visual Designer: Brand identity, visual assets, style guide",
+        "Make each deliverable specific and measurable"
+    ],
+    "evaluation_criteria": [
+        "List 4-6 role-specific evaluation criteria",
+        "Make criteria specific to the role and task",
+        "Include both technical skills and design thinking",
+        "Examples: 'Visual hierarchy and information architecture', 'Accessibility and inclusive design', 'Strategic thinking and business alignment'"
+    ],
+    "time_limit_minutes": {45 if difficulty == DifficultyLevel.BEGINNER else 60 if difficulty == DifficultyLevel.INTERMEDIATE else 90}
 }}
 
-Generate the question now."""
+### QUALITY CHECKLIST:
+✓ Is the scenario realistic and from a real industry?
+✓ Does it match the {role_str} role responsibilities?
+✓ Is the difficulty level ({difficulty_str}) properly reflected in complexity?
+✓ Are constraints specific, realistic, and measurable?
+✓ Are deliverables clear and role-appropriate?
+✓ Does the description include business context and user problems?
+✓ Would this question effectively evaluate real design skills?
+
+### EXAMPLES OF EXCELLENT QUESTIONS:
+
+**Example 1 - UI Designer, Medium, E-commerce:**
+Title: "E-commerce Product Detail Page - UI Designer Challenge"
+Description: "You are designing the product detail page for a premium fashion e-commerce platform targeting millennials and Gen Z shoppers. The business goal is to increase conversion rates by 15% through improved visual design and clearer product information hierarchy. Users have reported that current product pages feel cluttered and make it hard to find size/color options quickly. Your task is to redesign the mobile product detail page with a focus on visual appeal, clear information hierarchy, and seamless shopping experience. The page must showcase product images beautifully, make size/color selection intuitive, and encourage add-to-cart actions."
+
+**Example 2 - UX Designer, High, Healthcare:**
+Title: "Telemedicine Appointment Booking Flow - UX Designer Challenge"
+Description: "You are designing the complete appointment booking experience for a telemedicine platform serving patients aged 25-70, including many first-time telehealth users. The platform connects patients with doctors across 15+ specialties. Current user research shows 40% of users abandon the booking process due to complexity and confusion. Your task is to design an end-to-end booking flow that minimizes cognitive load, handles edge cases (doctor unavailability, insurance verification), and ensures accessibility for elderly users. The business goal is to reduce booking abandonment by 50% while maintaining high booking accuracy."
+
+Now generate ONE complete, high-quality design question for {role_str} at {difficulty_str} level about {topic_str}. Return ONLY the JSON object, no additional text."""
         
         return base_prompt.strip()
     
     async def _generate_with_openai(self, prompt: str) -> str:
         """Generate using OpenAI"""
-        response = await openai.ChatCompletion.acreate(
+        from openai import AsyncOpenAI
+        client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
+        
+        response = await client.chat.completions.create(
             model=settings.AI_MODEL,
             messages=[
-                {"role": "system", "content": "You are an expert design interviewer creating assessment questions."},
+                {"role": "system", "content": "You are an expert design interviewer and hiring manager with 10+ years of experience evaluating designers at top tech companies. You create realistic, practical, and role-specific design challenges that accurately assess real-world design skills. Your questions are clear, comprehensive, and reflect actual industry scenarios."},
                 {"role": "user", "content": prompt}
             ],
-            temperature=0.7,
-            max_tokens=1000
+            temperature=0.8,
+            max_tokens=1500,
+            response_format={"type": "json_object"}
         )
         return response.choices[0].message.content
     
@@ -185,7 +237,8 @@ Generate the question now."""
         role: DesignRole,
         difficulty: DifficultyLevel,
         task_type: TaskType,
-        created_by: str
+        created_by: str,
+        topic: str = None
     ) -> DesignQuestionModel:
         """Parse AI response into DesignQuestionModel"""
         
