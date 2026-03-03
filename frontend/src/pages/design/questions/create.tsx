@@ -80,20 +80,43 @@ export default function DesignQuestionCreatePage() {
     setError(null)
 
     try {
+      // Convert role and task_type to backend format
+      const roleMap: Record<string, string> = {
+        'ui': 'ui_designer',
+        'ux': 'ux_designer',
+        'product': 'product_designer',
+        'visual': 'visual_designer',
+        'ui designer': 'ui_designer',
+        'ux designer': 'ux_designer',
+        'product designer': 'product_designer',
+        'visual designer': 'visual_designer',
+      }
+      
+      const taskTypeMap: Record<string, string> = {
+        'landing page': 'landing_page',
+        'mobile app': 'mobile_app',
+        'dashboard': 'dashboard',
+        'component': 'component',
+      }
+      
+      const normalizedRole = roleMap[aiRole.toLowerCase()] || aiRole.toLowerCase().replace(/\s+/g, '_')
+      const normalizedTaskType = taskTypeMap[aiTaskType.toLowerCase()] || aiTaskType.toLowerCase().replace(/\s+/g, '_')
+      
       const response = await fetch(`${API_URL}/questions/generate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          role: aiRole,
+          role: normalizedRole,
           difficulty: aiDifficulty,
-          task_type: aiTaskType,
+          task_type: normalizedTaskType,
           topic: aiTopic.trim() || undefined,
           created_by: 'system',
         }),
       })
 
       if (!response.ok) {
-        throw new Error('Failed to generate question')
+        const errorData = await response.json().catch(() => ({}))
+        throw new Error(errorData.detail || 'Failed to generate question')
       }
 
       const data = await response.json()
@@ -125,12 +148,34 @@ export default function DesignQuestionCreatePage() {
     setError(null)
 
     try {
+      // Convert role and task_type to backend format
+      const roleMap: Record<string, string> = {
+        'ui': 'ui_designer',
+        'ux': 'ux_designer',
+        'product': 'product_designer',
+        'visual': 'visual_designer',
+        'ui designer': 'ui_designer',
+        'ux designer': 'ux_designer',
+        'product designer': 'product_designer',
+        'visual designer': 'visual_designer',
+      }
+      
+      const taskTypeMap: Record<string, string> = {
+        'landing page': 'landing_page',
+        'mobile app': 'mobile_app',
+        'dashboard': 'dashboard',
+        'component': 'component',
+      }
+      
+      const normalizedRole = roleMap[role.toLowerCase()] || role.toLowerCase().replace(/\s+/g, '_')
+      const normalizedTaskType = taskTypeMap[taskType.toLowerCase()] || taskType.toLowerCase().replace(/\s+/g, '_')
+      
       const payload = {
         title,
         description,
-        role,
+        role: normalizedRole,
         difficulty,
-        task_type: taskType,
+        task_type: normalizedTaskType,
         constraints: constraints.filter(c => c.trim()),
         deliverables: deliverables.filter(d => d.trim()),
         evaluation_criteria: evaluationCriteria.filter(e => e.trim()),
@@ -147,7 +192,8 @@ export default function DesignQuestionCreatePage() {
       })
 
       if (!response.ok) {
-        throw new Error('Failed to create question')
+        const errorData = await response.json().catch(() => ({}))
+        throw new Error(errorData.detail || 'Failed to create question')
       }
 
       alert('Question created successfully!')
