@@ -44,7 +44,7 @@ interface Submission {
   feedback: EvaluationFeedback
 }
 
-export default function
+export default function DesignResultsPage() {
   const router = useRouter()
   const { submissionId } = router.query
   const [submission, setSubmission] = useState<Submission | null>(null)
