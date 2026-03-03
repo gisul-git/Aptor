@@ -188,15 +188,15 @@ export default function DesignResultsPage() {
           </p>
         </div>
 
-          {!isEvaluating && (
-            <>
-              {/* Professional Score Cards */}
-              <div style={{ 
-                display: "grid", 
-                gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", 
-                gap: "1.5rem", 
-                marginBottom: "2.5rem" 
-              }}>
+        {!isEvaluating && (
+          <>
+            {/* Professional Score Cards */}
+            <div style={{ 
+              display: "grid", 
+              gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", 
+              gap: "1.5rem", 
+              marginBottom: "2.5rem" 
+            }}>
                 {/* Final Score - Prominent */}
                 <div style={{ 
                   background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
