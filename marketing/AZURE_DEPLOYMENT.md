@@ -55,7 +55,7 @@ az containerapp create \
   --resource-group $RESOURCE_GROUP \
   --environment $CONTAINER_APP_ENV \
   --image $ACR_NAME.azurecr.io/marketing:latest \
-  --target-port 3001 \
+  --target-port 3009 \
   --ingress external \
   --min-replicas 1 \
   --max-replicas 3 \
@@ -128,13 +128,13 @@ Value: <container-app-fqdn>
 2. Pull latest code
 3. Build Docker image
 4. Stop old container
-5. Start new container on port 3001
+5. Start new container on port 3009
 
-**URL**: `http://<qa-vm-host>:3001`
+**URL**: `http://<qa-vm-host>:3009`
 
 ## Port Configuration
 
-- **Marketing Site**: Port 3001
+- **Marketing Site**: Port 3009
 - **Main App (Frontend)**: Port 3000
 
 This allows both to run on the same VM without conflicts.
@@ -193,7 +193,7 @@ docker logs aptor-marketing
 ### Container Won't Start
 - Check environment variables
 - View container logs
-- Verify port 3001 is not in use
+- Verify port 3009 is not in use
 
 ## Rollback
 
@@ -225,7 +225,7 @@ cd marketing
 docker build -t aptor-marketing:qa .
 docker stop aptor-marketing
 docker rm aptor-marketing
-docker run -d --name aptor-marketing -p 3001:3001 aptor-marketing:qa
+docker run -d --name aptor-marketing -p 3009:3009 aptor-marketing:qa
 ```
 
 ## Next Steps
@@ -241,7 +241,7 @@ docker run -d --name aptor-marketing -p 3001:3001 aptor-marketing:qa
 ## Summary
 
 - Marketing site will deploy to Azure Container Apps (production)
-- Runs on port 3001 (different from main app on 3000)
+- Runs on port 3009 (different from main app on 3000)
 - Accessible at `aaptor.com` after domain configuration
-- QA deployments go to Debian VM on port 3001
+- QA deployments go to Debian VM on port 3009
 - Automatic CI/CD on push to dev/QA branches
