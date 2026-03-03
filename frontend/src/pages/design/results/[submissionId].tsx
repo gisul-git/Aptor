@@ -79,7 +79,7 @@ export default function DesignResultsPage() {
         setLoading(false)
       }
     } catch (err) {
-   iled to fetch results:', err)
+      console.error('Failed to fetch results:', err)
       setError('Failed to fetch evaluation results')
       setLoading(false)
     }
