@@ -569,6 +569,22 @@ export default function SignInPage({ providers }: SignInPageProps) {
         return; // IMPORTANT: Return early to prevent NextAuth call
       }
 
+      // Check if password reset is required (temporary password)
+      const requirePasswordReset = responseData?.data?.requirePasswordReset || 
+                                   responseData?.requirePasswordReset;
+      const resetToken = responseData?.data?.resetToken || responseData?.resetToken;
+      
+      if (requirePasswordReset === true && resetToken) {
+        console.log("🔐 [SignIn] Password reset required, redirecting to reset password page");
+        
+        // Redirect to reset password page with token
+        if (typeof window !== "undefined") {
+          window.location.replace(`/auth/reset-password?token=${encodeURIComponent(resetToken)}`);
+        }
+        setLoading(false);
+        return; // IMPORTANT: Return early to prevent NextAuth call
+      }
+
       // If no MFA required, proceed with normal NextAuth signin
       const signInPayload: any = {
         redirect: false,

@@ -959,6 +959,25 @@ async def email_login(
             },
         )
 
+    # Check if password reset is required (temporary password)
+    if user.get("requirePasswordReset"):
+        logger.info("User %s logged in with temporary password, requiring password reset", email)
+        # Clear failed attempts
+        await _clear_failed_attempts(db, email)
+        # Generate a password reset token
+        token = _generate_reset_token()
+        expires_at = datetime.now(timezone.utc) + timedelta(minutes=30)
+        await _store_reset_token(db, email, token, expires_at)
+        
+        return success_response(
+            "Password reset required. Please use the provided token to reset your password.",
+            {
+                "requirePasswordReset": True,
+                "resetToken": token,
+                "email": email,
+            },
+        )
+
     # Clear failed attempts on successful login
     await _clear_failed_attempts(db, email)
     return _build_login_success_response(user)
@@ -1291,11 +1310,18 @@ async def reset_password(
             detail="User not found"
         )
     
-    # Update password
+    # Update password and clear requirePasswordReset flag
     hashed_password = get_password_hash(payload.newPassword)
+    update_data = {"password": hashed_password}
+    
+    # If user had requirePasswordReset flag, remove it
+    if user.get("requirePasswordReset"):
+        update_data["requirePasswordReset"] = False
+        logger.info("Cleared requirePasswordReset flag for user: %s", email)
+    
     await db.users.update_one(
         {"_id": user["_id"]},
-        {"$set": {"password": hashed_password}}
+        {"$set": update_data}
     )
     
     # Mark token as used
