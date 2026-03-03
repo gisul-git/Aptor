@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/router";
 import { GetServerSideProps } from "next";
 import { requireAuth } from "../../lib/auth";
@@ -44,7 +44,7 @@ import {
 } from "@/hooks/api/useAssessments";
 
 
-import { User, Plus, X, Sparkles, FileType, CheckCircle2, ChevronRight, ArrowLeft, ArrowRight, Edit3, Link as LinkIcon, Copy, Lightbulb,BookOpen, FileText, Clock, FastForward, Check} from 'lucide-react';
+import { User, Plus, X, Sparkles, FileType, CheckCircle2, ChevronRight, ArrowLeft, ArrowRight, Edit3, Link as LinkIcon, Copy, Lightbulb, BookOpen, FileText, Clock, FastForward, Check, Calendar, Globe, Info, Mail } from 'lucide-react';
 // ============================================
 // QUESTION RENDERING COMPONENTS
 // ============================================
@@ -10664,184 +10664,95 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
         show={showGenerationSkeleton}
       />
 
-      <div
-        style={{
-           backgroundColor: "#6EE7B7",
-          minHeight: "100vh",
-          padding: "2rem 0",
-        }}
-      >
-        <div
-  className="container"
->
-          <div className="card">
-            {/* Progress Header Container - Made Sticky */}
-            <div
-  style={{
-    position: "sticky",
-    top: 0,
-    zIndex: 100, 
-    backgroundColor: "#EBFAFD", 
-    paddingTop: "1.5rem",
-    paddingBottom: "1rem",
-    marginBottom: "2rem",
-    borderBottom: "1px solid #C9F4D4", 
-  }}
->
-  {/* Top Row: Back/Skip and Save Draft */}
-  <div
-    style={{
-      display: "flex",
-      justifyContent: "space-between",
-      alignItems: "center",
-      marginBottom: "1.5rem",
-    }}
-  >
-    {/* Left Actions */}
-    <div style={{ display: "flex", alignItems: "center", gap: "2rem" }}>
-      <button
-        type="button"
-        onClick={() => {
-          if (currentStation > 1) {
-            setCurrentStation(currentStation - 1);
-          } else {
-            handleBackToDashboard();
-          }
-        }}
-        style={{
-          background: "none",
-          border: "none",
-          cursor: "pointer",
-          display: "flex",
-          alignItems: "center",
-          gap: "0.5rem",
-          fontSize: "1rem",
-          fontWeight: 700,
-          color: "#1E5A3B", 
-          padding: 0,
-        }}
-      >
-       <ArrowLeft/>  Back 
-      </button>
-
-      {currentStation < 6 && (
-        <button
-  type="button"
-  onClick={() => setCurrentStation(currentStation + 1)}
-  style={{
-    background: "none",
-    border: "2px solid #C9F4D4", 
-    borderRadius: "0.75rem",
-    cursor: "pointer",
-    fontSize: "1rem",
-    fontWeight: 700,
-    color: "#2D7A52", 
-    padding: "0.8rem 2rem", 
-    minWidth: "140px",      
-    display: "inline-flex", 
-    alignItems: "center",
-    justifyContent: "center",
-    gap: "0.5rem",
-    
-    transition: "all 0.2s ease",
-  }}
-  onMouseEnter={(e) => {
-    e.currentTarget.style.backgroundColor = "#EBFAFD"; 
-    e.currentTarget.style.borderColor = "#10b981";
-  }}
-  onMouseLeave={(e) => {
-    e.currentTarget.style.backgroundColor = "transparent";
-    e.currentTarget.style.borderColor = "#C9F4D4";
-  }}
->
-  Skip <FastForward size={18} strokeWidth={2.5} />
-</button>
-      )}
-    </div>
-
-    {/* Right Action: Save Draft */}
-    <button
-      type="button"
-      onClick={async () => {
-        if (assessmentId) {
-          try {
-            const titleToSave =
-              finalTitle ||
-              (jobDesignation.trim()
-                ? `Assessment for ${jobDesignation.trim()}`
-                : "Untitled Assessment");
-            await updateDraftMutation.mutateAsync({
-              assessmentId,
-              title: titleToSave,
-              description: finalDescription || "",
-              jobDesignation: jobDesignation.trim(),
-              selectedSkills: selectedSkills,
-              experienceMin: experienceMin,
-              experienceMax: experienceMax,
-              experienceMode: experienceMode,
-              topics_v2: topicsV2,
-            });
-            alert("Draft saved successfully");
-          } catch (err) {
-            console.error("Failed to save draft", err);
-          }
-        }
-      }}
-      style={{
-        display: "flex",
-        alignItems: "center",
-        gap: "0.5rem",
-        padding: "0.6rem 1.25rem",
-        backgroundColor: "#ffffff",
-        border: "2px solid #6EE7B7", 
-        borderRadius: "0.75rem",
-        color: "#1E5A3B", 
-        fontWeight: 700,
-        fontSize: "0.95rem",
-        cursor: "pointer",
-        boxShadow: "0 2px 4px rgba(0,0,0,0.05)",
-      }}
-    >
-      <svg
-        width="18"
-        height="18"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      >
-        <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
-        <polyline points="17 21 17 13 7 13 7 21"></polyline>
-        <polyline points="7 3 7 8 15 8"></polyline>
-      </svg>
-      Save Draft
-    </button>
-  </div>
-
-  {/* Linear Progress Bar Container */}
-  <div
-    style={{
-      width: "100%",
-      height: "8px",
-      backgroundColor: "#ffffff",
-      borderRadius: "4px",
-      overflow: "hidden",
-      border: "1px solid #C9F4D4", 
-    }}
-  >
-    <div
-      style={{
-        width: `${(currentStation / 6) * 100}%`,
-        height: "100%",
-        backgroundColor: "#10b981", // Brand Green
-        borderRadius: "4px",
-        transition: "width 0.4s cubic-bezier(0.4, 0, 0.2, 1)",
-      }}
-    />
-  </div>
-</div>
+      <div className="create-new-assessment-page">
+        <div className="create-new-container">
+          <div className="create-new-card card">
+            {/* Sticky header – glass, pill buttons, progress */}
+            <div className="create-new-sticky-header">
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  marginBottom: "1.25rem",
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: "1.5rem" }}>
+                  <button
+                    type="button"
+                    className="create-new-btn-back"
+                    onClick={() => {
+                      if (currentStation > 1) {
+                        setCurrentStation(currentStation - 1);
+                      } else {
+                        handleBackToDashboard();
+                      }
+                    }}
+                  >
+                    <ArrowLeft size={20} strokeWidth={2.5} /> Back
+                  </button>
+                  {currentStation < 6 && (
+                    <button
+                      type="button"
+                      className="create-new-btn-skip"
+                      onClick={() => setCurrentStation(currentStation + 1)}
+                    >
+                      Skip <FastForward size={18} strokeWidth={2.5} />
+                    </button>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  className="create-new-btn-save-draft"
+                  onClick={async () => {
+                    if (assessmentId) {
+                      try {
+                        const titleToSave =
+                          finalTitle ||
+                          (jobDesignation.trim()
+                            ? `Assessment for ${jobDesignation.trim()}`
+                            : "Untitled Assessment");
+                        await updateDraftMutation.mutateAsync({
+                          assessmentId,
+                          title: titleToSave,
+                          description: finalDescription || "",
+                          jobDesignation: jobDesignation.trim(),
+                          selectedSkills: selectedSkills,
+                          experienceMin: experienceMin,
+                          experienceMax: experienceMax,
+                          experienceMode: experienceMode,
+                          topics_v2: topicsV2,
+                        });
+                        alert("Draft saved successfully");
+                      } catch (err) {
+                        console.error("Failed to save draft", err);
+                      }
+                    }
+                  }}
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
+                    <polyline points="17 21 17 13 7 13 7 21" />
+                    <polyline points="7 3 7 8 15 8" />
+                  </svg>
+                  Save Draft
+                </button>
+              </div>
+              <div className="create-new-progress-track">
+                <div
+                  className="create-new-progress-fill"
+                  style={{ width: `${(currentStation / 6) * 100}%` }}
+                />
+              </div>
+              <div className="create-new-step-dots" aria-label="Progress">
+                {[1, 2, 3, 4, 5, 6].map((step) => (
+                  <span
+                    key={step}
+                    className={`create-new-step-dot ${currentStation === step ? "active" : currentStation > step ? "done" : ""}`}
+                  />
+                ))}
+              </div>
+            </div>
 
             {error && (
               <div
@@ -10874,116 +10785,31 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
                   fontFamily: "Inter, sans-serif",
                 }}
               >
-                {/* Step Indicator */}
-                <div
-                  style={{
-                    color: "#10b981",
-                    fontWeight: 600,
-                    fontSize: "0.875rem",
-                    marginBottom: "1rem",
-                    letterSpacing: "0.05em",
-                  }}
-                >
-                  STEP 1 OF 6
-                </div>
-
-                {/* Main Heading */}
-                <h1
-                  style={{
-                    fontSize: "2.5rem",
-                    fontWeight: 800,
-                    color: "#064e3b",
-                    marginBottom: "2rem",
-                    lineHeight: 1.2,
-                  }}
-                >
-                  What's the job role?{" "}
-             
-                </h1>
+                <div className="create-new-step-badge">Step 1 of 6</div>
+                <h1 className="create-new-step-title">What&apos;s the job role?</h1>
+                <p className="create-new-step-subtitle" style={{ marginBottom: "1.5rem" }}>We&apos;ll tailor topics and questions to this role.</p>
 
                 {/* Job Designation Input */}
-                <div style={{ marginBottom: "1.5rem" }}>
+                <div style={{ marginBottom: "0.5rem" }}>
                   <input
                     type="text"
+                    className="create-new-input"
                     value={jobDesignation}
                     onChange={(e) => setJobDesignation(e.target.value)}
-                    placeholder="e.g., Frontend Developer, Full Stack Engineer"
-                    style={{
-                      width: "100%",
-                      padding: "1rem 1.25rem",
-                      fontSize: "1.125rem",
-                      border: "2px solid #a7f3d0", // Light green border
-                      borderRadius: "1rem",
-                      outline: "none",
-                      color: "#374151",
-                      backgroundColor: "#ffffff",
-                      transition: "border-color 0.2s",
-                    }}
-                    onFocus={(e) => (e.target.style.borderColor = "#10b981")}
-                    onBlur={(e) => (e.target.style.borderColor = "#a7f3d0")}
+                    placeholder="e.g. Frontend Developer, Full Stack Engineer"
                   />
                 </div>
+                <p className="create-new-hint" style={{ marginBottom: "1.5rem" }}>Be specific for better AI-generated questions.</p>
 
-                {/* Tip Box */}
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "0.75rem",
-                    backgroundColor: "#fffbeb", // Light yellow/gold bg
-                    border: "1px solid #fcd34d",
-                    borderRadius: "0.75rem",
-                    padding: "1rem",
-                    marginBottom: "2rem",
-                    color: "#0f766e", // Teal/Greenish text to match image vibe
-                  }}
-                >
-                  <span style={{ fontSize: "1.25rem" }}><Lightbulb/></span>
-                  <span
-                    style={{
-                      fontSize: "0.95rem",
-                      fontWeight: 500,
-                      color: "#0f766e",
-                    }}
-                  >
-                    Tip: Be specific for better AI-generated questions
-                  </span>
-                </div>
-
-                {/* Get AI Skills Button (Triggers Generation) */}
-                <div style={{ marginBottom: "2rem" }}>
+                {/* Get AI Skills – secondary action */}
+                <div style={{ marginBottom: "1.5rem" }}>
                   <button
                     type="button"
+                    className="create-new-btn-secondary"
                     onClick={handleGenerateTopicsUnified}
                     disabled={loading || !jobDesignation.trim()}
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "0.5rem",
-                      backgroundColor: "#a7f3d0", // Mint green
-                      color: "#065f46", // Dark green text
-                      border: "none",
-                      padding: "0.75rem 1.5rem",
-                      borderRadius: "0.5rem",
-                      fontSize: "1rem",
-                      fontWeight: 600,
-                      cursor:
-                        loading || !jobDesignation.trim()
-                          ? "not-allowed"
-                          : "pointer",
-                      opacity: loading ? 0.7 : 1,
-                      transition: "transform 0.1s",
-                    }}
-                    onMouseDown={(e) =>
-                      (e.currentTarget.style.transform = "scale(0.98)")
-                    }
-                    onMouseUp={(e) =>
-                      (e.currentTarget.style.transform = "scale(1)")
-                    }
                   >
-                    <span><Sparkles/></span>
-                    {loading ? "Generating..." : "Get AI Skills"}
-                  
+                    <Sparkles size={16} /> {loading ? "Generating…" : "Get AI Skills"}
                   </button>
                 </div>
 
@@ -11104,53 +10930,19 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
                   </div>
                 )}
 
-                {/* Continue Button (Bottom Navigation) */}
-                <div style={{ marginTop: "2rem" }}>
+                {/* Continue – primary CTA */}
+                <div style={{ marginTop: "1.5rem" }}>
                   <button
-  type="button"
-  onClick={handleGenerateTopicsUnified} 
-  disabled={loading || selectedSkills.length === 0}
-  style={{
-    width: "100%",
-    maxWidth: "200px",
-    padding: "1rem 2rem",
-    backgroundColor: "#6EE7B7", 
-    color: "#064e3b",
-    fontSize: "1.125rem",
-    fontWeight: 700,
-    border: "none",
-    borderRadius: "0.75rem",
-    cursor: loading || selectedSkills.length === 0 ? "not-allowed" : "pointer",
-    boxShadow: "0 4px 6px -1px rgba(16, 185, 129, 0.2)",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: "0.5rem",
-    opacity: loading ? 0.7 : 1,
-  }}
->
-  {loading ? "Generating..." : (
-    <>
-      Continue <ArrowRight size={20} />
-    </>
-  )}
-</button>
-
-                  {/* Press Enter hint */}
-                  <div
-                    style={{
-                      marginTop: "1rem",
-                      textAlign: "left",
-                      color: "#10b981",
-                      fontSize: "0.875rem",
-                      paddingLeft: "0.5rem",
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "0.25rem",
-                    }}
+                    type="button"
+                    className="create-new-btn-primary"
+                    onClick={handleGenerateTopicsUnified}
+                    disabled={loading || selectedSkills.length === 0}
                   >
-                    Press Enter <span style={{ fontSize: "1rem" }}>↵</span>
-                  </div>
+                    {loading ? "Generating…" : (
+                      <>Continue <ArrowRight size={18} /></>
+                    )}
+                  </button>
+                  <p className="create-new-hint" style={{ marginTop: "0.75rem", marginBottom: 0 }}>Press Enter ↵</p>
                 </div>
               </div>
             )}
@@ -11158,91 +10950,25 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
             {/* Station 2: Configure Topics (NEW V2 IMPLEMENTATION) */}
 
             {currentStation === 2 && (
-              <div
-                style={{
-                  maxWidth: "800px",
-                  margin: "0 auto",
-                  fontFamily:
-                    "-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', Roboto, sans-serif",
-                }}
-              >
-                {/* Step Indicator */}
-                <div
-                  style={{
-                    color: "#10b981",
-                    fontWeight: 700,
-                    fontSize: "0.875rem",
-                    marginBottom: "1rem",
-                    letterSpacing: "0.05em",
-                  }}
-                >
-                  STEP 2 OF 6
-                </div>
+              <div style={{ maxWidth: "800px", margin: "0 auto", fontFamily: "Inter, sans-serif" }}>
+                <div className="create-new-step-badge">Step 2 of 6</div>
+                <h1 className="create-new-step-title">Which skills do you want to assess?</h1>
+                <p className="create-new-step-subtitle" style={{ marginBottom: "1.5rem" }}>Add topics or skills to include in this assessment.</p>
 
-                {/* Main Heading */}
-                <h1
-                  style={{
-                    fontSize: "2.5rem",
-                    fontWeight: 800,
-                    color: "#1E5A3B",
-                    marginBottom: "2rem",
-                    lineHeight: 1.2,
-                  }}
-                >
-                  Which skills do you want to assess?
-                </h1>
-
-                {/* Main Input Field */}
-                <div style={{ marginBottom: "1rem" }}>
+                <div style={{ marginBottom: "0.5rem" }}>
                   <input
                     type="text"
+                    className="create-new-input"
                     value={customTopicInputV2}
                     onChange={(e) => setCustomTopicInputV2(e.target.value)}
                     onKeyPress={(e) => {
-                      if (e.key === "Enter") {
-                        handleAddCustomTopicV2(true, undefined, e);
-                      }
+                      if (e.key === "Enter") handleAddCustomTopicV2(true, undefined, e);
                     }}
-                    placeholder="e.g., React, TypeScript, Node.js, System Design..."
+                    placeholder="e.g. React, TypeScript, Node.js, System Design…"
                     disabled={loading || addingTopic}
-                    style={{
-                      width: "100%",
-                      padding: "1.25rem 1.5rem",
-                      fontSize: "1.125rem",
-                      border: "2px solid #C9F4D4", // Mint 100
-                      borderRadius: "1rem",
-                      outline: "none",
-                      color: "#1E5A3B", // Primary Text
-                      backgroundColor: "#ffffff",
-                      transition: "all 0.2s ease",
-                      boxShadow: "0 2px 4px rgba(0,0,0,0.02)",
-                    }}
-                    onFocus={(e) => {
-                      e.target.style.borderColor = "#10b981";
-                      e.target.style.boxShadow =
-                        "0 0 0 4px rgba(201, 244, 212, 0.4)";
-                    }}
-                    onBlur={(e) => {
-                      e.target.style.borderColor = "#C9F4D4";
-                      e.target.style.boxShadow = "none";
-                    }}
                   />
                 </div>
-
-                {/* Helper Text */}
-                <div
-                  style={{
-                    color: "#2D7A52",
-                    fontSize: "0.95rem",
-                    fontWeight: 600,
-                    marginBottom: "2rem",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "0.5rem",
-                  }}
-                >
-                  <span> <Lightbulb/></span> Add at least 2 skills (press Enter after each)
-                </div>
+                <p className="create-new-hint" style={{ marginBottom: "1.5rem" }}><Lightbulb size={14} style={{ verticalAlign: "middle", marginRight: "0.25rem" }} /> Add at least 2 skills (press Enter after each)</p>
 
                 {/* Active Skills Display (Chips) */}
                 {topicsV2 && topicsV2.length > 0 && (
@@ -11296,63 +11022,16 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
                   </div>
                 )}
 
-                {/* Continue Button */}
-                <div style={{ marginTop: "2rem" }}>
+                <div style={{ marginTop: "1.5rem" }}>
                   <button
                     type="button"
-                    onClick={() => {
-                      // Immediately move to Station 3 as requested
-                      setCurrentStation(3);
-                      // Note: Logic to handle topic finalization/question generation
-                      // should still run in the background if necessary, but the UI triggers station 3.
-                    }}
+                    className="create-new-btn-primary"
+                    onClick={() => setCurrentStation(3)}
                     disabled={topicsV2 && topicsV2.length < 1}
-                    style={{
-                      width: "100%",
-                      maxWidth: "220px",
-                      padding: "1.1rem 2.5rem",
-                      backgroundColor: "#C9F4D4", // Mint 100 Primary Button
-                      color: "#1E5A3B", // Primary Text
-                      fontSize: "1.125rem",
-                      fontWeight: 800,
-                      border: "none",
-                      borderRadius: "1rem",
-                      cursor:
-                        topicsV2 && topicsV2.length < 1
-                          ? "not-allowed"
-                          : "pointer",
-                      boxShadow: "0 10px 15px -3px rgba(201, 244, 212, 0.4)",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      gap: "0.75rem",
-                      transition: "all 0.2s ease",
-                    }}
-                    onMouseEnter={(e) => {
-                      if (topicsV2.length > 0)
-                        e.currentTarget.style.backgroundColor = "#B0EFD0"; // Mint 200 Hover
-                    }}
-                    onMouseLeave={(e) => {
-                      if (topicsV2.length > 0)
-                        e.currentTarget.style.backgroundColor = "#C9F4D4";
-                    }}
                   >
-                    Continue <ArrowRight/>
+                    Continue <ArrowRight size={18} />
                   </button>
-
-                  <div
-                    style={{
-                      marginTop: "1.25rem",
-                      color: "#10b981",
-                      fontSize: "0.875rem",
-                      fontWeight: 700,
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "0.3rem",
-                    }}
-                  >
-                    Press Enter ↵
-                  </div>
+                  <p className="create-new-hint" style={{ marginTop: "0.75rem", marginBottom: 0 }}>Press Enter ↵</p>
                 </div>
 
                 {/* Error Toast */}
@@ -11379,49 +11058,13 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
             {/* Station 3: Review Questions */}
 
             {currentStation === 3 && (
-              <div
-                style={{
-                  maxWidth: "800px",
-                  margin: "0 auto",
-                  fontFamily: "Inter, sans-serif",
-                }}
-              >
-                {/* Step Indicator */}
-                <div
-                  style={{
-                    color: "#10b981",
-                    fontWeight: 600,
-                    fontSize: "0.875rem",
-                    marginBottom: "1rem",
-                    letterSpacing: "0.05em",
-                  }}
-                >
-                  STEP 3 OF 6
-                </div>
+              <div style={{ maxWidth: "800px", margin: "0 auto", fontFamily: "Inter, sans-serif" }}>
+                <div className="create-new-step-badge">Step 3 of 6</div>
+                <h1 className="create-new-step-title">What experience level are you looking for?</h1>
+                <p className="create-new-step-subtitle" style={{ marginBottom: "1.5rem" }}>This helps us tailor difficulty and question depth.</p>
 
-                {/* Main Heading */}
-                <h1
-                  style={{
-                    fontSize: "2.5rem",
-                    fontWeight: 800,
-                    color: "#064e3b",
-                    marginBottom: "2.5rem",
-                    lineHeight: 1.2,
-                  }}
-                >
-                  What experience level are you looking for?
-                </h1>
-
-                {/* Experience Selection UI */}
-                <div style={{ marginBottom: "3rem" }}>
-                  {/* Labels for Slider */}
-                  <div
-                    style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      marginBottom: "1rem",
-                    }}
-                  >
+                <div className="create-new-step-section" style={{ marginBottom: "1.5rem" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "1rem" }}>
                     {[
                       { label: "Junior", years: "0-2 yrs" },
                       { label: "Mid-Level", years: "3-5 yrs" },
@@ -11429,24 +11072,8 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
                       { label: "Lead", years: "10+ yrs" },
                     ].map((item, idx) => (
                       <div key={idx} style={{ textAlign: "center", flex: 1 }}>
-                        <div
-                          style={{
-                            fontWeight: 700,
-                            color: "#064e3b",
-                            fontSize: "1rem",
-                          }}
-                        >
-                          {item.label}
-                        </div>
-                        <div
-                          style={{
-                            color: "#10b981",
-                            fontSize: "0.875rem",
-                            fontWeight: 500,
-                          }}
-                        >
-                          {item.years}
-                        </div>
+                        <div style={{ fontWeight: 700, color: "#334155", fontSize: "1rem" }}>{item.label}</div>
+                        <div style={{ color: "#64748b", fontSize: "0.875rem", fontWeight: 500 }}>{item.years}</div>
                       </div>
                     ))}
                   </div>
@@ -11459,202 +11086,69 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
                       marginBottom: "3rem",
                     }}
                   >
-                    <div
-                      style={{
-                        height: "6px",
-                        backgroundColor: "#ecfdf5",
-                        borderRadius: "3px",
-                        width: "100%",
-                        position: "relative",
-                      }}
-                    >
-                      {/* Progress track width moves based on which card is selected via experienceMin */}
+                    <div style={{ height: "6px", backgroundColor: "#e2e8f0", borderRadius: "3px", width: "100%", position: "relative" }}>
                       <div
                         style={{
-                          position: "absolute",
-                          left: "0%",
-                          width:
-                            experienceMin <= 2
-                              ? "0%"
-                              : experienceMin <= 5
-                                ? "33.33%"
-                                : experienceMin <= 10
-                                  ? "66.66%"
-                                  : "100%",
-                          height: "100%",
-                          backgroundColor: "#6ee7b7",
-                          borderRadius: "3px",
-                          transition: "width 0.3s ease",
+                          position: "absolute", left: "0%",
+                          width: experienceMin <= 2 ? "0%" : experienceMin <= 5 ? "33.33%" : experienceMin <= 10 ? "66.66%" : "100%",
+                          height: "100%", backgroundColor: "#0f766e", borderRadius: "3px", transition: "width 0.3s ease",
                         }}
                       />
-
-                      {/* Static Slider Points */}
                       {[0, 1, 2, 3].map((point) => (
                         <div
                           key={point}
                           style={{
-                            position: "absolute",
-                            left: `${point * 33.33}%`,
-                            top: "50%",
-                            transform: "translate(-50%, -50%)",
-                            width: "10px",
-                            height: "10px",
-                            backgroundColor:
-                              (point === 0 && experienceMin <= 2) ||
-                              (point === 1 &&
-                                experienceMin >= 3 &&
-                                experienceMin <= 5) ||
-                              (point === 2 &&
-                                experienceMin >= 6 &&
-                                experienceMin <= 10) ||
-                              (point === 3 && experienceMin > 10)
-                                ? "#6ee7b7"
-                                : "#d1fae5",
-                            borderRadius: "50%",
-                            zIndex: 1,
+                            position: "absolute", left: `${point * 33.33}%`, top: "50%", transform: "translate(-50%, -50%)",
+                            width: "10px", height: "10px",
+                            backgroundColor: (point === 0 && experienceMin <= 2) || (point === 1 && experienceMin >= 3 && experienceMin <= 5) || (point === 2 && experienceMin >= 6 && experienceMin <= 10) || (point === 3 && experienceMin > 10) ? "#0f766e" : "#cbd5e1",
+                            borderRadius: "50%", zIndex: 1,
                           }}
                         />
                       ))}
-
-                      {/* Slider Handle handle position moves based on experienceMin state */}
                       <div
                         style={{
                           position: "absolute",
-                          left:
-                            experienceMin <= 2
-                              ? "0%"
-                              : experienceMin <= 5
-                                ? "33.33%"
-                                : experienceMin <= 10
-                                  ? "66.66%"
-                                  : "100%",
-                          top: "50%",
-                          transform: "translate(-50%, -50%)",
-                          width: "24px",
-                          height: "24px",
-                          backgroundColor: "#6ee7b7",
-                          borderRadius: "50%",
-                          border: "4px solid #ffffff",
-                          boxShadow: "0 4px 6px rgba(0,0,0,0.1)",
-                          cursor: "pointer",
-                          transition: "left 0.3s ease",
-                          zIndex: 2,
+                          left: experienceMin <= 2 ? "0%" : experienceMin <= 5 ? "33.33%" : experienceMin <= 10 ? "66.66%" : "100%",
+                          top: "50%", transform: "translate(-50%, -50%)",
+                          width: "24px", height: "24px", backgroundColor: "#0f766e", borderRadius: "50%",
+                          border: "4px solid #ffffff", boxShadow: "0 2px 8px rgba(15, 118, 110, 0.25)", cursor: "pointer", transition: "left 0.3s ease", zIndex: 2,
                         }}
                       />
                     </div>
                   </div>
 
-                  {/* Experience Option Cards - Clicking these updates the global experience state */}
-                  <div
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: "1fr 1fr 1fr 1fr",
-                      gap: "1rem",
-                      marginBottom: "2.5rem",
-                    }}
-                  >
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: "1rem", marginBottom: "1.5rem" }}>
                     {[
-                      {
-                        label: "Junior",
-                        years: "0-2 yrs",
-                        min: 0,
-                        max: 2,
-                        key: "junior",
-                      },
-                      {
-                        label: "Mid-Level",
-                        years: "3-5 yrs",
-                        min: 3,
-                        max: 5,
-                        key: "mid",
-                      },
-                      {
-                        label: "Senior",
-                        years: "6-10 yrs",
-                        min: 6,
-                        max: 10,
-                        key: "senior",
-                      },
-                      {
-                        label: "Lead",
-                        years: "10+ yrs",
-                        min: 11,
-                        max: 20,
-                        key: "lead",
-                      },
+                      { label: "Junior", years: "0-2 yrs", min: 0, max: 2, key: "junior" },
+                      { label: "Mid-Level", years: "3-5 yrs", min: 3, max: 5, key: "mid" },
+                      { label: "Senior", years: "6-10 yrs", min: 6, max: 10, key: "senior" },
+                      { label: "Lead", years: "10+ yrs", min: 11, max: 20, key: "lead" },
                     ].map((level) => {
-                      // Highlight card based on existing experienceMin state
                       const isSelected = experienceMin === level.min;
-
                       return (
                         <div
                           key={level.key}
-                          onClick={() => {
-                            setExperienceMin(level.min);
-                            setExperienceMax(level.max);
-                            setError(null);
-                          }}
+                          onClick={() => { setExperienceMin(level.min); setExperienceMax(level.max); setError(null); }}
                           style={{
-                            padding: "1.5rem 1rem",
-                            borderRadius: "1rem",
-                            border: isSelected
-                              ? "3px solid #6ee7b7"
-                              : "1px solid #a7f3d0",
-                            backgroundColor: "#ffffff",
+                            padding: "1.25rem 1rem",
+                            borderRadius: "0.75rem",
+                            border: isSelected ? "2px solid #0f766e" : "1px solid #e2e8f0",
+                            backgroundColor: isSelected ? "#f0fdfa" : "#ffffff",
                             textAlign: "center",
                             cursor: "pointer",
-                            boxShadow: isSelected
-                              ? "0 10px 15px -3px rgba(110, 231, 183, 0.2)"
-                              : "none",
-                            transform: isSelected ? "scale(1.02)" : "scale(1)",
                             transition: "all 0.2s ease",
                           }}
                         >
-                          <div
-                            style={{
-                              fontWeight: 800,
-                              color: "#064e3b",
-                              fontSize: "1.125rem",
-                              marginBottom: "0.25rem",
-                            }}
-                          >
-                            {level.label}
-                          </div>
-                          <div
-                            style={{
-                              color: "#10b981",
-                              fontSize: "0.95rem",
-                              fontWeight: 500,
-                            }}
-                          >
-                            {level.years}
-                          </div>
+                          <div style={{ fontWeight: 700, color: "#334155", fontSize: "1rem", marginBottom: "0.25rem" }}>{level.label}</div>
+                          <div style={{ color: "#64748b", fontSize: "0.875rem", fontWeight: 500 }}>{level.years}</div>
                         </div>
                       );
                     })}
                   </div>
 
-                  {/* Selected Result Box - Displays summary based on experienceMin */}
-                  <div
-                    style={{
-                      padding: "1.25rem 1.5rem",
-                      backgroundColor: "#f0fdf4",
-                      border: "1px solid #a7f3d0",
-                      borderRadius: "0.75rem",
-                      color: "#0f766e",
-                      fontWeight: 500,
-                      fontSize: "1rem",
-                    }}
-                  >
-                    Selected:{" "}
-                    <span style={{ fontWeight: 700 }}>
-                      {experienceMin === 0
-                        ? "Junior (0-2 years)"
-                        : experienceMin === 3
-                          ? "Mid-Level (3-5 years)"
-                          : experienceMin === 6
-                            ? "Senior (6-10 years)"
-                            : "Lead (10+ years)"}
+                  <div className="create-new-hint" style={{ padding: "0.75rem 1rem", backgroundColor: "#f8fafc", borderRadius: "0.5rem" }}>
+                    Selected: <span style={{ fontWeight: 600, color: "#334155" }}>
+                      {experienceMin === 0 ? "Junior (0-2 years)" : experienceMin === 3 ? "Mid-Level (3-5 years)" : experienceMin === 6 ? "Senior (6-10 years)" : "Lead (10+ years)"}
                     </span>
                   </div>
                 </div>
@@ -11663,167 +11157,46 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
                 <div style={{ marginTop: "3rem" }}>
                   <button
                     type="button"
+                    className="create-new-btn-primary"
                     onClick={() => setCurrentStation(4)}
-                    style={{
-                      width: "100%",
-                      maxWidth: "200px",
-                      padding: "1rem 2rem",
-                      backgroundColor: "#6ee7b7",
-                      color: "#064e3b",
-                      fontSize: "1.125rem",
-                      fontWeight: 700,
-                      border: "none",
-                      borderRadius: "0.75rem",
-                      cursor: "pointer",
-                      boxShadow: "0 4px 6px -1px rgba(16, 185, 129, 0.2)",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      gap: "0.5rem",
-                    }}
                   >
-                    Continue <ArrowRight/>
+                    Continue <ArrowRight size={18} />
                   </button>
-
-                  <div
-                    style={{
-                      marginTop: "1rem",
-                      textAlign: "left",
-                      color: "#10b981",
-                      fontSize: "0.875rem",
-                      paddingLeft: "0.5rem",
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "0.25rem",
-                    }}
-                  >
-                    Press Enter <span style={{ fontSize: "1rem" }}>↵</span>
-                  </div>
+                  <p className="create-new-hint" style={{ marginTop: "0.75rem", marginBottom: 0 }}>Press Enter ↵</p>
                 </div>
               </div>
             )}
 
-            {/* Station 4: Schedule Exam */}
+            {/* Station 4: Configure topics and question types */}
             {currentStation === 4 && (
-  <div
-    style={{
-      maxWidth: "800px",
-      margin: "0 auto",
-      fontFamily: "'Inter', sans-serif",
-    }}
-  >
-    <div
-      style={{
-        color: "#10b981",
-        fontWeight: 700,
-        fontSize: "0.875rem",
-        marginBottom: "1rem",
-      }}
-    >
-      STEP 4 OF 6
-    </div>
-    <h1
-      style={{
-        fontSize: "2.5rem",
-        fontWeight: 800,
-        color: "#064e3b",
-        marginBottom: "2rem",
-      }}
-    >
-      Configure topics and question types
-    </h1>
+  <div style={{ maxWidth: "800px", margin: "0 auto", fontFamily: "Inter, sans-serif" }}>
+    <div className="create-new-step-badge">Step 4 of 6</div>
+    <h1 className="create-new-step-title">Configure topics and question types</h1>
+    <p className="create-new-step-subtitle" style={{ marginBottom: "1.5rem" }}>Review and edit question counts, types, and difficulty per topic.</p>
 
-    {/* Info and Add Button */}
-    <div
-      style={{
-        display: "flex",
-        gap: "1rem",
-        marginBottom: "2rem",
-        alignItems: "center",
-      }}
-    >
-      <div
-        style={{
-          flex: 1,
-          padding: "0.75rem 1.25rem",
-          backgroundColor: "#fffbeb",
-          border: "1px solid #fcd34d",
-          borderRadius: "0.5rem",
-          color: "#92400e",
-          fontSize: "0.875rem",
-          fontWeight: 500,
-        }}
-      >
-        ✨ AI generated these topics based on your skills
-      </div>
+    <div style={{ display: "flex", gap: "1rem", marginBottom: "1.5rem", alignItems: "center", flexWrap: "wrap" }}>
+      <p className="create-new-hint" style={{ flex: 1, margin: 0 }}>✨ AI generated these topics based on your skills</p>
       <button
+        type="button"
+        className="create-new-btn-secondary"
         onClick={() => setShowCustomTopicModal(true)}
-        style={{
-          padding: "0.75rem 1.25rem",
-          border: "1px dashed #10b981",
-          borderRadius: "0.5rem",
-          color: "#065f46",
-          fontWeight: 600,
-          cursor: "pointer",
-          backgroundColor: "#fff",
-        }}
       >
         + Add Custom Topic
       </button>
     </div>
 
-    {/* Topics List */}
-    <div
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        gap: "1.5rem",
-        marginBottom: "3rem",
-      }}
-    >
+    <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem", marginBottom: "3rem" }}>
       {topicsV2.map((topic) => {
         const totalQs = topic.questionRows.reduce(
           (sum, row) => sum + (typeof row.questionsCount === 'number' ? row.questionsCount : parseInt(String(row.questionsCount)) || 0),
           0,
         );
-
         return (
-          <div
-            key={topic.id}
-            style={{
-              padding: "1.5rem",
-              border: "1px solid #a7f3d0",
-              borderRadius: "1.25rem",
-              backgroundColor: "#ffffff",
-              boxShadow: "0 2px 4px rgba(0,0,0,0.02)",
-            }}
-          >
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                marginBottom: "1.5rem",
-              }}
-            >
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "0.75rem",
-                }}
-              >
-                <span style={{ fontSize: "1.75rem" }}>⚡</span>
-                <h3
-                  style={{
-                    fontSize: "1.35rem",
-                    fontWeight: 800,
-                    color: "#064e3b",
-                    margin: 0,
-                  }}
-                >
-                  {topic.label}
-                </h3>
+          <div key={topic.id} className="create-new-step-section">
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+                <span style={{ fontSize: "1.25rem" }}>⚡</span>
+                <h3 style={{ margin: 0, fontSize: "1.125rem", fontWeight: 700, color: "#334155" }}>{topic.label}</h3>
               </div>
               <div style={{ display: "flex", gap: "10px" }}>
                 <button
@@ -11851,106 +11224,44 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
               </div>
             </div>
 
-            <div style={{ marginBottom: "1.5rem" }}>
-              <p
-                style={{
-                  fontSize: "0.875rem",
-                  fontWeight: 700,
-                  color: "#0f766e",
-                  marginBottom: "1rem",
-                }}
-              >
-                Select question types:
-              </p>
-              <div
-                style={{
-                  display: "flex",
-                  flexWrap: "wrap",
-                  gap: "0.75rem",
-                }}
-              >
+            <div style={{ marginBottom: "1rem" }}>
+              <p className="create-new-hint" style={{ marginBottom: "0.75rem", color: "#475569", fontWeight: 600 }}>Select question types:</p>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: "0.75rem" }}>
                 {["MCQ", "Coding", "Subjective", "Pseudo Code"].map((type) => {
                   const rowType = type === "Pseudo Code" ? "PseudoCode" : type;
                   const row = topic.questionRows.find((r) => r.questionType === rowType);
                   const isSelected = !!row;
-
                   return (
                     <label
                       key={type}
                       style={{
-                        display: "inline-flex", // 🟢 Fixed Alignment
-                        alignItems: "center",   // 🟢 Vertically Centers All Elements
-                        gap: "0.6rem",
+                        display: "inline-flex", alignItems: "center", gap: "0.6rem",
                         padding: "0.6rem 1rem",
-                        border: `1.5px solid ${isSelected ? "#10b981" : "#e2e8f0"}`,
+                        border: `1.5px solid ${isSelected ? "#0f766e" : "#e2e8f0"}`,
                         borderRadius: "0.75rem",
-                        backgroundColor: isSelected ? "#ecfdf5" : "#ffffff",
-                        cursor: "pointer",
-                        transition: "all 0.2s ease",
-                        lineHeight: "1",        // 🟢 Ensures no text offset
+                        backgroundColor: isSelected ? "#f0fdfa" : "#ffffff",
+                        cursor: "pointer", transition: "all 0.2s ease", lineHeight: 1,
                       }}
                     >
                       <input
                         type="checkbox"
                         checked={isSelected}
-                        onChange={() =>
-                          handleToggleQuestionType(topic.id, rowType)
-                        }
-                        style={{
-                          width: "16px",
-                          height: "16px",
-                          margin: 0,             // 🟢 Resets browser margin
-                          accentColor: "#10b981",
-                        }}
+                        onChange={() => handleToggleQuestionType(topic.id, rowType)}
+                        style={{ width: "16px", height: "16px", margin: 0, accentColor: "#0f766e" }}
                       />
-                      <span
-                        style={{
-                          fontSize: "0.9rem",
-                          fontWeight: 600,
-                          color: isSelected ? "#064e3b" : "#64748b",
-                          userSelect: "none",
-                        }}
-                      >
-                        {type}
-                      </span>
-
+                      <span style={{ fontSize: "0.875rem", fontWeight: 600, color: isSelected ? "#334155" : "#64748b", userSelect: "none" }}>{type}</span>
                       {isSelected && (
-                        <div
-                          style={{
-                            marginLeft: "6px",
-                            backgroundColor: "#d1fae5",
-                            borderRadius: "8px",
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            height: "28px",      // 🟢 Balanced height
-                            width: "40px",       // 🟢 Balanced width
-                            boxShadow: "inset 0 1px 2px rgba(0,0,0,0.05)",
-                          }}
-                        >
+                        <div style={{ marginLeft: "6px", backgroundColor: "#e2e8f0", borderRadius: "6px", display: "flex", alignItems: "center", justifyContent: "center", height: "28px", width: "40px" }}>
                           <input
                             type="text"
                             inputMode="numeric"
                             value={row.questionsCount}
                             onChange={(e) => {
                               const val = e.target.value.replace(/\D/g, "");
-                              handleUpdateRow(
-                                topic.id,
-                                row.rowId,
-                                "questionsCount",
-                                parseInt(val) || 0
-                              );
+                              handleUpdateRow(topic.id, row.rowId, "questionsCount", parseInt(val) || 0);
                             }}
-                            style={{
-                              width: "100%",
-                              border: "none",
-                              textAlign: "center",
-                              fontWeight: "900",
-                              outline: "none",
-                              backgroundColor: "transparent",
-                              color: "#064e3b",
-                              fontSize: "0.85rem",
-                            }}
+                            className="create-new-input"
+                            style={{ width: "100%", border: "none", textAlign: "center", fontWeight: 700, outline: "none", backgroundColor: "transparent", fontSize: "0.85rem", padding: "0.25rem" }}
                           />
                         </div>
                       )}
@@ -12052,76 +11363,17 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
       const totalMinutes = Math.ceil(totalSeconds / 60);
 
       return (
-        <div
-          style={{
-            padding: "1.25rem 2rem",
-            backgroundColor: "#ecfdf5",
-            border: "1px solid #6ee7b7",
-            borderRadius: "1rem",
-            display: "flex",
-            alignItems: "center",
-            gap: "1rem",
-            marginBottom: "2.5rem",
-          }}
-        >
-          <span
-            style={{
-              fontWeight: 700,
-              color: "#065f46",
-              display: "flex",
-              alignItems: "center",
-              gap: "0.5rem",
-            }}
-          >
-            <BookOpen size={18} strokeWidth={2.5} /> {topicsV2.length} topics
-          </span>
-          <span style={{ color: "#6ee7b7", fontSize: "1.2rem" }}>•</span>
-          <span
-            style={{
-              fontWeight: 700,
-              color: "#065f46",
-              display: "flex",
-              alignItems: "center",
-              gap: "0.5rem",
-            }}
-          >
-            <FileText size={18} strokeWidth={2.5} /> {totalQuestions} questions
-          </span>
-          <span style={{ color: "#6ee7b7", fontSize: "1.2rem" }}>•</span>
-          <span
-            style={{
-              fontWeight: 700,
-              color: "#065f46",
-              display: "flex",
-              alignItems: "center",
-              gap: "0.5rem",
-            }}
-          >
-            <Clock size={18} strokeWidth={2.5} /> ~{formatTime(totalMinutes)}
-          </span>
+        <div className="create-new-step-section" style={{ display: "flex", alignItems: "center", gap: "1rem", marginBottom: "1.5rem", flexWrap: "wrap" }}>
+          <span style={{ fontWeight: 600, color: "#475569", display: "flex", alignItems: "center", gap: "0.5rem" }}><BookOpen size={18} strokeWidth={2.5} /> {topicsV2.length} topics</span>
+          <span className="create-new-hint" style={{ margin: 0 }}>•</span>
+          <span style={{ fontWeight: 600, color: "#475569", display: "flex", alignItems: "center", gap: "0.5rem" }}><FileText size={18} strokeWidth={2.5} /> {totalQuestions} questions</span>
+          <span className="create-new-hint" style={{ margin: 0 }}>•</span>
+          <span style={{ fontWeight: 600, color: "#475569", display: "flex", alignItems: "center", gap: "0.5rem" }}><Clock size={18} strokeWidth={2.5} /> ~{formatTime(totalMinutes)}</span>
         </div>
       );
     })()}
 
-    <button
-      onClick={() => setCurrentStation(5)}
-      style={{
-        width: "220px",
-        padding: "1.1rem 2rem",
-        backgroundColor: "#6EE7B7",
-        color: "#064e3b",
-        fontSize: "1.125rem",
-        fontWeight: 800,
-        border: "none",
-        borderRadius: "1rem",
-        cursor: "pointer",
-        boxShadow: "0 10px 15px -3px rgba(128, 237, 153, 0.3)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        gap: "0.5rem",
-      }}
-    >
+    <button type="button" className="create-new-btn-primary" onClick={() => setCurrentStation(5)} style={{ width: "220px", display: "flex", alignItems: "center", justifyContent: "center", gap: "0.5rem" }}>
       Continue <ArrowRight size={20} strokeWidth={2.5} />
     </button>
   </div>
@@ -12165,31 +11417,8 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
                   </h2>
 
                   <div style={{ marginBottom: "1.5rem" }}>
-                    <label
-                      style={{
-                        display: "block",
-                        color: "#0f766e",
-                        fontWeight: 700,
-                        marginBottom: "0.5rem",
-                        fontSize: "0.875rem",
-                      }}
-                    >
-                      Topic Name
-                    </label>
-                    <input
-                      type="text"
-                      value={customTopicInput} // Ensure this state exists in your component
-                      onChange={(e) => setCustomTopicInput(e.target.value)}
-                      placeholder="e.g. Advanced System Design"
-                      style={{
-                        width: "100%",
-                        padding: "0.75rem 1rem",
-                        borderRadius: "0.75rem",
-                        border: "2px solid #a7f3d0",
-                        outline: "none",
-                        fontSize: "1rem",
-                      }}
-                    />
+                    <label style={{ display: "block", marginBottom: "0.5rem" }}>Topic name</label>
+                    <input type="text" value={customTopicInput} onChange={(e) => setCustomTopicInput(e.target.value)} placeholder="e.g. Advanced System Design" className="create-new-input" />
                   </div>
 
                   <div
@@ -12199,102 +11428,23 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
                       justifyContent: "flex-end",
                     }}
                   >
-                    <button
-                      onClick={() => setShowCustomTopicModal(false)}
-                      style={{
-                        padding: "0.75rem 1.5rem",
-                        borderRadius: "0.75rem",
-                        border: "none",
-                        backgroundColor: "#f1f5f9",
-                        color: "#64748b",
-                        fontWeight: 700,
-                        cursor: "pointer",
-                      }}
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      onClick={() => {
-                        handleAddCustomTopicV2(true); // Your existing add function
-                        setShowCustomTopicModal(false);
-                      }}
-                      style={{
-                        padding: "0.75rem 1.5rem",
-                        borderRadius: "0.75rem",
-                        border: "none",
-                        backgroundColor: "#6ee7b7",
-                        color: "#064e3b",
-                        fontWeight: 800,
-                        cursor: "pointer",
-                      }}
-                    >
-                      Add Topic
+                    <button type="button" className="create-new-btn-secondary" onClick={() => setShowCustomTopicModal(false)}>Cancel</button>
+                    <button type="button" className="create-new-btn-primary" onClick={() => { handleAddCustomTopicV2(true); setShowCustomTopicModal(false); }} style={{ maxWidth: "none" }}>
+                      Add topic
                     </button>
                   </div>
                 </div>
               </div>
             )}
-            {/* Station 5: Add Candidates */}
+            {/* Station 5: Schedule */}
             {currentStation === 5 && (
-              <div
-                style={{
-                  maxWidth: "800px",
-                  margin: "0 auto",
-                  fontFamily:
-                    "-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', Roboto, sans-serif",
-                }}
-              >
-                <div
-                  style={{
-                    color: "#10b981",
-                    fontWeight: 700,
-                    fontSize: "0.875rem",
-                    marginBottom: "1rem",
-                  }}
-                >
-                  STEP 5 OF 6
-                </div>
-                <h1
-                  style={{
-                    fontSize: "2.5rem",
-                    fontWeight: 800,
-                    color: "#1E5A3B",
-                    marginBottom: "0.5rem",
-                  }}
-                >
-                  Schedule Assessment Availability
-                </h1>
-                <p
-                  style={{
-                    color: "#2D7A52",
-                    marginBottom: "2rem",
-                    fontSize: "1.125rem",
-                    fontWeight: 500,
-                  }}
-                >
-                  Choose when candidates can take this assessment
-                </p>
+              <div style={{ maxWidth: "800px", margin: "0 auto", fontFamily: "Inter, sans-serif" }}>
+                <div className="create-new-step-badge">Step 5 of 6</div>
+                <h1 className="create-new-step-title">Schedule assessment availability</h1>
+                <p className="create-new-step-subtitle" style={{ marginBottom: "1.5rem" }}>Choose when candidates can take this assessment.</p>
 
-                {/* Section 1: Assessment Availability Selection */}
-                <div
-                  style={{
-                    padding: "1.5rem",
-                    backgroundColor: "#ffffff",
-                    border: "1.5px solid #C9F4D4",
-                    borderRadius: "1.25rem",
-                    marginBottom: "1.5rem",
-                  }}
-                >
-                  <h2
-                    style={{
-                      fontSize: "1.25rem",
-                      fontWeight: 800,
-                      color: "#1E5A3B",
-                      marginBottom: "1.5rem",
-                    }}
-                  >
-                    Assessment Availability
-                  </h2>
+                <div className="create-new-step-section">
+                  <h2>Assessment Availability</h2>
                   <div
                     style={{
                       display: "flex",
@@ -12318,337 +11468,89 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
                         label: "Custom Schedule Per Candidate",
                         sub: "Set individual time slots (configure in next step)",
                       },
-                    ].map((mode) => (
+                      ].map((mode) => (
                       <label
                         key={mode.id}
                         style={{
-                          display: "flex",
-                          alignItems: "flex-start",
-                          gap: "1rem",
-                          padding: "1.25rem",
-                          backgroundColor:
-                            examMode === mode.id ? "#EBFAFD" : "#ffffff",
-                          border: `2px solid ${examMode === mode.id ? "#C9F4D4" : "#EBFAFD"}`,
-                          borderRadius: "1rem",
-                          cursor: "pointer",
-                          transition: "0.2s ease",
+                          display: "flex", alignItems: "flex-start", gap: "1rem", padding: "1rem",
+                          backgroundColor: examMode === mode.id ? "#f8fafc" : "#ffffff",
+                          border: `1.5px solid ${examMode === mode.id ? "#0f766e" : "#e2e8f0"}`,
+                          borderRadius: "0.75rem", cursor: "pointer", transition: "0.2s ease",
                         }}
                       >
-                        <input
-                          type="radio"
-                          name="examMode"
-                          value={mode.id}
-                          checked={examMode === mode.id}
-                          onChange={(e) => setExamMode(e.target.value as any)}
-                          style={{
-                            marginTop: "4px",
-                            accentColor: "#10b981",
-                            width: "20px",
-                            height: "20px",
-                          }}
-                        />
+                        <input type="radio" name="examMode" value={mode.id} checked={examMode === mode.id} onChange={(e) => setExamMode(e.target.value as any)} style={{ marginTop: "4px", accentColor: "#0f766e", width: "18px", height: "18px" }} />
                         <div>
-                          <div style={{ fontWeight: 700, color: "#1E5A3B" }}>
-                            {mode.label}
-                          </div>
-                          <div
-                            style={{ fontSize: "0.875rem", color: "#4A9A6A" }}
-                          >
-                            {mode.sub}
-                          </div>
+                          <div style={{ fontWeight: 600, color: "#334155" }}>{mode.label}</div>
+                          <div className="create-new-hint" style={{ marginTop: "0.25rem", marginBottom: 0 }}>{mode.sub}</div>
                         </div>
                       </label>
                     ))}
                   </div>
                 </div>
 
-                {/* Section 2: Assessment Window */}
-                <div
-                  style={{
-                    padding: "1.5rem",
-                    backgroundColor: "#ffffff",
-                    border: "1.5px solid #C9F4D4",
-                    borderRadius: "1.25rem",
-                    marginBottom: "1.5rem",
-                  }}
-                >
-                  <h2
-                    style={{
-                      fontSize: "1.25rem",
-                      fontWeight: 800,
-                      color: "#1E5A3B",
-                      marginBottom: "1.5rem",
-                    }}
-                  >
-                    Assessment Window
-                  </h2>
-                  <div style={{ display: "grid", gap: "1.5rem" }}>
+                <div className="create-new-step-section">
+                  <h2>Assessment Window</h2>
+                  <div style={{ display: "grid", gap: "1rem" }}>
                     <div>
-                      <label
-                        style={{
-                          display: "block",
-                          fontSize: "0.875rem",
-                          fontWeight: 700,
-                          color: "#2D7A52",
-                          marginBottom: "0.5rem",
-                        }}
-                      >
-                        Start Date & Time:
-                      </label>
+                      <label style={{ display: "block", marginBottom: "0.5rem" }}>Start Date & Time</label>
                       <div style={{ display: "flex", gap: "0.5rem" }}>
-                        <div
-                          style={{
-                            flex: 1,
-                            position: "relative",
-                            display: "flex",
-                            alignItems: "center",
-                          }}
-                        >
-                          <span style={{ position: "absolute", left: "12px" }}>
-                            📅
-                          </span>
-                          <input
-                            type="datetime-local"
-                            value={startTime}
-                            onChange={(e) => setStartTime(e.target.value)}
-                            style={{
-                              width: "100%",
-                              padding: "0.75rem 1rem 0.75rem 2.5rem",
-                              border: "1.5px solid #C9F4D4",
-                              borderRadius: "0.75rem",
-                              outline: "none",
-                              fontSize: "1rem",
-                              color: "#1E5A3B",
-                              fontWeight: 600,
-                            }}
-                          />
+                        <div style={{ flex: 1, position: "relative", display: "flex", alignItems: "center" }}>
+                          <Calendar size={18} style={{ position: "absolute", left: "12px", color: "#64748b", pointerEvents: "none" }} />
+                          <input type="datetime-local" value={startTime} onChange={(e) => setStartTime(e.target.value)} className="create-new-input" style={{ paddingLeft: "2.5rem" }} />
                         </div>
-                        <div
-                          style={{
-                            padding: "0.75rem",
-                            backgroundColor: "#ffffff",
-                            border: "1.5px solid #C9F4D4",
-                            borderRadius: "0.75rem",
-                            display: "flex",
-                            alignItems: "center",
-                            gap: "0.5rem",
-                            color: "#2D7A52",
-                            fontSize: "0.875rem",
-                            fontWeight: 600,
-                          }}
-                        >
-                          🌐 IST +05:30
-                        </div>
+                        <div className="create-new-hint" style={{ padding: "0.75rem 1rem", margin: 0, alignSelf: "center", display: "flex", alignItems: "center", gap: "0.375rem" }}><Globe size={16} /> IST +05:30</div>
                       </div>
                     </div>
                     <div>
-                      <label
-                        style={{
-                          display: "block",
-                          fontSize: "0.875rem",
-                          fontWeight: 700,
-                          color: "#2D7A52",
-                          marginBottom: "0.5rem",
-                        }}
-                      >
-                        End Date & Time:
-                      </label>
+                      <label style={{ display: "block", marginBottom: "0.5rem" }}>End Date & Time</label>
                       <div style={{ display: "flex", gap: "0.5rem" }}>
-                        <div
-                          style={{
-                            flex: 1,
-                            position: "relative",
-                            display: "flex",
-                            alignItems: "center",
-                          }}
-                        >
-                          <span style={{ position: "absolute", left: "12px" }}>
-                            📅
-                          </span>
-                          <input
-                            type="datetime-local"
-                            value={endTime}
-                            onChange={(e) => setEndTime(e.target.value)}
-                            disabled={examMode === "flexible" || examMode === "custom"}
-                            style={{
-                              width: "100%",
-                              padding: "0.75rem 1rem 0.75rem 2.5rem",
-                              border: "1.5px solid #C9F4D4",
-                              borderRadius: "0.75rem",
-                              outline: "none",
-                              opacity: examMode !== "scheduled" ? 0.5 : 1,
-                              fontSize: "1rem",
-                              color: "#1E5A3B",
-                              fontWeight: 600,
-                            }}
-                          />
+                        <div style={{ flex: 1, position: "relative", display: "flex", alignItems: "center" }}>
+                          <Calendar size={18} style={{ position: "absolute", left: "12px", color: "#64748b", pointerEvents: "none" }} />
+                          <input type="datetime-local" value={endTime} onChange={(e) => setEndTime(e.target.value)} disabled={examMode === "flexible" || examMode === "custom"} className="create-new-input" style={{ paddingLeft: "2.5rem", opacity: examMode !== "scheduled" ? 0.6 : 1 }} />
                         </div>
-                        <div
-                          style={{
-                            padding: "0.75rem",
-                            backgroundColor: "#ffffff",
-                            border: "1.5px solid #C9F4D4",
-                            borderRadius: "0.75rem",
-                            display: "flex",
-                            alignItems: "center",
-                            gap: "0.5rem",
-                            color: "#2D7A52",
-                            fontSize: "0.875rem",
-                            fontWeight: 600,
-                          }}
-                        >
-                          🌐 IST +05:30
-                        </div>
+                        <div className="create-new-hint" style={{ padding: "0.75rem 1rem", margin: 0, alignSelf: "center", display: "flex", alignItems: "center", gap: "0.375rem" }}><Globe size={16} /> IST +05:30</div>
                       </div>
                     </div>
                   </div>
                 </div>
 
-                {/* Section 3: Time Zone Handling */}
-                <div
-                  style={{
-                    padding: "1.5rem",
-                    backgroundColor: "#ffffff",
-                    border: "1.5px solid #C9F4D4",
-                    borderRadius: "1.25rem",
-                    marginBottom: "1.5rem",
-                  }}
-                >
-                  <h2
-                    style={{
-                      fontSize: "1.25rem",
-                      fontWeight: 800,
-                      color: "#1E5A3B",
-                      marginBottom: "1.5rem",
-                    }}
-                  >
-                    Time Zone Handling
-                  </h2>
-                  <div
-                    style={{
-                      display: "flex",
-                      flexDirection: "column",
-                      gap: "1rem",
-                    }}
-                  >
-                    <label
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "0.75rem",
-                        padding: "1rem",
-                        border: "1.5px solid #EBFAFD",
-                        borderRadius: "0.75rem",
-                        cursor: "pointer",
-                      }}
-                    >
-                      <input
-                        type="radio"
-                        name="tz"
-                        style={{
-                          accentColor: "#10b981",
-                          width: "18px",
-                          height: "18px",
-                        }}
-                      />
-                      <span style={{ fontWeight: 700, color: "#1E5A3B" }}>
-                        Organization timezone (IST +05:30)
-                      </span>
+                <div className="create-new-step-section">
+                  <h2>Time zone</h2>
+                  <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+                    <label style={{ display: "flex", alignItems: "center", gap: "0.75rem", padding: "1rem", border: "1.5px solid #e2e8f0", borderRadius: "0.75rem", cursor: "pointer" }}>
+                      <input type="radio" name="tz" style={{ accentColor: "#0f766e", width: "18px", height: "18px" }} />
+                      <span style={{ fontWeight: 600, color: "#334155" }}>Organization timezone (IST +05:30)</span>
                     </label>
-                    <label
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "0.75rem",
-                        padding: "1rem",
-                        border: "1.5px solid #C9F4D4",
-                        backgroundColor: "#EBFAFD",
-                        borderRadius: "0.75rem",
-                        cursor: "pointer",
-                      }}
-                    >
-                      <input
-                        type="radio"
-                        name="tz"
-                        defaultChecked
-                        style={{
-                          accentColor: "#10b981",
-                          width: "18px",
-                          height: "18px",
-                        }}
-                      />
-                      <span style={{ fontWeight: 700, color: "#1E5A3B" }}>
-                        Candidate's local timezone (Auto-detect)
-                      </span>
+                    <label style={{ display: "flex", alignItems: "center", gap: "0.75rem", padding: "1rem", border: "1.5px solid #0f766e", backgroundColor: "#f0fdfa", borderRadius: "0.75rem", cursor: "pointer" }}>
+                      <input type="radio" name="tz" defaultChecked style={{ accentColor: "#0f766e", width: "18px", height: "18px" }} />
+                      <span style={{ fontWeight: 600, color: "#334155" }}>Candidate&apos;s local timezone (auto-detect)</span>
                     </label>
                   </div>
-                  <div
-                    style={{
-                      marginTop: "1rem",
-                      padding: "0.75rem",
-                      backgroundColor: "#EBFAFD",
-                      borderRadius: "0.5rem",
-                      color: "#2D7A52",
-                      fontSize: "0.875rem",
-                      display: "flex",
-                      gap: "0.5rem",
-                      fontWeight: 600,
-                    }}
-                  >
-                    <span style={{ color: "#3b82f6" }}>ℹ️</span> Candidates will
-                    see times in their local timezone
-                  </div>
+                  <p className="create-new-hint" style={{ marginTop: "0.75rem", marginBottom: 0, display: "flex", alignItems: "center", gap: "0.5rem" }}><Info size={16} /> Candidates will see times in their local timezone.</p>
                 </div>
 
-                {/* Candidate Email Preview */}
-                <div
-                  style={{
-                    padding: "1.5rem",
-                    backgroundColor: "#ffffff",
-                    border: "1.5px solid #C9F4D4",
-                    borderRadius: "1.25rem",
-                    marginBottom: "3rem",
-                  }}
-                >
+                <div className="create-new-step-section" style={{ marginBottom: "1.5rem" }}>
+                  <h2 style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}><Mail size={20} color="#64748b" /> Candidate email preview</h2>
                   <div
                     style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "0.5rem",
-                      marginBottom: "1rem",
-                      color: "#1E5A3B",
-                    }}
-                  >
-                    <span style={{ fontSize: "1.25rem" }}>✉️</span>
-                    <h2
-                      style={{
-                        fontSize: "1.25rem",
-                        fontWeight: 800,
-                        margin: 0,
-                      }}
-                    >
-                      Candidate Email Preview
-                    </h2>
-                  </div>
-                  <div
-                    style={{
-                      padding: "1.5rem",
-                      border: "1.5px dashed #C9F4D4",
-                      borderRadius: "1rem",
-                      color: "#2D7A52",
+                      padding: "1.25rem",
+                      border: "1px dashed #e2e8f0",
+                      borderRadius: "0.75rem",
+                      color: "#475569",
                       lineHeight: 1.6,
-                      backgroundColor: "#ffffff",
+                      backgroundColor: "#f8fafc",
+                      fontSize: "0.9375rem",
                     }}
                   >
                     You have been invited to take the{" "}
-                    <strong>
+                    <strong style={{ color: "#334155" }}>
                       {jobDesignation
                         ? `${jobDesignation} Assessment`
                         : "Full Stack Developer Assessment"}
                     </strong>
                     .<br />
                     Available from:{" "}
-                    <strong>
+                    <strong style={{ color: "#334155" }}>
                       {startTime
                         ? new Date(startTime).toLocaleString("en-IN", {
                             dateStyle: "medium",
@@ -12657,181 +11559,105 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
                         : "Feb 17, 2026, 9:00 AM IST"}
                     </strong>
                     <br />
-                    Duration: <strong>{duration} minutes</strong>
+                    Duration: <strong style={{ color: "#334155" }}>{duration} minutes</strong>
                     <br />
                     <br />
-                    <div
-                      style={{
-                        padding: "0.75rem 1.5rem",
-                        backgroundColor: "#C9F4D4",
-                        borderRadius: "0.5rem",
-                        display: "inline-block",
-                        fontWeight: 700,
-                        color: "#1E5A3B",
-                      }}
+                    <span
+                      className="create-new-btn-primary"
+                      style={{ maxWidth: "none", display: "inline-flex", padding: "0.5rem 1rem", fontSize: "0.875rem" }}
                     >
                       Start Assessment
-                    </div>
+                    </span>
                   </div>
                 </div>
 
-                <div style={{ display: "flex", gap: "1rem" }}>
-                  <button
-                    onClick={() => setCurrentStation(4)}
-                    style={{
-                      padding: "1.1rem 2.5rem",
-                      border: "1.5px solid #C9F4D4",
-                      borderRadius: "1rem",
-                      backgroundColor: "#ffffff",
-                      color: "#1E5A3B",
-                      fontWeight: 800,
-                      cursor: "pointer",
-                    }}
-                  >
-                    Back
-                  </button>
-                  <button
-                    onClick={() => setCurrentStation(6)}
-                    style={{
-                      flex: 1,
-                      padding: "1.1rem",
-                      backgroundColor: "#C9F4D4",
-                      color: "#1E5A3B",
-                      fontSize: "1.125rem",
-                      fontWeight: 800,
-                      border: "none",
-                      borderRadius: "1rem",
-                      cursor: "pointer",
-                      boxShadow: "0 10px 15px -3px rgba(201, 244, 212, 0.4)",
-                    }}
-                  >
-                    Continue to Add Candidates →
+                <div style={{ display: "flex", gap: "1rem", flexWrap: "wrap" }}>
+                  <button type="button" className="create-new-btn-secondary" onClick={() => setCurrentStation(4)}>Back</button>
+                  <button type="button" className="create-new-btn-primary" onClick={() => setCurrentStation(6)} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: "0.5rem" }}>
+                    Continue to Add Candidates <ArrowRight size={20} strokeWidth={2.5} />
                   </button>
                 </div>
               </div>
             )}
 
-            {/* Station 6: */}
+            {/* Station 6: Add Candidates */}
             {currentStation === 6 && (
-  <div style={{ maxWidth: "800px", margin: "0 auto", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', Roboto, sans-serif" }}>
-    
-    {/* PHASE 1: Add Candidates View */}
+  <div style={{ maxWidth: "800px", margin: "0 auto", fontFamily: "Inter, sans-serif" }}>
     {!isCrafting && !showFinalReview && (
       <>
-        <div style={{ color: "#10b981", fontWeight: 700, fontSize: "0.875rem", marginBottom: "1rem" }}>
-          STEP 6 OF 6 <span style={{ marginLeft: "8px" }}> Final Step!</span>
-        </div>
-        <h1 style={{ fontSize: "2.8rem", fontWeight: 800, color: "#1E5A3B", marginBottom: "0.5rem" }}>Add Candidates</h1>
-        <p style={{ color: "#2D7A52", marginBottom: "2.5rem", fontSize: "1.125rem", fontWeight: 500 }}>
-          Choose how you want to add candidates:
-        </p>
+        <div className="create-new-step-badge">Step 6 of 6 · Final step</div>
+        <h1 className="create-new-step-title">Add candidates</h1>
+        <p className="create-new-step-subtitle" style={{ marginBottom: "1.5rem" }}>Choose how you want to add candidates.</p>
 
-        {/* Tab Selection */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1.5rem", marginBottom: "2.5rem" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem", marginBottom: "1.5rem" }}>
           <div
             onClick={() => setActiveCandidateTab("individual")}
-            style={{
-              padding: "1.5rem",
-              border: `2px solid ${activeCandidateTab === "individual" ? "#10b981" : "#EBFAFD"}`,
-              borderRadius: "1.25rem",
-              backgroundColor: activeCandidateTab === "individual" ? "#EBFAFD" : "#ffffff",
-              cursor: "pointer",
-              transition: "0.3s ease",
-            }}
+            className="create-new-step-section"
+            style={{ cursor: "pointer", borderColor: activeCandidateTab === "individual" ? "#0f766e" : undefined, backgroundColor: activeCandidateTab === "individual" ? "#f0fdfa" : undefined }}
           >
-            <div style={{ width: '48px', height: '48px', backgroundColor: '#C9F4D4', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '1rem' }}>
-              <User size={24} color="#1E5A3B" />
-            </div>
-            <div style={{ fontWeight: 800, color: "#1E5A3B", fontSize: "1.15rem" }}>Add Individual</div>
-            {activeCandidateTab === "individual" && <div style={{ fontSize: "0.75rem", color: "#10b981", fontWeight: 800, marginTop: "4px" }}>Selected</div>}
+            <div style={{ width: "40px", height: "40px", backgroundColor: "#e2e8f0", borderRadius: "10px", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: "0.75rem" }}><User size={20} color="#475569" /></div>
+            <div style={{ fontWeight: 600, color: "#334155", fontSize: "1rem" }}>Add individual</div>
+            {activeCandidateTab === "individual" && <p className="create-new-hint" style={{ margin: "0.25rem 0 0", marginBottom: 0 }}>Selected</p>}
           </div>
-
           <div
             onClick={() => setActiveCandidateTab("bulk")}
-            style={{
-              padding: "1.5rem",
-              border: `2px solid ${activeCandidateTab === "bulk" ? "#10b981" : "#EBFAFD"}`,
-              borderRadius: "1.25rem",
-              backgroundColor: activeCandidateTab === "bulk" ? "#EBFAFD" : "#ffffff",
-              cursor: "pointer",
-              transition: "0.3s ease",
-            }}
+            className="create-new-step-section"
+            style={{ cursor: "pointer", borderColor: activeCandidateTab === "bulk" ? "#0f766e" : undefined, backgroundColor: activeCandidateTab === "bulk" ? "#f0fdfa" : undefined }}
           >
-            <div style={{ width: '48px', height: '48px', backgroundColor: '#C9F4D4', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '1rem' }}>
-              <FileText size={24} color="#1E5A3B" />
-            </div>
-            <div style={{ fontWeight: 800, color: "#1E5A3B", fontSize: "1.15rem" }}>Bulk Upload</div>
-            {activeCandidateTab === "bulk" && <div style={{ fontSize: "0.75rem", color: "#10b981", fontWeight: 800, marginTop: "4px" }}>Selected</div>}
+            <div style={{ width: "40px", height: "40px", backgroundColor: "#e2e8f0", borderRadius: "10px", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: "0.75rem" }}><FileText size={20} color="#475569" /></div>
+            <div style={{ fontWeight: 600, color: "#334155", fontSize: "1rem" }}>Bulk upload</div>
+            {activeCandidateTab === "bulk" && <p className="create-new-hint" style={{ margin: "0.25rem 0 0", marginBottom: 0 }}>Selected</p>}
           </div>
         </div>
 
-        {/* Input Forms */}
         {activeCandidateTab === "individual" ? (
-          <div style={{ padding: "2.5rem", backgroundColor: "#ffffff", border: "1.5px solid #C9F4D4", borderRadius: "1.5rem", marginBottom: "2.5rem" }}>
-            <h2 style={{ fontSize: "1.25rem", fontWeight: 800, color: "#1E5A3B", marginBottom: "1.5rem" }}>Candidate Information</h2>
-            <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
-              <div style={{ display: 'grid', gap: '0.5rem' }}>
-                <label style={{ fontSize: '0.9rem', fontWeight: 700, color: '#1E5A3B' }}>Name </label>
-                <input type="text" value={candidateName} onChange={(e) => setCandidateName(e.target.value)} placeholder="John Doe" style={{ width: "100%", padding: "1rem", border: "1.5px solid #C9F4D4", borderRadius: "0.75rem", outline: "none" }} />
+          <div className="create-new-step-section" style={{ marginBottom: "1.5rem" }}>
+            <h2>Candidate information</h2>
+            <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+              <div>
+                <label style={{ display: "block", marginBottom: "0.5rem" }}>Name</label>
+                <input type="text" value={candidateName} onChange={(e) => setCandidateName(e.target.value)} placeholder="John Doe" className="create-new-input" />
               </div>
-              <div style={{ display: 'grid', gap: '0.5rem' }}>
-                <label style={{ fontSize: '0.9rem', fontWeight: 700, color: '#1E5A3B' }}>Email </label>
-                <input type="email" value={candidateEmail} onChange={(e) => setCandidateEmail(e.target.value)} placeholder="john.doe@example.com" style={{ width: "100%", padding: "1rem", border: "1.5px solid #C9F4D4", borderRadius: "0.75rem", outline: "none" }} />
+              <div>
+                <label style={{ display: "block", marginBottom: "0.5rem" }}>Email</label>
+                <input type="email" value={candidateEmail} onChange={(e) => setCandidateEmail(e.target.value)} placeholder="john.doe@example.com" className="create-new-input" />
               </div>
-              <button onClick={handleAddCandidate} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', padding: "1rem", border: "1.5px dashed #C9F4D4", borderRadius: "0.75rem", backgroundColor: "#ffffff", color: "#10b981", fontWeight: 700, cursor: "pointer" }}>
-                <Plus size={18} /> Add Another Candidate
+              <button type="button" className="create-new-btn-secondary" onClick={handleAddCandidate} style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "0.5rem" }}>
+                <Plus size={18} /> Add another candidate
               </button>
             </div>
           </div>
         ) : (
-          <div style={{ padding: "4rem 2rem", backgroundColor: "#ffffff", border: "2px dashed #C9F4D4", borderRadius: "1.5rem", marginBottom: "2.5rem", textAlign: "center" }}>
-            <FileType size={48} color="#10b981" style={{ marginBottom: '1.5rem' }} />
-            <h2 style={{ fontSize: "1.5rem", fontWeight: 800, color: "#1E5A3B" }}>Drag & drop CSV or Excel file here</h2>
-            <p style={{ color: "#4A9A6A", fontWeight: 600, margin: '0.5rem 0 1.5rem' }}>or click to browse</p>
-            <button onClick={() => document.getElementById("csv-upload-input")?.click()} style={{ padding: "0.8rem 2.5rem", backgroundColor: "#10b981", color: "#ffffff", border: "none", borderRadius: "0.75rem", fontWeight: 800, cursor: "pointer" }}>Browse Files</button>
+          <div className="create-new-step-section" style={{ marginBottom: "1.5rem", textAlign: "center", borderStyle: "dashed" }}>
+            <FileType size={40} color="#64748b" style={{ marginBottom: "1rem" }} />
+            <h2 style={{ marginBottom: "0.5rem" }}>Drag & drop CSV or Excel</h2>
+            <p className="create-new-hint" style={{ marginBottom: "1rem" }}>or click to browse</p>
+            <button type="button" className="create-new-btn-primary" onClick={() => document.getElementById("csv-upload-input")?.click()} style={{ maxWidth: "none" }}>Browse files</button>
             <input type="file" id="csv-upload-input" accept=".csv, .xlsx, .xls" onChange={handleCsvUpload} style={{ display: "none" }} />
           </div>
         )}
 
-        {/* Added Candidates List */}
-        <div style={{ marginBottom: "3rem" }}>
-          <h3 style={{ fontSize: "1.2rem", fontWeight: 800, color: "#1E5A3B", marginBottom: "1rem" }}>Added Candidates ({candidates.length})</h3>
+        <div className="create-new-step-section" style={{ marginBottom: "1.5rem" }}>
+          <h2>Added candidates ({candidates.length})</h2>
           {candidates.length === 0 ? (
-            <div 
-              style={{ 
-                padding: "4rem", 
-                border: "1.5px dashed #C9F4D4", 
-                borderRadius: "1.5rem", 
-                backgroundColor: "#ffffff",
-                display: "flex",
-                flexDirection: "column",
-                alignItems: "center",
-                justifyContent: "center",
-                textAlign: "center" 
-              }}
-            >
-              <Sparkles size={48} color="#6ee7b7" style={{ marginBottom: '1rem' }} />
-              <p style={{ color: "#2D7A52", fontWeight: 700, margin: 0 }}>
-                No candidates added yet
-              </p>
+            <div style={{ padding: "2rem", border: "1px dashed #e2e8f0", borderRadius: "0.75rem", backgroundColor: "#f8fafc", textAlign: "center" }}>
+              <Sparkles size={32} color="#94a3b8" style={{ marginBottom: "0.75rem" }} />
+              <p className="create-new-hint" style={{ margin: 0 }}>No candidates added yet</p>
             </div>
           ) : (
-            <div style={{ display: "grid", gap: "0.75rem" }}>
+            <div style={{ display: "grid", gap: "0.5rem" }}>
               {candidates.map((c, i) => (
-                <div key={i} style={{ display: "flex", alignItems: "center", gap: "1rem", padding: "1rem", backgroundColor: "#ffffff", border: "1.5px solid #C9F4D4", borderRadius: "1rem" }}>
-                  <div style={{ width: "45px", height: "45px", backgroundColor: "#C9F4D4", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, color: "#1E5A3B" }}>{c.name.charAt(0).toUpperCase()}</div>
-                  <div style={{ flex: 1 }}><div style={{ fontWeight: 800, color: "#1E5A3B" }}>{c.name}</div><div style={{ fontSize: "0.85rem", color: "#4A9A6A" }}>{c.email}</div></div>
-                  <button onClick={() => handleRemoveCandidate(c.email)} style={{ background: "none", border: "none", color: "#ef4444", cursor: "pointer" }}><X size={20} /></button>
+                <div key={i} style={{ display: "flex", alignItems: "center", gap: "0.75rem", padding: "0.75rem 1rem", backgroundColor: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: "0.5rem" }}>
+                  <div style={{ width: "36px", height: "36px", backgroundColor: "#e2e8f0", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 600, color: "#475569", fontSize: "0.875rem" }}>{c.name.charAt(0).toUpperCase()}</div>
+                  <div style={{ flex: 1 }}><div style={{ fontWeight: 600, color: "#334155" }}>{c.name}</div><div className="create-new-hint" style={{ margin: 0, fontSize: "0.8125rem" }}>{c.email}</div></div>
+                  <button type="button" onClick={() => handleRemoveCandidate(c.email)} style={{ background: "none", border: "none", color: "#ef4444", cursor: "pointer", padding: "0.25rem" }} aria-label="Remove"><X size={18} /></button>
                 </div>
               ))}
             </div>
           )}
         </div>
 
-        <button 
-          onClick={handleStartCrafting}
-          style={{ width: "100%", padding: "1.25rem", backgroundColor: "#10b981", color: "#ffffff", fontSize: "1.25rem", fontWeight: 900, border: "none", borderRadius: "1rem", cursor: "pointer", boxShadow: "0 10px 25px rgba(16, 185, 129, 0.3)", display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px' }}
-        >
+        <button type="button" className="create-new-btn-primary" onClick={handleStartCrafting} style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: "0.5rem" }}>
           Review Assessment <ChevronRight size={24} />
         </button>
       </>
