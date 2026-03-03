@@ -33,17 +33,17 @@ export default function DesignQuestionCreatePage() {
   const [isAiGenerated, setIsAiGenerated] = useState(false)
   
   // AI Generation fields
-  const [aiRole, setAiRole] = useState('ui_designer')
+  const [aiRole, setAiRole] = useState('')
   const [aiDifficulty, setAiDifficulty] = useState('intermediate')
-  const [aiTaskType, setAiTaskType] = useState('landing_page')
+  const [aiTaskType, setAiTaskType] = useState('')
   const [aiTopic, setAiTopic] = useState('')
   
   // Manual question fields
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
-  const [role, setRole] = useState('ui_designer')
+  const [role, setRole] = useState('')
   const [difficulty, setDifficulty] = useState('intermediate')
-  const [taskType, setTaskType] = useState('landing_page')
+  const [taskType, setTaskType] = useState('')
   const [constraints, setConstraints] = useState<string[]>([''])
   const [deliverables, setDeliverables] = useState<string[]>([''])
   const [evaluationCriteria, setEvaluationCriteria] = useState<string[]>([''])
@@ -98,18 +98,9 @@ export default function DesignQuestionCreatePage() {
 
       const data = await response.json()
       
-      // Populate form with generated question
-      setTitle(data.title || '')
-      setDescription(data.description || '')
-      setRole(data.role || aiRole)
-      setDifficulty(data.difficulty || aiDifficulty)
-      setTaskType(data.task_type || aiTaskType)
-      setConstraints(data.constraints || [''])
-      setDeliverables(data.deliverables || [''])
-      setEvaluationCriteria(data.evaluation_criteria || [''])
-      setTimeLimitMinutes(data.time_limit_minutes || 60)
-      
-      alert('Question generated successfully! Review and save.')
+      // Navigate to questions list after successful generation
+      alert('Question generated successfully!')
+      router.push('/design/questions')
     } catch (err: any) {
       console.error(err)
       setError(err.message || 'Failed to generate question')
@@ -173,36 +164,6 @@ export default function DesignQuestionCreatePage() {
   return (
     <div style={{ minHeight: "100vh", backgroundColor: "#f9fafb", padding: "2rem 0" }}>
       <div className="container" style={{ maxWidth: "900px", margin: "0 auto" }}>
-        <div style={{ marginBottom: "2rem" }}>
-          <button
-            onClick={() => router.push("/design/questions")}
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: "0.5rem",
-              padding: "0.625rem 1.25rem",
-              fontSize: "0.9375rem",
-              backgroundColor: "transparent",
-              border: "1px solid #E8B4FA",
-              borderRadius: "0.5rem",
-              color: "#7C3AED",
-              cursor: "pointer",
-              transition: "all 0.2s ease",
-              fontWeight: 500,
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.backgroundColor = "#F3E8FF"
-              e.currentTarget.style.borderColor = "#D8B4FE"
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.backgroundColor = "transparent"
-              e.currentTarget.style.borderColor = "#E8B4FA"
-            }}
-          >
-            ← Back to Questions
-          </button>
-        </div>
-
         <div className="card" style={{ boxShadow: "0 4px 16px rgba(232, 180, 250, 0.15)" }}>
           <div style={{ marginBottom: "2.5rem", paddingBottom: "1.5rem", borderBottom: "2px solid #F3E8FF" }}>
             <h1 style={{ 
@@ -345,9 +306,11 @@ export default function DesignQuestionCreatePage() {
                   }}>
                     Design Role <span style={{ color: "#DC2626" }}>*</span>
                   </label>
-                  <select
+                  <input
+                    type="text"
                     value={aiRole}
                     onChange={(e) => setAiRole(e.target.value)}
+                    placeholder="e.g., UI Designer, UX Designer, Product Designer"
                     style={{
                       width: "100%",
                       padding: "0.875rem 1rem",
@@ -355,14 +318,9 @@ export default function DesignQuestionCreatePage() {
                       borderRadius: "0.5rem",
                       fontSize: "0.9375rem",
                       backgroundColor: "#ffffff",
-                      cursor: "pointer",
                       transition: "all 0.2s ease",
                     }}
-                  >
-                    {DESIGN_ROLES.map(r => (
-                      <option key={r.value} value={r.value}>{r.label}</option>
-                    ))}
-                  </select>
+                  />
                 </div>
 
                 <div>
@@ -375,9 +333,11 @@ export default function DesignQuestionCreatePage() {
                   }}>
                     Task Type <span style={{ color: "#DC2626" }}>*</span>
                   </label>
-                  <select
+                  <input
+                    type="text"
                     value={aiTaskType}
                     onChange={(e) => setAiTaskType(e.target.value)}
+                    placeholder="e.g., Landing Page, Mobile App, Dashboard"
                     style={{
                       width: "100%",
                       padding: "0.875rem 1rem",
@@ -385,14 +345,9 @@ export default function DesignQuestionCreatePage() {
                       borderRadius: "0.5rem",
                       fontSize: "0.9375rem",
                       backgroundColor: "#ffffff",
-                      cursor: "pointer",
                       transition: "all 0.2s ease",
                     }}
-                  >
-                    {TASK_TYPES.map(t => (
-                      <option key={t.value} value={t.value}>{t.label}</option>
-                    ))}
-                  </select>
+                  />
                 </div>
               </div>
 
@@ -518,9 +473,11 @@ export default function DesignQuestionCreatePage() {
                   <label style={{ display: "block", marginBottom: "0.5rem", fontWeight: 600, color: "#7C3AED" }}>
                     Role
                   </label>
-                  <select
+                  <input
+                    type="text"
                     value={role}
                     onChange={(e) => setRole(e.target.value)}
+                    placeholder="e.g., UI Designer"
                     style={{
                       width: "100%",
                       padding: "0.75rem",
@@ -528,20 +485,18 @@ export default function DesignQuestionCreatePage() {
                       borderRadius: "0.5rem",
                       backgroundColor: "#ffffff",
                     }}
-                  >
-                    {DESIGN_ROLES.map(r => (
-                      <option key={r.value} value={r.value}>{r.label}</option>
-                    ))}
-                  </select>
+                  />
                 </div>
 
                 <div>
                   <label style={{ display: "block", marginBottom: "0.5rem", fontWeight: 600, color: "#7C3AED" }}>
                     Task Type
                   </label>
-                  <select
+                  <input
+                    type="text"
                     value={taskType}
                     onChange={(e) => setTaskType(e.target.value)}
+                    placeholder="e.g., Landing Page"
                     style={{
                       width: "100%",
                       padding: "0.75rem",
@@ -549,11 +504,7 @@ export default function DesignQuestionCreatePage() {
                       borderRadius: "0.5rem",
                       backgroundColor: "#ffffff",
                     }}
-                  >
-                    {TASK_TYPES.map(t => (
-                      <option key={t.value} value={t.value}>{t.label}</option>
-                    ))}
-                  </select>
+                  />
                 </div>
 
                 <div>
@@ -602,13 +553,16 @@ export default function DesignQuestionCreatePage() {
                 <label style={{ display: "block", marginBottom: "0.5rem", fontWeight: 600, color: "#7C3AED" }}>
                   Constraints
                 </label>
+                <p style={{ fontSize: "0.875rem", color: "#6B7280", marginBottom: "0.75rem" }}>
+                  Add design constraints or rules (e.g., "Use only 3 colors", "Mobile-first approach", "Follow Material Design")
+                </p>
                 {constraints.map((constraint, idx) => (
                   <div key={idx} style={{ display: "flex", gap: "0.5rem", marginBottom: "0.5rem" }}>
                     <input
                       type="text"
                       value={constraint}
                       onChange={(e) => updateConstraint(idx, e.target.value)}
-                      placeholder={`Constraint ${idx + 1}`}
+                      placeholder={`e.g., ${idx === 0 ? 'Use modern design principles' : idx === 1 ? 'Ensure responsive design' : 'Follow accessibility guidelines'}`}
                       style={{
                         flex: 1,
                         padding: "0.75rem",
@@ -651,13 +605,16 @@ export default function DesignQuestionCreatePage() {
                 <label style={{ display: "block", marginBottom: "0.5rem", fontWeight: 600, color: "#7C3AED" }}>
                   Deliverables
                 </label>
+                <p style={{ fontSize: "0.875rem", color: "#6B7280", marginBottom: "0.75rem" }}>
+                  Specify what the candidate needs to deliver (e.g., "High-fidelity mockup", "User flow diagram", "Design system")
+                </p>
                 {deliverables.map((deliverable, idx) => (
                   <div key={idx} style={{ display: "flex", gap: "0.5rem", marginBottom: "0.5rem" }}>
                     <input
                       type="text"
                       value={deliverable}
                       onChange={(e) => updateDeliverable(idx, e.target.value)}
-                      placeholder={`Deliverable ${idx + 1}`}
+                      placeholder={`e.g., ${idx === 0 ? 'High-fidelity design screens' : idx === 1 ? 'Design specifications' : 'Component library'}`}
                       style={{
                         flex: 1,
                         padding: "0.75rem",
@@ -700,13 +657,16 @@ export default function DesignQuestionCreatePage() {
                 <label style={{ display: "block", marginBottom: "0.5rem", fontWeight: 600, color: "#7C3AED" }}>
                   Evaluation Criteria
                 </label>
+                <p style={{ fontSize: "0.875rem", color: "#6B7280", marginBottom: "0.75rem" }}>
+                  Define how the design will be evaluated (e.g., "Visual hierarchy", "Color usage", "Typography")
+                </p>
                 {evaluationCriteria.map((criteria, idx) => (
                   <div key={idx} style={{ display: "flex", gap: "0.5rem", marginBottom: "0.5rem" }}>
                     <input
                       type="text"
                       value={criteria}
                       onChange={(e) => updateCriteria(idx, e.target.value)}
-                      placeholder={`Criteria ${idx + 1}`}
+                      placeholder={`e.g., ${idx === 0 ? 'Visual hierarchy and layout' : idx === 1 ? 'Color scheme and consistency' : 'Typography and readability'}`}
                       style={{
                         flex: 1,
                         padding: "0.75rem",
