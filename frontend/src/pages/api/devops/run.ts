@@ -27,9 +27,17 @@ interface UnifiedRunResponse {
   message?: string;
 }
 
+interface EngineLikeResponse {
+  stdout?: string;
+  stderr?: string;
+  exit_code?: number;
+  [key: string]: unknown;
+}
+
 const EXECUTION_API_BASE =
   process.env.DEVOPS_EXECUTION_API_URL || "http://127.0.0.1:8000";
 const LINT_API_BASE = process.env.DEVOPS_LINT_API_URL || "http://127.0.0.1:8002";
+const EXECUTION_BASE = EXECUTION_API_BASE.replace(/\/+$/, "").replace(/\/api$/, "");
 
 function lintGithubActionsFallback(content: string): {
   status: "passed" | "failed";
@@ -75,6 +83,18 @@ async function safeJsonParse(response: Response): Promise<Record<string, unknown
   return response.json();
 }
 
+function extractDetail(data: Record<string, unknown>, fallback: string): string {
+  const detail = data?.detail;
+  if (typeof detail === "string" && detail.trim()) return detail;
+  if (Array.isArray(detail)) return detail.map((row) => JSON.stringify(row)).join("; ");
+  if (detail && typeof detail === "object") return JSON.stringify(detail);
+  return fallback;
+}
+
+function asEngineResponse(data: Record<string, unknown>): EngineLikeResponse {
+  return data as EngineLikeResponse;
+}
+
 export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse<UnifiedRunResponse>
@@ -109,29 +129,50 @@ export default async function handler(
         });
       }
 
-      const response = await fetch(`${EXECUTION_API_BASE}/api/execute`, {
+      let response = await fetch(`${EXECUTION_BASE}/api/execute`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ command: body.command }),
       });
-      const data = await safeJsonParse(response);
+      if (response.status === 404) {
+        response = await fetch(`${EXECUTION_BASE}/execute`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ command: body.command }),
+        });
+      }
+      let data = await safeJsonParse(response);
+      // Compatibility fallback for services/cloud engine payload schema
+      if (!response.ok && response.status === 422) {
+        response = await fetch(`${EXECUTION_BASE}/execute`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            session_id: `devops-${Date.now()}`,
+            mode: "aws",
+            command: body.command,
+          }),
+        });
+        data = await safeJsonParse(response);
+      }
 
       if (!response.ok) {
         return res.status(response.status).json({
           ok: false,
           status: "error",
           engine: "execution",
-          message: data?.detail || "Execution engine request failed",
+          message: extractDetail(data, "Execution engine request failed"),
         });
       }
 
+      const engineData = asEngineResponse(data);
       return res.status(200).json({
         ok: true,
-        status: data.exit_code === 0 ? "success" : "error",
+        status: engineData.exit_code === 0 ? "success" : "error",
         engine: "execution",
-        stdout: data.stdout || "",
-        stderr: data.stderr || "",
-        exitCode: Number(data.exit_code ?? 1),
+        stdout: String(engineData.stdout || ""),
+        stderr: String(engineData.stderr || ""),
+        exitCode: Number(engineData.exit_code ?? 1),
       });
     }
 
@@ -142,7 +183,7 @@ export default async function handler(
           ? body.terraformFiles
           : { "main.tf": "" };
 
-      const response = await fetch(`${EXECUTION_API_BASE}/api/terraform/execute`, {
+      let response = await fetch(`${EXECUTION_BASE}/api/terraform/execute`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -151,24 +192,50 @@ export default async function handler(
           auto_approve: Boolean(body.autoApprove),
         }),
       });
-      const data = await safeJsonParse(response);
+      if (response.status === 404) {
+        response = await fetch(`${EXECUTION_BASE}/terraform/execute`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: terraformAction,
+            terraform_files: terraformFiles,
+            auto_approve: Boolean(body.autoApprove),
+          }),
+        });
+      }
+      let data = await safeJsonParse(response);
+      // Compatibility fallback for services/cloud engine route/payload
+      if (!response.ok && (response.status === 404 || response.status === 422)) {
+        response = await fetch(`${EXECUTION_BASE}/execute`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            session_id: `devops-tf-${Date.now()}`,
+            mode: "terraform",
+            terraform_code: terraformFiles["main.tf"] || "",
+            terraform_action: terraformAction,
+          }),
+        });
+        data = await safeJsonParse(response);
+      }
 
       if (!response.ok) {
         return res.status(response.status).json({
           ok: false,
           status: "error",
           engine: "terraform",
-          message: data?.detail || "Terraform engine request failed",
+          message: extractDetail(data, "Terraform engine request failed"),
         });
       }
 
+      const engineData = asEngineResponse(data);
       return res.status(200).json({
         ok: true,
-        status: data.exit_code === 0 ? "success" : "error",
+        status: engineData.exit_code === 0 ? "success" : "error",
         engine: "terraform",
-        stdout: data.stdout || "",
-        stderr: data.stderr || "",
-        exitCode: Number(data.exit_code ?? 1),
+        stdout: String(engineData.stdout || ""),
+        stderr: String(engineData.stderr || ""),
+        exitCode: Number(engineData.exit_code ?? 1),
       });
     }
 
@@ -214,7 +281,7 @@ export default async function handler(
             ok: false,
             status: "error",
             engine: "lint",
-            message: data?.detail || "Lint engine request failed",
+            message: extractDetail(data, "Lint engine request failed"),
           });
         }
 

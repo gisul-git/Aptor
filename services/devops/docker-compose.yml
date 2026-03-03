@@ -27,3 +27,4 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
     environment:
       NSJAIL_CONTAINER_NAME: nsjail-runtime
+      TERRAFORM_TIMEOUT_SECONDS: "120"

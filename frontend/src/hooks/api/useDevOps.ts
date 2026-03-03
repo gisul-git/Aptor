@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { devopsService, type DevOpsTest, type CreateDevOpsTestDto } from '@/services/devops';
+import { devopsService, type CreateDevOpsTestDto } from '@/services/devops';
 
 const QUERY_KEYS = {
   tests: ['devops', 'tests'] as const,
@@ -13,8 +13,9 @@ export const useDevOpsTests = () => {
       try {
         const response = await devopsService.listTests();
         return response.data || [];
-      } catch (error: any) {
-        console.warn('Failed to fetch DevOps tests:', error?.message || error);
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : String(error);
+        console.warn('Failed to fetch DevOps tests:', message);
         return [];
       }
     },
@@ -32,7 +33,8 @@ export const useDevOpsTest = (testId: string | undefined) => {
       const response = await devopsService.getTest(testId);
       return response.data;
     },
-    enabled: !!testId,
+    // "sample" route is local demo mode; avoid backend call to /api/v1/devops/tests/sample
+    enabled: !!testId && testId !== 'sample',
     staleTime: 5 * 60 * 1000,
   });
 };

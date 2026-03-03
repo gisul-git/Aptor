@@ -4,6 +4,7 @@ import os
 import shutil
 
 ALLOWED_ACTIONS = {"init", "plan", "apply", "destroy"}
+TERRAFORM_TIMEOUT_SECONDS = int(os.getenv("TERRAFORM_TIMEOUT_SECONDS", "120"))
 
 def run_terraform(payload):
     if payload.action not in ALLOWED_ACTIONS:
@@ -36,17 +37,25 @@ def run_terraform(payload):
         exit_code = 0
 
         for cmd in commands:
-            proc = subprocess.run(
-                cmd,
-                cwd=workdir,
-                capture_output=True,
-                text=True,
-                timeout=10,
-            )
-            stdout += proc.stdout
-            stderr += proc.stderr
-            exit_code = proc.returncode
-            if exit_code != 0:
+            try:
+                proc = subprocess.run(
+                    cmd,
+                    cwd=workdir,
+                    capture_output=True,
+                    text=True,
+                    timeout=TERRAFORM_TIMEOUT_SECONDS,
+                )
+                stdout += proc.stdout
+                stderr += proc.stderr
+                exit_code = proc.returncode
+                if exit_code != 0:
+                    break
+            except subprocess.TimeoutExpired:
+                exit_code = 124
+                stderr += (
+                    f"Command '{' '.join(cmd)}' timed out after "
+                    f"{TERRAFORM_TIMEOUT_SECONDS} seconds"
+                )
                 break
 
         return {

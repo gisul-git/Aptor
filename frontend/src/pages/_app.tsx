@@ -1,5 +1,6 @@
 import type { AppProps } from "next/app";
 import Head from "next/head";
+import Script from "next/script";
 import { SessionProvider, useSession } from "next-auth/react";
 import { useEffect, useRef } from "react";
 import { getSession } from "next-auth/react";
@@ -186,45 +187,40 @@ export default function App({ Component, pageProps }: AppProps) {
       <SessionProvider session={session}>
         <Head>
           <meta name="viewport" content="width=device-width, initial-scale=1" />
-          {/* Configure Monaco Editor to use unpkg.com instead of jsdelivr */}
-          <script
-            dangerouslySetInnerHTML={{
-              __html: `
-                (function() {
-                  if (typeof window !== 'undefined') {
-                    window.MonacoEnvironment = {
-                      getWorkerUrl: function(moduleId, label) {
-                        // Use jsdelivr CDN - better CORS support for workers
-                        var baseUrl = 'https://cdn.jsdelivr.net/npm/monaco-editor@0.55.1/esm/vs';
-                        if (label === 'json') return baseUrl + '/language/json/json.worker.js';
-                        if (label === 'css' || label === 'scss' || label === 'less') return baseUrl + '/language/css/css.worker.js';
-                        if (label === 'html' || label === 'handlebars' || label === 'razor') return baseUrl + '/language/html/html.worker.js';
-                        if (label === 'typescript' || label === 'javascript') return baseUrl + '/language/typescript/ts.worker.js';
-                        return baseUrl + '/editor/editor.worker.js';
-                      }
-                    };
-                    
-                    // Override require.config when it becomes available
-                    var checkCount = 0;
-                    var checkInterval = setInterval(function() {
-                      checkCount++;
-                      if (window.require && typeof window.require.config === 'function') {
-                        try {
-                          window.require.config({
-                            paths: { vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.55.1/min/vs' }
-                          });
-                          clearInterval(checkInterval);
-                        } catch(e) {}
-                      } else if (checkCount >= 100) {
-                        clearInterval(checkInterval);
-                      }
-                    }, 100);
-                  }
-                })();
-              `,
-            }}
-          />
         </Head>
+        <Script id="monaco-environment" strategy="afterInteractive">
+          {`
+            (function() {
+              if (typeof window !== 'undefined') {
+                window.MonacoEnvironment = {
+                  getWorkerUrl: function(moduleId, label) {
+                    var baseUrl = 'https://cdn.jsdelivr.net/npm/monaco-editor@0.55.1/esm/vs';
+                    if (label === 'json') return baseUrl + '/language/json/json.worker.js';
+                    if (label === 'css' || label === 'scss' || label === 'less') return baseUrl + '/language/css/css.worker.js';
+                    if (label === 'html' || label === 'handlebars' || label === 'razor') return baseUrl + '/language/html/html.worker.js';
+                    if (label === 'typescript' || label === 'javascript') return baseUrl + '/language/typescript/ts.worker.js';
+                    return baseUrl + '/editor/editor.worker.js';
+                  }
+                };
+
+                var checkCount = 0;
+                var checkInterval = setInterval(function() {
+                  checkCount++;
+                  if (window.require && typeof window.require.config === 'function') {
+                    try {
+                      window.require.config({
+                        paths: { vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.55.1/min/vs' }
+                      });
+                      clearInterval(checkInterval);
+                    } catch(e) {}
+                  } else if (checkCount >= 100) {
+                    clearInterval(checkInterval);
+                  }
+                }, 100);
+              }
+            })();
+          `}
+        </Script>
         <SmoothScroll />
         <SessionRefreshListener />
         <ViolationToast />
