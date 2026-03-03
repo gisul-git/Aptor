@@ -83,7 +83,7 @@ jobs:
             docker run -d \
               --name aptor-marketing \
               --network aptor_microservices-network \
-              -p 3001:3001 \
+              -p 3009:3009 \
               --restart unless-stopped \
               aptor-marketing:qa
             
@@ -104,4 +104,4 @@ jobs:
       - name: Verify Deployment
         run: |
           echo "✅ Marketing site deployment completed"
-          echo "🌐 Marketing site available at: http://${{ env.VM_HOST }}:3001"
+          echo "🌐 Marketing site available at: http://${{ env.VM_HOST }}:3009"
