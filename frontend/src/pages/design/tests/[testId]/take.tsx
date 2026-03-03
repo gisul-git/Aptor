@@ -381,7 +381,7 @@ export default function DesignAssessmentTakePage() {
           </ul>
         </div>
 
-        {/* RIGHT SIDE - Penpot Workspace (remaining width) */}
+        {/* RIGHT SIDE - Penpot Workspace or File Upload */}
         <div style={{
           flex: 1,
           background: '#1f2937'
@@ -397,6 +397,78 @@ export default function DesignAssessmentTakePage() {
               title="Penpot Design Workspace"
               allow="clipboard-read; clipboard-write"
             />
+          ) : workspace ? (
+            // File upload mode (fallback when Penpot is not available)
+            <div style={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              height: '100%',
+              padding: '2rem',
+              color: '#e5e7eb'
+            }}>
+              <div style={{
+                maxWidth: '600px',
+                textAlign: 'center',
+                background: '#374151',
+                padding: '3rem',
+                borderRadius: '1rem',
+                border: '2px dashed #6b7280'
+              }}>
+                <h3 style={{ marginBottom: '1rem', fontSize: '1.5rem' }}>Upload Your Design</h3>
+                <p style={{ marginBottom: '2rem', color: '#9ca3af' }}>
+                  Create your design using your preferred tool (Figma, Adobe XD, Sketch, etc.) and upload the file here.
+                </p>
+                <p style={{ marginBottom: '2rem', color: '#9ca3af', fontSize: '0.875rem' }}>
+                  Accepted formats: PNG, JPG, PDF, Figma links, or design tool exports
+                </p>
+                <input
+                  type="file"
+                  accept="image/*,.pdf,.fig,.sketch,.xd"
+                  style={{ display: 'none' }}
+                  id="design-upload"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) {
+                      alert(`File "${file.name}" selected. Upload functionality will be implemented.`);
+                    }
+                  }}
+                />
+                <label
+                  htmlFor="design-upload"
+                  style={{
+                    display: 'inline-block',
+                    padding: '1rem 2rem',
+                    background: '#7C3AED',
+                    color: 'white',
+                    borderRadius: '0.5rem',
+                    cursor: 'pointer',
+                    fontSize: '1rem',
+                    fontWeight: '600'
+                  }}
+                >
+                  Choose File to Upload
+                </label>
+                <p style={{ marginTop: '1.5rem', fontSize: '0.875rem', color: '#6b7280' }}>
+                  Or paste your Figma/design tool link in the text area below
+                </p>
+                <textarea
+                  placeholder="Paste your design link here (e.g., Figma, Adobe XD, etc.)"
+                  style={{
+                    width: '100%',
+                    marginTop: '1rem',
+                    padding: '0.75rem',
+                    background: '#1f2937',
+                    border: '1px solid #4b5563',
+                    borderRadius: '0.5rem',
+                    color: '#e5e7eb',
+                    fontSize: '0.875rem',
+                    minHeight: '80px'
+                  }}
+                />
+              </div>
+            </div>
           ) : (
             <div style={{
               display: 'flex',

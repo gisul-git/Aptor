@@ -121,28 +121,32 @@ class PenpotRPCService:
         try:
             session_id = str(uuid.uuid4())
             
-            # Get actual team and project IDs from authentication
-            # These will be extracted from the login response
+            # Authenticate with Penpot
             cookies = await self.authenticate()
             
-            # For now, use the admin's default team and project
-            # In production, you might want to create a dedicated team/project for assessments
+            # Use the team ID from authentication
             template_team_id = "08f5f2c6-f89a-81a5-8007-9a55a628c47c"
-            template_project_id = "08f5f2c6-f89a-81a5-8007-9a55a642c1ad"
+            
+            # Create a new project for this assessment (or use existing)
+            project_name = f"Design_Assessments_{assessment_id[:8]}"
+            template_project_id = await self._get_or_create_project(
+                template_team_id,
+                project_name,
+                cookies
+            )
+            
+            if not template_project_id:
+                # Fallback: try to list projects and use the first one
+                logger.warning("Could not create project, will try to use existing project")
+                template_project_id = await self._get_first_project(template_team_id, cookies)
+            
+            if not template_project_id:
+                raise Exception("No project available to create file")
             
             logger.info(f"Creating isolated workspace for user {user_id}")
+            logger.info(f"Using project: {template_project_id}")
             
-            if not self.transit:
-                logger.error("Transit format not available")
-                raise Exception("Transit format support required. Install transit-python.")
-            
-            # Get actual team and project IDs from authentication
-            cookies = await self.authenticate()
-            
-            # For now, use the admin's default team and project
-            # In production, you might want to create a dedicated team/project for assessments
-            template_team_id = "08f5f2c6-f89a-81a5-8007-9a55a628c47c"
-            template_project_id = "08f5f2c6-f89a-81a5-8007-9a55a642c1ad"
+            # Create new file in the project
             new_file_id = await self._create_file_with_transit(
                 template_project_id,
                 f"{question_title}_{user_id[:8]}_{session_id[:8]}",
@@ -243,6 +247,70 @@ class PenpotRPCService:
             logger.error(f"Traceback: {traceback.format_exc()}")
             return None
     
+    async def _get_first_project(
+        self,
+        team_id: str,
+        cookies: Dict[str, Any]
+    ) -> Optional[str]:
+        """Get the first project in a team"""
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                # List projects for the team
+                list_url = f"{self.api_base}/api/rpc/query/projects"
+                request_body = self.transit.encode_rpc_request({"team-id": team_id})
+                
+                response = await client.post(
+                    list_url,
+                    content=request_body,
+                    headers={"Content-Type": "application/transit+json"},
+                    cookies=cookies
+                )
+                
+                if response.status_code == 200:
+                    projects = self.transit.decode_rpc_response(response.content)
+                    if projects and len(projects) > 0:
+                        first_project_id = self.transit.extract_id(projects[0], "id")
+                        logger.info(f"Found existing project: {first_project_id}")
+                        return first_project_id
+                
+                return None
+        except Exception as e:
+            logger.error(f"Error listing projects: {e}")
+            return None
+    
+    async def _get_or_create_project(
+        self,
+        team_id: str,
+        project_name: str,
+        cookies: Dict[str, Any]
+    ) -> Optional[str]:
+        """Get or create a project for assessments"""
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                # Try to create project
+                create_url = f"{self.api_base}/api/rpc/command/create-project"
+                request_body = self.transit.encode_rpc_request({
+                    "team-id": team_id,
+                    "name": project_name
+                })
+                
+                response = await client.post(
+                    create_url,
+                    content=request_body,
+                    headers={"Content-Type": "application/transit+json"},
+                    cookies=cookies
+                )
+                
+                if response.status_code == 200:
+                    project_data = self.transit.decode_rpc_response(response.content)
+                    project_id = self.transit.extract_id(project_data, "id")
+                    logger.info(f"Created new project: {project_id}")
+                    return project_id
+                
+                return None
+        except Exception as e:
+            logger.error(f"Error creating project: {e}")
+            return None
     
     async def get_file_data(self, file_id: str) -> Dict[str, Any]:
         """Get file data for evaluation"""

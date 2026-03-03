@@ -267,10 +267,20 @@ services:
       - GEMINI_API_KEY=${GEMINI_API_KEY}
       - REDIS_HOST=redis
       - REDIS_PORT=6379
+      - FRONTEND_URL=http://localhost:3002
+      - EMAIL_PROVIDER=${EMAIL_PROVIDER:-sendgrid}
+      - SENDGRID_API_KEY=${SENDGRID_API_KEY}
+      - SENDGRID_FROM_EMAIL=${SENDGRID_FROM_EMAIL}
+      - SENDGRID_FROM_NAME=${SENDGRID_FROM_NAME:-AI Assessment Platform}
+      - PENPOT_URL=http://localhost:9001
+      - PENPOT_API_URL=http://aptor-penpot-backend-1:6060
+      - PENPOT_ADMIN_EMAIL=admin@penpot.app
+      - PENPOT_ADMIN_PASSWORD=12312312
     depends_on:
       - redis
     networks:
       - microservices-network
+      - penpot
     restart: unless-stopped
 
   # Proctoring Service

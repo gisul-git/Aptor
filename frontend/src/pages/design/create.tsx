@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/router";
 import { GetServerSideProps } from "next";
 import { requireAuth } from "../../lib/auth";
+import { useSession } from "next-auth/react";
 
 interface Question {
   id: string;
@@ -15,6 +16,7 @@ interface Question {
 
 export default function CreateDesignCompetencyPage() {
   const router = useRouter();
+  const { data: session } = useSession();
   const [loading, setLoading] = useState(false);
   const [aiProctoringEnabled, setAiProctoringEnabled] = useState(true);
   const [faceMismatchEnabled, setFaceMismatchEnabled] = useState(false);
@@ -130,6 +132,7 @@ export default function CreateDesignCompetencyPage() {
       const payload: any = {
         ...formDataWithoutEndTime,
         start_time: startTimeUTC,
+        created_by: (session?.user as any)?.id || "system",
         proctoringSettings: { 
           aiProctoringEnabled,
           faceMismatchEnabled: aiProctoringEnabled ? faceMismatchEnabled : false,

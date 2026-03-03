@@ -21,8 +21,7 @@ from app.models.design import (
 )
 from app.services.ai_question_generator import ai_question_generator
 from app.services.penpot_rpc import penpot_rpc_service as penpot_service
-# Evaluation engine temporarily disabled
-# from app.services.evaluation_engine import evaluation_engine
+from app.services.evaluation_engine import evaluation_engine
 from app.repositories.design_repository import design_repository
 
 logger = logging.getLogger(__name__)
@@ -130,7 +129,7 @@ async def generate_question(request: GenerateQuestionRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/questions", response_model=List[DesignQuestionModel])
+@router.get("/questions")
 async def get_questions(
     role: Optional[DesignRole] = None,
     difficulty: Optional[DifficultyLevel] = None,
@@ -151,14 +150,28 @@ async def get_questions(
             skip=skip
         )
         
-        return questions
+        # Transform to dict and add id field for frontend compatibility
+        result = []
+        for q in questions:
+            try:
+                q_dict = q.dict()
+            except:
+                q_dict = q.model_dump()
+            
+            logger.info(f"Question dict keys: {q_dict.keys()}")
+            if "_id" in q_dict:
+                q_dict["id"] = q_dict["_id"]
+                logger.info(f"Added id field: {q_dict['id']}")
+            result.append(q_dict)
+        
+        return result
         
     except Exception as e:
         logger.error(f"Failed to get questions: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/questions/{question_id}", response_model=DesignQuestionModel)
+@router.get("/questions/{question_id}")
 async def get_question(question_id: str):
     """Get specific design question"""
     try:
@@ -169,7 +182,12 @@ async def get_question(question_id: str):
         if not question:
             raise HTTPException(status_code=404, detail="Question not found")
         
-        return question
+        # Transform to dict and add id field for frontend compatibility
+        q_dict = question.dict() if hasattr(question, 'dict') else question.model_dump()
+        if "_id" in q_dict:
+            q_dict["id"] = q_dict["_id"]
+        
+        return q_dict
         
     except HTTPException:
         raise
@@ -377,6 +395,12 @@ async def get_tests(
             {"is_active": True}
         ).sort("created_at", -1).skip(skip).limit(limit).to_list(length=None)
         
+        # Transform _id to id for frontend compatibility
+        for test in tests:
+            if "_id" in test:
+                test["id"] = test["_id"]
+        
+        # Return array directly for frontend compatibility
         return tests
         
     except Exception as e:
@@ -396,6 +420,10 @@ async def get_test(test_id: str):
         test = await db.design_tests.find_one({"_id": test_id})
         if not test:
             raise HTTPException(status_code=404, detail="Test not found")
+        
+        # Transform _id to id for frontend compatibility
+        if "_id" in test:
+            test["id"] = test["_id"]
         
         return test
         
@@ -481,8 +509,8 @@ async def create_workspace(request: CreateSessionRequest):
             "session_id": session_id,
             "workspace_url": session.workspace_url,
             "session_token": session.session_token,
-            "file_id": session.file_id,
-            "project_id": session.project_id,
+            "file_id": session.file_id or "",
+            "project_id": session.project_id or "",
             "question": question.model_dump(),
             "time_limit_minutes": question.time_limit_minutes
         }
@@ -491,6 +519,8 @@ async def create_workspace(request: CreateSessionRequest):
         raise
     except Exception as e:
         logger.error(f"Failed to create workspace: {e}")
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -626,10 +656,9 @@ async def submit_design(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-from app.core.evaluation_engine import DesignEvaluationEngine
-
-# Initialize evaluation engine
-evaluation_engine = DesignEvaluationEngine()
+# Evaluation engine temporarily disabled - uncomment when ready
+# from app.core.evaluation_engine import DesignEvaluationEngine
+# evaluation_engine = DesignEvaluationEngine()
 
 
 async def evaluate_submission_background(
@@ -1313,4 +1342,424 @@ async def remove_candidate(test_id: str, candidate_id: str):
         raise
     except Exception as e:
         logger.error(f"Failed to remove candidate: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+
+# Email Sending Endpoints
+class SendInvitationRequest(BaseModel):
+    email: str
+
+
+@router.post("/tests/{test_id}/send-invitation")
+async def send_invitation(test_id: str, request: SendInvitationRequest):
+    """Send invitation email to a single candidate"""
+    try:
+        if design_repository.db is None:
+            await design_repository.initialize()
+        
+        db = design_repository.db
+        
+        email = request.email
+        
+        # Get test
+        test = await db.design_tests.find_one({"_id": test_id})
+        if not test:
+            raise HTTPException(status_code=404, detail="Test not found")
+        
+        if not test.get("is_published", False):
+            raise HTTPException(status_code=400, detail="Test must be published before sending invitations")
+        
+        # Get candidate
+        candidate = await db.design_candidates.find_one({
+            "test_id": test_id,
+            "email": email
+        })
+        
+        if not candidate:
+            raise HTTPException(status_code=404, detail="Candidate not found for this test")
+        
+        # Ensure test token exists
+        test_token = test.get("test_token")
+        if not test_token:
+            import secrets
+            test_token = secrets.token_urlsafe(32)
+            await db.design_tests.update_one(
+                {"_id": test_id},
+                {"$set": {"test_token": test_token}}
+            )
+        
+        # Build test URL
+        import os
+        frontend_url = os.getenv("FRONTEND_URL", "http://localhost:3002")
+        test_link = f"{frontend_url}/design/tests/{test_id}/take?token={test_token}"
+        
+        # Get candidate details
+        candidate_name = candidate.get("name", "Candidate")
+        candidate_email = candidate.get("email")
+        
+        # Add email and name to URL
+        import urllib.parse
+        encoded_email = urllib.parse.quote(candidate_email)
+        encoded_name = urllib.parse.quote(candidate_name)
+        exam_url_with_params = f"{test_link}&email={encoded_email}&name={encoded_name}"
+        
+        # Get test details
+        test_title = test.get("title", "Design Assessment")
+        test_description = test.get("description", "")
+        duration_minutes = test.get("duration_minutes", 60)
+        
+        # Format duration
+        duration_text = ""
+        if duration_minutes:
+            hours = duration_minutes // 60
+            minutes = duration_minutes % 60
+            if hours > 0:
+                duration_text = f"{hours} hour{'s' if hours > 1 else ''}"
+                if minutes > 0:
+                    duration_text += f" {minutes} minute{'s' if minutes > 1 else ''}"
+            else:
+                duration_text = f"{minutes} minute{'s' if minutes > 1 else ''}"
+        
+        # Build email HTML
+        html_content = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="UTF-8">
+            <style>
+                body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}
+                .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
+                .header {{ text-align: center; margin-bottom: 30px; }}
+                .content {{ background-color: #F9F5FF; padding: 20px; border-radius: 8px; margin-bottom: 20px; border: 2px solid #7C3AED; }}
+                .button {{ display: inline-block; padding: 12px 24px; background-color: #7C3AED; color: #ffffff; text-decoration: none; border-radius: 6px; margin: 20px 0; }}
+                .footer {{ text-align: center; color: #64748b; font-size: 0.875rem; margin-top: 30px; }}
+                .candidate-info {{ background-color: #ffffff; padding: 15px; border-radius: 6px; margin: 15px 0; border-left: 4px solid #7C3AED; }}
+                .assessment-title {{ font-size: 1.5rem; font-weight: bold; color: #7C3AED; margin: 15px 0; text-align: center; }}
+                .assessment-details {{ background-color: #ffffff; padding: 15px; border-radius: 6px; margin: 15px 0; border-left: 4px solid #7C3AED; }}
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <div class="header">
+                    <h1 style="color: #7C3AED;">Design Assessment Invitation</h1>
+                </div>
+                
+                <div class="content">
+                    <div class="candidate-info">
+                        <p><strong>Hello {candidate_name},</strong></p>
+                    </div>
+                    
+                    <p>You have been invited to take a Design competency assessment.</p>
+                    
+                    <div class="assessment-title">{test_title}</div>
+                    
+                    {f'<p style="text-align: center; color: #64748b;">{test_description}</p>' if test_description else ''}
+                    
+                    <div class="assessment-details">
+                        <p><strong>Assessment Details:</strong></p>
+                        <ul>
+                            <li><strong>Duration:</strong> {duration_text}</li>
+                            <li><strong>Type:</strong> Design Competency</li>
+                        </ul>
+                    </div>
+                    
+                    <div style="text-align: center;">
+                        <a href="{exam_url_with_params}" class="button">Start Assessment</a>
+                    </div>
+                    
+                    <p style="font-size: 0.875rem; color: #64748b; margin-top: 20px;">
+                        If the button doesn't work, copy and paste this link into your browser:<br>
+                        <a href="{exam_url_with_params}" style="color: #7C3AED; word-break: break-all;">{exam_url_with_params}</a>
+                    </p>
+                </div>
+                
+                <div class="footer">
+                    <p>This is an automated email from AAPtor Assessment Platform.</p>
+                    <p>Please do not reply to this email.</p>
+                </div>
+            </div>
+        </body>
+        </html>
+        """
+        
+        # Send email using SendGrid
+        import os
+        sendgrid_api_key = os.getenv("SENDGRID_API_KEY")
+        sendgrid_from_email = os.getenv("SENDGRID_FROM_EMAIL", "noreply@aaptor.com")
+        
+        if not sendgrid_api_key:
+            logger.warning("SendGrid API key not configured, skipping email send")
+            # Update candidate as invited anyway
+            await db.design_candidates.update_one(
+                {"_id": candidate["_id"]},
+                {"$set": {"invited": True, "invited_at": datetime.utcnow()}}
+            )
+            return {"message": "Email service not configured, but candidate marked as invited"}
+        
+        from sendgrid import SendGridAPIClient
+        from sendgrid.helpers.mail import Mail
+        
+        message = Mail(
+            from_email=sendgrid_from_email,
+            to_emails=candidate_email,
+            subject=f"Invitation: {test_title}",
+            html_content=html_content
+        )
+        
+        sg = SendGridAPIClient(sendgrid_api_key)
+        response = sg.send(message)
+        
+        # Update candidate as invited
+        await db.design_candidates.update_one(
+            {"_id": candidate["_id"]},
+            {"$set": {"invited": True, "invited_at": datetime.utcnow()}}
+        )
+        
+        logger.info(f"Sent invitation email to {candidate_email} for test {test_id}")
+        
+        return {
+            "message": "Invitation sent successfully",
+            "email": candidate_email,
+            "status_code": response.status_code
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to send invitation: {e}")
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/tests/{test_id}/send-invitations-to-all")
+async def send_invitations_to_all(test_id: str):
+    """Send invitation emails to all candidates for a test"""
+    try:
+        if design_repository.db is None:
+            await design_repository.initialize()
+        
+        db = design_repository.db
+        
+        # Get test
+        test = await db.design_tests.find_one({"_id": test_id})
+        if not test:
+            raise HTTPException(status_code=404, detail="Test not found")
+        
+        if not test.get("is_published", False):
+            raise HTTPException(status_code=400, detail="Test must be published before sending invitations")
+        
+        # Get all candidates
+        candidates = await db.design_candidates.find({"test_id": test_id}).to_list(length=None)
+        
+        if not candidates:
+            return {
+                "message": "No candidates to send invitations to",
+                "success_count": 0,
+                "failed_count": 0
+            }
+        
+        # Ensure test token exists
+        test_token = test.get("test_token")
+        if not test_token:
+            import secrets
+            test_token = secrets.token_urlsafe(32)
+            await db.design_tests.update_one(
+                {"_id": test_id},
+                {"$set": {"test_token": test_token}}
+            )
+        
+        # Build test URL
+        import os
+        frontend_url = os.getenv("FRONTEND_URL", "http://localhost:3002")
+        test_link = f"{frontend_url}/design/tests/{test_id}/take?token={test_token}"
+        
+        # Get test details
+        test_title = test.get("title", "Design Assessment")
+        test_description = test.get("description", "")
+        duration_minutes = test.get("duration_minutes", 60)
+        
+        # Format duration
+        duration_text = ""
+        if duration_minutes:
+            hours = duration_minutes // 60
+            minutes = duration_minutes % 60
+            if hours > 0:
+                duration_text = f"{hours} hour{'s' if hours > 1 else ''}"
+                if minutes > 0:
+                    duration_text += f" {minutes} minute{'s' if minutes > 1 else ''}"
+            else:
+                duration_text = f"{minutes} minute{'s' if minutes > 1 else ''}"
+        
+        # Check SendGrid configuration
+        sendgrid_api_key = os.getenv("SENDGRID_API_KEY")
+        sendgrid_from_email = os.getenv("SENDGRID_FROM_EMAIL", "noreply@aaptor.com")
+        
+        if not sendgrid_api_key:
+            logger.warning("SendGrid API key not configured")
+            # Mark all as invited anyway
+            await db.design_candidates.update_many(
+                {"test_id": test_id},
+                {"$set": {"invited": True, "invited_at": datetime.utcnow()}}
+            )
+            return {
+                "message": "Email service not configured, but all candidates marked as invited",
+                "success_count": len(candidates),
+                "failed_count": 0
+            }
+        
+        from sendgrid import SendGridAPIClient
+        from sendgrid.helpers.mail import Mail
+        import urllib.parse
+        
+        sg = SendGridAPIClient(sendgrid_api_key)
+        
+        success_count = 0
+        failed_count = 0
+        failed_emails = []
+        
+        for candidate in candidates:
+            try:
+                candidate_name = candidate.get("name", "Candidate")
+                candidate_email = candidate.get("email")
+                
+                # Add email and name to URL
+                encoded_email = urllib.parse.quote(candidate_email)
+                encoded_name = urllib.parse.quote(candidate_name)
+                exam_url_with_params = f"{test_link}&email={encoded_email}&name={encoded_name}"
+                
+                # Build email HTML
+                html_content = f"""
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <meta charset="UTF-8">
+                    <style>
+                        body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}
+                        .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
+                        .header {{ text-align: center; margin-bottom: 30px; }}
+                        .content {{ background-color: #F9F5FF; padding: 20px; border-radius: 8px; margin-bottom: 20px; border: 2px solid #7C3AED; }}
+                        .button {{ display: inline-block; padding: 12px 24px; background-color: #7C3AED; color: #ffffff; text-decoration: none; border-radius: 6px; margin: 20px 0; }}
+                        .footer {{ text-align: center; color: #64748b; font-size: 0.875rem; margin-top: 30px; }}
+                        .candidate-info {{ background-color: #ffffff; padding: 15px; border-radius: 6px; margin: 15px 0; border-left: 4px solid #7C3AED; }}
+                        .assessment-title {{ font-size: 1.5rem; font-weight: bold; color: #7C3AED; margin: 15px 0; text-align: center; }}
+                        .assessment-details {{ background-color: #ffffff; padding: 15px; border-radius: 6px; margin: 15px 0; border-left: 4px solid #7C3AED; }}
+                    </style>
+                </head>
+                <body>
+                    <div class="container">
+                        <div class="header">
+                            <h1 style="color: #7C3AED;">Design Assessment Invitation</h1>
+                        </div>
+                        
+                        <div class="content">
+                            <div class="candidate-info">
+                                <p><strong>Hello {candidate_name},</strong></p>
+                            </div>
+                            
+                            <p>You have been invited to take a Design competency assessment.</p>
+                            
+                            <div class="assessment-title">{test_title}</div>
+                            
+                            {f'<p style="text-align: center; color: #64748b;">{test_description}</p>' if test_description else ''}
+                            
+                            <div class="assessment-details">
+                                <p><strong>Assessment Details:</strong></p>
+                                <ul>
+                                    <li><strong>Duration:</strong> {duration_text}</li>
+                                    <li><strong>Type:</strong> Design Competency</li>
+                                </ul>
+                            </div>
+                            
+                            <div style="text-align: center;">
+                                <a href="{exam_url_with_params}" class="button">Start Assessment</a>
+                            </div>
+                            
+                            <p style="font-size: 0.875rem; color: #64748b; margin-top: 20px;">
+                                If the button doesn't work, copy and paste this link into your browser:<br>
+                                <a href="{exam_url_with_params}" style="color: #7C3AED; word-break: break-all;">{exam_url_with_params}</a>
+                            </p>
+                        </div>
+                        
+                        <div class="footer">
+                            <p>This is an automated email from AAPtor Assessment Platform.</p>
+                            <p>Please do not reply to this email.</p>
+                        </div>
+                    </div>
+                </body>
+                </html>
+                """
+                
+                message = Mail(
+                    from_email=sendgrid_from_email,
+                    to_emails=candidate_email,
+                    subject=f"Invitation: {test_title}",
+                    html_content=html_content
+                )
+                
+                response = sg.send(message)
+                
+                # Update candidate as invited
+                await db.design_candidates.update_one(
+                    {"_id": candidate["_id"]},
+                    {"$set": {"invited": True, "invited_at": datetime.utcnow()}}
+                )
+                
+                success_count += 1
+                logger.info(f"Sent invitation to {candidate_email}")
+                
+            except Exception as e:
+                failed_count += 1
+                failed_emails.append(candidate.get("email"))
+                logger.error(f"Failed to send invitation to {candidate.get('email')}: {e}")
+        
+        return {
+            "message": f"Sent {success_count} invitations successfully",
+            "success_count": success_count,
+            "failed_count": failed_count,
+            "failed": failed_emails
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to send invitations: {e}")
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+
+@router.patch("/questions/{question_id}/publish")
+async def toggle_question_publish(question_id: str):
+    """Toggle question publish status"""
+    try:
+        if design_repository.db is None:
+            await design_repository.initialize()
+        
+        db = design_repository.db
+        
+        # Get current question
+        question = await db.design_questions.find_one({"_id": question_id})
+        if not question:
+            raise HTTPException(status_code=404, detail="Question not found")
+        
+        # Toggle publish status
+        new_status = not question.get("is_published", False)
+        
+        result = await db.design_questions.update_one(
+            {"_id": question_id},
+            {"$set": {"is_published": new_status, "updated_at": datetime.utcnow()}}
+        )
+        
+        if result.matched_count == 0:
+            raise HTTPException(status_code=404, detail="Question not found")
+        
+        return {"message": "Question publish status updated", "is_published": new_status}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to update publish status: {e}")
         raise HTTPException(status_code=500, detail=str(e))

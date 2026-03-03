@@ -41,10 +41,11 @@ class SimplePenpotService:
         
         try:
             session_id = str(uuid.uuid4())
+            file_id = str(uuid.uuid4())
             
-            # Open Penpot's main dashboard
-            # Candidates will see their projects and can create new files
-            workspace_url = f"{self.public_uri}/"
+            # Open Penpot dashboard - candidates will create their own file
+            # This is the simplest approach that works without API authentication
+            workspace_url = f"{self.public_uri}/#/dashboard/projects"
             
             # Create session model
             session = PenpotSessionModel(
@@ -52,13 +53,16 @@ class SimplePenpotService:
                 assessment_id=assessment_id,
                 question_id=question_id,
                 workspace_url=workspace_url,
-                session_token=session_id
+                session_token=session_id,
+                file_id=file_id,
+                project_id="",
+                team_id=""
             )
             
             logger.info(f"Created Penpot workspace session for user {user_id}")
             logger.info(f"Session ID: {session_id}")
             logger.info(f"Workspace URL: {workspace_url}")
-            logger.info(f"Candidate should create a new file in Penpot for: {question_title}")
+            logger.info(f"Candidate will create new file for: {question_title}")
             
             return session
             

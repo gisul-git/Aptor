@@ -11,10 +11,16 @@ export const useDesignTests = () => {
     queryKey: QUERY_KEYS.tests,
     queryFn: async () => {
       try {
+        console.log('[useDesignTests] Fetching design tests...');
         const response = await designService.listTests();
-        return response.data || [];
+        console.log('[useDesignTests] Response:', response);
+        const data = response.data || response;
+        console.log('[useDesignTests] Data:', data);
+        const result = Array.isArray(data) ? data : [];
+        console.log('[useDesignTests] Final result:', result);
+        return result;
       } catch (error: any) {
-        console.warn('Failed to fetch Design tests:', error?.message || error);
+        console.error('[useDesignTests] Error fetching Design tests:', error);
         return [];
       }
     },
@@ -99,4 +105,3 @@ export const useCloneDesignTest = () => {
     },
   });
 };
-

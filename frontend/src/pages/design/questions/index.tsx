@@ -79,10 +79,14 @@ export default function DesignQuestionsListPage() {
       
       if (response.ok) {
         await fetchQuestions()
+        alert('Publish status updated successfully!')
       } else {
+        const error = await response.text()
+        console.error('Publish error:', error)
         alert('Failed to update publish status')
       }
     } catch (error) {
+      console.error('Publish error:', error)
       alert('Failed to update publish status')
     }
   }

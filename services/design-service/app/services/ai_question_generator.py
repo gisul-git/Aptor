@@ -673,15 +673,9 @@ Generate the question now."""
                 ])
             
             template = {
-                "title": f"{topic} {task_name.title()} - {role_name} Challenge",
+                "title": f"{topic.title()} {task_name.title()} - {role_name} Challenge",
                 "description": full_description,
                 "constraints": constraints,
-                "constraints": [
-                    "Follow modern design principles and best practices",
-                    "Ensure responsive design for target platform",
-                    "Maintain accessibility compliance (WCAG 2.1)",
-                    "Use consistent visual language and design system thinking"
-                ],
                 "deliverables": [
                     "High-fidelity design screens",
                     "Design specifications and annotations",

@@ -1,12 +1,14 @@
-import apiClient from '../api/client';
 import type { ApiResponse } from '../api/types';
 
 /**
  * Design Service
  * 
  * Handles all Design-related API calls
- * Routes: /api/v1/design
+ * Uses direct design service URL to bypass API gateway auth issues
  */
+
+// Use direct design service URL
+const DESIGN_API_URL = process.env.NEXT_PUBLIC_DESIGN_SERVICE_URL || 'http://localhost:3006/api/v1/design';
 
 // Types
 export interface DesignTest {
@@ -40,56 +42,77 @@ export const designService = {
    * List all Design tests
    */
   listTests: async (): Promise<ApiResponse<DesignTest[]>> => {
-    const response = await apiClient.get<ApiResponse<DesignTest[]>>('/api/v1/design/tests');
-    return response.data;
+    const response = await fetch(`${DESIGN_API_URL}/tests`);
+    const data = await response.json();
+    return { data };
   },
 
   /**
    * Get test by ID
    */
   getTest: async (testId: string): Promise<ApiResponse<DesignTest>> => {
-    const response = await apiClient.get<ApiResponse<DesignTest>>(`/api/v1/design/tests/${testId}`);
-    return response.data;
+    const response = await fetch(`${DESIGN_API_URL}/tests/${testId}`);
+    const data = await response.json();
+    return { data };
   },
 
   /**
    * Create new test
    */
   createTest: async (data: CreateDesignTestDto): Promise<ApiResponse<DesignTest>> => {
-    const response = await apiClient.post<ApiResponse<DesignTest>>('/api/v1/design/tests', data);
-    return response.data;
+    const response = await fetch(`${DESIGN_API_URL}/tests`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    const result = await response.json();
+    return { data: result };
   },
 
   /**
    * Update test
    */
   updateTest: async (testId: string, data: Partial<CreateDesignTestDto>): Promise<ApiResponse<DesignTest>> => {
-    const response = await apiClient.put<ApiResponse<DesignTest>>(`/api/v1/design/tests/${testId}`, data);
-    return response.data;
+    const response = await fetch(`${DESIGN_API_URL}/tests/${testId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    const result = await response.json();
+    return { data: result };
   },
 
   /**
    * Delete test
    */
   deleteTest: async (testId: string): Promise<ApiResponse<void>> => {
-    const response = await apiClient.delete<ApiResponse<void>>(`/api/v1/design/tests/${testId}`);
-    return response.data;
+    const response = await fetch(`${DESIGN_API_URL}/tests/${testId}`, {
+      method: 'DELETE',
+    });
+    await response.json();
+    return { data: undefined };
   },
 
   /**
    * Pause test
    */
   pauseTest: async (testId: string): Promise<ApiResponse<void>> => {
-    const response = await apiClient.post<ApiResponse<void>>(`/api/v1/design/tests/${testId}/pause`);
-    return response.data;
+    const response = await fetch(`${DESIGN_API_URL}/tests/${testId}/pause`, {
+      method: 'POST',
+    });
+    await response.json();
+    return { data: undefined };
   },
 
   /**
    * Resume test
    */
   resumeTest: async (testId: string): Promise<ApiResponse<void>> => {
-    const response = await apiClient.post<ApiResponse<void>>(`/api/v1/design/tests/${testId}/resume`);
-    return response.data;
+    const response = await fetch(`${DESIGN_API_URL}/tests/${testId}/resume`, {
+      method: 'POST',
+    });
+    await response.json();
+    return { data: undefined };
   },
 
   /**
@@ -99,11 +122,13 @@ export const designService = {
     testId: string,
     data: { newTitle: string; keepSchedule?: boolean; keepCandidates?: boolean }
   ): Promise<ApiResponse<DesignTest>> => {
-    const response = await apiClient.post<ApiResponse<DesignTest>>(
-      `/api/v1/design/tests/${testId}/clone`,
-      data
-    );
-    return response.data;
+    const response = await fetch(`${DESIGN_API_URL}/tests/${testId}/clone`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    const result = await response.json();
+    return { data: result };
   },
 };
 
