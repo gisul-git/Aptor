@@ -9,7 +9,10 @@ interface EvaluationFeedback {
   improvements?: string[]
   rule_based?: {
     score: number
-    details: {
+    scores?: Record<string, number>
+    feedback?: Record<string, string>
+    overall_summary?: string
+    details?: {
       element_count?: { score: number; feedback: string }
       color_usage?: { score: number; feedback: string }
       layout_structure?: { score: number; feedback: string }
@@ -18,9 +21,16 @@ interface EvaluationFeedback {
   }
   ai_based?: {
     score: number
-    feedback: string
+    feedback?: string
+    overall?: string
     strengths?: string[]
     improvements?: string[]
+  }
+  question_context?: {
+    title: string
+    role: string
+    difficulty: string
+    task_type: string
   }
   final_score?: number
   weights?: any
@@ -34,7 +44,7 @@ interface Submission {
   feedback: EvaluationFeedback
 }
 
-export default function DesignResultsPage() {
+export default function
   const router = useRouter()
   const { submissionId } = router.query
   const [submission, setSubmission] = useState<Submission | null>(null)
@@ -69,7 +79,7 @@ export default function DesignResultsPage() {
         setLoading(false)
       }
     } catch (err) {
-      console.error('Failed to fetch results:', err)
+   iled to fetch results:', err)
       setError('Failed to fetch evaluation results')
       setLoading(false)
     }
@@ -111,7 +121,7 @@ export default function DesignResultsPage() {
         <div className="container" style={{ paddingTop: "2rem", paddingBottom: "2rem" }}>
           <div style={{ textAlign: "center", padding: "3rem" }}>
             <div style={{ fontSize: "3rem", marginBottom: "1rem" }}>❌</div>
-            <h2 style={{ fontSize: "1.5rem", fontWeight: 600, marginBottom: "0.5rem", color: "#DC2626" }}>
+            <h2 style={{ fo }}>
               Error Loading Results
             </h2>
             <p style={{ color: "#64748b", marginBottom: "1.5rem" }}>
@@ -176,7 +186,7 @@ export default function DesignResultsPage() {
                   }}>
                     {Math.round(submission.final_score)}
                   </div>
-                  <div style={{ fontSize: "0.875rem", color: "#64748b" }}>out of 100</div>
+                  <div style={{ fontr: "#64748b" }}>out of 100</div>
                 </div>
 
                 <div style={{ 
@@ -188,7 +198,7 @@ export default function DesignResultsPage() {
                   <div style={{ fontSize: "0.875rem", color: "#7C3AED", fontWeight: 600, marginBottom: "0.5rem" }}>
                     Rule-Based Score
                   </div>
-                  <div style={{ fontSize: "2rem", fontWeight: 700, color: "#1a1625" }}>
+                  <div style={{ fontSi 700, color: "#1a1625" }}>
                     {Math.round(submission.rule_based_score)}
                   </div>
                   <div style={{ fontSize: "0.875rem", color: "#64748b" }}>Technical metrics</div>
@@ -200,7 +210,7 @@ export default function DesignResultsPage() {
                   borderRadius: "0.5rem", 
                   textAlign: "center" 
                 }}>
-                  <div style={{ fontSize: "0.875rem", color: "#7C3AED", fontWeight: 600, marginBottom: "0.5rem" }}>
+                  <div style={{ fontSize:r: "#7C3AED", fontWeight: 600, marginBottom: "0.5rem" }}>
                     AI-Based Score
                   </div>
                   <div style={{ fontSize: "2rem", fontWeight: 700, color: "#1a1625" }}>
@@ -210,152 +220,182 @@ export default function DesignResultsPage() {
                 </div>
               </div>
 
+              {/* Overall Summary */}
+              {submission.feedback?.rule_baoverall_summary && (
+                <div style={{ marginBottom: "2rem" }}>
+                  <div style={{ 
+                    padding: "1.5rem", 
+                    border: "2px solid #7C3AED", 
+                    borderRadius: "0.5rem",
+                    backgroundColor: "#F9F5FF"
+                  }}>
+                    <h2 style={{ fontSize: "1.25rem", fontWeight: 600, marginBottom: "1rem", color: "#7C3AED" }}>
+                      📝 Overall Feedback
+                    </h2>
+                    <p style={{ fontSize: "1rem", color: "#1a1625", lineHeight: "1.6" }}>
+                      {submission.feedback.rule_based.overall_summary}
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* Question Context */}
+              {submission.feedback?.question_context && (
+                <div style={{ marginBottom: "2rem" }}>
+                  <div style={{ 
+                    padding: "1rem", 
+                    border: "1px solid #E8B4FA", 
+                    borderRadius: "0.5rem",
+                    backgroundColor: "#F9F5FF"
+                  }}>
+                    <h3 style={{ fontSize: "1rem", fontWeight: 600, marginBottom: "0.5rem", color: "#7C3AED" }}>
+                      📋 Challenge Details
+                    </h3>
+                    <div style={{ fontSize: "0.875rem", color: "#64748b" }}>
+                      <p><strong>Title:</strong> {submission.feedback.question_context.title}</p>
+                      <p><strong>Role:</strong> {submision.feedback.question_context.role?.replace(/_/g, ' ')}</p>
+                      <p><strong>Difficulty:</strong> {submission.feedback.question_context.difficulty}</p>
+                      <p><strong>Task Type:</strong> {submission.feedback.question_context.task_type?.replace(/_/g, ' ')}</p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* Rule-Based Feedback */}
-              {submission.feedback?.rule_based?.details && Object.keys(submission.feedback.rule_based.details).length > 0 && (
+              {submiseedback.rule_based.feedback).length > 0 && (
                 <div style={{ marginBottom: "2rem" }}>
                   <h2 style={{ fontSize: "1.5rem", fontWeight: 600, marginBottom: "1rem", color: "#7C3AED" }}>
                     📊 Technical Analysis
                   </h2>
                   <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
-                    {Object.entries(submission.feedback.rule_based.details).map(([key, detail]: [string, any]) => (
-                      <div 
-                        key={key}
-                        style={{ 
-                          padding: "1rem", 
-                          border: "1px solid #E8B4FA", 
-                          borderRadius: "0.5rem",
-                          backgroundColor: "#F9F5FF"
-                        }}
-                      >
-                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.5rem" }}>
-                          <h3 style={{ fontSize: "1rem", fontWeight: 600, color: "#1a1625", textTransform: "capitalize" }}>
-                            {key.replace(/_/g, ' ')}
-                          </h3>
-                          <span style={{
-                            padding: "0.25rem 0.75rem",
-                            borderRadius: "0.375rem",
-                            fontSize: "0.875rem",
-                            fontWeight: 600,
-                            color: getScoreColor(detail.score),
-                            backgroundColor: getScoreBg(detail.score),
-                          }}>
-                            {Math.round(detail.score)}/100
-                          </span>
+                    {Object.entries(submission.feedback.rule_based.feedback).map(([key, feedbackText]: [string, any]) => {
+ score = submission.feedback?.rule_based?.scores?.[key] || 0;
+                      return (
+                        <div 
+                          key={key}
+                          style={{ 
+                            padding: "1rem", 
+                            border: "1px solid #E8B4FA", 
+                            borderRadius: "0.5rem",
+                            backgroundColor: "#F9F5FF"
+                          }}
+                        >
+                          <div style={{ dislex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.5rem" }}>
+                            <h3 style={{ fontSize: "1rem", fontWeight: 600, color: "#1a1625", textTransform: "capitalize" }}>
+                              {key.replace(/_/g, ' ')}
+                            </h3>
+                            <span style={{
+                              padding: "0.25rem 0.75rem",
+                              borderRadius: "0.375rem",
+                              fontSize: "0.875rem",
+                              fontWeight: 600,
+                              color: getScoreColor(score * 5),
+                              backgroundColor: getScoreBg(score * 5),
+                            }}>
+                              {Math.round(score)}/20
+                            </span>
+                          </div>
+                          <p style={{ fontSize: "0.875rem", color: "#64748b" }}>
+                            {feedbackText}
+                          </p>
                         </div>
-                        <p style={{ fontSize: "0.875rem", color: "#64748b" }}>
-                          {detail.feedback}
-                        </p>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               )}
 
-              {/* Overall Feedback */}
-              {submission.feedback?.overall && (
+              {/* AI-Based Feedback */}
+              {submission.feedback?.ai_based && (
                 <div style={{ marginBottom: "2rem" }}>
                   <h2 style={{ fontSize: "1.5rem", fontWeight: 600, marginBottom: "1rem", color: "#7C3AED" }}>
-                    📝 Overall Feedback
+                    🤖 AI Design Analysis
                   </h2>
+                  
+                  {submission.feedback.ai_based.overall && (
                   <div style={{ 
-                    padding: "1.5rem", 
-                    border: "1px solid #E8B4FA", 
-                    borderRadius: "0.5rem",
-                    backgroundColor: "#F9F5FF"
-                  }}>
-                    <p style={{ fontSize: "1rem", color: "#1a1625", lineHeight: "1.6" }}>
-                      {submission.feedback.overall}
-                    </p>
-                  </div>
+                      padding: "1rem", 
+                      border: "1px solid #E8B4FA", 
+                      borderRadius: "0.5rem",
+                      backgroundColor: "#F9F5FF",
+                      marginBottom: "1rem"
+                    }}>
+                      <p style={{ fontSize: "0.875rem", color: "#1a1625" }}>
+                        {submission.feedback.ai_based.overall}
+                      </p>
+                    </div>
+                  )}
+
+                  {submission.feedback.ai_based.strengths && submission.feedback.ai_based.strengths.length > 0 && (
+                    <div style={{ marginBottom: "1rem" }}>
+                      <h3 style={{ fontSize: "1rem", fontWeight: 600, marginBottom: "0.5rem", color: "#059669" }}>
+                        ✅ Strengths
+                      </h3>
+                      <ul style={{ paddingLeft: "1.5rem", color: "#64748b" }}>
+               idx: number) => (
+                          <li key={idx} style={{ marginBottom: "0.25rem" }}>{strength}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  {submission.feedback.ai_based.improvements && submission.feedback.ai_based.improvements.length > 0 && (
+                    <div>
+                      <h3 style={{ fontSize: "1rem", fontWeight: 600, marginBottom: "0.5rem", color: "#D97706" }}>
+                     mprovement
+                      </h3>
+                      <ul style={{ paddingLeft: "1.5rem", color: "#64748b" }}>
+                        {submission.feedback.ai_based.improvements.map((improvement: string, idx: number) => (
+                          <li key={idx} style={{ marginBottom: "0.25rem" }}>{improvement}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
                 </div>
               )}
 
-              {/* Strengths and Improvements */}
-              {(submission.feedback?.strengths || submission.feedback?.improvements || 
-                submission.feedback?.ai_based?.strengths || submission.feedback?.ai_based?.improvements) && (
-                <div style={{ marginBottom: "2rem" }}>
-                  <h2 style={{ fontSize: "1.5rem", fontWeight: 600, marginBottom: "1rem", color: "#7C3AED" }}>
-                    💡 Detailed Feedback
-                  </h2>
-                  <div style={{ 
-                    padding: "1.5rem", 
-                    border: "1px solid #E8B4FA", 
-                    borderRadius: "0.5rem",
-                    backgroundColor: "#F9F5FF"
-                  }}>
-                    {(submission.feedback.strengths || submission.feedback.ai_based?.strengths) && 
-                     (submission.feedback.strengths?.length > 0 || submission.feedback.ai_based?.strengths?.length > 0) && (
-                      <div style={{ marginBottom: "1.5rem" }}>
-                        <h3 style={{ fontSize: "1rem", fontWeight: 600, color: "#059669", marginBottom: "0.5rem" }}>
-                          ✅ Strengths
-                        </h3>
-                        <ul style={{ paddingLeft: "1.5rem", color: "#1a1625" }}>
-                          {(submission.feedback.strengths || submission.feedback.ai_based?.strengths || []).map((strength, index) => (
-                            <li key={index} style={{ marginBottom: "0.25rem" }}>{strength}</li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-
-                    {(submission.feedback.improvements || submission.feedback.ai_based?.improvements) && 
-                     (submission.feedback.improvements?.length > 0 || submission.feedback.ai_based?.improvements?.length > 0) && (
-                      <div>
-                        <h3 style={{ fontSize: "1rem", fontWeight: 600, color: "#D97706", marginBottom: "0.5rem" }}>
-                          💡 Areas for Improvement
-                        </h3>
-                        <ul style={{ paddingLeft: "1.5rem", color: "#1a1625" }}>
-                          {(submission.feedback.improvements || submission.feedback.ai_based?.improvements || []).map((improvement, index) => (
-                            <li key={index} style={{ marginBottom: "0.25rem" }}>{improvement}</li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {/* AI Feedback (if separate) */}
-              {submission.feedback?.ai_based?.feedback && (
-                <div style={{ marginBottom: "2rem" }}>
-                  <h2 style={{ fontSize: "1.5rem", fontWeight: 600, marginBottom: "1rem", color: "#7C3AED" }}>
-                    🤖 AI Design Review
-                  </h2>
-                  <div style={{ 
-                    padding: "1.5rem", 
-                    border: "1px solid #E8B4FA", 
-                    borderRadius: "0.5rem",
-                    backgroundColor: "#F9F5FF"
-                  }}>
-                    <p style={{ fontSize: "1rem", color: "#1a1625", lineHeight: "1.6" }}>
-                      {submission.feedback.ai_based.feedback}
-                    </p>
-                  </div>
-                </div>
-              )}
+              {/* Action Buttons */}
+   <div style={{ display: "flex", gap: "1rem", justifyContent: "center", marginTop: "2rem" }}>
+                <button
+                  onClick={() => router.push('/design/tests')}
+                  style={{
+ >
+                  📥 Download Results
+                </button>
+              </div>
             </>
           )}
-
-          {/* Actions */}
-          <div style={{ display: "flex", justifyContent: "center", gap: "1rem", marginTop: "2rem" }}>
-            <button
-              onClick={() => router.push('/design/tests')}
-              className="btn-secondary"
-            >
-              Back to Tests
-            </button>
-            {!isEvaluating && (
-              <button
-                onClick={() => window.print()}
-                className="btn-primary"
-              >
-                📄 Download Results
-              </button>
-            )}
-          </div>
         </div>
       </div>
     </div>
   )
 }
 
-export const getServerSideProps: GetServerSideProps = requireAuth
+export const getServerSideProps: GetServerSideProps = requireAuth(async (context) => {
+  return {
+    props: {},
+  }
+})
+         }}
+                >
+                  Back to Tests
+                </button>
+                <button
+                  onClick={() => window.print()}
+                  style={{
+                    padding: "0.75rem 1.5rem",
+                    border: "none",
+                    borderRadius: "0.5rem",
+                    backgroundColor: "#10B981",
+                    color: "#ffffff",
+                    fontWeight: 600,
+                    cursor: "pointer"
+                  }}
+                                   padding: "0.75rem 1.5rem",
+                    border: "1px solid #7C3AED",
+                    borderRadius: "0.5rem",
+                    backgroundColor: "#ffffff",
+                    color: "#7C3AED",
+                    fontWeight: 600,
+                    cursor: "pointer"
+         
