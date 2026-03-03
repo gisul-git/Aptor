@@ -409,19 +409,11 @@ class DesignEvaluationEngine:
                     f.write(image_data)
                     screenshot_path = f.name
             
-            # If no screenshot, create a placeholder
+            # If no screenshot, still evaluate using design data
             if not screenshot_path:
-                logger.warning("No screenshot provided, using placeholder evaluation")
-                return {
-                    "rule_based_score": 60.0,
-                    "ai_based_score": 60.0,
-                    "final_score": 60.0,
-                    "feedback": {
-                        "note": "Evaluation performed without screenshot",
-                        "rule_based": {"total": 60.0},
-                        "ai_based": {"total": 60.0}
-                    }
-                }
+                logger.warning("No screenshot provided, evaluating using design data only")
+                # Create a dummy screenshot path for the evaluation
+                screenshot_path = ""
             
             # Run evaluation
             rule_score, ai_score, final_score, feedback = await self.evaluate_submission(
