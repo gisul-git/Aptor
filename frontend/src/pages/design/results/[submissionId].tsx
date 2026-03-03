@@ -72,6 +72,7 @@ export default function DesignResultsPage() {
       const response = await fetch(`${API_URL}/submissions/${submissionId}/evaluation`)
       if (response.ok) {
         const data = await response.json()
+        console.log('Submission data received:', JSON.stringify(data, null, 2))
         setSubmission(data)
         setLoading(false)
       } else {
