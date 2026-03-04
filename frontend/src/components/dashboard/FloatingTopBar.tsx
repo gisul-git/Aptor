@@ -3,6 +3,7 @@
 import { useState } from "react"
 import Link from "next/link"
 import Image from "next/image"
+import { signOut } from "next-auth/react"
 import { Search, Zap, Bell, HelpCircle, User, Menu, Settings, LogOut } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -47,9 +48,14 @@ interface FloatingTopBarProps {
 }
 
 export function FloatingTopBar({ onCommandPaletteOpen }: FloatingTopBarProps) {
-  const { user } = useAuthStore()
+  const { user, logout } = useAuthStore()
   const { unreadCount } = useNotificationStore()
   const [searchQuery, setSearchQuery] = useState("")
+
+  const handleLogout = () => {
+    logout()
+    signOut({ callbackUrl: "/auth/signin" })
+  }
 
   const unreadNotifications = mockNotifications.filter((n) => !n.read)
 
@@ -218,7 +224,7 @@ export function FloatingTopBar({ onCommandPaletteOpen }: FloatingTopBarProps) {
                     Settings
                   </DropdownMenuItem>
                   <DropdownMenuSeparator className="bg-mint-50" />
-                  <DropdownMenuItem className="text-red-600 hover:bg-red-50">
+                  <DropdownMenuItem onClick={handleLogout} className="text-red-600 hover:bg-red-50 cursor-pointer">
                     <LogOut className="mr-2 h-4 w-4" />
                     Log out
                   </DropdownMenuItem>

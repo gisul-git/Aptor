@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Find Extension IDs</title>
+  <style>
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      max-width: 800px;
+      margin: 50px auto;
+      padding: 20px;
+      background: #f5f5f5;
+    }
+    .extension {
+      background: white;
+      padding: 15px;
+      margin: 10px 0;
+      border-radius: 8px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    .extension-name {
+      font-weight: bold;
+      color: #2563eb;
+      font-size: 16px;
+    }
+    .extension-id {
+      font-family: monospace;
+      background: #f3f4f6;
+      padding: 5px 10px;
+      border-radius: 4px;
+      margin: 5px 0;
+      display: inline-block;
+    }
+    button {
+      background: #10b981;
+      color: white;
+      border: none;
+      padding: 12px 24px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 16px;
+      font-weight: 600;
+    }
+    button:hover {
+      background: #059669;
+    }
+    .copy-btn {
+      background: #3b82f6;
+      padding: 4px 8px;
+      font-size: 12px;
+      margin-left: 10px;
+    }
+    .copy-btn:hover {
+      background: #2563eb;
+    }
+    .code-block {
+      background: #1f2937;
+      color: #f9fafb;
+      padding: 15px;
+      border-radius: 6px;
+      margin: 15px 0;
+      overflow-x: auto;
+    }
+    .code-block pre {
+      margin: 0;
+      font-family: monospace;
+      font-size: 13px;
+    }
+    .warning {
+      background: #fef2f2;
+      border: 1px solid #fecaca;
+      color: #991b1b;
+      padding: 15px;
+      border-radius: 8px;
+      margin: 20px 0;
+    }
+    .info {
+      background: #eff6ff;
+      border: 1px solid #bfdbfe;
+      color: #1e40af;
+      padding: 15px;
+      border-radius: 8px;
+      margin: 20px 0;
+    }
+  </style>
+</head>
+<body>
+  <h1>🔍 Find Your Extension IDs</h1>
+  <p>This tool helps you find the IDs of all installed browser extensions so you can add them to the detection database.</p>
+  
+  <div class="info">
+    <strong>ℹ️ How to use:</strong>
+    <ol>
+      <li><strong>Method 1 (Easiest):</strong> Go to <code>edge://extensions</code>, enable Developer mode, and copy IDs visually</li>
+      <li><strong>Method 2:</strong> Use the console script on the extensions page (see Method 2 below)</li>
+      <li><strong>Method 3:</strong> Click "Scan for Extensions" below (only works if API is available)</li>
+      <li>Add the IDs to <code>frontend/src/lib/extensionDatabase.ts</code></li>
+      <li>Test detection in the precheck page</li>
+    </ol>
+  </div>
+
+  <div style="margin-top: 20px; padding: 20px; background: #f0fdf4; border: 2px solid #10b981; border-radius: 8px;">
+    <h2 style="margin-top: 0; color: #065f46;">✅ Method 1: Visual Method (RECOMMENDED - No Script Needed)</h2>
+    <ol>
+      <li>Go to <code>edge://extensions</code> or <code>chrome://extensions</code></li>
+      <li>Enable <strong>"Developer mode"</strong> (toggle in top-right)</li>
+      <li>You'll see the <strong>ID</strong> displayed under each extension</li>
+      <li>Just copy the IDs you need and share them here!</li>
+    </ol>
+    <p style="color: #065f46; font-weight: 600; margin-bottom: 0;">
+      💡 This is the easiest method - no console script needed!
+    </p>
+  </div>
+
+  <div class="warning" id="warning" style="display: none;">
+    <strong>⚠️ Note:</strong> This tool requires the chrome.management API. 
+    If you see an error, you may need to run this from a Chrome extension context or use the manual method below.
+  </div>
+
+  <button onclick="findExtensions()">🔎 Scan for Extensions</button>
+  
+  <div id="results"></div>
+  <div id="code-output"></div>
+
+  <div style="margin-top: 40px; padding: 20px; background: white; border-radius: 8px;">
+    <h2>📋 Method 2: Use Console Script on Extensions Page (RECOMMENDED)</h2>
+    <p><strong>This method works because the chrome.management API is available on the extensions page itself.</strong></p>
+    <ol>
+      <li>Go to <code>edge://extensions</code> or <code>chrome://extensions</code></li>
+      <li>Enable "Developer mode" (toggle in top right)</li>
+      <li>Open Console (Press <code>F12</code> or <code>Ctrl+Shift+I</code>)</li>
+      <li>Paste this script and press Enter:</li>
+    </ol>
+    <div class="code-block">
+      <pre id="console-script">// This works on edge://extensions page
+chrome.management.getAll((extensions) => {
+  console.log("=== YOUR INSTALLED EXTENSIONS ===\n");
+  
+  const enabled = extensions.filter(ext => ext.type === "extension" && ext.enabled);
+  
+  enabled.forEach(ext => {
+    console.log(`Name: ${ext.name}`);
+    console.log(`ID: ${ext.id}`);
+    console.log(`Version: ${ext.version}`);
+    console.log("---");
+  });
+  
+  console.log("\n=== CODE TO ADD TO DATABASE ===\n");
+  console.log("Copy this code and add to frontend/src/lib/extensionDatabase.ts:\n");
+  
+  enabled.forEach(ext => {
+    const escapedName = ext.name.replace(/'/g, "\\'");
+    console.log(`  { id: '${ext.id}', name: '${escapedName}', file: 'icon.png' },`);
+  });
+  
+  console.log("\n=== DONE ===");
+  console.log(`Found ${enabled.length} enabled extensions`);
+});</pre>
+    </div>
+    <button onclick="copyConsoleScript()" style="margin-top: 10px;">📋 Copy Console Script</button>
+    <p style="margin-top: 15px; color: #64748b; font-size: 14px;">
+      <strong>Note:</strong> This script only works when run on the <code>edge://extensions</code> or <code>chrome://extensions</code> page itself, 
+      not on regular web pages. The chrome.management API is only available on special Chrome pages.
+    </p>
+  </div>
+
+  <div style="margin-top: 40px; padding: 20px; background: white; border-radius: 8px;">
+    <h2>📋 Method 3: Manual Copy (If console script doesn't work)</h2>
+    <ol>
+      <li>Go to <code>edge://extensions</code> or <code>chrome://extensions</code></li>
+      <li>Enable "Developer mode" (toggle in top right)</li>
+      <li>For each extension, you'll see an "ID" field</li>
+      <li>Copy the ID and add it to <code>extensionDatabase.ts</code> with format:
+        <pre style="background: #f3f4f6; padding: 10px; border-radius: 4px; margin: 10px 0;">
+{ id: 'YOUR_EXTENSION_ID', name: 'Extension Name', file: 'icon.png' },</pre>
+      </li>
+      <li>To find the correct file path, click "Details" on the extension and check the manifest.json for <code>web_accessible_resources</code></li>
+    </ol>
+  </div>
+
+  <script>
+    async function findExtensions() {
+      const resultsDiv = document.getElementById('results');
+      const codeDiv = document.getElementById('code-output');
+      const warningDiv = document.getElementById('warning');
+      resultsDiv.innerHTML = '<p>Scanning...</p>';
+      codeDiv.innerHTML = '';
+      
+      try {
+        // Check if chrome.management API is available
+        if (typeof chrome === 'undefined' || !chrome.management) {
+          throw new Error('chrome.management API not available. Use the manual method below.');
+        }
+
+        const extensions = await new Promise((resolve, reject) => {
+          chrome.management.getAll((exts) => {
+            if (chrome.runtime.lastError) {
+              reject(new Error(chrome.runtime.lastError.message));
+            } else {
+              resolve(exts);
+            }
+          });
+        });
+        
+        const enabledExtensions = extensions.filter(ext => 
+          ext.type === 'extension' && ext.enabled
+        );
+        
+        let html = `<h2>Found ${enabledExtensions.length} Enabled Extensions:</h2>`;
+        let codeSnippets = [];
+        
+        enabledExtensions.forEach(ext => {
+          html += `
+            <div class="extension">
+              <div class="extension-name">${ext.name}</div>
+              <div>Version: ${ext.version}</div>
+              <div>
+                <span class="extension-id">${ext.id}</span>
+                <button class="copy-btn" onclick="copyToClipboard('${ext.id}')">Copy ID</button>
+              </div>
+            </div>
+          `;
+          
+          // Generate code snippet (escape single quotes in name)
+          const escapedName = ext.name.replace(/'/g, "\\'");
+          codeSnippets.push(
+            `  { id: '${ext.id}', name: '${escapedName}', file: 'icon.png' },`
+          );
+        });
+        
+        resultsDiv.innerHTML = html;
+        
+        // Generate code block
+        const codeBlock = `// Add these to your KNOWN_EXTENSIONS array in extensionDatabase.ts:
+export const KNOWN_EXTENSIONS: ExtensionSignature[] = [
+${codeSnippets.join('\n')}
+];`;
+        
+        codeDiv.innerHTML = `
+          <h2>📋 Code to Add:</h2>
+          <div class="code-block">
+            <pre>${codeBlock}</pre>
+          </div>
+          <button onclick="copyToClipboard(\`${codeBlock.replace(/`/g, '\\`')}\`)">📋 Copy All Code</button>
+        `;
+        
+        warningDiv.style.display = 'none';
+        
+      } catch (error) {
+        resultsDiv.innerHTML = `
+          <div class="extension" style="background: #fef2f2; color: #991b1b;">
+            <strong>Error:</strong> ${error.message}
+          </div>
+        `;
+        warningDiv.style.display = 'block';
+      }
+    }
+    
+    function copyToClipboard(text) {
+      navigator.clipboard.writeText(text).then(() => {
+        alert('✅ Copied to clipboard!');
+      }).catch(err => {
+        console.error('Failed to copy:', err);
+        // Fallback for older browsers
+        const textarea = document.createElement('textarea');
+        textarea.value = text;
+        textarea.style.position = 'fixed';
+        textarea.style.opacity = '0';
+        document.body.appendChild(textarea);
+        textarea.select();
+        try {
+          document.execCommand('copy');
+          alert('✅ Copied to clipboard!');
+        } catch (e) {
+          alert('❌ Failed to copy. Please copy manually.');
+        }
+        document.body.removeChild(textarea);
+      });
+    }
+
+    function copyConsoleScript() {
+      const script = document.getElementById('console-script').textContent;
+      copyToClipboard(script);
+    }
+  </script>
+</body>
+</html>
+

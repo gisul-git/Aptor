@@ -569,6 +569,22 @@ export default function SignInPage({ providers }: SignInPageProps) {
         return; // IMPORTANT: Return early to prevent NextAuth call
       }
 
+      // Check if password reset is required (temporary password)
+      const requirePasswordReset = responseData?.data?.requirePasswordReset || 
+                                   responseData?.requirePasswordReset;
+      const resetToken = responseData?.data?.resetToken || responseData?.resetToken;
+      
+      if (requirePasswordReset === true && resetToken) {
+        console.log("🔐 [SignIn] Password reset required, redirecting to reset password page");
+        
+        // Redirect to reset password page with token
+        if (typeof window !== "undefined") {
+          window.location.replace(`/auth/reset-password?token=${encodeURIComponent(resetToken)}`);
+        }
+        setLoading(false);
+        return; // IMPORTANT: Return early to prevent NextAuth call
+      }
+
       // If no MFA required, proceed with normal NextAuth signin
       const signInPayload: any = {
         redirect: false,
@@ -1149,26 +1165,6 @@ export default function SignInPage({ providers }: SignInPageProps) {
                   )}
               </button>
               </form>
-
-              {/* Sign Up Link - Enhanced */}
-              <div className="mt-5 sm:mt-6 text-center">
-                <p className="text-xs sm:text-sm" style={{ color: "#4A9A6A" }}>
-                  Don&apos;t have an account?{" "}
-                  <Link 
-                    href="/auth/signup" 
-                    className="font-semibold transition-all hover:underline"
-                    style={{ color: "#1E5A3B" }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.color = "#C9F4D4";
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.color = "#1E5A3B";
-                    }}
-                  >
-                    Sign up
-                  </Link>
-                </p>
-              </div>
 
               {/* Trust Signals Footer */}
               <div className="mt-6 sm:mt-8 pt-4 sm:pt-5 border-t text-center">
