@@ -1,6 +1,6 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 
-const ENGINE_BASE_URL = process.env.CLOUD_EXECUTION_ENGINE_URL || "http://localhost:8000";
+const ENGINE_BASE_URL = process.env.CLOUD_EXECUTION_ENGINE_URL || "http://localhost:8001";
 const EXECUTION_API_KEY = process.env.EXECUTION_API_KEY || "";
 
 type ExecuteRequest = {

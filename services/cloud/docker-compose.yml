@@ -4,7 +4,7 @@ services:
     container_name: execution_engine
     restart: unless-stopped
     ports:
-      - "8000:8000"
+      - "8001:8000"
     privileged: true
     environment:
       - EXECUTION_TIMEOUT_SECONDS=20
