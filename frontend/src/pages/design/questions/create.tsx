@@ -617,23 +617,47 @@ export default function DesignQuestionCreatePage() {
                 </div>
               </div>
 
-              <div style={{ marginBottom: "1.5rem" }}>
-                <label style={{ display: "block", marginBottom: "0.5rem", fontWeight: 600, color: "#7C3AED" }}>
-                  Time Limit (minutes)
-                </label>
-                <input
-                  type="number"
-                  min="15"
-                  max="180"
-                  value={timeLimitMinutes}
-                  onChange={(e) => setTimeLimitMinutes(parseInt(e.target.value) || 60)}
-                  style={{
-                    width: "200px",
-                    padding: "0.75rem",
-                    border: "1px solid #E8B4FA",
-                    borderRadius: "0.5rem",
-                  }}
-                />
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem", marginBottom: "1.5rem" }}>
+                <div>
+                  <label style={{ display: "block", marginBottom: "0.5rem", fontWeight: 600, color: "#7C3AED" }}>
+                    Experience Level (Optional)
+                  </label>
+                  <select
+                    value={experienceLevel}
+                    onChange={(e) => setExperienceLevel(e.target.value)}
+                    style={{
+                      width: "100%",
+                      padding: "0.75rem",
+                      border: "1px solid #E8B4FA",
+                      borderRadius: "0.5rem",
+                      backgroundColor: "#ffffff",
+                    }}
+                  >
+                    <option value="">Select Experience Level</option>
+                    {EXPERIENCE_LEVELS.map(e => (
+                      <option key={e.value} value={e.value}>{e.label}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label style={{ display: "block", marginBottom: "0.5rem", fontWeight: 600, color: "#7C3AED" }}>
+                    Time Limit (minutes)
+                  </label>
+                  <input
+                    type="number"
+                    min="15"
+                    max="180"
+                    value={timeLimitMinutes}
+                    onChange={(e) => setTimeLimitMinutes(parseInt(e.target.value) || 60)}
+                    style={{
+                      width: "100%",
+                      padding: "0.75rem",
+                      border: "1px solid #E8B4FA",
+                      borderRadius: "0.5rem",
+                    }}
+                  />
+                </div>
               </div>
 
               {/* Constraints */}
