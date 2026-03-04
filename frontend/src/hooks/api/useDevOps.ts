@@ -33,8 +33,8 @@ export const useDevOpsTest = (testId: string | undefined) => {
       const response = await devopsService.getTest(testId);
       return response.data;
     },
-    // "sample" route is local demo mode; avoid backend call to /api/v1/devops/tests/sample
-    enabled: !!testId && testId !== 'sample',
+    // "sample" and "ai-generated" are local demo/generated modes; avoid backend call
+    enabled: !!testId && testId !== 'sample' && testId !== 'ai-generated',
     staleTime: 5 * 60 * 1000,
   });
 };

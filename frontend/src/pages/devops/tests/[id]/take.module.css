@@ -1,23 +1,23 @@
 .page {
-  --dv-bg: #0b0f14;
-  --dv-bg-2: #131a22;
-  --dv-panel: #151d27;
-  --dv-panel-2: #111821;
-  --dv-border: #273341;
-  --dv-border-soft: #1d2733;
-  --dv-text: #c8d3df;
-  --dv-text-dim: #8fa1b4;
-  --dv-accent: #ff9f1c;
-  --dv-accent-soft: rgba(255, 159, 28, 0.18);
-  --dv-ok: #9eff00;
-  --dv-bad: #e5484d;
-  --dv-warn: #ffb224;
+  --dv-bg: #f5fffa;
+  --dv-bg-2: #ecfdf5;
+  --dv-panel: #ffffff;
+  --dv-panel-2: #f8fffb;
+  --dv-border: #c9f4d4;
+  --dv-border-soft: #e1f2e9;
+  --dv-text: #065f46;
+  --dv-text-dim: #2d7a52;
+  --dv-accent: #0f766e;
+  --dv-accent-soft: rgba(15, 118, 110, 0.12);
+  --dv-ok: #0f9f6e;
+  --dv-bad: #dc2626;
+  --dv-warn: #d97706;
   min-height: 100vh;
   color: var(--dv-text);
   background:
-    radial-gradient(circle at 12% 10%, rgba(255, 159, 28, 0.08), transparent 30%),
-    radial-gradient(circle at 90% 90%, rgba(158, 255, 0, 0.05), transparent 40%),
-    linear-gradient(135deg, var(--dv-bg), #090d12 45%, #0e131a);
+    radial-gradient(circle at 10% 8%, rgba(157, 232, 176, 0.28), transparent 32%),
+    radial-gradient(circle at 88% 92%, rgba(201, 244, 212, 0.35), transparent 38%),
+    linear-gradient(155deg, var(--dv-bg), var(--dv-bg-2));
   position: relative;
   overflow: hidden;
 }
@@ -27,24 +27,10 @@
   position: absolute;
   inset: 0;
   background-image:
-    linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
-  background-size: 26px 26px;
-  mask-image: linear-gradient(to bottom, black 30%, transparent 100%);
-  pointer-events: none;
-}
-
-.page::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: repeating-linear-gradient(
-    to bottom,
-    rgba(255, 255, 255, 0.012),
-    rgba(255, 255, 255, 0.012) 1px,
-    transparent 1px,
-    transparent 4px
-  );
+    linear-gradient(rgba(6, 95, 70, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(6, 95, 70, 0.035) 1px, transparent 1px);
+  background-size: 28px 28px;
+  mask-image: linear-gradient(to bottom, black 28%, transparent 100%);
   pointer-events: none;
 }
 
@@ -62,8 +48,9 @@
   justify-content: space-between;
   padding: 14px 18px;
   border: 1px solid var(--dv-border);
-  background: linear-gradient(180deg, #141c25, #0f151d);
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.3);
+  border-radius: 14px;
+  background: linear-gradient(180deg, #ffffff, #f8fffb);
+  box-shadow: 0 10px 28px rgba(6, 95, 70, 0.08);
 }
 
 .titleBlock {
@@ -75,8 +62,7 @@
 .title {
   margin: 0;
   font-size: clamp(1.1rem, 1.6vw, 1.5rem);
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+  letter-spacing: 0.02em;
 }
 
 .meta {
@@ -88,12 +74,13 @@
 
 .chip {
   border: 1px solid var(--dv-border);
+  border-radius: 999px;
   padding: 6px 10px;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  font-size: 0.72rem;
+  font-size: 0.7rem;
   color: var(--dv-text);
-  background: #0f151d;
+  background: #f5fffa;
 }
 
 .mainGrid {
@@ -105,8 +92,9 @@
 
 .panel {
   border: 1px solid var(--dv-border);
+  border-radius: 14px;
   background: linear-gradient(180deg, var(--dv-panel), var(--dv-panel-2));
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03), 0 16px 30px rgba(0, 0, 0, 0.28);
+  box-shadow: 0 12px 24px rgba(6, 95, 70, 0.06);
   min-height: 0;
 }
 
@@ -125,6 +113,7 @@
   margin: 0;
   font-size: 1.05rem;
   line-height: 1.3;
+  color: #064e3b;
 }
 
 .questionDesc {
@@ -144,7 +133,8 @@
 
 .questionBtn {
   border: 1px solid var(--dv-border);
-  background: #111922;
+  border-radius: 8px;
+  background: #ffffff;
   color: var(--dv-text-dim);
   padding: 8px 6px;
   cursor: pointer;
@@ -153,8 +143,8 @@
 
 .questionBtnActive {
   border-color: var(--dv-accent);
-  color: var(--dv-accent);
-  background: rgba(255, 159, 28, 0.12);
+  color: #0f766e;
+  background: var(--dv-accent-soft);
 }
 
 .questionBody {
@@ -164,10 +154,10 @@
 
 .sectionTitle {
   margin: 0 0 8px;
-  font-size: 0.82rem;
+  font-size: 0.78rem;
   letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: #b8c7d6;
+  color: #1e5a3b;
 }
 
 .sectionList {
@@ -200,7 +190,7 @@
   align-items: center;
   gap: 10px;
   color: var(--dv-text-dim);
-  font-size: 0.78rem;
+  font-size: 0.76rem;
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
@@ -216,11 +206,12 @@
 
 .btn {
   border: 1px solid var(--dv-border);
-  background: #101821;
+  border-radius: 9px;
+  background: #ffffff;
   color: var(--dv-text);
   text-transform: uppercase;
-  letter-spacing: 0.1em;
-  font-size: 0.73rem;
+  letter-spacing: 0.08em;
+  font-size: 0.72rem;
   font-weight: 700;
   padding: 9px 14px;
   cursor: pointer;
@@ -228,8 +219,8 @@
 }
 
 .btn:hover:not(:disabled) {
-  border-color: #3d4f61;
-  background: #162130;
+  border-color: #8ecfa8;
+  background: #f0fdf4;
 }
 
 .btn:disabled {
@@ -238,24 +229,24 @@
 }
 
 .btnRun {
-  border-color: #4d5f70;
+  border-color: #88b89d;
 }
 
 .btnSubmit {
-  border-color: #7a4d16;
-  background: linear-gradient(180deg, #5d3b13, #4c2f0f);
-  color: #ffdcb2;
-  box-shadow: inset 0 0 16px rgba(255, 159, 28, 0.15);
+  border-color: #0f766e;
+  background: linear-gradient(180deg, #0f766e, #0d5f58);
+  color: #eafff7;
 }
 
 .btnSubmit:hover:not(:disabled) {
-  border-color: #ff9f1c;
-  box-shadow: inset 0 0 16px rgba(255, 159, 28, 0.2), 0 0 16px rgba(255, 159, 28, 0.12);
+  border-color: #0f766e;
+  box-shadow: 0 0 0 3px rgba(15, 118, 110, 0.18);
 }
 
 .terminalPanel {
   border: 1px solid var(--dv-border);
-  background: #0c1219;
+  border-radius: 14px;
+  background: #f3fff8;
   min-height: 230px;
   max-height: 280px;
   overflow: hidden;
@@ -289,15 +280,15 @@
 }
 
 .lineCmd {
-  color: #9db4c9;
+  color: #0f766e;
 }
 
 .lineStdout {
-  color: #c5d4e2;
+  color: #065f46;
 }
 
 .lineStderr {
-  color: #ff8e92;
+  color: #dc2626;
 }
 
 .lineSuccess {
@@ -309,10 +300,12 @@
 }
 
 .scoreBox {
-  border: 1px solid #2f3b48;
+  border: 1px solid var(--dv-border);
+  border-radius: 10px;
   padding: 8px 12px;
   min-width: 170px;
   text-align: right;
+  background: #f5fffa;
 }
 
 .scoreText {
@@ -325,7 +318,8 @@
 .scoreValue {
   margin-top: 5px;
   font-size: 1rem;
-  color: #ffdcb2;
+  color: #0f766e;
+  font-weight: 700;
 }
 
 .submitResult {

@@ -1,12 +1,24 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/router";
+import { useSession } from "next-auth/react";
 import { AnimatePresence, motion } from "framer-motion";
 import { IBM_Plex_Serif, JetBrains_Mono } from "next/font/google";
 import styles from "./take.module.css";
 import { useDevOpsTest } from "@/hooks/api/useDevOps";
 import type { DevOpsRunPayload, DevOpsRunResult } from "@/services/devops";
 import { devopsRuntimeService } from "@/services/devops";
+import {
+  useUniversalProctoring,
+  resolveUserIdForProctoring,
+  type ProctoringViolation,
+} from "@/universal-proctoring";
+import WebcamPreview from "@/components/WebcamPreview";
+import { FullscreenLockOverlay } from "@/components/FullscreenLockOverlay";
+import { useFullscreenLock } from "@/hooks/proctoring/useFullscreenLock";
+import { useActivityPatternProctor } from "@/hooks/proctoring/useActivityPatternProctor";
+import { ViolationToast, pushViolationToast } from "@/components/ViolationToast";
+import type { GeneratedDevOpsPayload } from "@/lib/devops/ai-question-generator";
 
 const MonacoEditor = dynamic(() => import("@monaco-editor/react"), { ssr: false });
 
@@ -409,10 +421,124 @@ function evaluateSubmission(
 
 export default function DevOpsTakePage() {
   const router = useRouter();
+  const { data: session } = useSession();
   const testId = typeof router.query.id === "string" ? router.query.id : undefined;
   const { data: testData, isLoading, error } = useDevOpsTest(testId);
+  const thumbVideoRef = useRef<HTMLVideoElement>(null);
+  const [cameraProctorEnabled, setCameraProctorEnabled] = useState(true);
+  const [debugMode] = useState(false);
+  const [aiGeneratedQuestions, setAiGeneratedQuestions] = useState<Array<Record<string, unknown>>>([]);
+  const [isGeneratedLoading, setIsGeneratedLoading] = useState(false);
+  const [generatedFetchError, setGeneratedFetchError] = useState<string | null>(null);
+  const isGeneratedRoute = testId === "ai-generated" || router.query.generated === "1";
+
+  useEffect(() => {
+    if (!isGeneratedRoute || typeof window === "undefined") return;
+
+    let active = true;
+    const loadDynamically = async () => {
+      setIsGeneratedLoading(true);
+      setGeneratedFetchError(null);
+
+      let payloadMeta: any = null;
+      let title = "DevOps AI Assessment";
+      let description = "";
+
+      const rawPayload = sessionStorage.getItem("devopsAIGeneratedPayload");
+      if (rawPayload) {
+        try {
+          const parsed = JSON.parse(rawPayload) as GeneratedDevOpsPayload & {
+            title?: string;
+            description?: string;
+            metadata?: Record<string, unknown>;
+          };
+          if (Array.isArray(parsed.questions) && parsed.questions.length > 0) {
+            setAiGeneratedQuestions(parsed.questions as Array<Record<string, unknown>>);
+          }
+          payloadMeta = parsed.metadata || null;
+          title = parsed.title || title;
+          description = parsed.description || description;
+        } catch {
+          setAiGeneratedQuestions([]);
+        }
+      }
+
+      const rawMeta = sessionStorage.getItem("devopsAIGenerationMeta");
+      if (rawMeta) {
+        try {
+          const parsedMeta = JSON.parse(rawMeta);
+          title = parsedMeta?.title || title;
+          description = parsedMeta?.description || description;
+        } catch {
+          // Ignore malformed session meta
+        }
+      }
+
+      const requestBody = {
+        yearsOfExperience: payloadMeta?.yearsOfExperience || "2-4",
+        difficulty: payloadMeta?.difficulty || "intermediate",
+        topicsRequired: payloadMeta?.topicsRequired || "CI/CD pipelines, Docker, Kubernetes",
+        questionCount: Number(payloadMeta?.questionCount || 10),
+        jobRole: payloadMeta?.jobRole || "DevOps Engineer",
+        timeLimit: Number(payloadMeta?.timeLimit || 60),
+        focusArea: payloadMeta?.focusArea || "balanced",
+        title,
+        description,
+      };
+
+      try {
+        const response = await fetch("/api/devops/generate-questions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(requestBody),
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          if (active && Array.isArray(data?.questions) && data.questions.length > 0) {
+            setAiGeneratedQuestions(data.questions as Array<Record<string, unknown>>);
+            const existingPayload = rawPayload ? JSON.parse(rawPayload) : {};
+            sessionStorage.setItem(
+              "devopsAIGeneratedPayload",
+              JSON.stringify({
+                ...existingPayload,
+                title,
+                description,
+                metadata: requestBody,
+                questions: data.questions,
+                generatedAt: new Date().toISOString(),
+                source: "ai-form",
+              })
+            );
+          }
+        } else if (active) {
+          const err = await response.json().catch(() => null);
+          setGeneratedFetchError(String(err?.error || err?.details || "Failed to fetch generated questions."));
+        }
+      } catch {
+        if (active) {
+          setGeneratedFetchError("Failed to fetch generated questions. Please regenerate from DevOps Create page.");
+        }
+      } finally {
+        if (active) setIsGeneratedLoading(false);
+      }
+    };
+
+    loadDynamically();
+    return () => {
+      active = false;
+    };
+  }, [isGeneratedRoute]);
 
   const questions = useMemo(() => {
+    if (aiGeneratedQuestions.length > 0) {
+      return buildRuntimeQuestions(aiGeneratedQuestions);
+    }
+
+    if (isGeneratedRoute) {
+      return [];
+    }
+
     const runtimeSource = Array.isArray((testData as { questions?: unknown[] } | undefined)?.questions)
       ? ((testData as { questions: unknown[] }).questions as Array<Record<string, unknown>>)
       : [];
@@ -420,7 +546,7 @@ export default function DevOpsTakePage() {
       return pickRandomizedQuestions(SAMPLE_QUESTIONS, `devops:${testId || "local"}:${new Date().toDateString()}`);
     }
     return buildRuntimeQuestions(runtimeSource);
-  }, [testData, testId]);
+  }, [testData, testId, aiGeneratedQuestions, isGeneratedRoute]);
 
   const [currentIndex, setCurrentIndex] = useState(0);
   const [editorByQuestion, setEditorByQuestion] = useState<Record<string, string>>({});
@@ -428,6 +554,151 @@ export default function DevOpsTakePage() {
   const [terminalByQuestion, setTerminalByQuestion] = useState<Record<string, TerminalLine[]>>({});
   const [isRunning, setIsRunning] = useState(false);
   const [submission, setSubmission] = useState<SubmissionSummary | null>(null);
+  const submitted = !!submission;
+
+  const getViolationMessage = (eventType: string): string => {
+    const messages: Record<string, string> = {
+      GAZE_AWAY: "Please keep your eyes on the screen",
+      MULTIPLE_FACES_DETECTED: "Multiple faces detected in frame",
+      NO_FACE_DETECTED: "Please stay in front of the camera",
+      TAB_SWITCH: "Tab switch detected",
+      FOCUS_LOST: "Window focus lost",
+      FULLSCREEN_EXIT: "Exited fullscreen mode",
+      RAPID_CLICKING: "Suspicious rapid clicking detected",
+      COPY_PASTE_DETECTED: "Copy-paste activity detected",
+      EXCESSIVE_MOUSE_MOVEMENT: "Excessive mouse movement detected",
+      PROLONGED_INACTIVITY: "Prolonged inactivity detected",
+      EXCESSIVE_SCROLLING: "Excessive scrolling detected",
+    };
+    return messages[eventType] || "Violation detected";
+  };
+
+  const {
+    isLocked: isFullscreenLocked,
+    setIsLocked: setFullscreenLocked,
+    exitCount: fullscreenExitCount,
+    incrementExitCount: incrementFullscreenExitCount,
+    requestFullscreen: requestFullscreenLock,
+  } = useFullscreenLock();
+
+  const handleUniversalViolation = useCallback(
+    (violation: ProctoringViolation) => {
+      pushViolationToast({
+        id: `${violation.eventType}-${Date.now()}`,
+        eventType: violation.eventType,
+        message: getViolationMessage(violation.eventType),
+        timestamp: violation.timestamp,
+      });
+
+      if (violation.eventType === "FULLSCREEN_EXIT" && cameraProctorEnabled) {
+        setFullscreenLocked(true);
+        incrementFullscreenExitCount();
+      }
+    },
+    [cameraProctorEnabled, incrementFullscreenExitCount, setFullscreenLocked]
+  );
+
+  const handleUniversalWarning = useCallback((warning: any) => {
+    if (warning?.type === "FACE_NOT_CLEARLY_VISIBLE") {
+      pushViolationToast({
+        id: `warning-${warning.type}-${Date.now()}`,
+        eventType: warning.type,
+        message: warning.message || "Face not clearly visible",
+        timestamp: new Date(warning.timestamp || Date.now()).toISOString(),
+        isWarning: true,
+      });
+    }
+  }, []);
+
+  const handleRequestFullscreen = useCallback(async (): Promise<boolean> => {
+    const success = await requestFullscreenLock();
+    if (success) setFullscreenLocked(false);
+    return success;
+  }, [requestFullscreenLock, setFullscreenLocked]);
+
+  const { state: proctoringState, isRunning: isProctoringRunning, startProctoring, stopProctoring } =
+    useUniversalProctoring({
+      onViolation: handleUniversalViolation,
+      onWarning: handleUniversalWarning,
+      debug: debugMode,
+    });
+
+  useEffect(() => {
+    const settings = (testData as any)?.proctoringSettings;
+    if (settings && typeof settings === "object") {
+      setCameraProctorEnabled(settings.aiProctoringEnabled === true);
+    }
+    if (typeof window !== "undefined") {
+      const rawMeta = sessionStorage.getItem("devopsAIGenerationMeta");
+      if (rawMeta) {
+        try {
+          const parsed = JSON.parse(rawMeta);
+          if (parsed?.proctoringSettings && typeof parsed.proctoringSettings === "object") {
+            setCameraProctorEnabled(parsed.proctoringSettings.aiProctoringEnabled === true);
+          }
+        } catch {
+          // Ignore bad session payloads
+        }
+      }
+    }
+  }, [testData]);
+
+  const proctoringUserId = useMemo(
+    () =>
+      resolveUserIdForProctoring((session?.user as any)?.id || null, {
+        email: (session?.user as any)?.email || null,
+      }),
+    [session]
+  );
+
+  useEffect(() => {
+    if (!cameraProctorEnabled) return;
+    if (!questions.length || submitted || isProctoringRunning || !thumbVideoRef.current) return;
+    if (!testId || !proctoringUserId) return;
+
+    startProctoring({
+      settings: { aiProctoringEnabled: true, liveProctoringEnabled: false },
+      session: { userId: proctoringUserId, assessmentId: String(testId) },
+      videoElement: thumbVideoRef.current,
+    });
+  }, [
+    cameraProctorEnabled,
+    questions.length,
+    submitted,
+    isProctoringRunning,
+    testId,
+    proctoringUserId,
+    startProctoring,
+  ]);
+
+  useEffect(() => {
+    if (submitted) {
+      stopProctoring();
+      setFullscreenLocked(false);
+    }
+  }, [submitted, stopProctoring, setFullscreenLocked]);
+
+  useEffect(() => {
+    return () => {
+      stopProctoring();
+    };
+  }, [stopProctoring]);
+
+  useActivityPatternProctor({
+    userId: proctoringUserId || "",
+    assessmentId: String(testId || ""),
+    enabled: !!proctoringUserId && !!testId && !submitted,
+    copyPasteThreshold: 20,
+    onViolation: (violation) => {
+      handleUniversalViolation({
+        eventType: violation.eventType as any,
+        timestamp: violation.timestamp,
+        assessmentId: violation.assessmentId,
+        userId: violation.userId,
+        metadata: violation.metadata,
+      });
+    },
+  });
 
   useEffect(() => {
     setEditorByQuestion((prev) => {
@@ -587,7 +858,7 @@ export default function DevOpsTakePage() {
     setSubmission(summary);
   };
 
-  if (isLoading) {
+  if (isLoading || (isGeneratedRoute && isGeneratedLoading && aiGeneratedQuestions.length === 0)) {
     return (
       <div className={cx(styles.page, monoFont.className)}>
         <div className={styles.shell}>Loading DevOps assessment...</div>
@@ -599,17 +870,29 @@ export default function DevOpsTakePage() {
     return (
       <div className={cx(styles.page, monoFont.className)}>
         <div className={styles.shell}>
-          Failed to load test. No question data available.
+          {generatedFetchError || "Failed to load test. No question data available."}
         </div>
       </div>
     );
   }
 
-  const assessmentTitle = String((testData as { title?: string } | undefined)?.title || "DevOps Assessment");
+  const assessmentTitle = isGeneratedRoute
+    ? "AI Generated DevOps Assessment"
+    : String((testData as { title?: string } | undefined)?.title || "DevOps Assessment");
   const currentAttempt = attempts[currentQuestion.id];
 
   return (
     <div className={cx(styles.page, headingFont.variable, monoFont.variable)}>
+      <ViolationToast />
+      {cameraProctorEnabled && (
+        <WebcamPreview
+          ref={thumbVideoRef}
+          cameraOn={proctoringState.isCameraOn}
+          faceMeshStatus={proctoringState.isModelLoaded ? "loaded" : proctoringState.modelError ? "error" : "loading"}
+          facesCount={proctoringState.facesCount}
+          visible={false}
+        />
+      )}
       <motion.div
         className={cx(styles.shell, monoFont.className)}
         initial="hidden"
@@ -822,6 +1105,15 @@ export default function DevOpsTakePage() {
           </AnimatePresence>
         </motion.section>
       </motion.div>
+      {cameraProctorEnabled && (
+        <FullscreenLockOverlay
+          isLocked={isFullscreenLocked}
+          onRequestFullscreen={handleRequestFullscreen}
+          exitCount={fullscreenExitCount}
+          message="You must be in fullscreen mode to continue the DevOps test."
+          warningText={fullscreenExitCount > 0 ? "Exiting fullscreen is recorded as a violation." : undefined}
+        />
+      )}
     </div>
   );
 }
