@@ -365,9 +365,10 @@ export default function DesignQuestionCreatePage() {
                   </label>
                   <input
                     type="text"
+                    list="ai-role-options"
                     value={aiRole}
                     onChange={(e) => setAiRole(e.target.value)}
-                    placeholder="e.g., UI Designer, UX Designer, Product Designer"
+                    placeholder="Select or type: UI Designer, UX Designer, etc."
                     style={{
                       width: "100%",
                       padding: "0.875rem 1rem",
@@ -378,6 +379,15 @@ export default function DesignQuestionCreatePage() {
                       transition: "all 0.2s ease",
                     }}
                   />
+                  <datalist id="ai-role-options">
+                    <option value="UI Designer" />
+                    <option value="UX Designer" />
+                    <option value="Product Designer" />
+                    <option value="Visual Designer" />
+                    <option value="Graphic Designer" />
+                    <option value="Brand Designer" />
+                    <option value="Interaction Designer" />
+                  </datalist>
                 </div>
 
                 <div>
@@ -392,12 +402,30 @@ export default function DesignQuestionCreatePage() {
                   </label>
                   <input
                     type="text"
+                    list="ai-task-type-options"
                     value={aiTaskType}
                     onChange={(e) => setAiTaskType(e.target.value)}
-                    placeholder="e.g., Landing Page, Mobile App, Dashboard"
+                    placeholder="Select or type: Landing Page, Mobile App, etc."
                     style={{
                       width: "100%",
                       padding: "0.875rem 1rem",
+                      border: "1px solid #E8B4FA",
+                      borderRadius: "0.5rem",
+                      fontSize: "0.9375rem",
+                      backgroundColor: "#ffffff",
+                      transition: "all 0.2s ease",
+                    }}
+                  />
+                  <datalist id="ai-task-type-options">
+                    <option value="Landing Page" />
+                    <option value="Mobile App" />
+                    <option value="Dashboard" />
+                    <option value="Component" />
+                    <option value="Website" />
+                    <option value="Web App" />
+                    <option value="E-commerce" />
+                  </datalist>
+                </div>
                       border: "1px solid #E8B4FA",
                       borderRadius: "0.5rem",
                       fontSize: "0.9375rem",
@@ -563,9 +591,10 @@ export default function DesignQuestionCreatePage() {
                   </label>
                   <input
                     type="text"
+                    list="role-options"
                     value={role}
                     onChange={(e) => setRole(e.target.value)}
-                    placeholder="e.g., UI Designer"
+                    placeholder="Select or type role"
                     style={{
                       width: "100%",
                       padding: "0.75rem",
@@ -574,6 +603,15 @@ export default function DesignQuestionCreatePage() {
                       backgroundColor: "#ffffff",
                     }}
                   />
+                  <datalist id="role-options">
+                    <option value="UI Designer" />
+                    <option value="UX Designer" />
+                    <option value="Product Designer" />
+                    <option value="Visual Designer" />
+                    <option value="Graphic Designer" />
+                    <option value="Brand Designer" />
+                    <option value="Interaction Designer" />
+                  </datalist>
                 </div>
 
                 <div>
@@ -582,14 +620,28 @@ export default function DesignQuestionCreatePage() {
                   </label>
                   <input
                     type="text"
+                    list="task-type-options"
                     value={taskType}
                     onChange={(e) => setTaskType(e.target.value)}
-                    placeholder="e.g., Landing Page"
+                    placeholder="Select or type task"
                     style={{
                       width: "100%",
                       padding: "0.75rem",
                       border: "1px solid #E8B4FA",
                       borderRadius: "0.5rem",
+                      backgroundColor: "#ffffff",
+                    }}
+                  />
+                  <datalist id="task-type-options">
+                    <option value="Landing Page" />
+                    <option value="Mobile App" />
+                    <option value="Dashboard" />
+                    <option value="Component" />
+                    <option value="Website" />
+                    <option value="Web App" />
+                    <option value="E-commerce" />
+                  </datalist>
+                </div>
                       backgroundColor: "#ffffff",
                     }}
                   />
