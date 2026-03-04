@@ -99,6 +99,11 @@ export default function DesignQuestionCreatePage() {
         'ux designer': 'ux_designer',
         'product designer': 'product_designer',
         'visual designer': 'visual_designer',
+        'graphic designer': 'visual_designer',
+        'brand designer': 'visual_designer',
+        'interaction designer': 'ui_designer',
+        'brand design': 'visual_designer',
+        'graphic design': 'visual_designer',
       }
       
       const taskTypeMap: Record<string, string> = {
@@ -106,10 +111,17 @@ export default function DesignQuestionCreatePage() {
         'mobile app': 'mobile_app',
         'dashboard': 'dashboard',
         'component': 'component',
+        'website': 'landing_page',
+        'web app': 'mobile_app',
+        'e-commerce': 'landing_page',
+        'ecommerce': 'landing_page',
+        'onboarding flow': 'mobile_app',
+        'user flow': 'mobile_app',
+        'landing': 'landing_page',
       }
       
-      const normalizedRole = roleMap[aiRole.toLowerCase()] || aiRole.toLowerCase().replace(/\s+/g, '_')
-      const normalizedTaskType = taskTypeMap[aiTaskType.toLowerCase()] || aiTaskType.toLowerCase().replace(/\s+/g, '_')
+      const normalizedRole = roleMap[aiRole.toLowerCase()] || 'ui_designer'
+      const normalizedTaskType = taskTypeMap[aiTaskType.toLowerCase()] || 'landing_page'
       
       const response = await fetch(`${API_URL}/questions/generate`, {
         method: 'POST',
@@ -168,6 +180,11 @@ export default function DesignQuestionCreatePage() {
         'ux designer': 'ux_designer',
         'product designer': 'product_designer',
         'visual designer': 'visual_designer',
+        'graphic designer': 'visual_designer',
+        'brand designer': 'visual_designer',
+        'interaction designer': 'ui_designer',
+        'brand design': 'visual_designer',
+        'graphic design': 'visual_designer',
       }
       
       const taskTypeMap: Record<string, string> = {
@@ -175,10 +192,17 @@ export default function DesignQuestionCreatePage() {
         'mobile app': 'mobile_app',
         'dashboard': 'dashboard',
         'component': 'component',
+        'website': 'landing_page',
+        'web app': 'mobile_app',
+        'e-commerce': 'landing_page',
+        'ecommerce': 'landing_page',
+        'onboarding flow': 'mobile_app',
+        'user flow': 'mobile_app',
+        'landing': 'landing_page',
       }
       
-      const normalizedRole = roleMap[role.toLowerCase()] || role.toLowerCase().replace(/\s+/g, '_')
-      const normalizedTaskType = taskTypeMap[taskType.toLowerCase()] || taskType.toLowerCase().replace(/\s+/g, '_')
+      const normalizedRole = roleMap[role.toLowerCase()] || 'ui_designer'
+      const normalizedTaskType = taskTypeMap[taskType.toLowerCase()] || 'landing_page'
       
       const payload = {
         title,
