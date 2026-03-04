@@ -23,6 +23,13 @@ const DIFFICULTY_LEVELS = [
   { value: 'advanced', label: 'Advanced' },
 ]
 
+const EXPERIENCE_LEVELS = [
+  { value: 'fresher', label: 'Fresher' },
+  { value: '1-3 years', label: '1-3 years' },
+  { value: '3-5 years', label: '3-5 years' },
+  { value: 'senior', label: 'Senior' },
+]
+
 export default function DesignQuestionCreatePage() {
   const router = useRouter()
   const [saving, setSaving] = useState(false)
@@ -35,6 +42,7 @@ export default function DesignQuestionCreatePage() {
   // AI Generation fields
   const [aiRole, setAiRole] = useState('')
   const [aiDifficulty, setAiDifficulty] = useState('intermediate')
+  const [aiExperienceLevel, setAiExperienceLevel] = useState('')
   const [aiTaskType, setAiTaskType] = useState('')
   const [aiTopic, setAiTopic] = useState('')
   
@@ -43,6 +51,7 @@ export default function DesignQuestionCreatePage() {
   const [description, setDescription] = useState('')
   const [role, setRole] = useState('')
   const [difficulty, setDifficulty] = useState('intermediate')
+  const [experienceLevel, setExperienceLevel] = useState('')
   const [taskType, setTaskType] = useState('')
   const [constraints, setConstraints] = useState<string[]>([''])
   const [deliverables, setDeliverables] = useState<string[]>([''])
@@ -108,6 +117,7 @@ export default function DesignQuestionCreatePage() {
         body: JSON.stringify({
           role: normalizedRole,
           difficulty: aiDifficulty,
+          experience_level: aiExperienceLevel || undefined,
           task_type: normalizedTaskType,
           topic: aiTopic.trim() || undefined,
           created_by: 'system',
@@ -175,6 +185,7 @@ export default function DesignQuestionCreatePage() {
         description,
         role: normalizedRole,
         difficulty,
+        experience_level: experienceLevel || undefined,
         task_type: normalizedTaskType,
         constraints: constraints.filter(c => c.trim()),
         deliverables: deliverables.filter(d => d.trim()),
@@ -423,6 +434,37 @@ export default function DesignQuestionCreatePage() {
                 >
                   {DIFFICULTY_LEVELS.map(d => (
                     <option key={d.value} value={d.value}>{d.label}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div style={{ marginBottom: "1.5rem" }}>
+                <label style={{ 
+                  display: "block", 
+                  marginBottom: "0.625rem", 
+                  fontWeight: 600,
+                  color: "#7C3AED",
+                  fontSize: "0.9375rem"
+                }}>
+                  Experience Level (Optional)
+                </label>
+                <select
+                  value={aiExperienceLevel}
+                  onChange={(e) => setAiExperienceLevel(e.target.value)}
+                  style={{
+                    width: "100%",
+                    padding: "0.875rem 1rem",
+                    border: "1px solid #E8B4FA",
+                    borderRadius: "0.5rem",
+                    fontSize: "0.9375rem",
+                    backgroundColor: "#ffffff",
+                    cursor: "pointer",
+                    transition: "all 0.2s ease",
+                  }}
+                >
+                  <option value="">Select Experience Level</option>
+                  {EXPERIENCE_LEVELS.map(e => (
+                    <option key={e.value} value={e.value}>{e.label}</option>
                   ))}
                 </select>
               </div>

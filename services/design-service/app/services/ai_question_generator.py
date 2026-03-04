@@ -36,11 +36,12 @@ class AIQuestionGenerator:
         difficulty: DifficultyLevel,
         task_type: TaskType,
         topic: str = None,
+        experience_level: str = None,
         created_by: str = "system"
     ) -> DesignQuestionModel:
         """Generate a design question using AI"""
         
-        prompt = self._build_generation_prompt(role, difficulty, task_type, topic)
+        prompt = self._build_generation_prompt(role, difficulty, task_type, topic, experience_level)
         
         try:
             if self.provider == "openai":
@@ -52,19 +53,20 @@ class AIQuestionGenerator:
             else:
                 raise ValueError(f"Unsupported AI provider: {self.provider}")
             
-            return self._parse_ai_response(response, role, difficulty, task_type, created_by, topic)
+            return self._parse_ai_response(response, role, difficulty, task_type, created_by, topic, experience_level)
             
         except Exception as e:
             logger.error(f"AI question generation failed: {e}")
             # Fallback to template-based generation
-            return self._generate_fallback_question(role, difficulty, task_type, topic, created_by)
+            return self._generate_fallback_question(role, difficulty, task_type, topic, created_by, experience_level)
     
     def _build_generation_prompt(
         self,
         role: DesignRole,
         difficulty: DifficultyLevel,
         task_type: TaskType,
-        topic: str = None
+        topic: str = None,
+        experience_level: str = None
     ) -> str:
         """Build the AI generation prompt using professional design assessment framework"""
         
@@ -93,6 +95,7 @@ class AIQuestionGenerator:
         difficulty_str = difficulty_mapping.get(difficulty, "Medium")
         task_str = task_type_mapping.get(task_type, "UI design")
         topic_str = topic if topic else task_str
+        experience_str = experience_level if experience_level else "Not specified"
         
         base_prompt = f"""You are an intelligent Design Question Generation Engine for a professional hiring assessment platform. Your task is to generate high-quality, role-specific, difficulty-based, and practical design challenges that accurately evaluate real-world design skills. You must strictly follow the input parameters, generation rules, and output structure provided below.
 
@@ -101,6 +104,7 @@ class AIQuestionGenerator:
 
 Role: {role_str}
 Difficulty Level: {difficulty_str}
+Experience Level: {experience_str}
 Topic: {topic_str}
 Question Type: UI design task
 
@@ -338,7 +342,8 @@ Now generate ONE complete, high-quality design question for {role_str} at {diffi
         difficulty: DifficultyLevel,
         task_type: TaskType,
         created_by: str,
-        topic: str = None
+        topic: str = None,
+        experience_level: str = None
     ) -> DesignQuestionModel:
         """Parse AI response into DesignQuestionModel"""
         
@@ -356,6 +361,7 @@ Now generate ONE complete, high-quality design question for {role_str} at {diffi
             return DesignQuestionModel(
                 role=role,
                 difficulty=difficulty,
+                experience_level=experience_level,
                 task_type=task_type,
                 title=data["title"],
                 description=data["description"],
@@ -368,7 +374,7 @@ Now generate ONE complete, high-quality design question for {role_str} at {diffi
             
         except Exception as e:
             logger.error(f"Failed to parse AI response: {e}")
-            return self._generate_fallback_question(role, difficulty, task_type, topic, created_by)
+            return self._generate_fallback_question(role, difficulty, task_type, topic, created_by, experience_level)
     
     def _generate_topic_based_question(
         self,
@@ -376,7 +382,8 @@ Now generate ONE complete, high-quality design question for {role_str} at {diffi
         difficulty: DifficultyLevel,
         task_type: TaskType,
         topic: str,
-        created_by: str
+        created_by: str,
+        experience_level: str = None
     ) -> DesignQuestionModel:
         """Generate question based on custom topic with role-specific variations"""
         
@@ -618,6 +625,7 @@ Now generate ONE complete, high-quality design question for {role_str} at {diffi
         return DesignQuestionModel(
             role=role,
             difficulty=difficulty,
+            experience_level=experience_level,
             task_type=task_type,
             title=f"{topic} {task_name.title()} - {role_name} Challenge",
             description=description,
@@ -634,7 +642,8 @@ Now generate ONE complete, high-quality design question for {role_str} at {diffi
         difficulty: DifficultyLevel,
         task_type: TaskType,
         topic: str,
-        created_by: str
+        created_by: str,
+        experience_level: str = None
     ) -> DesignQuestionModel:
         """Generate fallback question when AI fails - using high-quality templates"""
         
@@ -852,6 +861,7 @@ Now generate ONE complete, high-quality design question for {role_str} at {diffi
         return DesignQuestionModel(
             role=role,
             difficulty=difficulty,
+            experience_level=experience_level,
             task_type=task_type,
             title=template["title"],
             description=template["description"],

@@ -23,6 +23,14 @@ class DifficultyLevel(str, Enum):
     ADVANCED = "advanced"
 
 
+class ExperienceLevel(str, Enum):
+    """Experience levels"""
+    FRESHER = "fresher"
+    ONE_TO_THREE = "1-3 years"
+    THREE_TO_FIVE = "3-5 years"
+    SENIOR = "senior"
+
+
 class TaskType(str, Enum):
     """Task types"""
     LANDING_PAGE = "landing_page"
@@ -36,6 +44,7 @@ class DesignQuestionModel(BaseModel):
     id: Optional[str] = Field(default=None, alias="_id")
     role: DesignRole
     difficulty: DifficultyLevel
+    experience_level: Optional[ExperienceLevel] = None
     task_type: TaskType
     title: str
     description: str
@@ -52,6 +61,7 @@ class DesignQuestionModel(BaseModel):
             "example": {
                 "role": "ui_designer",
                 "difficulty": "intermediate",
+                "experience_level": "1-3 years",
                 "task_type": "landing_page",
                 "title": "E-commerce Landing Page",
                 "description": "Design a modern landing page",
