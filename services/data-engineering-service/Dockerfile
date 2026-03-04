@@ -36,14 +36,14 @@ RUN useradd -m -u 1000 appuser && \
 # USER appuser
 
 # Expose port
-EXPOSE 3009
+EXPOSE 3010
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:3009/health || exit 1
+    CMD curl -f http://localhost:3010/health || exit 1
 
 # Set entrypoint to handle docker socket permissions
 ENTRYPOINT ["/entrypoint.sh"]
 
 # Run the application
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "3009"]
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "3010"]

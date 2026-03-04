@@ -188,7 +188,8 @@ def create_application() -> FastAPI:
         openapi_url=f"{settings.API_V1_STR}/openapi.json",
         docs_url=f"{settings.API_V1_STR}/docs",
         redoc_url=f"{settings.API_V1_STR}/redoc",
-        lifespan=lifespan
+        lifespan=lifespan,
+        redirect_slashes=False  # Disable automatic trailing slash redirects
     )
 
     # Add security middleware
@@ -355,7 +356,7 @@ if __name__ == "__main__":
     uvicorn.run(
         "app.main:app",
         host="0.0.0.0",
-        port=3009,
+        port=3010,
         reload=True,
         log_config=None  # Use structlog configuration
     )

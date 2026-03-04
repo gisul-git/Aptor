@@ -1,133 +1,223 @@
-import Link from 'next/link'
-import { Code, CheckCircle, Clock, Shield } from 'lucide-react'
+import { useRouter } from "next/router";
+import { GetServerSideProps } from "next";
+import { requireAuth } from "../../lib/auth";
+import Link from "next/link";
+import { 
+  ArrowLeft, 
+  BookOpen, 
+  Edit3, 
+  Globe, 
+  FilePlus, 
+  Bot, 
+  PenTool, 
+  ClipboardList, 
+  Timer, 
+  ListChecks 
+} from "lucide-react";
 
-export default function DataEngineeringHomePage() {
+export default function DataEngineeringMainPage() {
+  const router = useRouter();
+
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <header className="bg-white shadow-sm border-b border-gray-200">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center py-6">
-            <div className="flex items-center">
-              <div className="p-2 bg-indigo-100 rounded-lg mr-3">
-                <Code className="h-8 w-8 text-indigo-600" />
-              </div>
-              <h1 className="text-2xl font-bold text-gray-900">
-                Data Engineering Assessment
-              </h1>
-            </div>
-            <nav className="flex space-x-4">
-              <Link href="/data-engineering/assessment" className="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition-colors">
-                Start Assessment
-              </Link>
-            </nav>
-          </div>
+    <div style={{ backgroundColor: "#FAFCFB", minHeight: "100vh", fontFamily: "system-ui, -apple-system, sans-serif" }}>
+      <div className="container" style={{ paddingTop: "3rem", paddingBottom: "4rem", maxWidth: "1100px", margin: "0 auto", padding: "3rem 2rem" }}>
+        
+        {/* Back Button */}
+        <div style={{ marginBottom: "2rem" }}>
+          <button
+            type="button"
+            onClick={() => router.push("/competency")}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "0.5rem",
+              padding: "0.5rem 0",
+              fontSize: "0.875rem",
+              color: "#4B5563",
+              backgroundColor: "transparent",
+              border: "none",
+              fontWeight: 500,
+              cursor: "pointer",
+              transition: "color 0.2s",
+            }}
+            onMouseOver={(e) => e.currentTarget.style.color = "#00684A"}
+            onMouseOut={(e) => e.currentTarget.style.color = "#4B5563"}
+          >
+            <ArrowLeft size={16} strokeWidth={2.5} /> Back to Dashboard
+          </button>
         </div>
-      </header>
 
-      {/* Hero Section */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
-        <div className="text-center">
-          <h2 className="text-4xl font-bold text-gray-900 sm:text-5xl mb-6">
-            Test Your PySpark Skills
-          </h2>
-          <p className="mt-6 text-xl text-gray-600 max-w-3xl mx-auto">
-            Complete data engineering challenges to demonstrate your PySpark expertise.
-            Write code, run tests, and get instant validation.
+        {/* Dashboard Header */}
+        <div style={{ marginBottom: "3rem" }}>
+          <h1 style={{ margin: "0 0 0.5rem 0", color: "#111827", fontSize: "2rem", fontWeight: 700 }}>
+            Data Engineering Management
+          </h1>
+          <p style={{ margin: 0, color: "#6B7280", fontSize: "1rem" }}>
+            Create, manage, and configure your data engineering assessments.
           </p>
-          <div className="mt-10">
-            <Link href="/data-engineering/assessment" className="bg-indigo-600 text-white text-lg px-8 py-4 rounded-lg hover:bg-indigo-700 transition-colors inline-flex items-center gap-2">
-              <Code className="h-5 w-5" />
-              Begin Assessment
-            </Link>
-          </div>
         </div>
 
-        {/* Features */}
-        <div className="mt-20 grid grid-cols-1 md:grid-cols-3 gap-8 max-w-4xl mx-auto">
-          {[
-            {
-              icon: Code,
-              title: 'Real PySpark Challenges',
-              description: 'Work with actual PySpark code and DataFrames'
-            },
-            {
-              icon: CheckCircle,
-              title: 'Instant Validation',
-              description: 'Get immediate feedback on your solutions'
-            },
-            {
-              icon: Shield,
-              title: 'Secure Execution',
-              description: 'Code runs safely in isolated containers'
-            }
-          ].map((feature, index) => (
-            <div key={index} className="bg-white p-6 rounded-lg shadow-sm border border-gray-200 text-center">
-              <div className="h-12 w-12 mx-auto mb-4 rounded-lg bg-indigo-100 p-2.5">
-                <feature.icon className="h-full w-full text-indigo-600" />
+        {/* Action Grid */}
+        <div style={{ 
+          display: "grid", 
+          gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", 
+          gap: "1.5rem" 
+        }}>
+          
+          {/* 1. Question Management Option */}
+          <Link href="/data-engineering/questions" style={{ textDecoration: "none" }}>
+            <div
+              style={{
+                backgroundColor: "#ffffff",
+                padding: "2rem",
+                borderRadius: "1rem",
+                cursor: "pointer",
+                transition: "all 0.2s ease",
+                border: "1px solid #E1F2E9",
+                height: "100%",
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "flex-start",
+                boxShadow: "0 1px 3px rgba(0,0,0,0.05)",
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.borderColor = "#00684A";
+                e.currentTarget.style.transform = "translateY(-4px)";
+                e.currentTarget.style.boxShadow = "0 10px 25px rgba(0, 104, 74, 0.1)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.borderColor = "#E1F2E9";
+                e.currentTarget.style.transform = "translateY(0)";
+                e.currentTarget.style.boxShadow = "0 1px 3px rgba(0,0,0,0.05)";
+              }}
+            >
+              <div style={{ 
+                backgroundColor: "#F0F9F4", 
+                padding: "1rem", 
+                borderRadius: "0.75rem", 
+                color: "#00684A",
+                marginBottom: "1.5rem" 
+              }}>
+                <BookOpen size={32} strokeWidth={1.5} />
               </div>
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">
-                {feature.title}
-              </h3>
-              <p className="text-gray-600 text-sm">
-                {feature.description}
-              </p>
+              <h2 style={{ margin: "0 0 1rem 0", color: "#111827", fontSize: "1.25rem", fontWeight: 600 }}>
+                Question Management
+              </h2>
+              <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", marginTop: "auto" }}>
+                <span style={{ display: "flex", alignItems: "center", gap: "0.375rem", fontSize: "0.75rem", fontWeight: 600, color: "#00684A", backgroundColor: "#F0F9F4", padding: "0.375rem 0.75rem", borderRadius: "0.5rem", border: "1px solid #E1F2E9" }}>
+                  <Edit3 size={14} /> Edit Questions
+                </span>
+                <span style={{ display: "flex", alignItems: "center", gap: "0.375rem", fontSize: "0.75rem", fontWeight: 600, color: "#00684A", backgroundColor: "#F0F9F4", padding: "0.375rem 0.75rem", borderRadius: "0.5rem", border: "1px solid #E1F2E9" }}>
+                  <Globe size={14} /> Publish/Unpublish
+                </span>
+              </div>
             </div>
-          ))}
-        </div>
+          </Link>
 
-        {/* Quick Test Section */}
-        <div className="mt-20 bg-white p-8 rounded-lg shadow-sm border border-gray-200 max-w-3xl mx-auto">
-          <h3 className="text-2xl font-bold text-gray-900 mb-6">Quick Test</h3>
-          <p className="text-gray-600 mb-6">
-            Try a simple test to see the data engineering service in action.
-          </p>
-          <div className="space-y-4">
-            <Link href="/data-engineering/simple-test" className="block w-full bg-green-600 text-white px-4 py-3 rounded-lg hover:bg-green-700 transition-colors text-center">
-              Run Simple Test
-            </Link>
-            <Link href="/data-engineering/practice" className="block w-full bg-blue-600 text-white px-4 py-3 rounded-lg hover:bg-blue-700 transition-colors text-center">
-              Practice Mode
-            </Link>
-            <Link href="/data-engineering/dashboard" className="block w-full bg-purple-600 text-white px-4 py-3 rounded-lg hover:bg-purple-700 transition-colors text-center">
-              View Dashboard
-            </Link>
-          </div>
-        </div>
+          {/* 2. Create Questions Option */}
+          <Link href="/data-engineering/questions/create" style={{ textDecoration: "none" }}>
+            <div
+              style={{
+                backgroundColor: "#ffffff",
+                padding: "2rem",
+                borderRadius: "1rem",
+                cursor: "pointer",
+                transition: "all 0.2s ease",
+                border: "1px solid #E1F2E9",
+                height: "100%",
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "flex-start",
+                boxShadow: "0 1px 3px rgba(0,0,0,0.05)",
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.borderColor = "#00684A";
+                e.currentTarget.style.transform = "translateY(-4px)";
+                e.currentTarget.style.boxShadow = "0 10px 25px rgba(0, 104, 74, 0.1)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.borderColor = "#E1F2E9";
+                e.currentTarget.style.transform = "translateY(0)";
+                e.currentTarget.style.boxShadow = "0 1px 3px rgba(0,0,0,0.05)";
+              }}
+            >
+              <div style={{ 
+                backgroundColor: "#F0F9F4", 
+                padding: "1rem", 
+                borderRadius: "0.75rem", 
+                color: "#00684A",
+                marginBottom: "1.5rem" 
+              }}>
+                <FilePlus size={32} strokeWidth={1.5} />
+              </div>
+              <h2 style={{ margin: "0 0 1rem 0", color: "#111827", fontSize: "1.25rem", fontWeight: 600 }}>
+                Create Questions
+              </h2>
+              <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", marginTop: "auto" }}>
+                <span style={{ display: "flex", alignItems: "center", gap: "0.375rem", fontSize: "0.75rem", fontWeight: 600, color: "#00684A", backgroundColor: "#F0F9F4", padding: "0.375rem 0.75rem", borderRadius: "0.5rem", border: "1px solid #E1F2E9" }}>
+                  <Bot size={14} /> AI Generation
+                </span>
+                <span style={{ display: "flex", alignItems: "center", gap: "0.375rem", fontSize: "0.75rem", fontWeight: 600, color: "#00684A", backgroundColor: "#F0F9F4", padding: "0.375rem 0.75rem", borderRadius: "0.5rem", border: "1px solid #E1F2E9" }}>
+                  <PenTool size={14} /> Manual Creation
+                </span>
+              </div>
+            </div>
+          </Link>
 
-        {/* Assessment Info */}
-        <div className="mt-20 bg-white p-8 rounded-lg shadow-sm border border-gray-200 max-w-3xl mx-auto">
-          <h3 className="text-2xl font-bold text-gray-900 mb-6">Assessment Details</h3>
-          <div className="space-y-4 text-gray-600">
-            <div className="flex items-start gap-3">
-              <Clock className="h-5 w-5 text-indigo-600 mt-0.5 flex-shrink-0" />
-              <div>
-                <p className="font-medium text-gray-900">Time Limit</p>
-                <p className="text-sm">60 minutes to complete the challenge</p>
+          {/* 3. Create Assessment Option */}
+          <Link href="/data-engineering/create" style={{ textDecoration: "none" }}>
+            <div
+              style={{
+                backgroundColor: "#ffffff",
+                padding: "2rem",
+                borderRadius: "1rem",
+                cursor: "pointer",
+                transition: "all 0.2s ease",
+                border: "1px solid #E1F2E9",
+                height: "100%",
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "flex-start",
+                boxShadow: "0 1px 3px rgba(0,0,0,0.05)",
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.borderColor = "#00684A";
+                e.currentTarget.style.transform = "translateY(-4px)";
+                e.currentTarget.style.boxShadow = "0 10px 25px rgba(0, 104, 74, 0.1)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.borderColor = "#E1F2E9";
+                e.currentTarget.style.transform = "translateY(0)";
+                e.currentTarget.style.boxShadow = "0 1px 3px rgba(0,0,0,0.05)";
+              }}
+            >
+              <div style={{ 
+                backgroundColor: "#F0F9F4", 
+                padding: "1rem", 
+                borderRadius: "0.75rem", 
+                color: "#00684A",
+                marginBottom: "1.5rem" 
+              }}>
+                <ClipboardList size={32} strokeWidth={1.5} />
+              </div>
+              <h2 style={{ margin: "0 0 1rem 0", color: "#111827", fontSize: "1.25rem", fontWeight: 600 }}>
+                Create New Assessment
+              </h2>
+              <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", marginTop: "auto" }}>
+                <span style={{ display: "flex", alignItems: "center", gap: "0.375rem", fontSize: "0.75rem", fontWeight: 600, color: "#00684A", backgroundColor: "#F0F9F4", padding: "0.375rem 0.75rem", borderRadius: "0.5rem", border: "1px solid #E1F2E9" }}>
+                  <Timer size={14} /> Duration Settings
+                </span>
+                <span style={{ display: "flex", alignItems: "center", gap: "0.375rem", fontSize: "0.75rem", fontWeight: 600, color: "#00684A", backgroundColor: "#F0F9F4", padding: "0.375rem 0.75rem", borderRadius: "0.5rem", border: "1px solid #E1F2E9" }}>
+                  <ListChecks size={14} /> Question Selection
+                </span>
               </div>
             </div>
-            <div className="flex items-start gap-3">
-              <Code className="h-5 w-5 text-indigo-600 mt-0.5 flex-shrink-0" />
-              <div>
-                <p className="font-medium text-gray-900">Code Editor</p>
-                <p className="text-sm">Monaco editor with syntax highlighting and auto-completion</p>
-              </div>
-            </div>
-            <div className="flex items-start gap-3">
-              <CheckCircle className="h-5 w-5 text-indigo-600 mt-0.5 flex-shrink-0" />
-              <div>
-                <p className="font-medium text-gray-900">Validation</p>
-                <p className="text-sm">Automated testing against expected outputs with detailed feedback</p>
-              </div>
-            </div>
-          </div>
-          <div className="mt-8 pt-6 border-t border-gray-200">
-            <Link href="/data-engineering/assessment" className="block w-full bg-indigo-600 text-white px-4 py-3 rounded-lg hover:bg-indigo-700 transition-colors text-center">
-              Start Assessment Now
-            </Link>
-          </div>
+          </Link>
+
         </div>
-      </main>
+      </div>
     </div>
-  )
+  );
 }
+
+export const getServerSideProps: GetServerSideProps = requireAuth;

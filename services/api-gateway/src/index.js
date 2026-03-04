@@ -24,7 +24,7 @@ const SERVICES = {
   superAdmin: process.env.SUPER_ADMIN_SERVICE_URL || 'http://localhost:3006',
   employee: process.env.EMPLOYEE_SERVICE_URL || 'http://localhost:4005',
   demo: process.env.DEMO_SERVICE_URL || 'http://localhost:3008',
-  dataEngineering: process.env.DATA_ENGINEERING_SERVICE_URL || 'http://localhost:3009',
+  dataEngineering: process.env.DATA_ENGINEERING_SERVICE_URL || 'http://localhost:3010',
   aimlAgent: process.env.AIML_AGENT_SERVICE_URL || 'http://aiml-agent-service:8889',
 };
 

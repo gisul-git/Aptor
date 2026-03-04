@@ -71,7 +71,7 @@ services:
       - PROCTORING_SERVICE_URL=http://proctoring-service:3005
       - SUPER_ADMIN_SERVICE_URL=http://super-admin-service:3006
       - DEMO_SERVICE_URL=http://demo-service:3008
-      - DATA_ENGINEERING_SERVICE_URL=http://data-engineering-service:3009
+      - DATA_ENGINEERING_SERVICE_URL=http://data-engineering-service:3010
       - CORS_ORIGINS=${CORS_ORIGINS:-https://qa.aaptor.com,http://frontend:3000,http://localhost:3000,http://localhost:3001}
       - EMPLOYEE_SERVICE_URL=${EMPLOYEE_SERVICE_URL:-http://employee-service:4005}
     depends_on:
@@ -359,7 +359,7 @@ services:
       dockerfile: Dockerfile
     container_name: gisul-data-engineering-service
     ports:
-      - "3009:3009"
+      - "3010:3010"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     environment:

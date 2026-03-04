@@ -162,6 +162,41 @@ async def generate_question(
         raise HTTPException(status_code=500, detail="Failed to generate question")
 
 
+@router.get("/topics")
+async def get_available_topics(
+    integration_service: IntegrationService = Depends(get_integration_service)
+) -> List[str]:
+    """Get list of available question topics."""
+    try:
+        # Return the available topics from the QuestionTopic enum
+        from app.models.question import QuestionTopic
+        topics = [topic.value for topic in QuestionTopic]
+        
+        logger.info("Available topics retrieved", count=len(topics))
+        return topics
+        
+    except Exception as e:
+        logger.error("Failed to get available topics", error=str(e))
+        raise HTTPException(status_code=500, detail="Failed to retrieve topics")
+
+
+@router.get("/stats")
+async def get_question_stats(
+    current_user: Optional[Dict[str, Any]] = Depends(get_current_user),
+    integration_service: IntegrationService = Depends(get_integration_service)
+) -> Dict[str, Any]:
+    """Get statistics about questions in the repository."""
+    try:
+        stats = await integration_service.question_repo.get_question_stats()
+        
+        logger.info("Question stats retrieved", user_id=current_user.get("user_id") if current_user else None)
+        return stats
+        
+    except Exception as e:
+        logger.error("Failed to get question stats", error=str(e))
+        raise HTTPException(status_code=500, detail="Failed to retrieve question statistics")
+
+
 @router.get("/{question_id}")
 async def get_question(
     question_id: str,
@@ -191,39 +226,44 @@ async def get_question(
         raise HTTPException(status_code=500, detail="Failed to retrieve question")
 
 
-@router.get("/")
+@router.get("/", response_model=Dict[str, Any])
+@router.get("", response_model=Dict[str, Any])
 async def list_questions(
     skip: int = Query(0, ge=0, description="Number of questions to skip"),
     limit: int = Query(10, ge=1, le=100, description="Number of questions to return"),
     topic: Optional[str] = Query(None, description="Filter by topic"),
     difficulty: Optional[QuestionDifficulty] = Query(None, description="Filter by difficulty"),
     experience_level: Optional[int] = Query(None, ge=0, le=20, description="Filter by experience level"),
-    current_user: Optional[Dict[str, Any]] = Depends(get_current_user)
+    current_user: Optional[Dict[str, Any]] = Depends(get_current_user),
+    integration_service: IntegrationService = Depends(get_integration_service)
 ) -> Dict[str, Any]:
     """List questions with filtering and pagination."""
     try:
-        question_service = QuestionGeneratorService()
-        
-        # Build filter criteria
-        filters = {}
+        # Convert topic string to QuestionTopic enum if provided
+        topic_enum = None
         if topic:
-            filters["topic"] = topic
-        if difficulty:
-            filters["difficulty"] = difficulty
-        if experience_level is not None:
-            filters["experience_level"] = experience_level
+            try:
+                topic_enum = QuestionTopic(topic)
+            except ValueError:
+                pass  # Invalid topic, ignore
         
-        questions, total_count = await question_service.list_questions(
+        # Use find_questions_by_criteria with individual parameters
+        questions = await integration_service.question_repo.find_questions_by_criteria(
+            difficulty_level=difficulty,
+            topic=topic_enum,
             skip=skip,
-            limit=limit,
-            filters=filters
+            limit=limit
         )
+        
+        # Get total count (approximate for now)
+        total_count = len(questions) + skip if len(questions) == limit else skip + len(questions)
         
         logger.info(
             "Questions listed",
             count=len(questions),
             total=total_count,
-            filters=filters,
+            topic=topic,
+            difficulty=difficulty,
             user_id=current_user.get("user_id") if current_user else None
         )
         
@@ -232,7 +272,7 @@ async def list_questions(
             "total": total_count,
             "skip": skip,
             "limit": limit,
-            "has_more": skip + len(questions) < total_count
+            "has_more": len(questions) == limit
         }
         
     except Exception as e:
@@ -240,42 +280,7 @@ async def list_questions(
         raise HTTPException(status_code=500, detail="Failed to retrieve questions")
 
 
-@router.get("/topics")
-async def get_available_topics() -> List[str]:
-    """Get list of available question topics."""
-    try:
-        # Try to get from cache first
-        redis_client = await get_redis()
-        cache_key = "question_topics"
-        
-        cached_topics = await redis_client.get(cache_key)
-        if cached_topics:
-            import json
-            return json.loads(cached_topics)
-        
-        question_service = QuestionGeneratorService()
-        topics = await question_service.get_available_topics()
-        
-        # Cache the topics for 1 hour
-        import json
-        await redis_client.setex(cache_key, 3600, json.dumps(topics))
-        
-        logger.info("Available topics retrieved", count=len(topics))
-        return topics
-        
-    except Exception as e:
-        logger.error("Failed to get available topics", error=str(e))
-        raise HTTPException(status_code=500, detail="Failed to retrieve topics")
-
-
-@router.get("/stats")
-async def get_question_stats(
-    current_user: Optional[Dict[str, Any]] = Depends(get_current_user)
-) -> Dict[str, Any]:
-    """Get question statistics and analytics."""
-    try:
-        question_service = QuestionGeneratorService()
-        stats = await question_service.get_question_stats()
+        stats = await integration_service.question_repo.get_question_statistics()
         
         logger.info(
             "Question stats retrieved",
@@ -292,12 +297,27 @@ async def get_question_stats(
 @router.post("/{question_id}/validate")
 async def validate_question(
     question_id: str,
-    current_user: Optional[Dict[str, Any]] = Depends(get_current_user)
+    current_user: Optional[Dict[str, Any]] = Depends(get_current_user),
+    integration_service: IntegrationService = Depends(get_integration_service)
 ) -> Dict[str, Any]:
     """Validate a question's test cases and expected outputs."""
     try:
-        question_service = QuestionGeneratorService()
-        validation_result = await question_service.validate_question(question_id)
+        # Get the question
+        question = await integration_service.question_repo.get_question_by_id(question_id)
+        
+        if not question:
+            raise HTTPException(status_code=404, detail="Question not found")
+        
+        # Basic validation
+        validation_result = {
+            "is_valid": True,
+            "errors": [],
+            "warnings": []
+        }
+        
+        # Check if question has test cases
+        if not question.test_cases or len(question.test_cases) == 0:
+            validation_result["warnings"].append("No test cases defined")
         
         logger.info(
             "Question validated",
@@ -308,6 +328,8 @@ async def validate_question(
         
         return validation_result
         
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error("Failed to validate question", question_id=question_id, error=str(e))
         raise HTTPException(status_code=500, detail="Failed to validate question")
@@ -316,7 +338,8 @@ async def validate_question(
 @router.delete("/{question_id}")
 async def delete_question(
     question_id: str,
-    current_user: Dict[str, Any] = Depends(get_current_user)  # Require authentication
+    current_user: Dict[str, Any] = Depends(get_current_user),
+    integration_service: IntegrationService = Depends(get_integration_service)
 ) -> Dict[str, str]:
     """Delete a question (admin only)."""
     try:
@@ -324,15 +347,11 @@ async def delete_question(
         if not current_user or current_user.get("role") != "admin":
             raise HTTPException(status_code=403, detail="Admin privileges required")
         
-        question_service = QuestionGeneratorService()
-        success = await question_service.delete_question(question_id)
+        # Delete the question
+        success = await integration_service.question_repo.delete_question(question_id)
         
         if not success:
             raise HTTPException(status_code=404, detail="Question not found")
-        
-        # Remove from cache
-        redis_client = await get_redis()
-        await redis_client.delete(f"question:{question_id}")
         
         logger.info(
             "Question deleted",

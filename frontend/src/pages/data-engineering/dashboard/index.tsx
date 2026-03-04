@@ -274,7 +274,7 @@ export default function DashboardPage() {
               </button>
 
               <button
-                onClick={() => window.open('http://localhost:3009/docs', '_blank')}
+                onClick={() => window.open('http://localhost:3010/docs', '_blank')}
                 className="w-full p-4 text-left bg-gray-50 hover:bg-gray-100 rounded-lg border border-gray-200 transition-colors"
               >
                 <div className="flex items-center gap-3">

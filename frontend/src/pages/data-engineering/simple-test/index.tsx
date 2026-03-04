@@ -145,9 +145,9 @@ print(df.head())`}
         <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
           <h2 className="text-xl font-semibold text-gray-900 mb-4">Service Information</h2>
           <div className="space-y-2 text-sm text-gray-600">
-            <p><strong>Backend URL:</strong> http://localhost:3009</p>
-            <p><strong>API Docs:</strong> <a href="http://localhost:3009/docs" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">http://localhost:3009/docs</a></p>
-            <p><strong>Health Endpoint:</strong> <a href="http://localhost:3009/health" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">http://localhost:3009/health</a></p>
+            <p><strong>Backend URL:</strong> http://localhost:3010</p>
+            <p><strong>API Docs:</strong> <a href="http://localhost:3010/docs" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">http://localhost:3010/docs</a></p>
+            <p><strong>Health Endpoint:</strong> <a href="http://localhost:3010/health" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">http://localhost:3010/health</a></p>
           </div>
         </div>
       </div>
