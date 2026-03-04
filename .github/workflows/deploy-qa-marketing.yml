@@ -1,0 +1,107 @@
+name: Deploy Marketing Site to QA (Debian VM)
+
+on:
+  push:
+    branches:
+      - QA
+    paths:
+      - 'marketing/**'
+      - '.github/workflows/deploy-qa-marketing.yml'
+  pull_request:
+    types: [closed]
+    branches:
+      - QA
+    paths:
+      - 'marketing/**'
+  workflow_dispatch:
+
+env:
+  VM_HOST: ${{ secrets.QA_VM_HOST }}
+  VM_USER: ${{ secrets.QA_VM_USER }}
+  VM_SSH_KEY: ${{ secrets.QA_VM_SSH_KEY }}
+  VM_DEPLOY_PATH: ${{ secrets.QA_VM_DEPLOY_PATH }}
+
+jobs:
+  deploy-marketing-qa:
+    runs-on: ubuntu-latest
+    if: |
+      github.event_name == 'push' ||
+      (github.event_name == 'pull_request' && github.event.pull_request.merged == true) ||
+      github.event_name == 'workflow_dispatch'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: QA
+
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ env.VM_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H ${{ env.VM_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Deploy Marketing Site to QA VM
+        run: |
+          DEPLOY_PATH="${{ env.VM_DEPLOY_PATH }}"
+          if [ -z "$DEPLOY_PATH" ]; then
+            DEPLOY_PATH="/opt/aptor"
+          fi
+          
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no ${{ env.VM_USER }}@${{ env.VM_HOST }} bash << EOF
+            set -e
+            
+            echo "🚀 Starting Marketing Site QA deployment..."
+            
+            # Navigate to deployment directory
+            cd ${DEPLOY_PATH}
+            
+            # Pull latest code from QA branch
+            echo "📥 Pulling latest code from QA branch..."
+            git fetch origin
+            git checkout QA
+            git pull origin QA
+            
+            # Navigate to marketing directory
+            cd marketing
+            
+            # Build marketing Docker image
+            echo "🔨 Building marketing Docker image..."
+            docker build -t aptor-marketing:qa -t aptor-marketing:latest .
+            
+            # Stop and remove old marketing container
+            echo "🛑 Stopping and removing old marketing container..."
+            if docker ps -a --format "{{.Names}}" | grep -qE "^aptor-marketing$"; then
+              echo "Removing existing marketing container..."
+              docker stop aptor-marketing 2>/dev/null || true
+              docker rm -f aptor-marketing 2>/dev/null || true
+            fi
+            
+            # Run new marketing container
+            echo "🚀 Starting new marketing container..."
+            docker run -d \
+              --name aptor-marketing \
+              --network aptor_microservices-network \
+              -p 3009:3009 \
+              --restart unless-stopped \
+              aptor-marketing:qa
+            
+            # Verify container is running
+            echo "⏳ Waiting for marketing site to be ready..."
+            sleep 5
+            
+            if docker ps | grep -q aptor-marketing; then
+              echo "✅ Marketing site deployed successfully!"
+              docker ps | grep aptor-marketing
+            else
+              echo "❌ Marketing site deployment failed!"
+              docker logs aptor-marketing
+              exit 1
+            fi
+          EOF
+
+      - name: Verify Deployment
+        run: |
+          echo "✅ Marketing site deployment completed"
+          echo "🌐 Marketing site available at: http://${{ env.VM_HOST }}:3009"

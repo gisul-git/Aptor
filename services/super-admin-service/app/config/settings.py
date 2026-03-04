@@ -17,6 +17,11 @@ class Settings(BaseSettings):
     jwt_rsa_private_key_path: str | None = None
     jwt_rsa_public_key_path: str | None = None
     cors_origins: str = "http://localhost:3000,https://gisul-ai-assessment.vercel.app"
+    
+    # SendGrid email configuration
+    sendgrid_api_key: str | None = None
+    sendgrid_from_email: str = "noreply@aaptor.com"
+    sendgrid_from_name: str = "Aaptor Platform"
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
