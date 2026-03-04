@@ -384,9 +384,6 @@ export default function DesignQuestionCreatePage() {
                     <option value="UX Designer" />
                     <option value="Product Designer" />
                     <option value="Visual Designer" />
-                    <option value="Graphic Designer" />
-                    <option value="Brand Designer" />
-                    <option value="Interaction Designer" />
                   </datalist>
                 </div>
 
@@ -421,18 +418,7 @@ export default function DesignQuestionCreatePage() {
                     <option value="Mobile App" />
                     <option value="Dashboard" />
                     <option value="Component" />
-                    <option value="Website" />
-                    <option value="Web App" />
-                    <option value="E-commerce" />
                   </datalist>
-                </div>
-                      border: "1px solid #E8B4FA",
-                      borderRadius: "0.5rem",
-                      fontSize: "0.9375rem",
-                      backgroundColor: "#ffffff",
-                      transition: "all 0.2s ease",
-                    }}
-                  />
                 </div>
               </div>
 
@@ -608,9 +594,6 @@ export default function DesignQuestionCreatePage() {
                     <option value="UX Designer" />
                     <option value="Product Designer" />
                     <option value="Visual Designer" />
-                    <option value="Graphic Designer" />
-                    <option value="Brand Designer" />
-                    <option value="Interaction Designer" />
                   </datalist>
                 </div>
 
@@ -637,14 +620,7 @@ export default function DesignQuestionCreatePage() {
                     <option value="Mobile App" />
                     <option value="Dashboard" />
                     <option value="Component" />
-                    <option value="Website" />
-                    <option value="Web App" />
-                    <option value="E-commerce" />
                   </datalist>
-                </div>
-                      backgroundColor: "#ffffff",
-                    }}
-                  />
                 </div>
 
                 <div>
