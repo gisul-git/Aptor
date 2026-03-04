@@ -168,6 +168,25 @@ Your task is to design a clean, modern landing page that catches attention and e
 The target audience is budget-conscious young people who love fashion but don't have a lot of money to spend. They want to look good without breaking the bank, and they're comfortable shopping on their phones."
 
 --------------------------------------------------
+### BAD vs GOOD EXAMPLES:
+
+❌ BAD (Too Technical):
+"Create pixel-perfect designs with precise alignment and spacing"
+"Use a cohesive color palette with proper contrast ratios (WCAG AA)"
+"Demonstrate mastery of typography hierarchy"
+
+✅ GOOD (Natural & Friendly):
+"Make sure everything lines up nicely and looks neat"
+"Use 2-3 colors that look good together and are easy to read"
+"Use different text sizes to show what's most important"
+
+❌ BAD Description:
+"Create a comprehensive, complex multi-flow mobile app design covering complete user flows with 8-10 screens."
+
+✅ GOOD Description:
+"You're designing a shopping app for a company that sells trendy clothes to college students. Right now, customers find the app confusing and leave without buying anything. Your job is to make the shopping experience simple and fun, so people actually want to buy clothes."
+
+--------------------------------------------------
 ### OUTPUT FORMAT (JSON):
 
 {{
@@ -211,7 +230,12 @@ The target audience is budget-conscious young people who love fashion but don't 
 
 Now generate ONE design question for {role_str} at {difficulty_str} level about {topic_str}. 
 
-IMPORTANT: Write the description in natural, conversational language like you're talking to a friend. NO technical jargon. Make it warm and easy to understand.
+CRITICAL REMINDERS:
+- Write description like you're explaining to a friend (warm, natural, conversational)
+- NO technical jargon (no "pixel-perfect", "WCAG", "high-fidelity", "mastery")
+- Use simple words everyone understands
+- Make constraints actionable and friendly
+- Make deliverables crystal clear
 
 Return ONLY the JSON object."""
         
@@ -225,11 +249,11 @@ Return ONLY the JSON object."""
         response = await client.chat.completions.create(
             model=settings.AI_MODEL,
             messages=[
-                {"role": "system", "content": "You are an experienced design hiring manager who writes clear, professional project briefs for design candidates. You write in natural, easy-to-understand language that makes candidates feel comfortable and confident. Your questions feel like real work projects, not academic tests. You explain context clearly, give actionable instructions, and make sure candidates know exactly what they need to design."},
+                {"role": "system", "content": "You are a friendly design manager writing project briefs for candidates. You write in simple, natural language like you're talking to a friend. You NEVER use technical jargon or formal language. You make candidates feel comfortable and confident. Your briefs are warm, clear, and easy to understand."},
                 {"role": "user", "content": prompt}
             ],
-            temperature=0.8,
-            max_tokens=1500,
+            temperature=0.9,
+            max_tokens=2000,
             response_format={"type": "json_object"}
         )
         return response.choices[0].message.content
