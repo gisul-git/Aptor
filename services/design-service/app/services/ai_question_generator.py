@@ -97,7 +97,36 @@ class AIQuestionGenerator:
         topic_str = topic if topic else task_str
         experience_str = experience_level if experience_level else "Not specified"
         
-        base_prompt = f"""You are an expert design hiring manager creating assessment questions for candidates. Your goal is to write clear, professional, and easy-to-understand design challenges that feel like real project briefs.
+        base_prompt = f"""You are an expert design hiring manager creating assessment questions for candidates. Your goal is to write clear, professional, and easy-to-understand design challenges that feel like real project briefs from a friendly manager.
+
+--------------------------------------------------
+### CRITICAL WRITING RULES:
+
+1. **Write in Natural, Conversational Language**:
+   - NO technical jargon or formal language
+   - Write like you're explaining a project to a new team member
+   - Use simple, everyday words
+   - Be warm and encouraging
+
+2. **Description Structure** (250-400 words):
+   - Paragraph 1: Company/product context (2-3 sentences)
+   - Paragraph 2: The problem or user need (2-3 sentences)
+   - Paragraph 3: What you need to design (2-3 sentences)
+   - Paragraph 4: Target users and their needs (1-2 sentences)
+   - Paragraph 5: Expected outcome (1 sentence)
+
+3. **Constraints - Write as Simple Instructions**:
+   - Start with action verbs: "Design for...", "Use...", "Make sure...", "Include..."
+   - NO technical terms like "WCAG", "touch targets", "accessibility compliance"
+   - Use plain language: "Make buttons easy to tap (at least 44px tall)"
+   - Example: "Design for mobile phones (iPhone or Android)"
+   - Example: "Use 2-3 main colors that look good together"
+
+4. **Deliverables - Be Crystal Clear**:
+   - Tell exactly what files to submit
+   - Use simple language: "1 complete screen design" not "High-fidelity mockup"
+   - Example: "Submit your final design as a PNG or JPG file"
+   - Example: "Show your color choices and fonts used"
 
 --------------------------------------------------
 ### INPUT PARAMETERS:
@@ -108,119 +137,83 @@ Experience Level: {experience_str}
 Topic: {topic_str}
 
 --------------------------------------------------
-### WRITING STYLE GUIDELINES:
-
-1. **Write Like a Real Project Brief**:
-   - Use natural, conversational language
-   - Explain the context clearly (who, what, why)
-   - Make it easy for candidates to understand what they need to do
-   - Avoid technical jargon unless necessary
-   - Write as if you're briefing a designer joining your team
-
-2. **Structure Your Description**:
-   - Start with the company/product context (1-2 sentences)
-   - Explain the user problem or business need (2-3 sentences)
-   - Describe what the candidate needs to design (2-3 sentences)
-   - Mention the target users and their needs (1-2 sentences)
-   - End with the expected outcome or goal (1 sentence)
-
-3. **Make Constraints Clear and Actionable**:
-   - Write constraints as simple instructions
-   - Example: "Design for mobile screens (iOS or Android)" instead of "Platform constraint: mobile"
-   - Example: "Use a maximum of 3 primary colors" instead of "Color palette limitation"
-   - Example: "Make sure buttons are easy to tap (at least 44px)" instead of "Touch target compliance"
-
-4. **Deliverables Should Be Crystal Clear**:
-   - Tell candidates exactly what files/screens to submit
-   - Use simple language: "Submit 1 high-quality screen design" instead of "High-fidelity UI mockup"
-   - Be specific: "Include a color palette and font choices" instead of "Style guide"
-
---------------------------------------------------
 ### ROLE-SPECIFIC FOCUS:
 
-**UI Designer**: Focus on visual design, colors, typography, spacing, layout, and making things look professional and polished.
+**UI Designer**: Visual design, colors, typography, spacing, making things look beautiful and professional
 
-**UX Designer**: Focus on user flows, how things work, making it easy to use, handling errors, and thinking about different user scenarios.
+**UX Designer**: User flows, how things work, making it easy to use, thinking about different scenarios
 
-**Product Designer**: Focus on business goals, user research, complete user journeys, and balancing user needs with business objectives.
+**Product Designer**: Business goals, user research, complete journeys, balancing user needs with business needs
 
-**Visual Designer**: Focus on creative visual style, brand identity, unique aesthetics, and visual storytelling.
+**Visual Designer**: Creative visual style, brand identity, unique look and feel, visual storytelling
 
 --------------------------------------------------
 ### DIFFICULTY LEVELS:
 
-**Easy** (45 minutes):
-- Design 1 simple screen or component
-- 4-5 clear, simple constraints
-- Basic layout and visual design
-- Perfect for beginners or quick assessments
+**Easy** (45 min): 1 simple screen, 4-5 basic constraints, straightforward task
 
-**Medium** (60 minutes):
-- Design 1 screen with multiple sections OR 2-3 related screens
-- 5-7 constraints covering design and usability
-- More attention to detail and user experience
-- For designers with some experience
+**Medium** (60 min): 1 screen with multiple sections OR 2-3 screens, 5-7 constraints, more detail needed
 
-**High** (90 minutes):
-- Design complete user flows with multiple screens
-- 7-10 constraints covering design, usability, accessibility, and business goals
-- Handle edge cases and complex scenarios
-- For experienced designers
+**High** (90 min): Complete flow with multiple screens, 7-10 constraints, handle complex scenarios
 
 --------------------------------------------------
-### EXAMPLE OF GOOD DESCRIPTION (College Landing Page):
+### EXAMPLE OF PERFECT DESCRIPTION:
 
-"You're designing a landing page for a new online college that offers affordable degree programs for working professionals. The college wants to attract students aged 25-40 who are looking to advance their careers while working full-time.
+"You're designing a landing page for an online shopping app that sells affordable fashion to college students and young professionals aged 18-30. The company wants to attract new users who are looking for trendy clothes at budget-friendly prices.
 
-The main problem is that potential students don't trust new online colleges and need to be convinced that the programs are legitimate, affordable, and flexible. The landing page needs to clearly communicate the college's value proposition, showcase program options, and make it easy for visitors to request more information or apply.
+Right now, potential customers visit the website but leave quickly because they can't tell what makes this app different from other shopping apps. The landing page needs to clearly show the app's benefits, display popular products, and make it easy for visitors to download the app or sign up.
 
-Your task is to design a clean, professional landing page that builds trust and encourages visitors to take action. The design should feel modern and credible, not flashy or gimmicky. Focus on clear information hierarchy, compelling visuals, and a strong call-to-action.
+Your task is to design a clean, modern landing page that catches attention and encourages people to take action. The design should feel young and energetic, not boring or corporate. Focus on showing the best products, explaining why the app is great, and having a clear button to download or sign up.
 
-The target audience is working professionals who are busy and skeptical, so the page needs to quickly answer their questions: Is this legit? Can I afford it? Will it fit my schedule? Can I really get a degree online?"
+The target audience is budget-conscious young people who love fashion but don't have a lot of money to spend. They want to look good without breaking the bank, and they're comfortable shopping on their phones."
 
 --------------------------------------------------
 ### OUTPUT FORMAT (JSON):
 
 {{
-    "title": "Short, clear title (e.g., 'College Landing Page Design')",
-    "description": "Write a natural, easy-to-understand project brief (250-400 words) following the structure above. Use simple language and explain clearly what the candidate needs to design and why.",
+    "title": "Short, clear title (e.g., 'Shopping App Landing Page Design')",
+    "description": "Write a natural, friendly project brief (250-400 words) like the example above. Use simple language. Explain the context, problem, task, users, and goal in separate paragraphs. Make it feel like a real project from a friendly manager.",
     "constraints": [
-        "Write 4-8 clear, actionable constraints using simple language",
-        "Example: 'Design for desktop/laptop screens (1440px width)'",
-        "Example: 'Use a professional color scheme (2-3 main colors)'",
-        "Example: 'Include a clear call-to-action button above the fold'",
-        "Example: 'Make sure the design works for people aged 25-40'",
-        "Example: 'Keep the layout clean and not too busy'",
-        "Avoid technical jargon - write like you're talking to a designer"
+        "Write 4-8 simple, actionable instructions",
+        "Use plain language - NO jargon",
+        "Start with action verbs",
+        "Example: 'Design for desktop computers (1440px wide)'",
+        "Example: 'Use 2-3 main colors that work well together'",
+        "Example: 'Make sure text is easy to read'",
+        "Example: 'Include a clear button to download the app'",
+        "Example: 'Keep the design clean and not too busy'"
     ],
     "deliverables": [
-        "Write 2-4 clear deliverables using simple language",
-        "Example: 'One complete landing page design (desktop version)'",
-        "Example: 'Show your color palette and font choices'",
-        "Example: 'Include at least 3 sections: hero, programs, and contact form'",
-        "Be specific about what files or screens to submit"
+        "Write 2-4 clear deliverables in simple language",
+        "Example: '1 complete landing page design'",
+        "Example: 'Show your color palette (2-3 colors)'",
+        "Example: 'List the fonts you used'",
+        "Be specific about what to submit"
     ],
     "evaluation_criteria": [
-        "Write 4-6 evaluation criteria in simple terms",
-        "Example: 'Visual design quality and professional appearance'",
-        "Example: 'Clear information hierarchy and easy to scan'",
-        "Example: 'Effective use of colors and typography'",
-        "Example: 'Strong call-to-action that stands out'",
-        "Focus on what makes a good design for this specific task"
+        "Write 4-6 criteria in simple terms",
+        "Example: 'Visual design looks professional and modern'",
+        "Example: 'Information is easy to find and read'",
+        "Example: 'Colors and fonts work well together'",
+        "Example: 'Call-to-action button stands out'",
+        "Focus on what makes a good design"
     ],
     "time_limit_minutes": {45 if difficulty == DifficultyLevel.BEGINNER else 60 if difficulty == DifficultyLevel.INTERMEDIATE else 90}
 }}
 
 --------------------------------------------------
 ### QUALITY CHECKLIST:
-✓ Is the description written in natural, easy-to-understand language?
-✓ Would a candidate immediately understand what they need to design?
-✓ Are the constraints written as simple, actionable instructions?
-✓ Are the deliverables crystal clear?
-✓ Does it feel like a real project brief, not an academic test?
-✓ Is the business context and user problem clearly explained?
+✓ Is the description written like a friendly conversation?
+✓ Would a candidate immediately understand what to design?
+✓ Are constraints written as simple instructions (no jargon)?
+✓ Are deliverables crystal clear?
+✓ Does it feel like a real project, not a test?
 
-Now generate ONE complete design question for {role_str} at {difficulty_str} level about {topic_str}. Write it in natural, professional language that's easy for candidates to understand. Return ONLY the JSON object."""
+Now generate ONE design question for {role_str} at {difficulty_str} level about {topic_str}. 
+
+IMPORTANT: Write the description in natural, conversational language like you're talking to a friend. NO technical jargon. Make it warm and easy to understand.
+
+Return ONLY the JSON object."""
         
         return base_prompt.strip()
     
