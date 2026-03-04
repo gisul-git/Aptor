@@ -24,6 +24,7 @@ const SERVICES = {
   superAdmin: process.env.SUPER_ADMIN_SERVICE_URL || 'http://localhost:3006',
   employee: process.env.EMPLOYEE_SERVICE_URL || 'http://localhost:4005',
   demo: process.env.DEMO_SERVICE_URL || 'http://localhost:3008',
+  dataEngineering: process.env.DATA_ENGINEERING_SERVICE_URL || 'http://localhost:3009',
   aimlAgent: process.env.AIML_AGENT_SERVICE_URL || 'http://aiml-agent-service:8889',
 };
 
@@ -89,6 +90,7 @@ async function verifyToken(req, res, next) {
     '/api/v1/assessments/start-session', 
     '/api/v1/assessment',
     '/api/v1/demo/schedule', // Demo request form - public 
+    '/api/v1/data-engineering', // Data Engineering service - public for development
   ];
 
   let pathToCheck = (req.originalUrl || req.url || req.path || '').split('?')[0];
@@ -397,10 +399,6 @@ const proxyOptions = {
       serviceName = 'Cloud Service (AI Assessment)';
       targetHost = 'localhost:3001';
       targetServiceUrl = SERVICES.aiAssessment;  // Cloud tests are handled by AI Assessment service
-    } else if (path.includes('/api/v1/data-engineering')) {
-      serviceName = 'Data Engineering Service (AI Assessment)';
-      targetHost = 'localhost:3001';
-      targetServiceUrl = SERVICES.aiAssessment;  // Data Engineering tests are handled by AI Assessment service
     } else if (path.includes('/api/v1/design')) {
       serviceName = 'Design Service (AI Assessment)';
       targetHost = 'localhost:3001';
@@ -724,15 +722,6 @@ app.use(
   })
 );
 
-// Route: Data Engineering Service (proxied to AI Assessment Service - Data Engineering tests are assessments)
-app.use(
-  '/api/v1/data-engineering',
-  createProxyMiddleware({
-    ...proxyOptions,
-    target: SERVICES.aiAssessment,  // Data Engineering tests are handled by AI Assessment service
-  })
-);
-
 // Route: Design Service (proxied to AI Assessment Service - Design tests are assessments)
 app.use(
   '/api/v1/design',
@@ -914,6 +903,18 @@ app.use(
   createProxyMiddleware({
     ...proxyOptions,
     target: SERVICES.demo,
+  })
+);
+
+// Route: Data Engineering Service
+app.use(
+  '/api/v1/data-engineering',
+  createProxyMiddleware({
+    ...proxyOptions,
+    target: SERVICES.dataEngineering,
+    pathRewrite: {
+      '^/api/v1/data-engineering': '/api/v1', // Rewrite to service's API prefix
+    },
   })
 );
 
