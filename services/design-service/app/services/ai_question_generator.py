@@ -97,7 +97,7 @@ class AIQuestionGenerator:
         topic_str = topic if topic else task_str
         experience_str = experience_level if experience_level else "Not specified"
         
-        base_prompt = f"""You are an intelligent Design Question Generation Engine for a professional hiring assessment platform. Your task is to generate high-quality, role-specific, difficulty-based, and practical design challenges that accurately evaluate real-world design skills. You must strictly follow the input parameters, generation rules, and output structure provided below.
+        base_prompt = f"""You are an expert design hiring manager creating assessment questions for candidates. Your goal is to write clear, professional, and easy-to-understand design challenges that feel like real project briefs.
 
 --------------------------------------------------
 ### INPUT PARAMETERS:
@@ -106,200 +106,121 @@ Role: {role_str}
 Difficulty Level: {difficulty_str}
 Experience Level: {experience_str}
 Topic: {topic_str}
-Question Type: UI design task
 
 --------------------------------------------------
-### QUESTION GENERATION RULES:
+### WRITING STYLE GUIDELINES:
 
-1. Role-Focused:
-   - Tailor the challenge strictly based on the selected role.
-   - Match the thinking style, responsibilities, and workflow of that role.
-   - Do NOT generate generic design questions.
-   
-   Role-Specific Focus:
-   - UI Designer: Visual design quality, pixel-perfect execution, typography, color theory, component design, spacing, alignment, visual hierarchy
-   - UX Designer: User flows, information architecture, usability, accessibility, problem-solving, edge cases, error prevention, cognitive load
-   - Product Designer: Business goals, user research, end-to-end experience, strategic thinking, user personas, journey maps, product strategy
-   - Visual Designer: Brand identity, visual storytelling, creative expression, aesthetic innovation, unique visual language
+1. **Write Like a Real Project Brief**:
+   - Use natural, conversational language
+   - Explain the context clearly (who, what, why)
+   - Make it easy for candidates to understand what they need to do
+   - Avoid technical jargon unless necessary
+   - Write as if you're briefing a designer joining your team
 
-2. Difficulty-Based Complexity Control:
-   
-   Easy:
-   - Single screen or simple task
-   - Minimal constraints (4-5 constraints)
-   - Basic layout and visual rules
-   - Time: 45 minutes
-   
-   Medium:
-   - Multi-section screens or simple flows
-   - Moderate constraints (5-7 constraints)
-   - Clear layout, spacing, and hierarchy rules
-   - Time: 60 minutes
-   
-   High:
-   - Complete user flows or complex UX scenarios
-   - Strong reasoning, accessibility, and usability constraints (7-10 constraints)
-   - Multiple screens and logical decision-making
-   - Time: 90 minutes
+2. **Structure Your Description**:
+   - Start with the company/product context (1-2 sentences)
+   - Explain the user problem or business need (2-3 sentences)
+   - Describe what the candidate needs to design (2-3 sentences)
+   - Mention the target users and their needs (1-2 sentences)
+   - End with the expected outcome or goal (1 sentence)
 
-3. Clear Deliverables:
-   - Explicitly define what the candidate must submit.
-   - Examples: wireframes, UI screens, complete flows, design system components, research plan, branding kit, etc.
-   - Easy: 1-2 deliverables
-   - Medium: 2-3 deliverables
-   - High: 3-5 deliverables
+3. **Make Constraints Clear and Actionable**:
+   - Write constraints as simple instructions
+   - Example: "Design for mobile screens (iOS or Android)" instead of "Platform constraint: mobile"
+   - Example: "Use a maximum of 3 primary colors" instead of "Color palette limitation"
+   - Example: "Make sure buttons are easy to tap (at least 44px)" instead of "Touch target compliance"
 
-4. Real-World Practicality:
-   - Questions must reflect real product and business scenarios.
-   - Include business context, user problems, and technical constraints.
-   - Avoid abstract or purely academic tasks.
-   - Use specific industries: fintech, healthcare, e-commerce, education, food delivery, travel, social media, etc.
-
-5. Constraint Design:
-   - Add realistic constraints based on difficulty:
-     * Layout rules (grid systems, spacing, alignment)
-     * Color usage (palette limitations, accessibility contrast)
-     * Accessibility requirements (WCAG compliance, touch targets, screen readers)
-     * Platform rules (iOS/Android guidelines, web responsive, tablet)
-     * User personas (age groups, tech literacy, disabilities)
-     * Brand tone (professional, playful, trustworthy, modern)
-     * Technical constraints (slow internet, offline mode, low-end devices)
-
-6. One Question Only:
-   - Generate only one complete, well-structured design problem per request.
+4. **Deliverables Should Be Crystal Clear**:
+   - Tell candidates exactly what files/screens to submit
+   - Use simple language: "Submit 1 high-quality screen design" instead of "High-fidelity UI mockup"
+   - Be specific: "Include a color palette and font choices" instead of "Style guide"
 
 --------------------------------------------------
-### OUTPUT FORMAT (STRICT JSON):
+### ROLE-SPECIFIC FOCUS:
 
-Generate a complete design challenge as a JSON object with these exact fields:
+**UI Designer**: Focus on visual design, colors, typography, spacing, layout, and making things look professional and polished.
+
+**UX Designer**: Focus on user flows, how things work, making it easy to use, handling errors, and thinking about different user scenarios.
+
+**Product Designer**: Focus on business goals, user research, complete user journeys, and balancing user needs with business objectives.
+
+**Visual Designer**: Focus on creative visual style, brand identity, unique aesthetics, and visual storytelling.
+
+--------------------------------------------------
+### DIFFICULTY LEVELS:
+
+**Easy** (45 minutes):
+- Design 1 simple screen or component
+- 4-5 clear, simple constraints
+- Basic layout and visual design
+- Perfect for beginners or quick assessments
+
+**Medium** (60 minutes):
+- Design 1 screen with multiple sections OR 2-3 related screens
+- 5-7 constraints covering design and usability
+- More attention to detail and user experience
+- For designers with some experience
+
+**High** (90 minutes):
+- Design complete user flows with multiple screens
+- 7-10 constraints covering design, usability, accessibility, and business goals
+- Handle edge cases and complex scenarios
+- For experienced designers
+
+--------------------------------------------------
+### EXAMPLE OF GOOD DESCRIPTION (College Landing Page):
+
+"You're designing a landing page for a new online college that offers affordable degree programs for working professionals. The college wants to attract students aged 25-40 who are looking to advance their careers while working full-time.
+
+The main problem is that potential students don't trust new online colleges and need to be convinced that the programs are legitimate, affordable, and flexible. The landing page needs to clearly communicate the college's value proposition, showcase program options, and make it easy for visitors to request more information or apply.
+
+Your task is to design a clean, professional landing page that builds trust and encourages visitors to take action. The design should feel modern and credible, not flashy or gimmicky. Focus on clear information hierarchy, compelling visuals, and a strong call-to-action.
+
+The target audience is working professionals who are busy and skeptical, so the page needs to quickly answer their questions: Is this legit? Can I afford it? Will it fit my schedule? Can I really get a degree online?"
+
+--------------------------------------------------
+### OUTPUT FORMAT (JSON):
 
 {{
-    "title": "Concise, descriptive title that includes the topic and role (max 80 chars)",
-    "description": "A comprehensive, real-world design problem statement (300-500 words) that includes:
-        - Business context and goals (e.g., increase conversion by 15%, reduce abandonment by 40%)
-        - User problem or need (e.g., users find current flow confusing, elderly users struggle)
-        - Target audience and demographics (e.g., college students, young professionals, elderly users)
-        - Success criteria (e.g., easy to understand, builds trust, minimizes errors)
-        - Any relevant background information (e.g., multi-specialty hospital, premium fashion brand)
-        Make it feel like a real project brief from a real company.",
+    "title": "Short, clear title (e.g., 'College Landing Page Design')",
+    "description": "Write a natural, easy-to-understand project brief (250-400 words) following the structure above. Use simple language and explain clearly what the candidate needs to design and why.",
     "constraints": [
-        "List 4-8 specific, realistic constraints based on difficulty level",
-        "Platform constraint: Design for [mobile/web/tablet] platform ([iOS/Android/responsive])",
-        "Visual constraint: Use [color palette/typography/spacing] rules",
-        "Accessibility constraint: Ensure [WCAG compliance/touch targets/contrast ratios]",
-        "User constraint: Optimize for [user type/age group/tech literacy level]",
-        "Business constraint: Must support [business goal/technical limitation]",
-        "Make each constraint specific and measurable"
+        "Write 4-8 clear, actionable constraints using simple language",
+        "Example: 'Design for desktop/laptop screens (1440px width)'",
+        "Example: 'Use a professional color scheme (2-3 main colors)'",
+        "Example: 'Include a clear call-to-action button above the fold'",
+        "Example: 'Make sure the design works for people aged 25-40'",
+        "Example: 'Keep the layout clean and not too busy'",
+        "Avoid technical jargon - write like you're talking to a designer"
     ],
     "deliverables": [
-        "List 2-4 clear, role-specific deliverables",
-        "For UI Designer: High-fidelity screens, component specs, style guide",
-        "For UX Designer: User flows, wireframes, UX rationale document",
-        "For Product Designer: User personas, journey maps, product strategy doc",
-        "For Visual Designer: Brand identity, visual assets, style guide",
-        "Make each deliverable specific and measurable"
+        "Write 2-4 clear deliverables using simple language",
+        "Example: 'One complete landing page design (desktop version)'",
+        "Example: 'Show your color palette and font choices'",
+        "Example: 'Include at least 3 sections: hero, programs, and contact form'",
+        "Be specific about what files or screens to submit"
     ],
     "evaluation_criteria": [
-        "List 4-6 role-specific evaluation criteria",
-        "Make criteria specific to the role and task",
-        "Include both technical skills and design thinking",
-        "Examples: 'Visual hierarchy and information architecture', 'Accessibility and inclusive design', 'Strategic thinking and business alignment'"
+        "Write 4-6 evaluation criteria in simple terms",
+        "Example: 'Visual design quality and professional appearance'",
+        "Example: 'Clear information hierarchy and easy to scan'",
+        "Example: 'Effective use of colors and typography'",
+        "Example: 'Strong call-to-action that stands out'",
+        "Focus on what makes a good design for this specific task"
     ],
     "time_limit_minutes": {45 if difficulty == DifficultyLevel.BEGINNER else 60 if difficulty == DifficultyLevel.INTERMEDIATE else 90}
 }}
 
 --------------------------------------------------
-### QUALITY CHECK BEFORE FINAL OUTPUT:
-✓ Is the task role-specific?
-✓ Is the difficulty level properly reflected?
-✓ Are the constraints realistic and measurable?
-✓ Are the deliverables clear and measurable?
-✓ Does the description include business context and user problems?
-✓ Would this question effectively evaluate real design skills?
+### QUALITY CHECKLIST:
+✓ Is the description written in natural, easy-to-understand language?
+✓ Would a candidate immediately understand what they need to design?
+✓ Are the constraints written as simple, actionable instructions?
+✓ Are the deliverables crystal clear?
+✓ Does it feel like a real project brief, not an academic test?
+✓ Is the business context and user problem clearly explained?
 
---------------------------------------------------
-### REFERENCE EXAMPLES:
-
-**Example 1 - UI Designer, Easy, Login Screen:**
-{{
-    "title": "Online Learning Platform Login Screen - UI Designer Challenge",
-    "description": "You are designing a mobile app for a new online learning platform aimed at college students and fresh graduates. The app allows users to access video courses, track learning progress, and participate in live sessions. Your task is to design a clean, simple, and user-friendly login screen for first-time users. The design should make it easy for new users to understand how to log in and start learning quickly, while maintaining a modern and trustworthy visual style suitable for an educational product.",
-    "constraints": [
-        "Design for mobile platform (Android / iOS) with a single-screen layout",
-        "Use clear visual hierarchy to highlight the primary login action",
-        "Limit the color palette to 2-3 primary colors with good contrast",
-        "Include email and password fields along with a primary login button",
-        "Add basic error and helper text placeholders (e.g., invalid email, forgot password)",
-        "Maintain minimum 44px touch target size for all interactive elements"
-    ],
-    "deliverables": [
-        "One high-fidelity mobile UI screen design for the login page",
-        "A simple color and typography style reference used in the screen"
-    ],
-    "evaluation_criteria": [
-        "Visual hierarchy and clarity",
-        "Touch target sizes and mobile usability",
-        "Color contrast and accessibility",
-        "Typography and readability",
-        "Overall visual appeal"
-    ],
-    "time_limit_minutes": 45
-}}
-
-**Example 2 - UI Designer, Medium, Food Delivery Dashboard:**
-{{
-    "title": "Food Delivery Dashboard - UI Designer Challenge",
-    "description": "You are designing a mobile dashboard for a food delivery application that helps users quickly browse restaurants, track active orders, and discover new food options. The dashboard should provide a clear overview of ongoing orders, recommended restaurants, and popular food categories. Your task is to design a multi-section dashboard screen that balances usability, visual clarity, and modern UI aesthetics for daily active users.",
-    "constraints": [
-        "Design for mobile platform (Android / iOS) with a scrollable multi-section layout",
-        "Include at least three sections: active order status, restaurant recommendations, and food categories",
-        "Maintain clear visual hierarchy using spacing, typography, and color",
-        "Use grid or card-based layout for restaurant listings",
-        "Limit the color palette to 3-4 complementary colors while maintaining accessibility contrast",
-        "Ensure consistent spacing, alignment, and component styling across all sections"
-    ],
-    "deliverables": [
-        "One high-fidelity dashboard UI screen showing all required sections",
-        "A short component list (cards, buttons, navigation elements) used in the design"
-    ],
-    "evaluation_criteria": [
-        "Visual hierarchy and information architecture",
-        "Component consistency and design system thinking",
-        "Spacing and alignment precision",
-        "Color usage and accessibility",
-        "Overall usability and user experience"
-    ],
-    "time_limit_minutes": 60
-}}
-
-**Example 3 - UX Designer, High, Hospital Appointment Booking:**
-{{
-    "title": "Hospital Appointment Booking Flow - UX Designer Challenge",
-    "description": "You are designing the end-to-end appointment booking experience for a multi-specialty hospital's mobile application. The app serves patients of different age groups, including elderly users and first-time smartphone users. Patients should be able to easily search for doctors, view availability, book appointments, upload medical history, and receive confirmations. Your task is to design a complete, user-friendly appointment booking flow that minimizes cognitive load, reduces errors, and ensures accessibility for diverse users.",
-    "constraints": [
-        "Design a multi-step user flow covering doctor search, appointment selection, patient details, and confirmation",
-        "Include clear progress indicators to show booking steps",
-        "Ensure accessibility compliance (WCAG) with readable typography, color contrast, and large touch targets",
-        "Design for edge cases such as slot unavailability, incomplete forms, and network interruptions",
-        "Provide error prevention and recovery mechanisms throughout the flow",
-        "Ensure the flow is optimized for elderly users with simplified interactions and guidance"
-    ],
-    "deliverables": [
-        "Complete user flow diagram showing all key steps and decision points",
-        "Low-to-mid fidelity wireframes for each major screen in the booking flow",
-        "A brief UX rationale document explaining your design decisions"
-    ],
-    "evaluation_criteria": [
-        "User flow logic and completeness",
-        "Accessibility and inclusive design",
-        "Error prevention and recovery",
-        "Cognitive load management",
-        "Edge case handling"
-    ],
-    "time_limit_minutes": 90
-}}
-
-Now generate ONE complete, high-quality design question for {role_str} at {difficulty_str} level about {topic_str}. Return ONLY the JSON object, no additional text."""
+Now generate ONE complete design question for {role_str} at {difficulty_str} level about {topic_str}. Write it in natural, professional language that's easy for candidates to understand. Return ONLY the JSON object."""
         
         return base_prompt.strip()
     
@@ -311,7 +232,7 @@ Now generate ONE complete, high-quality design question for {role_str} at {diffi
         response = await client.chat.completions.create(
             model=settings.AI_MODEL,
             messages=[
-                {"role": "system", "content": "You are an expert design interviewer and hiring manager with 10+ years of experience evaluating designers at top tech companies. You create realistic, practical, and role-specific design challenges that accurately assess real-world design skills. Your questions are clear, comprehensive, and reflect actual industry scenarios."},
+                {"role": "system", "content": "You are an experienced design hiring manager who writes clear, professional project briefs for design candidates. You write in natural, easy-to-understand language that makes candidates feel comfortable and confident. Your questions feel like real work projects, not academic tests. You explain context clearly, give actionable instructions, and make sure candidates know exactly what they need to design."},
                 {"role": "user", "content": prompt}
             ],
             temperature=0.8,
