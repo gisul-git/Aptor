@@ -3,6 +3,19 @@ import { useRouter } from "next/router";
 import { GetServerSideProps } from "next";
 import { requireAuth } from "../../lib/auth";
 import { useSession } from "next-auth/react";
+import { 
+  ArrowLeft, 
+  Trash2, 
+  Plus, 
+  Bot, 
+  ShieldCheck, 
+  CalendarClock, 
+  ListChecks, 
+  Users,
+  Settings
+} from "lucide-react";
+import Link from "next/link";
+import SuccessModal from "@/components/SuccessModal";
 
 interface Question {
   id: string;
@@ -21,6 +34,10 @@ export default function CreateDesignCompetencyPage() {
   const [aiProctoringEnabled, setAiProctoringEnabled] = useState(true);
   const [faceMismatchEnabled, setFaceMismatchEnabled] = useState(false);
   const [liveProctoringEnabled, setLiveProctoringEnabled] = useState(false);
+  const [successModal, setSuccessModal] = useState<{ isOpen: boolean; message: string; testId?: string }>({
+    isOpen: false,
+    message: '',
+  });
   
   // Timer mode state
   type TimerMode = "GLOBAL" | "PER_QUESTION";
@@ -51,6 +68,28 @@ export default function CreateDesignCompetencyPage() {
 
   useEffect(() => {
     fetchQuestions();
+  }, []);
+
+  // Refetch questions on visibility/focus change
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        fetchQuestions();
+      }
+    };
+    
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    
+    const handleFocus = () => {
+      fetchQuestions();
+    };
+    
+    window.addEventListener('focus', handleFocus);
+    
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('focus', handleFocus);
+    };
   }, []);
 
   const fetchQuestions = async () => {
@@ -175,8 +214,14 @@ export default function CreateDesignCompetencyPage() {
       }
 
       const result = await response.json();
-      alert("Test created successfully!");
-      router.push("/design/tests");
+      const testId = result._id || result.id;
+      
+      // Show success modal instead of alert
+      setSuccessModal({
+        isOpen: true,
+        message: "Test created successfully!",
+        testId: testId
+      });
     } catch (error: any) {
       alert(error.message || "Failed to create Design competency test");
       setLoading(false);
@@ -564,6 +609,22 @@ export default function CreateDesignCompetencyPage() {
           </form>
         </div>
       </div>
+
+      {/* Success Modal */}
+      <SuccessModal
+        isOpen={successModal.isOpen}
+        title="Success"
+        message={successModal.message}
+        confirmText="OK"
+        onConfirm={() => {
+          setSuccessModal({ isOpen: false, message: '' });
+          if (successModal.testId) {
+            router.push(`/design/tests?testId=${encodeURIComponent(successModal.testId)}`);
+          } else {
+            router.push("/design/tests");
+          }
+        }}
+      />
     </div>
   );
 }
