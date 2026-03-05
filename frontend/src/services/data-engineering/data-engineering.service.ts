@@ -105,5 +105,66 @@ export const dataEngineeringService = {
     );
     return response.data;
   },
-};
 
+  /**
+   * List all Data Engineering questions
+   */
+  listQuestions: async (): Promise<ApiResponse<any[]>> => {
+    const response = await apiClient.get<any>('/api/v1/data-engineering/questions');
+    // Backend returns {questions: [...], total, skip, limit, has_more}
+    // Extract the questions array from response.data
+    const questions = response.data?.questions || [];
+    return { 
+      success: true,
+      data: questions,
+      message: 'Questions fetched successfully'
+    };
+  },
+
+  /**
+   * Get question by ID
+   */
+  getQuestion: async (questionId: string): Promise<ApiResponse<any>> => {
+    const response = await apiClient.get<any>(`/api/v1/data-engineering/questions/${questionId}`);
+    // Backend returns question object directly, wrap it in ApiResponse structure
+    return {
+      success: true,
+      data: response.data,
+      message: 'Question fetched successfully'
+    };
+  },
+
+  /**
+   * Create question
+   */
+  createQuestion: async (data: any): Promise<ApiResponse<any>> => {
+    const response = await apiClient.post<ApiResponse<any>>('/api/v1/data-engineering/questions', data);
+    return response.data;
+  },
+
+  /**
+   * Update question
+   */
+  updateQuestion: async (questionId: string, data: any): Promise<ApiResponse<any>> => {
+    const response = await apiClient.put<ApiResponse<any>>(`/api/v1/data-engineering/questions/${questionId}`, data);
+    return response.data;
+  },
+
+  /**
+   * Delete question
+   */
+  deleteQuestion: async (questionId: string): Promise<ApiResponse<void>> => {
+    const response = await apiClient.delete<ApiResponse<void>>(`/api/v1/data-engineering/questions/${questionId}`);
+    return response.data;
+  },
+
+  /**
+   * Publish/unpublish question
+   */
+  publishQuestion: async (questionId: string, isPublished: boolean): Promise<ApiResponse<any>> => {
+    const response = await apiClient.patch<ApiResponse<any>>(
+      `/api/v1/data-engineering/questions/${questionId}/publish?is_published=${isPublished}`
+    );
+    return response.data;
+  },
+};

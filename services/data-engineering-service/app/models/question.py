@@ -53,8 +53,12 @@ class Question(BaseModel):
     # Validation
     test_cases: List[TestCase] = Field(..., description="Test cases for validation")
     
+    # Publishing
+    is_published: bool = Field(default=False, description="Whether question is published")
+    
     # Metadata
     created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: Optional[datetime] = Field(default=None, description="Last update timestamp")
     metadata: Dict[str, Any] = Field(default_factory=dict, description="Additional metadata")
     
     class Config:

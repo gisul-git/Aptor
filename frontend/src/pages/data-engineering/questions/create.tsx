@@ -3,6 +3,7 @@ import { useRouter } from "next/router";
 import { GetServerSideProps } from "next";
 import { requireAuth } from "../../../lib/auth";
 import { ArrowLeft, Bot, PenTool, Sparkles, Loader2 } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
 
 // Topic display names mapping
 const TOPIC_DISPLAY_NAMES: Record<string, string> = {
@@ -17,6 +18,7 @@ const TOPIC_DISPLAY_NAMES: Record<string, string> = {
 
 export default function CreateDataEngineeringQuestionPage() {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const [isAiGenerated, setIsAiGenerated] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [loadingTopics, setLoadingTopics] = useState(true);
@@ -106,6 +108,10 @@ export default function CreateDataEngineeringQuestionPage() {
 
       const data = await response.json();
       console.log('Question generated:', data);
+      
+      // Invalidate questions cache to refresh the list
+      queryClient.invalidateQueries({ queryKey: ['data-engineering', 'questions'] });
+      
       alert("Question generated and saved successfully!");
       router.push("/data-engineering/questions");
     } catch (error: any) {
@@ -155,33 +161,54 @@ export default function CreateDataEngineeringQuestionPage() {
         </div>
 
         {/* Page Header */}
-        <div style={{ marginBottom: "2.5rem" }}>
-          <h1 style={{ 
-            margin: "0 0 0.5rem 0", 
-            color: "#111827",
-            fontSize: "2.25rem",
-            fontWeight: 800,
-            letterSpacing: "-0.025em"
+        <div style={{ marginBottom: "3rem", textAlign: "center" }}>
+          <div style={{ 
+            display: "inline-flex", 
+            alignItems: "center", 
+            gap: "0.5rem",
+            marginBottom: "1rem",
+            padding: "0.5rem 1rem",
+            backgroundColor: "#F5F3FF",
+            borderRadius: "2rem",
+            border: "1px solid #E9D5FF"
           }}>
-            Create Data Engineering Question
+            <Sparkles size={16} color="#7C3AED" />
+            <span style={{ fontSize: "0.875rem", fontWeight: 600, color: "#7C3AED" }}>
+              Question Builder
+            </span>
+          </div>
+          <h1 style={{ 
+            margin: "0 0 0.75rem 0", 
+            color: "#111827",
+            fontSize: "2.75rem",
+            fontWeight: 800,
+            letterSpacing: "-0.03em",
+            lineHeight: "1.1"
+          }}>
+            Create New Question
           </h1>
           <p style={{ 
             color: "#6B7280", 
-            fontSize: "1rem",
-            margin: 0
+            fontSize: "1.125rem",
+            margin: "0 auto",
+            maxWidth: "600px",
+            lineHeight: "1.6"
           }}>
-            Generate questions using AI or create them manually
+            Generate intelligent questions with AI or craft custom ones
           </p>
         </div>
 
         {/* Question Type Toggle */}
         <div style={{ 
-          marginBottom: "2rem", 
-          padding: "0.5rem", 
-          borderRadius: "0.75rem",
-          backgroundColor: "#F3F4F6",
+          marginBottom: "2.5rem", 
+          padding: "0.375rem", 
+          borderRadius: "1rem",
+          backgroundColor: "#F9FAFB",
           display: "flex",
-          gap: "0.5rem"
+          gap: "0.5rem",
+          border: "1px solid #E5E7EB",
+          maxWidth: "500px",
+          margin: "0 auto 2.5rem auto"
         }}>
           <button
             type="button"
@@ -237,31 +264,41 @@ export default function CreateDataEngineeringQuestionPage() {
         {/* Content Area */}
         <div style={{
           backgroundColor: "#ffffff",
-          borderRadius: "1rem",
-          border: "1px solid #E5E7EB",
-          boxShadow: "0 1px 3px rgba(0,0,0,0.05)",
-          padding: "2.5rem",
-          marginBottom: "4rem"
+          borderRadius: "1.25rem",
+          border: "2px solid #E5E7EB",
+          boxShadow: "0 10px 15px -3px rgba(0, 0, 0, 0.05), 0 4px 6px -2px rgba(0, 0, 0, 0.03)",
+          padding: "3rem",
+          marginBottom: "4rem",
+          maxWidth: "900px",
+          margin: "0 auto"
         }}>
 
           {isAiGenerated ? (
             /* AI Generation Form */
             <div>
               <div style={{ 
-                marginBottom: "2rem",
+                marginBottom: "2.5rem",
                 display: "flex",
                 alignItems: "center",
-                gap: "0.75rem"
+                gap: "1rem",
+                paddingBottom: "1.5rem",
+                borderBottom: "2px solid #F3F4F6"
               }}>
-                <div style={{ backgroundColor: "#F0F9F4", padding: "0.5rem", borderRadius: "0.5rem", color: "#00684A" }}>
-                  <Bot size={24} />
+                <div style={{ 
+                  background: "linear-gradient(135deg, #7C3AED 0%, #A78BFA 100%)",
+                  padding: "0.875rem", 
+                  borderRadius: "0.875rem", 
+                  color: "#ffffff",
+                  boxShadow: "0 4px 12px rgba(124, 58, 237, 0.2)"
+                }}>
+                  <Bot size={28} strokeWidth={2} />
                 </div>
                 <div>
-                  <h2 style={{ margin: "0 0 0.25rem 0", color: "#111827", fontSize: "1.25rem", fontWeight: 700 }}>
-                    AI Configuration
+                  <h2 style={{ margin: "0 0 0.25rem 0", color: "#111827", fontSize: "1.5rem", fontWeight: 700 }}>
+                    AI Question Generator
                   </h2>
-                  <p style={{ color: "#6B7280", fontSize: "0.875rem", margin: 0 }}>
-                    AI will generate a unique question based on your parameters
+                  <p style={{ color: "#6B7280", fontSize: "0.9rem", margin: 0, lineHeight: "1.5" }}>
+                    Configure parameters and let AI create comprehensive questions
                   </p>
                 </div>
               </div>
@@ -343,36 +380,44 @@ export default function CreateDataEngineeringQuestionPage() {
                 disabled={generating}
                 style={{
                   width: "100%",
-                  padding: "1rem",
-                  backgroundColor: generating ? "#9CA3AF" : "#00684A",
+                  padding: "1.125rem",
+                  background: generating ? "#9CA3AF" : "linear-gradient(135deg, #7C3AED 0%, #A78BFA 100%)",
                   color: "#ffffff",
                   border: "none",
-                  borderRadius: "0.5rem",
-                  fontSize: "1rem",
-                  fontWeight: 600,
+                  borderRadius: "0.75rem",
+                  fontSize: "1.0625rem",
+                  fontWeight: 700,
                   cursor: generating ? "not-allowed" : "pointer",
-                  transition: "all 0.2s ease",
+                  transition: "all 0.3s ease",
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
-                  gap: "0.5rem"
+                  gap: "0.625rem",
+                  boxShadow: generating ? "none" : "0 4px 12px rgba(124, 58, 237, 0.3)",
+                  letterSpacing: "0.01em"
                 }}
                 onMouseOver={(e) => {
-                  if (!generating) e.currentTarget.style.backgroundColor = "#005A3F";
+                  if (!generating) {
+                    e.currentTarget.style.transform = "translateY(-2px)";
+                    e.currentTarget.style.boxShadow = "0 8px 20px rgba(124, 58, 237, 0.4)";
+                  }
                 }}
                 onMouseOut={(e) => {
-                  if (!generating) e.currentTarget.style.backgroundColor = "#00684A";
+                  if (!generating) {
+                    e.currentTarget.style.transform = "translateY(0)";
+                    e.currentTarget.style.boxShadow = "0 4px 12px rgba(124, 58, 237, 0.3)";
+                  }
                 }}
               >
                 {generating ? (
                   <>
-                    <Loader2 size={20} className="animate-spin" style={{ animation: "spin 1s linear infinite" }} />
+                    <Loader2 size={22} className="animate-spin" style={{ animation: "spin 1s linear infinite" }} />
                     Generating Question...
                   </>
                 ) : (
                   <>
-                    <Sparkles size={20} />
-                    Generate Question
+                    <Sparkles size={22} />
+                    Generate with AI
                   </>
                 )}
               </button>
@@ -381,20 +426,28 @@ export default function CreateDataEngineeringQuestionPage() {
             /* Manual Creation Form */
             <div>
               <div style={{ 
-                marginBottom: "2rem",
+                marginBottom: "2.5rem",
                 display: "flex",
                 alignItems: "center",
-                gap: "0.75rem"
+                gap: "1rem",
+                paddingBottom: "1.5rem",
+                borderBottom: "2px solid #F3F4F6"
               }}>
-                <div style={{ backgroundColor: "#F0F9F4", padding: "0.5rem", borderRadius: "0.5rem", color: "#00684A" }}>
-                  <PenTool size={24} />
+                <div style={{ 
+                  background: "linear-gradient(135deg, #00684A 0%, #00A86B 100%)",
+                  padding: "0.875rem", 
+                  borderRadius: "0.875rem", 
+                  color: "#ffffff",
+                  boxShadow: "0 4px 12px rgba(0, 104, 74, 0.2)"
+                }}>
+                  <PenTool size={28} strokeWidth={2} />
                 </div>
                 <div>
-                  <h2 style={{ margin: "0 0 0.25rem 0", color: "#111827", fontSize: "1.25rem", fontWeight: 700 }}>
-                    Manual Question
+                  <h2 style={{ margin: "0 0 0.25rem 0", color: "#111827", fontSize: "1.5rem", fontWeight: 700 }}>
+                    Manual Question Builder
                   </h2>
-                  <p style={{ color: "#6B7280", fontSize: "0.875rem", margin: 0 }}>
-                    Create a custom question with your own specifications
+                  <p style={{ color: "#6B7280", fontSize: "0.9rem", margin: 0, lineHeight: "1.5" }}>
+                    Design custom questions with full control over specifications
                   </p>
                 </div>
               </div>
@@ -443,24 +496,32 @@ export default function CreateDataEngineeringQuestionPage() {
                 onClick={handleManualCreate}
                 style={{
                   width: "100%",
-                  padding: "1rem",
-                  backgroundColor: "#00684A",
+                  padding: "1.125rem",
+                  background: "linear-gradient(135deg, #00684A 0%, #00A86B 100%)",
                   color: "#ffffff",
                   border: "none",
-                  borderRadius: "0.5rem",
-                  fontSize: "1rem",
-                  fontWeight: 600,
+                  borderRadius: "0.75rem",
+                  fontSize: "1.0625rem",
+                  fontWeight: 700,
                   cursor: "pointer",
-                  transition: "all 0.2s ease",
+                  transition: "all 0.3s ease",
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
-                  gap: "0.5rem"
+                  gap: "0.625rem",
+                  boxShadow: "0 4px 12px rgba(0, 104, 74, 0.3)",
+                  letterSpacing: "0.01em"
                 }}
-                onMouseOver={(e) => e.currentTarget.style.backgroundColor = "#005A3F"}
-                onMouseOut={(e) => e.currentTarget.style.backgroundColor = "#00684A"}
+                onMouseOver={(e) => {
+                  e.currentTarget.style.transform = "translateY(-2px)";
+                  e.currentTarget.style.boxShadow = "0 8px 20px rgba(0, 104, 74, 0.4)";
+                }}
+                onMouseOut={(e) => {
+                  e.currentTarget.style.transform = "translateY(0)";
+                  e.currentTarget.style.boxShadow = "0 4px 12px rgba(0, 104, 74, 0.3)";
+                }}
               >
-                <PenTool size={20} />
+                <PenTool size={22} />
                 Create Question
               </button>
             </div>

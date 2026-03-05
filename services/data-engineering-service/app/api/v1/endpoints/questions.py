@@ -366,3 +366,49 @@ async def delete_question(
     except Exception as e:
         logger.error("Failed to delete question", question_id=question_id, error=str(e))
         raise HTTPException(status_code=500, detail="Failed to delete question")
+
+
+@router.patch("/{question_id}/publish")
+async def toggle_publish_question(
+    question_id: str,
+    is_published: bool = Query(..., description="Set publish status"),
+    current_user: Optional[Dict[str, Any]] = Depends(get_current_user),
+    integration_service: IntegrationService = Depends(get_integration_service)
+) -> Dict[str, Any]:
+    """Toggle publish status of a question."""
+    try:
+        # Get the question first to verify it exists
+        question = await integration_service.question_repo.get_question_by_id(question_id)
+        
+        if not question:
+            raise HTTPException(status_code=404, detail="Question not found")
+        
+        # Update the publish status using dict
+        update_data = {
+            "is_published": is_published,
+            "updated_at": datetime.utcnow()
+        }
+        
+        # Save the updated question
+        updated_question = await integration_service.question_repo.update_question(question_id, update_data)
+        
+        if not updated_question:
+            raise HTTPException(status_code=404, detail="Question not found")
+        
+        logger.info(
+            "Question publish status updated",
+            question_id=question_id,
+            is_published=is_published,
+            user_id=current_user.get("user_id") if current_user else None
+        )
+        
+        return {
+            "message": f"Question {'published' if is_published else 'unpublished'} successfully",
+            "question": updated_question
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Failed to update publish status", question_id=question_id, error=str(e))
+        raise HTTPException(status_code=500, detail="Failed to update publish status")

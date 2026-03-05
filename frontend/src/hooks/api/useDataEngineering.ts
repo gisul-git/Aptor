@@ -4,6 +4,8 @@ import { dataEngineeringService, type DataEngineeringTest, type CreateDataEngine
 const QUERY_KEYS = {
   tests: ['data-engineering', 'tests'] as const,
   test: (id: string) => ['data-engineering', 'tests', id] as const,
+  questions: ['data-engineering', 'questions'] as const,
+  question: (id: string) => ['data-engineering', 'questions', id] as const,
 };
 
 export const useDataEngineeringTests = () => {
@@ -100,3 +102,98 @@ export const useCloneDataEngineeringTest = () => {
   });
 };
 
+
+/**
+ * List all Data Engineering questions
+ */
+export const useDataEngineeringQuestions = () => {
+  return useQuery({
+    queryKey: QUERY_KEYS.questions,
+    queryFn: async () => {
+      try {
+        const response = await dataEngineeringService.listQuestions();
+        return response.data || [];
+      } catch (error: any) {
+        console.warn('Failed to fetch Data Engineering questions:', error?.message || error);
+        return [];
+      }
+    },
+    staleTime: 30 * 1000,
+    retry: 1,
+    retryOnMount: false,
+  });
+};
+
+/**
+ * Get Data Engineering question by ID
+ */
+export const useDataEngineeringQuestion = (questionId: string | undefined) => {
+  return useQuery({
+    queryKey: QUERY_KEYS.question(questionId || ''),
+    queryFn: async () => {
+      if (!questionId) throw new Error('Question ID is required');
+      const response = await dataEngineeringService.getQuestion(questionId);
+      return response.data;
+    },
+    enabled: !!questionId,
+    staleTime: 5 * 60 * 1000,
+  });
+};
+
+/**
+ * Create Data Engineering question mutation
+ */
+export const useCreateDataEngineeringQuestion = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (data: any) => dataEngineeringService.createQuestion(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.questions });
+    },
+  });
+};
+
+/**
+ * Update Data Engineering question mutation
+ */
+export const useUpdateDataEngineeringQuestion = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ questionId, data }: { questionId: string; data: any }) =>
+      dataEngineeringService.updateQuestion(questionId, data),
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.question(variables.questionId) });
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.questions });
+    },
+  });
+};
+
+/**
+ * Delete Data Engineering question mutation
+ */
+export const useDeleteDataEngineeringQuestion = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (questionId: string) => dataEngineeringService.deleteQuestion(questionId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.questions });
+      queryClient.removeQueries({ queryKey: QUERY_KEYS.questions });
+    },
+  });
+};
+
+/**
+ * Publish/unpublish Data Engineering question mutation
+ */
+export const usePublishDataEngineeringQuestion = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ questionId, isPublished }: { questionId: string; isPublished: boolean }) =>
+      dataEngineeringService.publishQuestion(questionId, isPublished),
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.question(variables.questionId) });
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.questions });
+      queryClient.removeQueries({ queryKey: QUERY_KEYS.questions });
+    },
+  });
+};

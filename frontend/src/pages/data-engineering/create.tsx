@@ -1,15 +1,31 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/router";
 import { GetServerSideProps } from "next";
 import { requireAuth } from "../../lib/auth";
+import { useDataEngineeringQuestions } from "@/hooks/api/useDataEngineering";
 import { 
   ArrowLeft, 
   Settings, 
   ShieldCheck, 
   CalendarClock, 
   Users,
-  ListChecks
+  ListChecks,
+  Plus,
+  Bot,
+  FileText
 } from "lucide-react";
+
+interface Question {
+  id: string;
+  title: string;
+  description: string;
+  difficulty_level: number;
+  topic: string;
+  is_published?: boolean;
+  metadata?: {
+    ai_generated?: boolean;
+  };
+}
 
 export default function CreateDataEngineeringAssessmentPage() {
   const router = useRouter();
@@ -38,9 +54,36 @@ export default function CreateDataEngineeringAssessmentPage() {
     end_time: "",
   });
 
-  // TODO: Fetch questions from API
-  const questions: any[] = [];
+  // Fetch questions from API
+  const { data: questionsData = [], refetch: refetchQuestions } = useDataEngineeringQuestions();
+  const allQuestions = (questionsData as Question[]) || [];
+  
+  // Filter to show only published questions
+  const questions = allQuestions.filter(q => q.is_published === true);
+  
   const [selectedQuestions, setSelectedQuestions] = useState<string[]>([]);
+
+  // Refetch questions on visibility/focus change
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        refetchQuestions();
+      }
+    };
+    
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    
+    const handleFocus = () => {
+      refetchQuestions();
+    };
+    
+    window.addEventListener('focus', handleFocus);
+    
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('focus', handleFocus);
+    };
+  }, [refetchQuestions]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -107,6 +150,19 @@ export default function CreateDataEngineeringAssessmentPage() {
       setSelectedQuestions(selectedQuestions.filter(id => id !== questionId));
     } else {
       setSelectedQuestions([...selectedQuestions, questionId]);
+    }
+  };
+
+  const getDifficultyLabel = (level: number): string => {
+    switch (level) {
+      case 1:
+        return 'Easy';
+      case 2:
+        return 'Medium';
+      case 3:
+        return 'Hard';
+      default:
+        return 'Unknown';
     }
   };
 
@@ -375,14 +431,32 @@ export default function CreateDataEngineeringAssessmentPage() {
 
           {/* Section 5: Question Selection */}
           <div style={{ backgroundColor: "#ffffff", padding: "2rem", borderRadius: "1rem", border: "1px solid #E5E7EB", boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "1.5rem", paddingBottom: "1rem", borderBottom: "1px solid #F3F4F6" }}>
-              <ListChecks size={20} color="#00684A" />
-              <h2 style={{ margin: 0, fontSize: "1.25rem", fontWeight: 700, color: "#111827" }}>Select Questions</h2>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "1.5rem", paddingBottom: "1rem", borderBottom: "1px solid #F3F4F6" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                <ListChecks size={20} color="#00684A" />
+                <h2 style={{ margin: 0, fontSize: "1.25rem", fontWeight: 700, color: "#111827" }}>Select Questions</h2>
+              </div>
+              <button
+                type="button"
+                onClick={() => router.push("/data-engineering/questions/create")}
+                style={{ 
+                  display: "flex", alignItems: "center", gap: "0.375rem",
+                  padding: "0.5rem 1rem", backgroundColor: "#F0F9F4", color: "#00684A", 
+                  border: "1px solid #E1F2E9", borderRadius: "0.5rem", fontSize: "0.875rem", 
+                  fontWeight: 600, cursor: "pointer", transition: "all 0.2s"
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = "#E1F2E9"}
+                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = "#F0F9F4"}
+              >
+                <Plus size={16} />Create New Question
+              </button>
             </div>
             
             {questions.length === 0 ? (
-              <div style={{ textAlign: "center", padding: "2rem", backgroundColor: "#F9FAFB", borderRadius: "0.5rem", border: "1px dashed #D1D5DB" }}>
-                <p style={{ color: "#6B7280", marginBottom: "1rem" }}>No questions available. Create questions first.</p>
+              <div style={{ padding: "3rem", border: "1px dashed #D1D5DB", borderRadius: "0.5rem", textAlign: "center", backgroundColor: "#F9FAFB" }}>
+                <FileText size={32} color="#9CA3AF" style={{ margin: "0 auto 1rem auto" }} />
+                <p style={{ color: "#4B5563", fontWeight: 500, marginBottom: "0.5rem" }}>No published questions available.</p>
+                <p style={{ color: "#6B7280", fontSize: "0.875rem", marginBottom: "1.5rem" }}>Create and publish questions to add them to assessments.</p>
                 <button
                   type="button"
                   onClick={() => router.push("/data-engineering/questions/create")}
@@ -404,9 +478,56 @@ export default function CreateDataEngineeringAssessmentPage() {
                 </button>
               </div>
             ) : (
-              <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
-                {/* Question list will go here */}
-              </div>
+              <>
+                <div style={{ border: "1px solid #E5E7EB", borderRadius: "0.5rem", padding: "1rem", maxHeight: "400px", overflowY: "auto", backgroundColor: "#F9FAFB" }}>
+                  {questions.map((q) => (
+                    <div
+                      key={q.id}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "1rem",
+                        padding: "1rem",
+                        marginBottom: "0.5rem",
+                        border: selectedQuestions.includes(q.id) ? "2px solid #00684A" : "1px solid #E5E7EB",
+                        borderRadius: "0.5rem",
+                        cursor: "pointer",
+                        backgroundColor: selectedQuestions.includes(q.id) ? "#F0F9F4" : "#ffffff",
+                        transition: "all 0.2s"
+                      }}
+                      onClick={() => toggleQuestion(q.id)}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={selectedQuestions.includes(q.id)}
+                        onChange={() => toggleQuestion(q.id)}
+                        style={{ width: "18px", height: "18px", accentColor: "#00684A", cursor: "pointer" }}
+                      />
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontWeight: 600, color: "#111827", fontSize: "1rem", marginBottom: "0.25rem", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                          {q.title}
+                        </div>
+                        <div style={{ fontSize: "0.8rem", display: "flex", gap: "0.5rem", alignItems: "center", flexWrap: "wrap" }}>
+                          <span style={{ 
+                            padding: "0.15rem 0.5rem", borderRadius: "0.25rem", fontWeight: 600,
+                            backgroundColor: q.difficulty_level === 1 ? "#D1FAE5" : q.difficulty_level === 2 ? "#FEF3C7" : "#FEE2E2",
+                            color: q.difficulty_level === 1 ? "#059669" : q.difficulty_level === 2 ? "#D97706" : "#DC2626"
+                          }}>
+                            {getDifficultyLabel(q.difficulty_level)}
+                          </span>
+                          {q.topic && <span style={{ color: "#4B5563" }}>• {q.topic}</span>}
+                          {q.metadata?.ai_generated && <span style={{ color: "#7C3AED", display: "flex", alignItems: "center", gap: "0.25rem" }}><Bot size={12} /> AI Generated</span>}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "1rem", padding: "0 0.5rem" }}>
+                  <span style={{ fontSize: "0.9rem", fontWeight: 600, color: selectedQuestions.length > 0 ? "#00684A" : "#6B7280" }}>
+                    {selectedQuestions.length} Question{selectedQuestions.length !== 1 ? 's' : ''} Selected
+                  </span>
+                </div>
+              </>
             )}
           </div>
 
