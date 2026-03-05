@@ -618,11 +618,7 @@ export default function CreateDesignCompetencyPage() {
         confirmText="OK"
         onConfirm={() => {
           setSuccessModal({ isOpen: false, message: '' });
-          if (successModal.testId) {
-            router.push(`/design/tests?testId=${encodeURIComponent(successModal.testId)}`);
-          } else {
-            router.push("/design/tests");
-          }
+          router.push("/design/tests");
         }}
       />
     </div>
