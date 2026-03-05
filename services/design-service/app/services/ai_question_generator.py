@@ -79,125 +79,167 @@ class AIQuestionGenerator:
         }
         
         difficulty_mapping = {
-            DifficultyLevel.BEGINNER: "Easy",
-            DifficultyLevel.INTERMEDIATE: "Medium",
-            DifficultyLevel.ADVANCED: "High"
+            DifficultyLevel.BEGINNER: "Beginner",
+            DifficultyLevel.INTERMEDIATE: "Intermediate",
+            DifficultyLevel.ADVANCED: "Advanced"
         }
         
         task_type_mapping = {
-            TaskType.LANDING_PAGE: "landing page design",
-            TaskType.MOBILE_APP: "mobile app design",
-            TaskType.DASHBOARD: "dashboard design",
-            TaskType.COMPONENT: "component design"
+            TaskType.LANDING_PAGE: "landing page",
+            TaskType.MOBILE_APP: "mobile app",
+            TaskType.DASHBOARD: "dashboard",
+            TaskType.COMPONENT: "component"
         }
         
         role_str = role_mapping.get(role, "UI Designer")
-        difficulty_str = difficulty_mapping.get(difficulty, "Medium")
+        difficulty_str = difficulty_mapping.get(difficulty, "Intermediate")
         task_str = task_type_mapping.get(task_type, "UI design")
         topic_str = topic if topic else task_str
         experience_str = experience_level if experience_level else "Not specified"
+        time_limit = 45 if difficulty == DifficultyLevel.BEGINNER else 60 if difficulty == DifficultyLevel.INTERMEDIATE else 90
         
-        base_prompt = f"""You are writing a professional design challenge brief for a hiring assessment. Write clearly and professionally, providing context and specific requirements.
+        base_prompt = f"""SYSTEM ROLE
+You are a Design Assessment Question Generator for a professional hiring platform.
+Your task is to generate structured design challenges used in automated UI/UX design interviews.
+The questions must be professional, measurable, and suitable for automated evaluation.
+Do NOT address the candidate using words like "you". Use neutral professional language.
+The challenge must vary based on difficulty level and experience level.
 
---------------------------------------------------
-### PROJECT DETAILS
-
+-----------------------------------------------------
+INPUT PARAMETERS
 Role: {role_str}
-Difficulty: {difficulty_str}
+Difficulty Level: {difficulty_str}
+Experience Level: {experience_str}
 Topic: {topic_str}
-Time: {45 if difficulty == DifficultyLevel.BEGINNER else 60 if difficulty == DifficultyLevel.INTERMEDIATE else 90} minutes
-Experience: {experience_str}
+Time Limit: {time_limit} minutes
 
---------------------------------------------------
-### WRITING STYLE RULES
+-----------------------------------------------------
+QUESTION GENERATION RULES
 
-Write professionally but clearly. Provide context about:
-- What the product/project is
-- Who the users are
-- What problem needs to be solved
-- What the designer needs to create
+1. PROFESSIONAL LANGUAGE
+Use formal and professional tone.
+Avoid conversational phrases such as "you should" or "think about".
 
-Be specific and detailed. Explain the scenario clearly so candidates understand the real-world context.
+2. ROLE SPECIFICITY
+The challenge must reflect the responsibilities of the selected role.
+Examples:
+• UI Designer → layout, spacing, colors, typography
+• UX Designer → flows, navigation, usability
+• Product Designer → business goals, product strategy
+• Visual Designer → branding, illustration, aesthetics
 
---------------------------------------------------
-### SCOPE BY DIFFICULTY
+3. DIFFICULTY SCALING
+Beginner
+• Single task
+• 2–3 screens
+• Simple layout constraints
+• Measurable design constraints
 
-**Easy**: One screen or simple task. Focus on basics.
-**Medium**: A few connected screens or one complete feature. 
-**High**: Full user journey with multiple screens.
+Intermediate
+• Multiple screens or workflows
+• User flows and interactions
+• Moderate complexity
 
---------------------------------------------------
-### OUTPUT FORMAT (JSON)
+Advanced
+• Complete experience design
+• Edge cases and system thinking
+• Multiple user scenarios
+
+4. MEASURABLE CONSTRAINTS
+Constraints must include quantifiable design rules whenever possible.
+Examples:
+• Layout width: 360px mobile canvas
+• Grid: 8px spacing system
+• Minimum touch target: 44px
+• Primary color contrast ratio: 4.5:1
+• Maximum 3 primary colors
+• Font hierarchy: 3 levels minimum
+• Card width between 280–320px
+
+These constraints enable rule-based evaluation.
+
+5. AUTOMATED EVALUATION SUPPORT
+Constraints should allow automated checks such as:
+• spacing consistency
+• alignment
+• color contrast
+• typography hierarchy
+• component consistency
+
+6. SENIOR / EXPERT LEVEL REQUIREMENTS
+For advanced levels include:
+• multi-step workflows
+• product strategy
+• user personas
+• edge cases
+• system thinking
+
+-----------------------------------------------------
+OUTPUT FORMAT (JSON)
 
 {{
-    "title": "Format: '[Topic] - [Role] Challenge' (e.g., 'BSFI Dashboard - UX Designer Challenge')",
-    "description": "Write 250-400 words in this structure:
+    "title": "{topic_str.title()} – {role_str} Challenge",
+    "description": "Write a clear product scenario (250-400 words) describing:
         
-        Paragraph 1: Set the context
+        Paragraph 1: Product context
         - What is the product/platform?
         - Who are the users (be specific about roles/personas)?
         - What is the current situation or problem?
         
-        Paragraph 2: Define the task
-        - What should the designer create?
+        Paragraph 2: Design problem
+        - What needs to be designed?
         - What are the main goals or objectives?
-        - What should they focus on?
+        - What should be the focus?
         
-        Paragraph 3: Additional considerations
+        Paragraph 3: Expected outcome
         - Mention user types or scenarios to consider
         - Any specific requirements or focus areas
         
-        Use clear, professional language. Be specific about the scenario.",
+        Use neutral professional language. Do NOT use 'you' or 'your'.",
     "constraints": [
-        "List 5-7 specific, actionable constraints. Write professionally:",
-        "• 'Define clear user flows showing how users navigate between key tasks'",
-        "• 'Ensure the interface follows accessibility best practices'",
-        "• 'Include error states and empty states where relevant'",
-        "• 'Minimize cognitive load and keep the interface simple'",
-        "• 'Address real problems faced by users in the [domain]'",
-        "• 'Include interaction states such as loading, error, or success'",
-        "• 'Ensure the design works well on the target platform (web/mobile)'",
+        "List 6-8 structured constraints with measurable UI rules:",
+        "• Canvas width: [specify dimensions]",
+        "• Spacing system: [e.g., 8px grid]",
+        "• Color usage: [e.g., maximum 3 primary colors, contrast ratio 4.5:1]",
+        "• Typography hierarchy: [e.g., 3 levels minimum]",
+        "• Interaction states: [e.g., hover, active, disabled]",
+        "• Touch targets: [e.g., minimum 44px for mobile]",
+        "Include quantifiable rules that enable automated evaluation",
         "Be specific and professional"
     ],
     "deliverables": [
-        "List exactly what they need to submit:",
-        "• 'User flow diagrams showing key journeys'",
-        "• 'Low-to-mid fidelity wireframes for main screens'",
-        "• 'A brief explanation of the design decisions'",
-        "Be clear and specific"
+        "Specify required outputs based on difficulty:",
+        "• Wireframes or high-fidelity screens",
+        "• Flow diagrams (for UX/Product roles)",
+        "• Component list or style guide",
+        "• Design specifications",
+        "Be clear and specific about what must be submitted"
     ],
     "evaluation_criteria": [
-        "List 4-5 evaluation criteria professionally:",
-        "• 'Clarity and logic of the user flows'",
-        "• 'Usability and accessibility'",
-        "• 'Effectiveness of the problem-solving approach'",
-        "• 'Consideration of edge cases and error handling'",
-        "Write as clear statements"
+        "Define 4-6 scoring factors professionally:",
+        "• Layout consistency and spacing adherence",
+        "• Visual hierarchy and typography",
+        "• Usability and user experience quality",
+        "• Constraint compliance",
+        "• Problem-solving clarity",
+        "• System thinking (for advanced levels)",
+        "Write as clear, measurable statements"
     ],
-    "time_limit_minutes": {45 if difficulty == DifficultyLevel.BEGINNER else 60 if difficulty == DifficultyLevel.INTERMEDIATE else 90}
+    "time_limit_minutes": {time_limit}
 }}
 
---------------------------------------------------
-### EXAMPLE OF GOOD DESCRIPTION
+-----------------------------------------------------
+IMPORTANT REMINDERS
 
-"You are designing a dashboard for a Banking, Financial Services, and Insurance (BSFI) platform used by different internal teams such as analysts, managers, and support staff.
+1. Do NOT use "you", "your", or "you should" - use neutral professional language
+2. Include measurable constraints (dimensions, spacing, colors, contrast ratios)
+3. Make constraints suitable for automated evaluation
+4. Vary complexity based on difficulty level
+5. Ensure role-specific focus (UI vs UX vs Product vs Visual)
+6. Provide clear product context and user personas
+7. Return ONLY valid JSON
 
-The dashboard should allow users to quickly view important financial data, monitor key metrics, and perform daily tasks efficiently.
-
-Your goal is to design a multi-screen dashboard experience that supports multiple workflows while keeping the interface clear, simple, and easy to learn.
-
-Consider at least 2–3 different user roles and how their needs might differ when interacting with the dashboard."
-
---------------------------------------------------
-### REMEMBER
-
-- Provide clear context about the product and users
-- Be specific about what needs to be designed
-- Explain the goals and objectives clearly
-- Use professional but accessible language
-- Structure the description in clear paragraphs
-
-Now generate ONE design challenge for {role_str} at {difficulty_str} level about {topic_str}. Return ONLY the JSON object."""
+Now generate ONE design challenge following all rules above. Return ONLY the JSON object."""
         
         return base_prompt.strip()
     
@@ -209,7 +251,7 @@ Now generate ONE design challenge for {role_str} at {difficulty_str} level about
         response = await client.chat.completions.create(
             model=settings.AI_MODEL,
             messages=[
-                {"role": "system", "content": "You are an expert at writing professional design challenge briefs for hiring assessments. Write clear, structured briefs that provide context about the product, users, and problem. Be specific and professional. Provide enough detail so candidates understand the real-world scenario. Use clear paragraphs to structure the description: context, task definition, and considerations."},
+                {"role": "system", "content": "You are a Design Assessment Question Generator for a professional hiring platform. Generate structured design challenges suitable for automated evaluation. Use neutral professional language - do NOT use 'you' or 'your'. Include measurable constraints (dimensions, spacing, colors, contrast ratios) that enable automated evaluation. Vary complexity based on difficulty level. Provide clear product context and user personas."},
                 {"role": "user", "content": prompt}
             ],
             temperature=0.7,
