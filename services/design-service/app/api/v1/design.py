@@ -435,6 +435,7 @@ async def get_test(test_id: str):
 
 
 @router.patch("/tests/{test_id}/publish")
+@router.post("/tests/{test_id}/publish")
 async def toggle_test_publish_status(test_id: str, request: PublishStatusRequest):
     """Toggle test publish status"""
     try:
@@ -477,6 +478,40 @@ async def toggle_test_publish_status(test_id: str, request: PublishStatusRequest
         raise
     except Exception as e:
         logger.error(f"Failed to update publish status: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/tests/{test_id}")
+async def delete_test(test_id: str):
+    """Delete a design test"""
+    try:
+        if design_repository.db is None:
+            await design_repository.initialize()
+        
+        db = design_repository.db
+        
+        # Check if test exists
+        test = await db.design_tests.find_one({"_id": test_id})
+        if not test:
+            raise HTTPException(status_code=404, detail="Test not found")
+        
+        # Delete the test
+        result = await db.design_tests.delete_one({"_id": test_id})
+        
+        if result.deleted_count == 0:
+            raise HTTPException(status_code=404, detail="Test not found")
+        
+        logger.info(f"Test {test_id} deleted successfully")
+        
+        return {
+            "message": "Test deleted successfully",
+            "test_id": test_id
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to delete test: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -1144,6 +1179,7 @@ class AddCandidateRequest(BaseModel):
 
 
 @router.post("/tests/{test_id}/add-candidate")
+@router.post("/tests/{test_id}/candidates")
 async def add_candidate(test_id: str, request: AddCandidateRequest):
     """Add a single candidate to a test"""
     try:
@@ -1198,6 +1234,7 @@ async def add_candidate(test_id: str, request: AddCandidateRequest):
 
 
 @router.post("/tests/{test_id}/bulk-add-candidates")
+@router.post("/tests/{test_id}/candidates/bulk")
 async def bulk_add_candidates(test_id: str, file: UploadFile = File(...)):
     """Bulk upload candidates from CSV file"""
     try:

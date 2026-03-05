@@ -4,7 +4,7 @@ import { GetServerSideProps } from 'next'
 import { requireAuth } from '../../../lib/auth'
 import { 
   Clock, Eye, EyeOff, Users, Mail, Edit3, Upload, List, 
-  ArrowLeft, Copy, CheckCircle2, Calendar, AlertCircle, FileSpreadsheet, X 
+  ArrowLeft, Copy, CheckCircle2, Calendar, AlertCircle, FileSpreadsheet, X, Trash2 
 } from 'lucide-react'
 import Link from 'next/link'
 
@@ -51,6 +51,7 @@ export default function DesignTestsPage() {
   const [candidateEmail, setCandidateEmail] = useState('')
   const [addingCandidate, setAddingCandidate] = useState(false)
   const [generatedLink, setGeneratedLink] = useState<{testId: string, name: string, email: string} | null>(null)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
   
   const API_URL = process.env.NEXT_PUBLIC_DESIGN_SERVICE_URL || 'http://localhost:3006/api/v1/design'
 
@@ -173,6 +174,35 @@ export default function DesignTestsPage() {
       }
     } catch (error) {
       alert('Failed to upload CSV')
+    }
+  }
+
+  const handleDeleteTest = async (testId: string) => {
+    if (!confirm('Are you sure you want to delete this test? This action cannot be undone.')) {
+      return
+    }
+
+    setDeletingId(testId)
+    try {
+      const token = localStorage.getItem('token')
+      const response = await fetch(`${API_URL}/tests/${testId}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      })
+
+      if (response.ok) {
+        await fetchTests()
+        alert('Test deleted successfully!')
+      } else {
+        const error = await response.json()
+        alert(error.detail || 'Failed to delete test')
+      }
+    } catch (error) {
+      alert('Failed to delete test')
+    } finally {
+      setDeletingId(null)
     }
   }
 
@@ -442,6 +472,24 @@ export default function DesignTestsPage() {
                         </button>
                       </Link>
                     )}
+
+                    {/* Delete Button */}
+                    <button
+                      onClick={() => handleDeleteTest(test._id)}
+                      disabled={deletingId === test._id}
+                      title="Delete this test"
+                      style={{ 
+                        display: "flex", alignItems: "center", gap: "0.375rem", width: "100%", justifyContent: "center",
+                        padding: "0.5rem 1rem", fontSize: "0.875rem", fontWeight: 600, color: "#ffffff", 
+                        backgroundColor: "#DC2626", border: "1px solid #DC2626", borderRadius: "0.5rem", 
+                        cursor: deletingId === test._id ? "not-allowed" : "pointer", 
+                        opacity: deletingId === test._id ? 0.7 : 1, transition: "all 0.2s" 
+                      }}
+                      onMouseEnter={(e) => { if (deletingId !== test._id) e.currentTarget.style.backgroundColor = "#B91C1C" }}
+                      onMouseLeave={(e) => { if (deletingId !== test._id) e.currentTarget.style.backgroundColor = "#DC2626" }}
+                    >
+                      <Trash2 size={16} /> {deletingId === test._id ? 'Deleting...' : 'Delete'}
+                    </button>
                   </div>
 
                 </div>

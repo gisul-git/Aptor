@@ -18,6 +18,8 @@ export default function DesignAssessmentTakePage() {
   const [question, setQuestion] = useState<any>(null);
   const [workspace, setWorkspace] = useState<any>(null);
   const [timeLeft, setTimeLeft] = useState(3600);
+  const [questionPanelCollapsed, setQuestionPanelCollapsed] = useState(false);
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
 
   const API_URL = process.env.NEXT_PUBLIC_DESIGN_SERVICE_URL || 'http://localhost:3006/api/v1/design';
 
@@ -125,8 +127,8 @@ export default function DesignAssessmentTakePage() {
       const result = await response.json();
       console.log('✅ Submission successful:', result);
       
-      // Redirect to results page
-      window.location.href = `/design/results/${result.submission_id}`;
+      // Show success modal instead of redirecting to results
+      setShowSuccessModal(true);
       
     } catch (error) {
       console.error('Submission error:', error);
@@ -225,6 +227,67 @@ export default function DesignAssessmentTakePage() {
       height: '100vh',
       background: '#f3f4f6'
     }}>
+      {/* Success Modal */}
+      {showSuccessModal && (
+        <div style={{
+          position: 'fixed',
+          inset: 0,
+          background: 'rgba(0, 0, 0, 0.5)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 9999
+        }}>
+          <div style={{
+            background: 'white',
+            borderRadius: '12px',
+            padding: '32px',
+            maxWidth: '400px',
+            width: '90%',
+            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
+            textAlign: 'center'
+          }}>
+            <div style={{ fontSize: '64px', marginBottom: '16px' }}>✅</div>
+            <h2 style={{
+              fontSize: '24px',
+              fontWeight: 'bold',
+              color: '#111827',
+              marginBottom: '8px'
+            }}>
+              Test Submitted Successfully!
+            </h2>
+            <p style={{
+              fontSize: '16px',
+              color: '#6b7280',
+              marginBottom: '24px'
+            }}>
+              Your design has been submitted and is being evaluated. You will be notified of the results soon.
+            </p>
+            <button
+              onClick={() => {
+                setShowSuccessModal(false);
+                router.push('/design');
+              }}
+              style={{
+                width: '100%',
+                padding: '12px 24px',
+                background: '#10b981',
+                color: 'white',
+                border: 'none',
+                borderRadius: '8px',
+                fontSize: '16px',
+                fontWeight: 600,
+                cursor: 'pointer'
+              }}
+              onMouseOver={(e) => e.currentTarget.style.background = '#059669'}
+              onMouseOut={(e) => e.currentTarget.style.background = '#10b981'}
+            >
+              Return to Dashboard
+            </button>
+          </div>
+        </div>
+      )}
+      
       {/* HEADER - Timer & Submit */}
       <div style={{
         background: 'white',
@@ -298,89 +361,152 @@ export default function DesignAssessmentTakePage() {
         flex: 1,
         overflow: 'hidden'
       }}>
-        {/* LEFT SIDE - Question Panel (320px) */}
+        {/* LEFT SIDE - Question Panel (Collapsible) */}
         <div style={{
-          width: '320px',
+          width: questionPanelCollapsed ? '48px' : '320px',
           background: 'white',
           borderRight: '1px solid #e5e7eb',
-          padding: '24px',
-          overflowY: 'auto'
+          padding: questionPanelCollapsed ? '0' : '24px',
+          overflowY: 'auto',
+          transition: 'width 0.3s ease, padding 0.3s ease'
         }}>
-          <h3 style={{
-            fontWeight: 'bold',
-            color: '#111827',
-            marginBottom: '12px',
-            fontSize: '16px'
-          }}>
-            Challenge
-          </h3>
-          <p style={{
-            fontSize: '14px',
-            color: '#374151',
-            marginBottom: '16px',
-            lineHeight: '1.5'
-          }}>
-            {question?.description}
-          </p>
+          {questionPanelCollapsed ? (
+            /* Collapsed State - Show Toggle Button Only */
+            <div style={{
+              height: '100%',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center'
+            }}>
+              <button
+                onClick={() => setQuestionPanelCollapsed(false)}
+                style={{
+                  padding: '8px',
+                  background: 'transparent',
+                  border: 'none',
+                  cursor: 'pointer',
+                  color: '#6b7280',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}
+                title="Show Question Details"
+                onMouseOver={(e) => e.currentTarget.style.background = '#f3f4f6'}
+                onMouseOut={(e) => e.currentTarget.style.background = 'transparent'}
+              >
+                <svg width="24" height="24" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
+              </button>
+            </div>
+          ) : (
+            /* Expanded State - Show Full Content */
+            <>
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                marginBottom: '16px'
+              }}>
+                <h3 style={{
+                  fontWeight: 'bold',
+                  color: '#111827',
+                  fontSize: '16px',
+                  margin: 0
+                }}>
+                  Challenge
+                </h3>
+                <button
+                  onClick={() => setQuestionPanelCollapsed(true)}
+                  style={{
+                    padding: '4px',
+                    background: 'transparent',
+                    border: 'none',
+                    cursor: 'pointer',
+                    color: '#6b7280',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center'
+                  }}
+                  title="Hide Question Details"
+                  onMouseOver={(e) => e.currentTarget.style.background = '#f3f4f6'}
+                  onMouseOut={(e) => e.currentTarget.style.background = 'transparent'}
+                >
+                  <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                  </svg>
+                </button>
+              </div>
+              
+              <p style={{
+                fontSize: '14px',
+                color: '#374151',
+                marginBottom: '16px',
+                lineHeight: '1.5'
+              }}>
+                {question?.description}
+              </p>
 
-          <h3 style={{
-            fontWeight: 'bold',
-            color: '#111827',
-            marginBottom: '8px',
-            fontSize: '16px'
-          }}>
-            Constraints
-          </h3>
-          <ul style={{
-            listStyle: 'disc',
-            paddingLeft: '20px',
-            fontSize: '14px',
-            color: '#374151',
-            marginBottom: '16px'
-          }}>
-            {question?.constraints?.map((c: string, i: number) => (
-              <li key={i} style={{ marginBottom: '4px' }}>{c}</li>
-            ))}
-          </ul>
+              <h3 style={{
+                fontWeight: 'bold',
+                color: '#111827',
+                marginBottom: '8px',
+                fontSize: '16px'
+              }}>
+                Constraints
+              </h3>
+              <ul style={{
+                listStyle: 'disc',
+                paddingLeft: '20px',
+                fontSize: '14px',
+                color: '#374151',
+                marginBottom: '16px'
+              }}>
+                {question?.constraints?.map((c: string, i: number) => (
+                  <li key={i} style={{ marginBottom: '4px' }}>{c}</li>
+                ))}
+              </ul>
 
-          <h3 style={{
-            fontWeight: 'bold',
-            color: '#111827',
-            marginBottom: '8px',
-            fontSize: '16px'
-          }}>
-            Deliverables
-          </h3>
-          <ul style={{
-            listStyle: 'disc',
-            paddingLeft: '20px',
-            fontSize: '14px',
-            color: '#374151',
-            marginBottom: '16px'
-          }}>
-            {question?.deliverables?.map((d: string, i: number) => (
-              <li key={i} style={{ marginBottom: '4px' }}>{d}</li>
-            ))}
-          </ul>
+              <h3 style={{
+                fontWeight: 'bold',
+                color: '#111827',
+                marginBottom: '8px',
+                fontSize: '16px'
+              }}>
+                Deliverables
+              </h3>
+              <ul style={{
+                listStyle: 'disc',
+                paddingLeft: '20px',
+                fontSize: '14px',
+                color: '#374151',
+                marginBottom: '16px'
+              }}>
+                {question?.deliverables?.map((d: string, i: number) => (
+                  <li key={i} style={{ marginBottom: '4px' }}>{d}</li>
+                ))}
+              </ul>
 
-          <h3 style={{
-            fontWeight: 'bold',
-            color: '#111827',
-            marginBottom: '8px',
-            fontSize: '16px'
-          }}>
-            Evaluation Criteria
-          </h3>
-          <ul style={{
-            listStyle: 'disc',
-            paddingLeft: '20px',
-            fontSize: '14px',
-            color: '#374151'
-          }}>
-            {question?.evaluation_criteria?.map((e: string, i: number) => (
-              <li key={i} style={{ marginBottom: '4px' }}>{e}</li>
-            ))}
-          </ul>
+              <h3 style={{
+                fontWeight: 'bold',
+                color: '#111827',
+                marginBottom: '8px',
+                fontSize: '16px'
+              }}>
+                Evaluation Criteria
+              </h3>
+              <ul style={{
+                listStyle: 'disc',
+                paddingLeft: '20px',
+                fontSize: '14px',
+                color: '#374151'
+              }}>
+                {question?.evaluation_criteria?.map((e: string, i: number) => (
+                  <li key={i} style={{ marginBottom: '4px' }}>{e}</li>
+                ))}
+              </ul>
+            </>
+          )}
         </div>
 
         {/* RIGHT SIDE - Penpot Workspace or File Upload */}

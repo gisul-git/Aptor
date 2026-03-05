@@ -529,11 +529,28 @@ export default function CreateDesignCompetencyPage() {
                 <div style={{ border: "1px solid #E8B4FA", borderRadius: "0.375rem", padding: "1rem", maxHeight: "400px", overflowY: "auto" }}>
                   {questions
                     .filter((q) => {
-                      // Filter questions based on Test Title
+                      // Filter questions based on Test Title - match individual words
                       if (!formData.title.trim()) return true; // Show all if title is empty
-                      const titleLower = formData.title.toLowerCase();
+                      
+                      // Split into words, keep words that are meaningful (length > 1 or common design terms)
+                      const titleWords = formData.title.toLowerCase().split(/\s+/).filter(w => {
+                        // Keep design-related short words like UI, UX, or words longer than 2 chars
+                        return w.length > 2 || ['ui', 'ux'].includes(w);
+                      });
+                      
                       const questionTitleLower = q.title.toLowerCase();
-                      return questionTitleLower.includes(titleLower);
+                      const questionRole = q.role?.toLowerCase().replace(/_/g, ' ') || '';
+                      const questionTaskType = q.task_type?.toLowerCase().replace(/_/g, ' ') || '';
+                      
+                      // If no meaningful words, show all
+                      if (titleWords.length === 0) return true;
+                      
+                      // Match if ANY word from title appears in question title, role, or task type
+                      return titleWords.some(word => 
+                        questionTitleLower.includes(word) || 
+                        questionRole.includes(word) || 
+                        questionTaskType.includes(word)
+                      );
                     })
                     .map((q) => {
                     const questionId = q.id || q._id || '';

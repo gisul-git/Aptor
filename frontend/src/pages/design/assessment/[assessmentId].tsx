@@ -37,6 +37,8 @@ export default function DesignAssessmentPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [latestScreenshot, setLatestScreenshot] = useState<string | null>(null);
   const [events, setEvents] = useState<any[]>([]);
+  const [questionPanelCollapsed, setQuestionPanelCollapsed] = useState(false);
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
   
   const timerIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const screenshotIntervalRef = useRef<NodeJS.Timeout | null>(null);
@@ -440,10 +442,9 @@ export default function DesignAssessmentPage() {
       
       const result = await submitRes.json();
       console.log('✅ Submission successful:', result);
-      console.log('📍 Redirecting to:', `/design/results/${result.submission_id}`);
       
-      // Use window.location for more reliable redirect
-      window.location.href = `/design/results/${result.submission_id}`;
+      // Show success modal instead of redirecting to results
+      setShowSuccessModal(true);
       
     } catch (err: any) {
       console.error('❌ Submission error:', err);
@@ -514,6 +515,30 @@ export default function DesignAssessmentPage() {
   
   return (
     <div className="h-screen flex flex-col bg-gray-50">
+      {/* Success Modal */}
+      {showSuccessModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-8 max-w-md w-full mx-4 shadow-xl">
+            <div className="text-center">
+              <div className="text-6xl mb-4">✅</div>
+              <h2 className="text-2xl font-bold text-gray-800 mb-2">Test Submitted Successfully!</h2>
+              <p className="text-gray-600 mb-6">
+                Your design has been submitted and is being evaluated. You will be notified of the results soon.
+              </p>
+              <button
+                onClick={() => {
+                  setShowSuccessModal(false);
+                  router.push('/design');
+                }}
+                className="px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium w-full"
+              >
+                Return to Dashboard
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      
       {/* Top Status Bar */}
       <div className="bg-white border-b border-gray-200 px-6 py-3 flex items-center justify-between">
         <div className="flex items-center gap-6">
@@ -563,9 +588,39 @@ export default function DesignAssessmentPage() {
       {/* Main Content Area */}
       <div className="flex-1 flex overflow-hidden">
         {/* Left Sidebar - Question Details */}
-        <div className="w-80 bg-white border-r border-gray-200 overflow-y-auto">
-          <div className="p-6">
-            <h2 className="text-lg font-semibold text-gray-800 mb-4">Question Details</h2>
+        <div 
+          className={`bg-white border-r border-gray-200 overflow-y-auto transition-all duration-300 ${
+            questionPanelCollapsed ? 'w-12' : 'w-80'
+          }`}
+        >
+          {questionPanelCollapsed ? (
+            /* Collapsed State - Show Toggle Button Only */
+            <div className="h-full flex items-center justify-center">
+              <button
+                onClick={() => setQuestionPanelCollapsed(false)}
+                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                title="Show Question Details"
+              >
+                <svg className="w-6 h-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
+              </button>
+            </div>
+          ) : (
+            /* Expanded State - Show Full Content */
+            <div className="p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-lg font-semibold text-gray-800">Question Details</h2>
+                <button
+                  onClick={() => setQuestionPanelCollapsed(true)}
+                  className="p-1 hover:bg-gray-100 rounded transition-colors"
+                  title="Hide Question Details"
+                >
+                  <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                  </svg>
+                </button>
+              </div>
             
             {/* Description */}
             <div className="mb-6">
@@ -634,7 +689,7 @@ export default function DesignAssessmentPage() {
                 </div>
               </div>
             </div>
-          </div>
+          )}
         </div>
         
         {/* Right Panel - Penpot Workspace */}
