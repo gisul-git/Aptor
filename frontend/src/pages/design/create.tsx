@@ -31,11 +31,11 @@ export default function CreateDesignCompetencyPage() {
   type ExamMode = "strict" | "flexible";
   const [examMode, setExamMode] = useState<ExamMode>("strict");
 
-  // Candidate Requirements
-  const [requirePhone, setRequirePhone] = useState(false);
-  const [requireResume, setRequireResume] = useState(false);
-  const [requireLinkedIn, setRequireLinkedIn] = useState(false);
-  const [requireGithub, setRequireGithub] = useState(false);
+  // Candidate Requirements - REMOVED
+  // const [requirePhone, setRequirePhone] = useState(false);
+  // const [requireResume, setRequireResume] = useState(false);
+  // const [requireLinkedIn, setRequireLinkedIn] = useState(false);
+  // const [requireGithub, setRequireGithub] = useState(false);
 
   const [formData, setFormData] = useState({
     title: "",
@@ -58,7 +58,13 @@ export default function CreateDesignCompetencyPage() {
       const response = await fetch(`${API_URL}/questions`);
       if (response.ok) {
         const data = await response.json();
-        setQuestions(data);
+        // Sort by created_at DESC (newest first)
+        const sortedData = data.sort((a: any, b: any) => {
+          const dateA = new Date(a.created_at || 0).getTime();
+          const dateB = new Date(b.created_at || 0).getTime();
+          return dateB - dateA;
+        });
+        setQuestions(sortedData);
       }
     } catch (error) {
       console.error('Failed to fetch questions:', error);
@@ -143,12 +149,6 @@ export default function CreateDesignCompetencyPage() {
           startTime: startTimeUTC,
           ...(examMode === "flexible" && endTimeUTC && { endTime: endTimeUTC }),
           duration: durationForSchedule,
-          candidateRequirements: {
-            requirePhone,
-            requireResume,
-            requireLinkedIn,
-            requireGithub,
-          },
         },
         startTime: startTimeUTC,
         ...(examMode === "flexible" && endTimeUTC && { endTime: endTimeUTC }),
@@ -463,32 +463,6 @@ export default function CreateDesignCompetencyPage() {
               )}
             </div>
 
-            {/* Candidate Requirements */}
-            <div style={{ marginBottom: "1.5rem", padding: "1.25rem", border: "1px solid #E8B4FA", borderRadius: "0.5rem", backgroundColor: "#F9F5FF" }}>
-              <h3 style={{ marginBottom: "0.75rem", color: "#1a1625" }}>Candidate Requirements</h3>
-              <p style={{ marginBottom: "1rem", fontSize: "0.875rem", color: "#9333EA" }}>
-                Select which information candidates must provide before taking the assessment.
-              </p>
-              <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
-                <label style={{ display: "flex", alignItems: "center", gap: "0.75rem", cursor: "pointer" }}>
-                  <input type="checkbox" checked={requirePhone} onChange={(e) => setRequirePhone(e.target.checked)} style={{ width: "18px", height: "18px", cursor: "pointer" }} />
-                  <span style={{ fontWeight: 600, color: "#7C3AED" }}>Phone Number</span>
-                </label>
-                <label style={{ display: "flex", alignItems: "center", gap: "0.75rem", cursor: "pointer" }}>
-                  <input type="checkbox" checked={requireResume} onChange={(e) => setRequireResume(e.target.checked)} style={{ width: "18px", height: "18px", cursor: "pointer" }} />
-                  <span style={{ fontWeight: 600, color: "#7C3AED" }}>Resume (File Upload)</span>
-                </label>
-                <label style={{ display: "flex", alignItems: "center", gap: "0.75rem", cursor: "pointer" }}>
-                  <input type="checkbox" checked={requireLinkedIn} onChange={(e) => setRequireLinkedIn(e.target.checked)} style={{ width: "18px", height: "18px", cursor: "pointer" }} />
-                  <span style={{ fontWeight: 600, color: "#7C3AED" }}>LinkedIn URL</span>
-                </label>
-                <label style={{ display: "flex", alignItems: "center", gap: "0.75rem", cursor: "pointer" }}>
-                  <input type="checkbox" checked={requireGithub} onChange={(e) => setRequireGithub(e.target.checked)} style={{ width: "18px", height: "18px", cursor: "pointer" }} />
-                  <span style={{ fontWeight: 600, color: "#7C3AED" }}>GitHub URL</span>
-                </label>
-              </div>
-            </div>
-
             <div style={{ marginBottom: "1.5rem" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.5rem" }}>
                 <label style={{ fontWeight: 600 }}>Select Questions *</label>
@@ -508,7 +482,15 @@ export default function CreateDesignCompetencyPage() {
                 </div>
               ) : (
                 <div style={{ border: "1px solid #E8B4FA", borderRadius: "0.375rem", padding: "1rem", maxHeight: "400px", overflowY: "auto" }}>
-                  {questions.map((q) => {
+                  {questions
+                    .filter((q) => {
+                      // Filter questions based on Test Title
+                      if (!formData.title.trim()) return true; // Show all if title is empty
+                      const titleLower = formData.title.toLowerCase();
+                      const questionTitleLower = q.title.toLowerCase();
+                      return questionTitleLower.includes(titleLower);
+                    })
+                    .map((q) => {
                     const questionId = q.id || q._id || '';
                     return (
                       <div
