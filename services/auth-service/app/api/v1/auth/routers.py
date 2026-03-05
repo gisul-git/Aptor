@@ -527,95 +527,31 @@ async def _verify_reset_token(db: AsyncIOMotorDatabase, token: str) -> tuple[boo
     return False, None, None
 
 
-@router.post("/superadmin-signup")
-async def super_admin_signup(
-    payload: SuperAdminSignupRequest,
-    db: AsyncIOMotorDatabase = Depends(get_db),
-):
-    email = _normalize_email(payload.email)
-    existing = await _find_user_by_email(db, email)
-    if existing:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Super Admin already exists")
+# SIGNUP ENDPOINTS DISABLED - Accounts are now created by super admin via demo request acceptance
+# Users receive credentials via email after super admin accepts their demo request
 
-    # Check if there's already a pending signup for this email (and if it's expired)
-    pending = await db.email_verifications.find_one({"email": email, "pendingSignup": {"$exists": True}})
-    if pending:
-        # Check if the pending signup code has expired
-        is_expired = await _check_and_cleanup_expired_verification(db, email)
-        if not is_expired:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Verification email already sent. Please check your email or wait for it to expire.")
-
-    # Store pending signup data (will be created after verification)
-    pending_signup_data = {
-        "name": sanitize_text_field(payload.name),
-        "password": get_password_hash(payload.password),
-        "role": "super_admin",
-    }
-
-    # Send verification email with pending signup data
-    try:
-        await _send_verification_email(db, email, payload.name, pending_signup_data)
-        logger.info("Verification email sent to super admin: %s", email)
-    except Exception as exc:
-        logger.error("Failed to send verification email to super admin %s: %s", email, exc)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to send verification email. Please try again.",
-        ) from exc
-
-    return success_response(
-        "Please check your email for verification code. Account will be created after verification.",
-        {"email": email},
-        status_code=status.HTTP_201_CREATED,
-    )
+# @router.post("/superadmin-signup")
+# async def super_admin_signup(
+#     payload: SuperAdminSignupRequest,
+#     db: AsyncIOMotorDatabase = Depends(get_db),
+# ):
+#     """DISABLED: Super admin signup - accounts created manually"""
+#     raise HTTPException(
+#         status_code=status.HTTP_404_NOT_FOUND,
+#         detail="Signup is disabled. Please contact support for account creation."
+#     )
 
 
-@router.post("/org-signup")
-async def org_signup_google(
-    payload: GoogleSignupRequest,
-    db: AsyncIOMotorDatabase = Depends(get_db),
-):
-    settings = get_settings()
-    if not settings.google_client_id:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Google OAuth is not configured")
-
-    try:
-        ticket = id_token.verify_oauth2_token(
-            payload.credential,
-            google_requests.Request(),
-            settings.google_client_id,
-        )
-    except ValueError as exc:
-        logger.warning("Org Google signup failed token verification: %s", exc)
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid Google credential") from exc
-
-    email = _normalize_email(ticket.get("email", ""))
-    name = ticket.get("name") or email.split("@")[0]
-    # Sanitize name to prevent XSS
-    name = sanitize_text_field(name)
-    google_id = ticket.get("sub")
-
-    if not email:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Email is required")
-
-    if await _find_user_by_email(db, email):
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="User already registered")
-
-    user_doc = {
-        "name": name,
-        "email": email,
-        "googleId": google_id,
-        "role": "org_admin",
-        "emailVerified": True,  # Google OAuth emails are pre-verified
-        "createdAt": datetime.now(timezone.utc),
-    }
-    await db.users.insert_one(user_doc)
-
-    return success_response(
-        "Signup successful. You can sign in now.",
-        {"email": email},
-        status_code=status.HTTP_201_CREATED,
-    )
+# @router.post("/org-signup")
+# async def org_signup_google(
+#     payload: GoogleSignupRequest,
+#     db: AsyncIOMotorDatabase = Depends(get_db),
+# ):
+#     """DISABLED: Google OAuth signup - use schedule demo instead"""
+#     raise HTTPException(
+#         status_code=status.HTTP_404_NOT_FOUND,
+#         detail="Signup is disabled. Please schedule a demo to get started."
+#     )
 
 
 async def _check_account_lockout(db: AsyncIOMotorDatabase, email: str) -> tuple[bool, str | None]:
@@ -959,77 +895,41 @@ async def email_login(
             },
         )
 
+    # Check if password reset is required (temporary password)
+    if user.get("requirePasswordReset"):
+        logger.info("User %s logged in with temporary password, requiring password reset", email)
+        # Clear failed attempts
+        await _clear_failed_attempts(db, email)
+        # Generate a password reset token
+        token = _generate_reset_token()
+        expires_at = datetime.now(timezone.utc) + timedelta(minutes=30)
+        await _store_reset_token(db, email, token, expires_at)
+        
+        return success_response(
+            "Password reset required. Please use the provided token to reset your password.",
+            {
+                "requirePasswordReset": True,
+                "resetToken": token,
+                "email": email,
+            },
+        )
+
     # Clear failed attempts on successful login
     await _clear_failed_attempts(db, email)
     return _build_login_success_response(user)
 
 
-@router.post("/org-signup-email")
-async def org_signup_email(
-    background_tasks: BackgroundTasks,
-    payload: OrgSignupRequest,
-    db: AsyncIOMotorDatabase = Depends(get_db),
-):
-    email = _normalize_email(payload.email)
-    if await _find_user_by_email(db, email):
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="User already registered")
-
-    # Check if there's already a pending signup for this email (and if it's expired)
-    pending = await db.email_verifications.find_one({"email": email, "pendingSignup": {"$exists": True}})
-    if pending:
-        # Check if the pending signup code has expired
-        is_expired = await _check_and_cleanup_expired_verification(db, email)
-        if not is_expired:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Verification email already sent. Please check your email or wait for it to expire.")
-
-    # Generate unique organization ID and create organization
-    try:
-        employee_db = await get_employee_database()
-        org_id = await generate_organization_id(employee_db)
-        # Use provided organization name if available, otherwise fall back to "<name>'s Organization"
-        if getattr(payload, "organization", None):
-            org_name = sanitize_text_field(payload.organization)
-        else:
-            org_name = f"{sanitize_text_field(payload.name)}'s Organization"
-        await create_organization(employee_db, org_id, org_name)
-        logger.info("Created organization %s (%s) for signup: %s", org_id, org_name, email)
-    except Exception as exc:
-        logger.error("Failed to create organization for signup %s: %s", email, exc)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to create organization. Please try again."
-        ) from exc
-
-    # Store pending signup data (will be created after verification)
-    # Only include optional fields if provided (don't store None/null)
-    pending_signup_data = {
-        "name": sanitize_text_field(payload.name),
-        "password": get_password_hash(payload.password),
-        "role": "org_admin",
-        "orgId": org_id,  # Store org ID for user creation
-    }
-    if getattr(payload, "organization", None):
-        pending_signup_data["organization"] = sanitize_text_field(payload.organization)
-    if payload.phone:
-        pending_signup_data["phone"] = sanitize_text_field(payload.phone)
-    if payload.country:
-        pending_signup_data["country"] = sanitize_text_field(payload.country)
-
-    # Generate verification code and store it immediately (before sending email)
-    code = _generate_verification_code()
-    settings = get_settings()
-    expires_at = datetime.now(timezone.utc) + timedelta(minutes=settings.email_verification_code_ttl_minutes)
-    await _store_verification_code(db, email, code, expires_at, pending_signup_data)
-
-    # Send verification email in background (non-blocking) with org ID
-    background_tasks.add_task(_send_verification_email_async, db, email, payload.name, code, settings.email_verification_code_ttl_minutes, org_id)
-    logger.info("Verification email queued for user: %s (Org ID: %s)", email, org_id)
-
-    return success_response(
-        "Please check your email for verification code. Account will be created after verification.",
-        {"email": email},
-        status_code=status.HTTP_201_CREATED,
-    )
+# @router.post("/org-signup-email")
+# async def org_signup_email(
+#     background_tasks: BackgroundTasks,
+#     payload: OrgSignupRequest,
+#     db: AsyncIOMotorDatabase = Depends(get_db),
+# ):
+#     """DISABLED: Email signup - use schedule demo instead"""
+#     raise HTTPException(
+#         status_code=status.HTTP_404_NOT_FOUND,
+#         detail="Signup is disabled. Please schedule a demo at aaptor.com to get started."
+#     )
 
 
 @router.post("/oauth-login")
@@ -1291,11 +1191,18 @@ async def reset_password(
             detail="User not found"
         )
     
-    # Update password
+    # Update password and clear requirePasswordReset flag
     hashed_password = get_password_hash(payload.newPassword)
+    update_data = {"password": hashed_password}
+    
+    # If user had requirePasswordReset flag, remove it
+    if user.get("requirePasswordReset"):
+        update_data["requirePasswordReset"] = False
+        logger.info("Cleared requirePasswordReset flag for user: %s", email)
+    
     await db.users.update_one(
         {"_id": user["_id"]},
-        {"$set": {"password": hashed_password}}
+        {"$set": update_data}
     )
     
     # Mark token as used

@@ -77,7 +77,7 @@ async def accept_demo_request(
     current_user: dict = Depends(require_super_admin),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
-    """Accept a demo request and send email to requester."""
+    """Accept a demo request, create organization and user, send credentials email."""
     try:
         client = get_client()
         demo_db = client["demo_db"]
@@ -107,15 +107,75 @@ async def accept_demo_request(
                 detail=f"Demo request is already {request_doc.get('status')}",
             )
         
+        # Create organization and user account
+        from ....core.security import get_password_hash
+        from datetime import datetime, timezone
+        import secrets
+        import string
+        
+        # Generate organization ID
+        org_db = client["organization_db"]
+        org_collection = org_db.organizations
+        
+        # Find highest org ID
+        highest_org = await org_collection.find_one(
+            sort=[("orgId", -1)],
+            projection={"orgId": 1}
+        )
+        
+        if highest_org and highest_org.get("orgId"):
+            import re
+            existing_id = highest_org["orgId"]
+            match = re.search(r'\d+', existing_id)
+            next_num = int(match.group()) + 1 if match else 1
+        else:
+            next_num = 1
+        
+        org_id = f"ORG{str(next_num).zfill(3)}"
+        
+        # Create organization
+        org_doc = {
+            "orgId": org_id,
+            "name": request_doc.get("company", ""),
+            "employeeCounter": 0,
+            "createdAt": datetime.now(timezone.utc),
+            "updatedAt": datetime.now(timezone.utc),
+        }
+        await org_collection.insert_one(org_doc)
+        logger.info(f"Created organization: {org_id} for {request_doc.get('company')}")
+        
+        # Generate temporary password (12 characters, alphanumeric)
+        alphabet = string.ascii_letters + string.digits
+        temp_password = ''.join(secrets.choice(alphabet) for _ in range(12))
+        
+        # Create user account
+        user_email = request_doc.get("email", "").strip().lower()
+        user_doc = {
+            "name": f"{request_doc.get('firstName', '')} {request_doc.get('lastName', '')}".strip(),
+            "email": user_email,
+            "password": get_password_hash(temp_password),
+            "role": "org_admin",
+            "orgId": org_id,
+            "organization": request_doc.get("company", ""),
+            "phone": request_doc.get("phone", ""),
+            "country": request_doc.get("country", ""),
+            "emailVerified": True,
+            "emailVerifiedAt": datetime.now(timezone.utc),
+            "requirePasswordReset": True,  # Flag to force password reset
+            "createdAt": datetime.now(timezone.utc),
+        }
+        await db.users.insert_one(user_doc)
+        logger.info(f"Created user account for {user_email} with org {org_id}")
+        
         # Update status to 'completed'
         await demo_requests_collection.update_one(
             {"_id": object_id},
             {"$set": {"status": "completed"}},
         )
         
-        # Send acceptance email
+        # Send acceptance email with credentials
         try:
-            email_sent = await send_acceptance_email(request_doc)
+            email_sent = await send_acceptance_email(request_doc, org_id, temp_password)
             if not email_sent:
                 logger.warning(f"Failed to send acceptance email for request {request_id}")
         except Exception as e:
@@ -131,8 +191,12 @@ async def accept_demo_request(
             updated_request["updatedAt"] = updated_request["updatedAt"].isoformat() if hasattr(updated_request["updatedAt"], "isoformat") else str(updated_request["updatedAt"])
         
         return success_response(
-            "Demo request accepted successfully",
-            updated_request,
+            "Demo request accepted successfully. Organization and user account created.",
+            {
+                **updated_request,
+                "orgId": org_id,
+                "userEmail": user_email,
+            },
         )
     except HTTPException:
         raise
