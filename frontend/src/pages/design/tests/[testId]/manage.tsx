@@ -283,40 +283,63 @@ export default function DesignTestManagePage() {
             <h3 style={{ marginBottom: "1rem", color: "#7C3AED", fontSize: "1.25rem", fontWeight: 600 }}>Test Access & Email Settings</h3>
             <div style={{ padding: "1.5rem", border: "1px solid #E8B4FA", borderRadius: "0.5rem" }}>
               <p style={{ marginBottom: "1rem", fontSize: "0.875rem", color: "#64748b" }}>Using system default email template</p>
-              <div style={{ marginBottom: "1rem" }}>
-                <label style={{ display: "block", marginBottom: "0.5rem", fontWeight: 600, fontSize: "0.875rem" }}>Test URL</label>
-                <div style={{ display: "flex", gap: "0.5rem" }}>
-                  <input
-                    type="text"
-                    readOnly
-                    value={test.test_token ? `${window.location.origin}/design/tests/${testId}/take?token=${test.test_token}` : 'Publish test to generate URL'}
-                    style={{
-                      flex: 1,
-                      padding: "0.75rem",
-                      border: "1px solid #E8B4FA",
-                      borderRadius: "0.375rem",
-                      backgroundColor: "#F9F5FF",
-                      fontSize: "0.875rem",
-                    }}
-                  />
-                  <button
-                    onClick={copyTestUrl}
-                    disabled={!test.test_token}
-                    className="btn-primary"
-                    style={{ padding: "0.75rem 1.5rem", fontSize: "0.875rem" }}
-                  >
-                    Copy URL
-                  </button>
+              
+              {/* Only show test URL if test is published AND has candidates */}
+              {test.is_published && test.test_token && candidates.length > 0 ? (
+                <>
+                  <div style={{ marginBottom: "1rem" }}>
+                    <label style={{ display: "block", marginBottom: "0.5rem", fontWeight: 600, fontSize: "0.875rem" }}>Test URL</label>
+                    <div style={{ display: "flex", gap: "0.5rem" }}>
+                      <input
+                        type="text"
+                        readOnly
+                        value={`${window.location.origin}/design/tests/${testId}/take?token=${test.test_token}`}
+                        style={{
+                          flex: 1,
+                          padding: "0.75rem",
+                          border: "1px solid #E8B4FA",
+                          borderRadius: "0.375rem",
+                          backgroundColor: "#F9F5FF",
+                          fontSize: "0.875rem",
+                        }}
+                      />
+                      <button
+                        onClick={copyTestUrl}
+                        className="btn-primary"
+                        style={{ padding: "0.75rem 1.5rem", fontSize: "0.875rem" }}
+                      >
+                        Copy URL
+                      </button>
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", gap: "0.5rem" }}>
+                    <button className="btn-primary" style={{ padding: "0.75rem 1.5rem", fontSize: "0.875rem" }}>
+                      🧪 Test This Test
+                    </button>
+                    <button className="btn-secondary" style={{ padding: "0.75rem 1.5rem", fontSize: "0.875rem" }}>
+                      ✏️ Edit Email Template
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <div style={{ 
+                  padding: "1.5rem", 
+                  backgroundColor: "#FEF3C7", 
+                  borderRadius: "0.5rem",
+                  border: "1px solid #FCD34D"
+                }}>
+                  <p style={{ fontSize: "0.875rem", color: "#92400E", marginBottom: "0.5rem", fontWeight: 600 }}>
+                    ⚠️ Test URL Not Available
+                  </p>
+                  <p style={{ fontSize: "0.875rem", color: "#92400E", marginBottom: 0 }}>
+                    {!test.is_published 
+                      ? "Please publish the test first to generate the test URL."
+                      : candidates.length === 0
+                        ? "Please add candidates first to access the test URL."
+                        : "Test URL will be available once candidates are added."}
+                  </p>
                 </div>
-              </div>
-              <div style={{ display: "flex", gap: "0.5rem" }}>
-                <button className="btn-primary" style={{ padding: "0.75rem 1.5rem", fontSize: "0.875rem" }}>
-                  🧪 Test This Test
-                </button>
-                <button className="btn-secondary" style={{ padding: "0.75rem 1.5rem", fontSize: "0.875rem" }}>
-                  ✏️ Edit Email Template
-                </button>
-              </div>
+              )}
             </div>
           </div>
 

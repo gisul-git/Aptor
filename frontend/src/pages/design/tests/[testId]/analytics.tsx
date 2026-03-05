@@ -747,9 +747,14 @@ export default function DesignAnalyticsPage() {
                       <div style={{ fontSize: "0.75rem", color: "#64748b", marginTop: "0.25rem" }}>
                         {candidate.email}
                       </div>
-                      {candidate.has_submitted && (
-                        <div style={{ fontSize: "0.75rem", color: "#10b981", marginTop: "0.25rem", fontWeight: 600 }}>
-                          Score: {candidate.submission_score || 0}
+                      {candidate.has_submitted && candidate.submission_score !== undefined && (
+                        <div style={{ 
+                          fontSize: "0.875rem", 
+                          color: candidate.submission_score >= 70 ? "#166534" : candidate.submission_score >= 50 ? "#92400e" : "#991b1b",
+                          marginTop: "0.25rem", 
+                          fontWeight: 600 
+                        }}>
+                          Score: {candidate.submission_score}/100
                         </div>
                       )}
                     </button>

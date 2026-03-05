@@ -127,7 +127,7 @@ export default function DesignAssessmentTakePage() {
       const result = await response.json();
       console.log('✅ Submission successful:', result);
       
-      // Show success modal instead of redirecting to results
+      // Show success page (not modal) - matches AIML flow
       setShowSuccessModal(true);
       
     } catch (error) {
@@ -220,6 +220,86 @@ export default function DesignAssessmentTakePage() {
   }
 
   // ASSESSMENT SCREEN - SPLIT LAYOUT
+  // Show success page after submission (matches AIML flow)
+  if (showSuccessModal) {
+    return (
+      <div style={{
+        minHeight: '100vh',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        background: 'linear-gradient(to bottom right, #d1fae5, #a7f3d0)'
+      }}>
+        <div style={{
+          textAlign: 'center',
+          background: 'white',
+          padding: '48px',
+          borderRadius: '16px',
+          boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
+          maxWidth: '500px',
+          width: '90%'
+        }}>
+          <div style={{
+            width: '80px',
+            height: '80px',
+            background: '#d1fae5',
+            borderRadius: '50%',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            margin: '0 auto 24px'
+          }}>
+            <svg style={{ width: '40px', height: '40px', color: '#059669' }} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+            </svg>
+          </div>
+          <h1 style={{
+            fontSize: '32px',
+            fontWeight: 'bold',
+            color: '#111827',
+            marginBottom: '16px'
+          }}>
+            Test Submitted!
+          </h1>
+          <p style={{
+            fontSize: '18px',
+            color: '#6b7280',
+            marginBottom: '32px'
+          }}>
+            Your design has been recorded and is being evaluated.
+          </p>
+          
+          <button
+            onClick={() => router.push('/dashboard')}
+            style={{
+              width: '100%',
+              padding: '14px 24px',
+              background: '#10b981',
+              color: 'white',
+              border: 'none',
+              borderRadius: '8px',
+              fontSize: '16px',
+              fontWeight: 600,
+              cursor: 'pointer',
+              marginBottom: '16px'
+            }}
+            onMouseOver={(e) => e.currentTarget.style.background = '#059669'}
+            onMouseOut={(e) => e.currentTarget.style.background = '#10b981'}
+          >
+            Return to Dashboard
+          </button>
+          
+          <p style={{
+            fontSize: '14px',
+            color: '#9ca3af'
+          }}>
+            You may close this window now.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div style={{
       display: 'flex',
@@ -227,66 +307,7 @@ export default function DesignAssessmentTakePage() {
       height: '100vh',
       background: '#f3f4f6'
     }}>
-      {/* Success Modal */}
-      {showSuccessModal && (
-        <div style={{
-          position: 'fixed',
-          inset: 0,
-          background: 'rgba(0, 0, 0, 0.5)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 9999
-        }}>
-          <div style={{
-            background: 'white',
-            borderRadius: '12px',
-            padding: '32px',
-            maxWidth: '400px',
-            width: '90%',
-            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
-            textAlign: 'center'
-          }}>
-            <div style={{ fontSize: '64px', marginBottom: '16px' }}>✅</div>
-            <h2 style={{
-              fontSize: '24px',
-              fontWeight: 'bold',
-              color: '#111827',
-              marginBottom: '8px'
-            }}>
-              Test Submitted Successfully!
-            </h2>
-            <p style={{
-              fontSize: '16px',
-              color: '#6b7280',
-              marginBottom: '24px'
-            }}>
-              Your design has been submitted and is being evaluated. You will be notified of the results soon.
-            </p>
-            <button
-              onClick={() => {
-                setShowSuccessModal(false);
-                router.push('/design');
-              }}
-              style={{
-                width: '100%',
-                padding: '12px 24px',
-                background: '#10b981',
-                color: 'white',
-                border: 'none',
-                borderRadius: '8px',
-                fontSize: '16px',
-                fontWeight: 600,
-                cursor: 'pointer'
-              }}
-              onMouseOver={(e) => e.currentTarget.style.background = '#059669'}
-              onMouseOut={(e) => e.currentTarget.style.background = '#10b981'}
-            >
-              Return to Dashboard
-            </button>
-          </div>
-        </div>
-      )}
+      {/* Success Modal - REMOVED, now using full page above */}
       
       {/* HEADER - Timer & Submit */}
       <div style={{
