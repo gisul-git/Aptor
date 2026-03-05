@@ -179,23 +179,31 @@ OUTPUT FORMAT (JSON)
 
 {{
     "title": "{topic_str.title()} – {role_str} Challenge",
-    "description": "Write a clear product scenario (250-400 words) describing:
+    "description": "Write a clear product scenario (250-400 words) in THREE paragraphs using NEUTRAL PROFESSIONAL LANGUAGE.
         
-        Paragraph 1: Product context
-        - What is the product/platform?
-        - Who are the users (be specific about roles/personas)?
-        - What is the current situation or problem?
+        CRITICAL: Do NOT use 'you', 'your', 'you should', 'you need to', 'you must', or 'you will'.
+        Instead use: 'The designer', 'The design', 'This task', 'The goal', 'The challenge', or passive voice.
         
-        Paragraph 2: Design problem
-        - What needs to be designed?
-        - What are the main goals or objectives?
-        - What should be the focus?
+        Paragraph 1 - Product Context (use phrases like 'A [product] requires...', 'The system needs...'):
+        - Describe the product/platform and its purpose
+        - Identify the primary user group (be specific about roles/personas)
+        - Explain the current situation or problem that needs solving
         
-        Paragraph 3: Expected outcome
-        - Mention user types or scenarios to consider
-        - Any specific requirements or focus areas
+        Paragraph 2 - Design Problem (use phrases like 'The dashboard should...', 'The interface must...'):
+        - State what needs to be designed
+        - Explain the main goals or objectives
+        - Describe what the design should help users accomplish
         
-        Use neutral professional language. Do NOT use 'you' or 'your'.",
+        Paragraph 3 - Expected Outcome (use phrases like 'The goal is to create...', 'The design should include...'):
+        - Specify what the final deliverable should achieve
+        - Mention key sections or components to include
+        - State any specific requirements or focus areas
+        
+        EXAMPLE OF CORRECT NEUTRAL LANGUAGE:
+        'A hospital management system requires a simple dashboard that allows medical staff to quickly access important operational information. The dashboard should help a primary user group (such as hospital administrators or nurses) view key information without cognitive overload. The design must prioritize clarity, structured information hierarchy, and intuitive navigation. The goal is to create a basic dashboard structure with 2–3 primary sections that allow users to quickly locate essential information.'
+        
+        WRONG (DO NOT USE): 'You need to design a dashboard for hospital staff. Your task is to create...'
+        RIGHT (USE THIS): 'A hospital management system requires a dashboard for medical staff. The task involves creating...'",
     "constraints": [
         "List 6-8 structured constraints with measurable UI rules:",
         "• Canvas width: [specify dimensions]",
@@ -229,6 +237,38 @@ OUTPUT FORMAT (JSON)
 }}
 
 -----------------------------------------------------
+EXAMPLE OUTPUT
+
+Here is an example of a CORRECTLY formatted question with neutral professional language:
+
+{{
+    "title": "Hospital Dashboard – UX Designer Challenge",
+    "description": "A hospital management system requires a simple dashboard that allows medical staff to quickly access important operational information. The primary user group includes hospital administrators and nurses who need to view key information without cognitive overload. The current system lacks a centralized view, forcing staff to navigate multiple screens to find essential data.\\n\\nThe dashboard should help medical staff view critical metrics, patient status, and operational alerts in a single interface. The design must prioritize clarity, structured information hierarchy, and intuitive navigation. The interface should minimize the time required to locate and understand essential information during busy shifts.\\n\\nThe goal is to create a basic dashboard structure with 2–3 primary sections that allow users to quickly locate essential information. The design should include clear visual hierarchy, appropriate use of color for status indicators, and a layout that works well on desktop monitors commonly used in hospital settings.",
+    "constraints": [
+        "Canvas width: 1440px desktop layout",
+        "Grid system: 8px spacing system",
+        "Dashboard must contain 2–3 primary sections",
+        "Use maximum 3 primary colors with clear contrast",
+        "Typography hierarchy must include at least 3 levels (heading, subheading, body)",
+        "Minimum interactive element height: 44px",
+        "Include one empty state or error state"
+    ],
+    "deliverables": [
+        "User flow diagram showing the main user journey",
+        "Low-to-mid fidelity wireframes for 2–3 key screens",
+        "Short design rationale explaining layout and navigation decisions"
+    ],
+    "evaluation_criteria": [
+        "Logical and clear user flow",
+        "Layout consistency and spacing",
+        "Visual hierarchy and readability",
+        "Compliance with design constraints",
+        "Simplicity and usability of the dashboard"
+    ],
+    "time_limit_minutes": {time_limit}
+}}
+
+-----------------------------------------------------
 IMPORTANT REMINDERS
 
 1. Do NOT use "you", "your", or "you should" - use neutral professional language
@@ -251,7 +291,7 @@ Now generate ONE design challenge following all rules above. Return ONLY the JSO
         response = await client.chat.completions.create(
             model=settings.AI_MODEL,
             messages=[
-                {"role": "system", "content": "You are a Design Assessment Question Generator for a professional hiring platform. Generate structured design challenges suitable for automated evaluation. Use neutral professional language - do NOT use 'you' or 'your'. Include measurable constraints (dimensions, spacing, colors, contrast ratios) that enable automated evaluation. Vary complexity based on difficulty level. Provide clear product context and user personas."},
+                {"role": "system", "content": "You are a Design Assessment Question Generator for a professional hiring platform. Generate structured design challenges suitable for automated evaluation. CRITICAL: Use ONLY neutral professional language - NEVER use 'you', 'your', 'you should', 'you need to', 'you must', or 'you will'. Instead use phrases like: 'The designer', 'The design', 'This task', 'The goal', 'The challenge', 'A [product] requires', 'The system needs', 'The dashboard should', 'The interface must', 'The goal is to create'. Write descriptions in passive voice or third person. Include measurable constraints (dimensions, spacing, colors, contrast ratios) that enable automated evaluation. Vary complexity based on difficulty level. Provide clear product context and user personas."},
                 {"role": "user", "content": prompt}
             ],
             temperature=0.7,
