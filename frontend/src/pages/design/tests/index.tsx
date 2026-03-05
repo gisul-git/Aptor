@@ -68,10 +68,8 @@ export default function DesignTestsPage() {
       })
       if (response.ok) {
         const data = await response.json()
-        // Filter to show only user-created tests
-        const userEmail = localStorage.getItem('userEmail')
-        const filteredTests = data.filter((test: Test) => test.created_by === userEmail)
-        setTests(filteredTests)
+        // Show all tests for now - backend should handle user filtering
+        setTests(data)
       }
     } catch (error) {
       console.error('Failed to fetch tests:', error)
