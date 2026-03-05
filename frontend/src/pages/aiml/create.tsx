@@ -1,7 +1,5 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/router";
-import { GetServerSideProps } from "next";
-import { requireAuth } from "../../lib/auth";
 import { useAIMLQuestions, useCreateAIMLTest, useDeleteAIMLQuestion } from "@/hooks/api/useAIML";
 import { 
   ArrowLeft, 
@@ -757,5 +755,3 @@ export default function CreateAIMLCompetencyPage() {
     </div>
   );
 }
-
-export const getServerSideProps: GetServerSideProps = requireAuth;

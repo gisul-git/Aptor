@@ -1,203 +1,215 @@
+import { useRouter } from "next/router";
 import Link from "next/link";
+import {
+  ArrowLeft,
+  BookOpen,
+  Edit3,
+  Globe,
+  FilePlus,
+  Bot,
+  PenTool,
+  ClipboardList,
+  Timer,
+  ListChecks,
+} from "lucide-react";
 
-export default function DevOpsCoverPage() {
+export default function DevOpsMainPage() {
+  const router = useRouter();
+
   return (
-    <main
-      style={{
-        minHeight: "100vh",
-        padding: "28px",
-        background:
-          "radial-gradient(circle at 20% 20%, rgba(201,244,212,0.35), transparent 45%), radial-gradient(circle at 80% 0%, rgba(157,232,176,0.28), transparent 42%), linear-gradient(160deg, #f8fcfa 0%, #eef8f2 55%, #e9f5ee 100%)",
-      }}
-    >
-      <section
-        style={{
-          width: "100%",
-          maxWidth: "1280px",
-          minHeight: "calc(100vh - 56px)",
-          margin: "0 auto",
-          borderRadius: "24px",
-          border: "1px solid rgba(16, 185, 129, 0.2)",
-          background: "rgba(255,255,255,0.86)",
-          backdropFilter: "blur(10px)",
-          boxShadow: "0 26px 80px rgba(6,95,70,0.12)",
-          padding: "32px",
-          display: "flex",
-          flexDirection: "column",
-        }}
+    <div style={{ backgroundColor: "#FAFCFB", minHeight: "100vh", fontFamily: "system-ui, -apple-system, sans-serif" }}>
+      <div
+        className="container"
+        style={{ paddingTop: "3rem", paddingBottom: "4rem", maxWidth: "1100px", margin: "0 auto", padding: "3rem 2rem" }}
       >
-        <header
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            borderBottom: "1px solid rgba(16, 185, 129, 0.16)",
-            paddingBottom: "18px",
-            gap: "12px",
-            flexWrap: "wrap",
-          }}
-        >
-          <div>
-            <p
-              style={{
-                margin: 0,
-                letterSpacing: "0.12em",
-                textTransform: "uppercase",
-                fontSize: "0.74rem",
-                fontWeight: 700,
-                color: "#0A5F38",
-              }}
-            >
-              Aaptor Interface
-            </p>
-            <h1
-              style={{
-                margin: "8px 0 0 0",
-                fontSize: "clamp(1.7rem, 3vw, 2.55rem)",
-                lineHeight: 1.15,
-                letterSpacing: "-0.02em",
-                color: "#065F46",
-              }}
-            >
-              DevOps Question Cover Page
-            </h1>
-          </div>
-          <div
+        <div style={{ marginBottom: "2rem" }}>
+          <button
+            type="button"
+            onClick={() => router.push("/dashboard")}
             style={{
-              padding: "10px 14px",
-              borderRadius: "999px",
-              background: "#ECFDF5",
-              color: "#065F46",
-              fontSize: "0.82rem",
-              fontWeight: 700,
-              border: "1px solid #A7F3D0",
+              display: "flex",
+              alignItems: "center",
+              gap: "0.5rem",
+              padding: "0.5rem 0",
+              fontSize: "0.875rem",
+              color: "#4B5563",
+              backgroundColor: "transparent",
+              border: "none",
+              fontWeight: 500,
+              cursor: "pointer",
+              transition: "color 0.2s",
             }}
+            onMouseOver={(e) => (e.currentTarget.style.color = "#00684A")}
+            onMouseOut={(e) => (e.currentTarget.style.color = "#4B5563")}
           >
-            Formal Authoring Workspace
-          </div>
-        </header>
+            <ArrowLeft size={16} strokeWidth={2.5} /> Back to Dashboard
+          </button>
+        </div>
 
-        <div
-          style={{
-            marginTop: "24px",
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
-            gap: "20px",
-            alignItems: "stretch",
-            flex: 1,
-          }}
-        >
-          <div
-            style={{
-              borderRadius: "18px",
-              border: "1px solid rgba(16, 185, 129, 0.16)",
-              background: "#ffffff",
-              padding: "24px",
-            }}
-          >
-            <p
-              style={{
-                margin: 0,
-                color: "#3e7261",
-                fontSize: "1rem",
-                lineHeight: 1.75,
-                maxWidth: "760px",
-              }}
-            >
-              Choose how you want to create DevOps assessment questions. Use AI for structured
-              generation with proctoring and schedule controls, or move ahead with manual creation
-              for direct authoring.
-            </p>
+        <div style={{ marginBottom: "3rem" }}>
+          <h1 style={{ margin: "0 0 0.5rem 0", color: "#111827", fontSize: "2rem", fontWeight: 700 }}>
+            DevOps Competency Management
+          </h1>
+          <p style={{ margin: 0, color: "#6B7280", fontSize: "1rem" }}>
+            Create, manage, and configure your DevOps technical assessments.
+          </p>
+        </div>
 
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: "1.5rem" }}>
+          <Link href="/devops/questions" style={{ textDecoration: "none" }}>
             <div
               style={{
-                marginTop: "22px",
-                display: "grid",
-                gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
-                gap: "14px",
+                backgroundColor: "#ffffff",
+                padding: "2rem",
+                borderRadius: "1rem",
+                cursor: "pointer",
+                transition: "all 0.2s ease",
+                border: "1px solid #E1F2E9",
+                height: "100%",
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "flex-start",
+                boxShadow: "0 1px 3px rgba(0,0,0,0.05)",
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.borderColor = "#00684A";
+                e.currentTarget.style.transform = "translateY(-4px)";
+                e.currentTarget.style.boxShadow = "0 10px 25px rgba(0, 104, 74, 0.1)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.borderColor = "#E1F2E9";
+                e.currentTarget.style.transform = "translateY(0)";
+                e.currentTarget.style.boxShadow = "0 1px 3px rgba(0,0,0,0.05)";
               }}
             >
-              <div style={{ background: "#F5FFFA", border: "1px solid #C9F4D4", borderRadius: "14px", padding: "14px" }}>
-                <div style={{ color: "#065F46", fontWeight: 700, fontSize: "1.12rem" }}>AIML-Like</div>
-                <div style={{ color: "#3e7261", fontSize: "0.85rem" }}>Full Creation Workflow</div>
+              <div
+                style={{
+                  backgroundColor: "#F0F9F4",
+                  padding: "1rem",
+                  borderRadius: "0.75rem",
+                  color: "#00684A",
+                  marginBottom: "1.5rem",
+                }}
+              >
+                <BookOpen size={32} strokeWidth={1.5} />
               </div>
-              <div style={{ background: "#F5FFFA", border: "1px solid #C9F4D4", borderRadius: "14px", padding: "14px" }}>
-                <div style={{ color: "#065F46", fontWeight: 700, fontSize: "1.12rem" }}>Proctoring</div>
-                <div style={{ color: "#3e7261", fontSize: "0.85rem" }}>AI + Live Monitoring Config</div>
-              </div>
-              <div style={{ background: "#F5FFFA", border: "1px solid #C9F4D4", borderRadius: "14px", padding: "14px" }}>
-                <div style={{ color: "#065F46", fontWeight: 700, fontSize: "1.12rem" }}>Custom</div>
-                <div style={{ color: "#3e7261", fontSize: "0.85rem" }}>Add Custom Questions Too</div>
+              <h2 style={{ margin: "0 0 1rem 0", color: "#111827", fontSize: "1.25rem", fontWeight: 600 }}>
+                Question Management
+              </h2>
+              <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", marginTop: "auto" }}>
+                <span style={{ display: "flex", alignItems: "center", gap: "0.375rem", fontSize: "0.75rem", fontWeight: 600, color: "#00684A", backgroundColor: "#F0F9F4", padding: "0.375rem 0.75rem", borderRadius: "0.5rem", border: "1px solid #E1F2E9" }}>
+                  <Edit3 size={14} /> Edit Questions
+                </span>
+                <span style={{ display: "flex", alignItems: "center", gap: "0.375rem", fontSize: "0.75rem", fontWeight: 600, color: "#00684A", backgroundColor: "#F0F9F4", padding: "0.375rem 0.75rem", borderRadius: "0.5rem", border: "1px solid #E1F2E9" }}>
+                  <Globe size={14} /> Publish/Unpublish
+                </span>
               </div>
             </div>
-          </div>
+          </Link>
 
-          <div
-            style={{
-              borderRadius: "18px",
-              border: "1px solid rgba(16, 185, 129, 0.16)",
-              background: "linear-gradient(180deg, #ffffff 0%, #f7fcf9 100%)",
-              padding: "24px",
-              display: "flex",
-              flexDirection: "column",
-            }}
-          >
-            <h2
+          <Link href="/devops/questions/create" style={{ textDecoration: "none" }}>
+            <div
               style={{
-                margin: 0,
-                color: "#065F46",
-                fontSize: "1.22rem",
-                fontWeight: 700,
+                backgroundColor: "#ffffff",
+                padding: "2rem",
+                borderRadius: "1rem",
+                cursor: "pointer",
+                transition: "all 0.2s ease",
+                border: "1px solid #E1F2E9",
+                height: "100%",
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "flex-start",
+                boxShadow: "0 1px 3px rgba(0,0,0,0.05)",
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.borderColor = "#00684A";
+                e.currentTarget.style.transform = "translateY(-4px)";
+                e.currentTarget.style.boxShadow = "0 10px 25px rgba(0, 104, 74, 0.1)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.borderColor = "#E1F2E9";
+                e.currentTarget.style.transform = "translateY(0)";
+                e.currentTarget.style.boxShadow = "0 1px 3px rgba(0,0,0,0.05)";
               }}
             >
-              Select Question Mode
-            </h2>
-            <p style={{ margin: "10px 0 16px 0", color: "#3e7261", fontSize: "0.92rem", lineHeight: 1.6 }}>
-              Continue with one of the following modes.
-            </p>
-
-            <div style={{ display: "grid", gap: "12px", marginTop: "auto" }}>
-              <Link
-                href="/devops/create"
+              <div
                 style={{
-                  display: "block",
-                  borderRadius: "14px",
-                  border: "1px solid #6AB08D",
-                  background: "linear-gradient(145deg, #0A5F38 0%, #0f7a4a 100%)",
-                  color: "#f1fff7",
-                  padding: "16px 16px",
-                  textDecoration: "none",
-                  boxShadow: "0 10px 24px rgba(10,95,56,0.2)",
+                  backgroundColor: "#F0F9F4",
+                  padding: "1rem",
+                  borderRadius: "0.75rem",
+                  color: "#00684A",
+                  marginBottom: "1.5rem",
                 }}
               >
-                <div style={{ fontSize: "1rem", fontWeight: 700 }}>AI Question Generate</div>
-                <div style={{ marginTop: "4px", fontSize: "0.84rem", opacity: 0.92 }}>
-                  Open AIML-style creation frontend with full settings.
-                </div>
-              </Link>
-
-              <Link
-                href="/devops/manual-questions"
-                style={{
-                  display: "block",
-                  borderRadius: "14px",
-                  border: "1px solid #b7d7c3",
-                  background: "#ffffff",
-                  color: "#065F46",
-                  padding: "16px 16px",
-                  textDecoration: "none",
-                  boxShadow: "0 8px 20px rgba(6,95,70,0.08)",
-                }}
-              >
-                <div style={{ fontSize: "1rem", fontWeight: 700 }}>Manual Questions</div>
-                <div style={{ marginTop: "4px", fontSize: "0.84rem", color: "#3e7261" }}>
-                  Build questions manually with direct control over each field.
-                </div>
-              </Link>
+                <FilePlus size={32} strokeWidth={1.5} />
+              </div>
+              <h2 style={{ margin: "0 0 1rem 0", color: "#111827", fontSize: "1.25rem", fontWeight: 600 }}>
+                Create Questions
+              </h2>
+              <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", marginTop: "auto" }}>
+                <span style={{ display: "flex", alignItems: "center", gap: "0.375rem", fontSize: "0.75rem", fontWeight: 600, color: "#00684A", backgroundColor: "#F0F9F4", padding: "0.375rem 0.75rem", borderRadius: "0.5rem", border: "1px solid #E1F2E9" }}>
+                  <Bot size={14} /> AI Generation
+                </span>
+                <span style={{ display: "flex", alignItems: "center", gap: "0.375rem", fontSize: "0.75rem", fontWeight: 600, color: "#00684A", backgroundColor: "#F0F9F4", padding: "0.375rem 0.75rem", borderRadius: "0.5rem", border: "1px solid #E1F2E9" }}>
+                  <PenTool size={14} /> Manual Creation
+                </span>
+              </div>
             </div>
-          </div>
+          </Link>
+
+          <Link href="/devops/create" style={{ textDecoration: "none" }}>
+            <div
+              style={{
+                backgroundColor: "#ffffff",
+                padding: "2rem",
+                borderRadius: "1rem",
+                cursor: "pointer",
+                transition: "all 0.2s ease",
+                border: "1px solid #E1F2E9",
+                height: "100%",
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "flex-start",
+                boxShadow: "0 1px 3px rgba(0,0,0,0.05)",
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.borderColor = "#00684A";
+                e.currentTarget.style.transform = "translateY(-4px)";
+                e.currentTarget.style.boxShadow = "0 10px 25px rgba(0, 104, 74, 0.1)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.borderColor = "#E1F2E9";
+                e.currentTarget.style.transform = "translateY(0)";
+                e.currentTarget.style.boxShadow = "0 1px 3px rgba(0,0,0,0.05)";
+              }}
+            >
+              <div
+                style={{
+                  backgroundColor: "#F0F9F4",
+                  padding: "1rem",
+                  borderRadius: "0.75rem",
+                  color: "#00684A",
+                  marginBottom: "1.5rem",
+                }}
+              >
+                <ClipboardList size={32} strokeWidth={1.5} />
+              </div>
+              <h2 style={{ margin: "0 0 1rem 0", color: "#111827", fontSize: "1.25rem", fontWeight: 600 }}>
+                Create New Assessment
+              </h2>
+              <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", marginTop: "auto" }}>
+                <span style={{ display: "flex", alignItems: "center", gap: "0.375rem", fontSize: "0.75rem", fontWeight: 600, color: "#00684A", backgroundColor: "#F0F9F4", padding: "0.375rem 0.75rem", borderRadius: "0.5rem", border: "1px solid #E1F2E9" }}>
+                  <Timer size={14} /> Duration Settings
+                </span>
+                <span style={{ display: "flex", alignItems: "center", gap: "0.375rem", fontSize: "0.75rem", fontWeight: 600, color: "#00684A", backgroundColor: "#F0F9F4", padding: "0.375rem 0.75rem", borderRadius: "0.5rem", border: "1px solid #E1F2E9" }}>
+                  <ListChecks size={14} /> Question Selection
+                </span>
+              </div>
+            </div>
+          </Link>
         </div>
-      </section>
-    </main>
+      </div>
+    </div>
   );
 }

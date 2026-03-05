@@ -1,3 +1,6 @@
 fastapi
 uvicorn
 gunicorn
+motor
+pymongo
+pydantic-settings

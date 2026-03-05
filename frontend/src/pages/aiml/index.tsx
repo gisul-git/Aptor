@@ -1,6 +1,4 @@
 import { useRouter } from "next/router";
-import { GetServerSideProps } from "next";
-import { requireAuth } from "../../lib/auth";
 import Link from "next/link";
 import { 
   ArrowLeft, 
@@ -219,5 +217,3 @@ export default function AIMLMainPage() {
     </div>
   );
 }
-
-export const getServerSideProps: GetServerSideProps = requireAuth;

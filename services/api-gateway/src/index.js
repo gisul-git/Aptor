@@ -19,6 +19,7 @@ const SERVICES = {
   customMcq: process.env.CUSTOM_MCQ_SERVICE_URL || 'http://localhost:3002',
   aiml: process.env.AIML_SERVICE_URL || 'http://localhost:3003',
   dsa: process.env.DSA_SERVICE_URL || 'http://localhost:3004',
+  devops: process.env.DEVOPS_SERVICE_URL || 'http://localhost:8000',
   proctoring: process.env.PROCTORING_SERVICE_URL || 'http://localhost:3005',
   users: process.env.USER_SERVICE_URL || 'http://localhost:3006',
   superAdmin: process.env.SUPER_ADMIN_SERVICE_URL || 'http://localhost:3006',
@@ -390,9 +391,9 @@ const proxyOptions = {
       targetHost = 'localhost:3004';
       targetServiceUrl = SERVICES.dsa;
     } else if (path.includes('/api/v1/devops')) {
-      serviceName = 'DevOps Service (AI Assessment)';
-      targetHost = 'localhost:3001';
-      targetServiceUrl = SERVICES.aiAssessment;  // DevOps tests are handled by AI Assessment service
+      serviceName = 'DevOps Service';
+      targetHost = 'localhost:8000';
+      targetServiceUrl = SERVICES.devops;
     } else if (path.includes('/api/v1/cloud')) {
       serviceName = 'Cloud Service (AI Assessment)';
       targetHost = 'localhost:3001';
@@ -706,12 +707,12 @@ app.use(
   })
 );
 
-// Route: DevOps Service (proxied to AI Assessment Service - DevOps tests are assessments)
+// Route: DevOps Service
 app.use(
   '/api/v1/devops',
   createProxyMiddleware({
     ...proxyOptions,
-    target: SERVICES.aiAssessment,  // DevOps tests are handled by AI Assessment service
+    target: SERVICES.devops,
   })
 );
 

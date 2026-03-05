@@ -71,6 +71,8 @@ export default withAuth(
             pathname === "/cloud" ||
             pathname.startsWith("/cloud/") ||
             pathname.startsWith("/api/cloud-execution/") ||
+            pathname === "/aiml" ||
+            pathname.startsWith("/aiml/") ||
             pathname === "/devops" ||
             pathname.startsWith("/devops/") ||
             pathname.startsWith("/api/devops/") ||
