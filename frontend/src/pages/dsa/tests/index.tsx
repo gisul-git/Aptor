@@ -2,22 +2,18 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/router'
-import { Clock, Eye, EyeOff, Users, Mail, Edit3, UploadCloud, List, ArrowLeft, Copy, CheckCircle2, Calendar, AlertCircle, FileSpreadsheet, X } from 'lucide-react'
+import { Clock, Eye, EyeOff, Users, Mail, Edit3, UploadCloud, List, ArrowLeft, Copy, CheckCircle2, Calendar, AlertCircle, FileSpreadsheet, X, Check } from 'lucide-react'
 import Link from 'next/link'
 import { useDSATests, useAddDSACandidate, useBulkAddDSACandidates, useUpdateDSATest } from '@/hooks/api/useDSA'
 import { useQueryClient } from '@tanstack/react-query'
 import apiClient from '@/services/api/client'
 
 // Helper function to format dates
-// The backend sends UTC datetimes, so we need to ensure proper UTC->local conversion
 const formatDate = (dateString: string | null, formatStr: string): string => {
   if (!dateString) return ''
   
-  // Ensure the ISO string is treated as UTC if it doesn't have timezone info
   let normalizedIso = dateString
-  // If the string doesn't end with Z or have timezone offset, assume it's UTC and add Z
   if (!normalizedIso.endsWith('Z') && !normalizedIso.match(/[+-]\d{2}:\d{2}$/)) {
-    // If it's just YYYY-MM-DDTHH:mm or YYYY-MM-DDTHH:mm:ss, add Z to indicate UTC
     if (normalizedIso.match(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?(\.\d+)?$/)) {
       normalizedIso = normalizedIso + 'Z'
     }
@@ -25,12 +21,9 @@ const formatDate = (dateString: string | null, formatStr: string): string => {
   
   const date = new Date(normalizedIso)
   if (isNaN(date.getTime())) {
-    console.warn('Invalid date string:', dateString)
     return ''
   }
   
-  // getMonth(), getDate(), getHours(), etc. return LOCAL timezone values
-  // This is correct since we want to display local time to the user
   const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
   const month = months[date.getMonth()]
   const day = date.getDate()
@@ -59,53 +52,101 @@ interface Test {
   pausedAt?: string | null
   examMode?: "strict" | "flexible"
   schedule?: { startTime?: string; endTime?: string; duration?: number } | null
+  isExpired?: boolean // Added computed property
 }
 
 export default function TestsListPage() {
   const router = useRouter()
   const [inviteModal, setInviteModal] = useState<{ testId: string; open: boolean }>({ testId: '', open: false })
   
-  // Use React Query hook for fetching tests
   const { data: testsData, isLoading: loading, error, refetch: refetchTests } = useDSATests()
   const [tests, setTests] = useState<Test[]>([])
   const queryClient = useQueryClient()
   
-  // Mutations
   const addCandidateMutation = useAddDSACandidate()
   const bulkAddCandidatesMutation = useBulkAddDSACandidates()
   const updateTestMutation = useUpdateDSATest()
   
-  // Map API data to local Test interface
+  // Map API data and calculate expiration
   useEffect(() => {
     if (testsData) {
-      const mappedTests: Test[] = testsData.map((t: any) => ({
-        id: t.id || '',
-        title: t.title || '',
-        description: t.description || '',
-        duration_minutes: t.duration_minutes || t.duration || 60,
-        start_time: t.start_time || t.schedule?.startTime || '',
-        end_time: t.end_time || t.schedule?.endTime || null,
-        is_active: t.is_active !== undefined ? t.is_active : true,
-        is_published: t.is_published || false,
-        invited_users: t.invited_users || [],
-        question_ids: t.question_ids || t.questions?.map((q: any) => q.id || q) || [],
-        test_token: t.test_token,
-        pausedAt: t.pausedAt || null,
-        examMode: t.examMode || t.exam_mode,
-        schedule: t.schedule || null,
-      }))
+      const now = new Date();
+
+      const mappedTests: Test[] = testsData.map((t: any) => {
+        const examMode = t.examMode || t.exam_mode || 'strict';
+        const startTimeStr = t.start_time || t.schedule?.startTime || '';
+        const endTimeStr = t.end_time || t.schedule?.endTime || '';
+        const duration = t.duration_minutes || t.duration || 60;
+        
+        let isExpired = false;
+
+        if (startTimeStr) {
+          const start = new Date(startTimeStr);
+          if (!isNaN(start.getTime())) {
+            if (examMode === 'flexible' && endTimeStr) {
+              const end = new Date(endTimeStr);
+              if (!isNaN(end.getTime()) && now > end) {
+                isExpired = true;
+              }
+            } else if (examMode === 'strict') {
+              // strict mode uses start time + duration
+              const end = new Date(start.getTime() + (duration * 60000));
+              if (now > end) {
+                isExpired = true;
+              }
+            }
+          }
+        }
+
+        return {
+          id: t.id || '',
+          title: t.title || '',
+          description: t.description || '',
+          duration_minutes: duration,
+          start_time: startTimeStr,
+          end_time: endTimeStr || null,
+          is_active: t.is_active !== undefined ? t.is_active : true,
+          is_published: t.is_published || false,
+          invited_users: t.invited_users || [],
+          question_ids: t.question_ids || t.questions?.map((q: any) => q.id || q) || [],
+          test_token: t.test_token,
+          pausedAt: t.pausedAt || null,
+          examMode: examMode,
+          schedule: t.schedule || null,
+          isExpired,
+        }
+      })
       setTests(mappedTests)
     }
   }, [testsData])
 
-  // Refresh when query parameter changes (e.g., returning from edit page)
+  // Auto-unpublish expired tests
+  useEffect(() => {
+    const expiredPublishedTests = tests.filter(t => t.isExpired && t.is_published);
+    
+    if (expiredPublishedTests.length > 0) {
+      let updated = false;
+      
+      Promise.all(
+        expiredPublishedTests.map(t => 
+          apiClient.patch(`/api/v1/dsa/tests/${t.id}/publish`, { is_published: false })
+            .then(() => { updated = true; })
+            .catch(err => console.error(`Failed to auto-unpublish expired test ${t.id}`, err))
+        )
+      ).then(() => {
+        if (updated) {
+          queryClient.invalidateQueries({ queryKey: ['dsa', 'tests'] });
+          refetchTests();
+        }
+      });
+    }
+  }, [tests, queryClient, refetchTests]);
+
   useEffect(() => {
     if (router.query.refreshed === 'true') {
-      // Force a fresh fetch of tests with a small delay to ensure backend has processed
       setTimeout(() => {
         refetchTests()
       }, 100)
-      // Remove refreshed=true but preserve testId filter (if present)
       const testId = router.query.testId
       const nextQuery: Record<string, any> = {}
       if (testId) nextQuery.testId = testId
@@ -113,15 +154,12 @@ export default function TestsListPage() {
     }
   }, [router.query.refreshed, router.query.testId, refetchTests])
 
-  // Refetch if testId is in URL but test not found in current list
   useEffect(() => {
     const q = router.query.testId
     const testId = typeof q === 'string' ? q : (Array.isArray(q) ? q[0] : undefined)
     if (testId && tests.length > 0) {
       const found = tests.find(t => String(t.id) === String(testId))
       if (!found) {
-        // Test ID in URL but not in list - refetch to get latest data
-        console.log(`[Test List] Test ${testId} not found in current list, refetching...`)
         refetchTests()
       }
     }
@@ -137,22 +175,17 @@ export default function TestsListPage() {
   const handlePublish = async (testId: string, currentStatus: boolean) => {
     try {
       const newStatus = !currentStatus
-
-      // DSA publish endpoint expects JSON body: { is_published: boolean }
       await apiClient.patch(`/api/v1/dsa/tests/${testId}/publish`, {
         is_published: newStatus,
       })
 
-      // Invalidate and refetch tests to update the UI immediately
       await queryClient.invalidateQueries({ queryKey: ['dsa', 'tests'] })
       await refetchTests()
       
     } catch (error: any) {
-      console.error('Publish error:', error)
       alert(error.response?.data?.detail || error.message || 'Failed to update publish status')
     }
   }
-
 
   const [candidateName, setCandidateName] = useState('')
   const [candidateEmail, setCandidateEmail] = useState('')
@@ -176,10 +209,9 @@ export default function TestsListPage() {
       })
       
       const responseData = response.data
-      // Candidate added successfully (no unique link - using shared link)
       setGeneratedLink({
         testId: testId,
-        link: '', // Not used anymore - shared link shown in test card
+        link: '', 
         name: responseData?.name || candidateName.trim(),
         email: responseData?.email || candidateEmail.trim()
       })
@@ -261,7 +293,8 @@ export default function TestsListPage() {
             {filteredTests.map((test) => (
               <div key={test.id} style={{ 
                 backgroundColor: "#ffffff", borderRadius: "1rem", border: "1px solid #E5E7EB", 
-                boxShadow: "0 1px 3px rgba(0,0,0,0.05)", padding: "2rem", transition: "all 0.2s ease" 
+                boxShadow: "0 1px 3px rgba(0,0,0,0.05)", padding: "2rem", transition: "all 0.2s ease",
+                opacity: test.isExpired ? 0.9 : 1
               }}
               onMouseEnter={(e) => {
                 e.currentTarget.style.borderColor = "#00684A";
@@ -279,16 +312,24 @@ export default function TestsListPage() {
                     <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginBottom: "0.5rem", flexWrap: "wrap" }}>
                       <h3 style={{ margin: 0, color: "#111827", fontSize: "1.25rem", fontWeight: 700 }}>{test.title}</h3>
                       
-                      <span style={{ display: "inline-flex", alignItems: "center", gap: "0.375rem", padding: "0.25rem 0.625rem", borderRadius: "2rem", fontSize: "0.75rem", fontWeight: 600, color: test.is_active ? "#059669" : "#4B5563", backgroundColor: test.is_active ? "#D1FAE5" : "#F3F4F6", border: `1px solid ${test.is_active ? "#A7F3D0" : "#E5E7EB"}` }}>
-                        <span style={{ width: "6px", height: "6px", borderRadius: "50%", backgroundColor: test.is_active ? "#059669" : "#6B7280" }} />
-                        {test.is_active ? 'Active' : 'Inactive'}
-                      </span>
-                      
-                      <span style={{ display: "inline-flex", alignItems: "center", gap: "0.375rem", padding: "0.25rem 0.625rem", borderRadius: "2rem", fontSize: "0.75rem", fontWeight: 600, color: test.is_published ? "#00684A" : "#6B7280", backgroundColor: test.is_published ? "#E8FAF0" : "#F3F4F6", border: `1px solid ${test.is_published ? "#A8E8BC" : "#E5E7EB"}` }}>
-                        {test.is_published ? 'Published' : 'Draft'}
-                      </span>
+                      {test.isExpired ? (
+                        <span style={{ display: "inline-flex", alignItems: "center", gap: "0.375rem", padding: "0.25rem 0.625rem", borderRadius: "2rem", fontSize: "0.75rem", fontWeight: 600, color: "#4B5563", backgroundColor: "#F3F4F6", border: "1px solid #E5E7EB" }}>
+                          <Check size={14} /> Completed
+                        </span>
+                      ) : (
+                        <>
+                          <span style={{ display: "inline-flex", alignItems: "center", gap: "0.375rem", padding: "0.25rem 0.625rem", borderRadius: "2rem", fontSize: "0.75rem", fontWeight: 600, color: test.is_active ? "#059669" : "#4B5563", backgroundColor: test.is_active ? "#D1FAE5" : "#F3F4F6", border: `1px solid ${test.is_active ? "#A7F3D0" : "#E5E7EB"}` }}>
+                            <span style={{ width: "6px", height: "6px", borderRadius: "50%", backgroundColor: test.is_active ? "#059669" : "#6B7280" }} />
+                            {test.is_active ? 'Active' : 'Inactive'}
+                          </span>
+                          
+                          <span style={{ display: "inline-flex", alignItems: "center", gap: "0.375rem", padding: "0.25rem 0.625rem", borderRadius: "2rem", fontSize: "0.75rem", fontWeight: 600, color: test.is_published ? "#00684A" : "#6B7280", backgroundColor: test.is_published ? "#E8FAF0" : "#F3F4F6", border: `1px solid ${test.is_published ? "#A8E8BC" : "#E5E7EB"}` }}>
+                            {test.is_published ? 'Published' : 'Draft'}
+                          </span>
+                        </>
+                      )}
 
-                      {test.pausedAt && (
+                      {test.pausedAt && !test.isExpired && (
                         <span style={{ display: "inline-flex", alignItems: "center", padding: "0.25rem 0.625rem", borderRadius: "2rem", fontSize: "0.75rem", fontWeight: 600, color: "#B45309", backgroundColor: "#FEF3C7", border: "1px solid #FDE68A" }}>
                           Paused
                         </span>
@@ -304,7 +345,7 @@ export default function TestsListPage() {
                       <span style={{ display: "flex", alignItems: "center", gap: "0.375rem", fontSize: "0.8rem", color: "#6B7280", backgroundColor: "#F9FAFB", padding: "0.375rem 0.75rem", borderRadius: "0.5rem", border: "1px solid #E5E7EB", fontWeight: 500 }}>
                         <Clock size={14} /> {test.duration_minutes} mins
                       </span>
-                      <span style={{ display: "flex", alignItems: "center", gap: "0.375rem", fontSize: "0.8rem", color: "#6B7280", backgroundColor: "#F9FAFB", padding: "0.375rem 0.75rem", borderRadius: "0.5rem", border: "1px solid #E5E7EB", fontWeight: 500 }}>
+                      <span style={{ display: "flex", alignItems: "center", gap: "0.375rem", fontSize: "0.8rem", color: test.isExpired ? "#DC2626" : "#6B7280", backgroundColor: test.isExpired ? "#FEF2F2" : "#F9FAFB", padding: "0.375rem 0.75rem", borderRadius: "0.5rem", border: `1px solid ${test.isExpired ? "#FECACA" : "#E5E7EB"}`, fontWeight: 500 }}>
                         <Calendar size={14} /> 
                         {formatDate(test.schedule?.startTime || test.start_time, 'MMM dd, yyyy HH:mm')} 
                         {test.examMode === "flexible" && (test.schedule?.endTime || test.end_time) ? ` - ${formatDate(test.schedule?.endTime || test.end_time, 'MMM dd, yyyy HH:mm')}` : ''}
@@ -322,8 +363,8 @@ export default function TestsListPage() {
                       </span>
                     </div>
 
-                    {/* Shared Link Box */}
-                    {test.is_published && test.test_token && (
+                    {/* Shared Link Box - Hidden if Expired */}
+                    {test.is_published && test.test_token && !test.isExpired && (
                       <div style={{ padding: "1rem", backgroundColor: "#F0F9F4", border: "1px solid #A8E8BC", borderRadius: "0.5rem", marginTop: "1rem" }}>
                         <label style={{ display: "block", fontSize: "0.75rem", fontWeight: 700, color: "#00684A", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "0.5rem" }}>
                           Assessment Link
@@ -376,16 +417,17 @@ export default function TestsListPage() {
                         setCandidateName('')
                         setCandidateEmail('')
                       }}
-                      disabled={!test.is_published}
-                      title={!test.is_published ? "Publish test to invite candidates" : "Invite candidates"}
+                      disabled={!test.is_published || test.isExpired}
+                      title={test.isExpired ? "Assessment has ended" : !test.is_published ? "Publish test to invite candidates" : "Invite candidates"}
                       style={{ 
                         display: "flex", alignItems: "center", justifyContent: "center", gap: "0.5rem", width: "100%",
                         padding: "0.75rem 1rem", fontSize: "0.9375rem", fontWeight: 600, color: "#ffffff", 
                         backgroundColor: "#00684A", border: "1px solid #00684A", borderRadius: "0.5rem", 
-                        cursor: !test.is_published ? "not-allowed" : "pointer", opacity: !test.is_published ? 0.5 : 1, transition: "all 0.2s" 
+                        cursor: (!test.is_published || test.isExpired) ? "not-allowed" : "pointer", 
+                        opacity: (!test.is_published || test.isExpired) ? 0.5 : 1, transition: "all 0.2s" 
                       }}
-                      onMouseEnter={(e) => { if (test.is_published) e.currentTarget.style.backgroundColor = "#084A2A" }}
-                      onMouseLeave={(e) => { if (test.is_published) e.currentTarget.style.backgroundColor = "#00684A" }}
+                      onMouseEnter={(e) => { if (test.is_published && !test.isExpired) e.currentTarget.style.backgroundColor = "#084A2A" }}
+                      onMouseLeave={(e) => { if (test.is_published && !test.isExpired) e.currentTarget.style.backgroundColor = "#00684A" }}
                     >
                       <Mail size={18} /> Invite Candidates
                     </button>
@@ -393,15 +435,14 @@ export default function TestsListPage() {
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.5rem" }}>
                       <button
                         onClick={() => router.push(`/dsa/tests/${test.id}/candidates`)}
-                        disabled={!test.is_published}
                         style={{ 
                           display: "flex", alignItems: "center", justifyContent: "center", gap: "0.375rem",
                           padding: "0.625rem", fontSize: "0.875rem", fontWeight: 600, color: "#374151", 
                           backgroundColor: "#ffffff", border: "1px solid #D1D5DB", borderRadius: "0.5rem", 
-                          cursor: !test.is_published ? "not-allowed" : "pointer", opacity: !test.is_published ? 0.5 : 1, transition: "all 0.2s" 
+                          cursor: "pointer", transition: "all 0.2s" 
                         }}
-                        onMouseEnter={(e) => { if (test.is_published) e.currentTarget.style.backgroundColor = "#F9FAFB" }}
-                        onMouseLeave={(e) => { if (test.is_published) e.currentTarget.style.backgroundColor = "#ffffff" }}
+                        onMouseEnter={(e) => e.currentTarget.style.backgroundColor = "#F9FAFB"}
+                        onMouseLeave={(e) => e.currentTarget.style.backgroundColor = "#ffffff"}
                       >
                         <Users size={16} /> View
                       </button>
@@ -423,24 +464,25 @@ export default function TestsListPage() {
 
                     <button
                       onClick={() => handlePublish(test.id, test.is_published || false)}
-                      disabled={!test.question_ids || test.question_ids.length === 0}
-                      title={!test.question_ids || test.question_ids.length === 0 ? "Add questions to the test first" : test.is_published ? "Click to unpublish" : "Click to publish"}
+                      disabled={test.isExpired || !test.question_ids || test.question_ids.length === 0}
+                      title={test.isExpired ? "Cannot publish an ended assessment" : !test.question_ids || test.question_ids.length === 0 ? "Add questions to the test first" : test.is_published ? "Click to unpublish" : "Click to publish"}
                       style={{ 
                         display: "flex", alignItems: "center", justifyContent: "center", gap: "0.375rem", width: "100%",
                         padding: "0.625rem", fontSize: "0.875rem", fontWeight: 600, 
                         color: test.is_published ? "#B45309" : "#00684A", 
                         backgroundColor: test.is_published ? "#FFFBEB" : "#F0F9F4", 
                         border: `1px solid ${test.is_published ? "#FDE68A" : "#A8E8BC"}`, 
-                        borderRadius: "0.5rem", cursor: (!test.question_ids || test.question_ids.length === 0) ? "not-allowed" : "pointer", 
-                        opacity: (!test.question_ids || test.question_ids.length === 0) ? 0.5 : 1, transition: "all 0.2s" 
+                        borderRadius: "0.5rem", 
+                        cursor: (test.isExpired || !test.question_ids || test.question_ids.length === 0) ? "not-allowed" : "pointer", 
+                        opacity: (test.isExpired || !test.question_ids || test.question_ids.length === 0) ? 0.5 : 1, transition: "all 0.2s" 
                       }}
                       onMouseEnter={(e) => {
-                        if (test.question_ids && test.question_ids.length > 0) {
+                        if (test.question_ids && test.question_ids.length > 0 && !test.isExpired) {
                           e.currentTarget.style.backgroundColor = test.is_published ? "#FDE68A" : "#E1F2E9"
                         }
                       }}
                       onMouseLeave={(e) => {
-                        if (test.question_ids && test.question_ids.length > 0) {
+                        if (test.question_ids && test.question_ids.length > 0 && !test.isExpired) {
                           e.currentTarget.style.backgroundColor = test.is_published ? "#FFFBEB" : "#F0F9F4"
                         }
                       }}
