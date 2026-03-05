@@ -99,11 +99,28 @@ class AIQuestionGenerator:
         time_limit = 45 if difficulty == DifficultyLevel.BEGINNER else 60 if difficulty == DifficultyLevel.INTERMEDIATE else 90
         
         base_prompt = f"""SYSTEM ROLE
-You are a Design Assessment Question Generator for a professional hiring platform.
-Your task is to generate structured design challenges used in automated UI/UX design interviews.
-The questions must be professional, measurable, and suitable for automated evaluation.
-Do NOT address the candidate using words like "you". Use neutral professional language.
-The challenge must vary based on difficulty level and experience level.
+Act as a Design Assessment Question Generator for a professional hiring platform.
+Generate structured design challenges used in automated design interviews.
+The questions must work for multiple design roles including:
+• UI Designer
+• UX Designer
+• Product Designer
+• Visual Designer
+• Brand Designer
+• Graphic Designer
+• Interaction Designer
+• Motion Designer
+
+The generated question must be:
+• role-specific
+• difficulty-based
+• measurable for evaluation
+• written in professional language
+• suitable for timed design assessments
+
+Avoid conversational phrases such as:
+"you should", "think about", or "try to".
+Use formal instructional tone.
 
 -----------------------------------------------------
 INPUT PARAMETERS
@@ -114,169 +131,300 @@ Topic: {topic_str}
 Time Limit: {time_limit} minutes
 
 -----------------------------------------------------
-QUESTION GENERATION RULES
+ROLE-SPECIFIC QUESTION LOGIC
 
-1. PROFESSIONAL LANGUAGE
-Use formal and professional tone.
-Avoid conversational phrases such as "you should" or "think about".
+UI Designer
+Focus on:
+• layout design
+• grid systems
+• spacing
+• typography hierarchy
+• component design
 
-2. ROLE SPECIFICITY
-The challenge must reflect the responsibilities of the selected role.
-Examples:
-• UI Designer → layout, spacing, colors, typography
-• UX Designer → flows, navigation, usability
-• Product Designer → business goals, product strategy
-• Visual Designer → branding, illustration, aesthetics
+UX Designer
+Focus on:
+• user flows
+• navigation
+• information architecture
+• usability
+• interaction patterns
 
-3. DIFFICULTY SCALING
+Product Designer
+Focus on:
+• product workflows
+• business goals
+• user personas
+• strategic design thinking
+
+Visual Designer
+Focus on:
+• visual identity
+• iconography
+• illustration systems
+• aesthetics
+
+Brand Designer
+Focus on:
+• brand identity
+• logo systems
+• typography systems
+• brand guidelines
+
+Graphic Designer
+Focus on:
+• posters
+• marketing assets
+• social media creatives
+• print layout
+
+Interaction Designer
+Focus on:
+• micro-interactions
+• motion states
+• transitions
+• interaction feedback
+
+-----------------------------------------------------
+DIFFICULTY SCALING
+
 Beginner
-• Single task
-• 2–3 screens
-• Simple layout constraints
-• Measurable design constraints
+• single screen or simple asset
+• limited constraints
+• basic layout or composition
 
 Intermediate
-• Multiple screens or workflows
-• User flows and interactions
-• Moderate complexity
+• multi-section layout or component set
+• structured hierarchy
+• moderate constraints
 
 Advanced
-• Complete experience design
-• Edge cases and system thinking
-• Multiple user scenarios
+• multiple screens or assets
+• interaction states or design systems
+• complex workflows
 
-4. MEASURABLE CONSTRAINTS
-Constraints must include quantifiable design rules whenever possible.
-Examples:
-• Layout width: 360px mobile canvas
-• Grid: 8px spacing system
-• Minimum touch target: 44px
-• Primary color contrast ratio: 4.5:1
-• Maximum 3 primary colors
-• Font hierarchy: 3 levels minimum
-• Card width between 280–320px
-
-These constraints enable rule-based evaluation.
-
-5. AUTOMATED EVALUATION SUPPORT
-Constraints should allow automated checks such as:
-• spacing consistency
-• alignment
-• color contrast
-• typography hierarchy
-• component consistency
-
-6. SENIOR / EXPERT LEVEL REQUIREMENTS
-For advanced levels include:
-• multi-step workflows
-• product strategy
-• user personas
-• edge cases
-• system thinking
+Expert
+• product-level thinking
+• brand systems or design systems
+• multiple user scenarios
+• strategic design decisions
 
 -----------------------------------------------------
-OUTPUT FORMAT (JSON)
+CONSTRAINT DESIGN RULES
+Constraints must be measurable whenever possible.
+
+Examples:
+• Canvas width: 375px mobile layout
+• Canvas width: 1440px desktop layout
+• Grid system: 12-column grid
+• Spacing system: 8px baseline grid
+• Maximum 3–4 primary colors
+• Contrast ratio ≥ 4.5:1
+• Typography hierarchy: minimum 3 levels
+• Minimum button height: 44px
+• Component width constraints
+
+These constraints allow automated evaluation.
+
+-----------------------------------------------------
+BEGINNER CONSTRAINT PATTERN
+Include:
+• canvas width
+• color limit
+• typography levels
+• spacing rule
+• element size rule
+
+-----------------------------------------------------
+INTERMEDIATE CONSTRAINT PATTERN
+Include:
+• grid systems
+• card or component layout
+• interaction states
+• responsive behavior
+
+-----------------------------------------------------
+ADVANCED / SENIOR REQUIREMENTS
+Include:
+• multi-screen workflows
+• edge cases
+• component systems
+• interaction states
+
+If difficulty level = Expert:
+Include controlled testing environment such as:
+• proctored assessment
+• fullscreen enforcement
+• time-bound design session
+
+-----------------------------------------------------
+CRITICAL CANVAS WIDTH RULES
+
+MOBILE TOPICS (mobile_app, mobile_dashboard):
+• Use: Canvas width: 375px mobile layout
+• OR: Canvas width: 360px mobile layout
+
+DESKTOP TOPICS (dashboard, web_app, landing_page):
+• Use: Canvas width: 1440px desktop layout
+• OR: Canvas width: 1280px desktop layout
+
+TABLET TOPICS:
+• Use: Canvas width: 768px tablet layout
+
+RESPONSIVE TOPICS:
+• Specify multiple breakpoints
+
+-----------------------------------------------------
+OUTPUT FORMAT (STRICT)
 
 {{
-    "title": "{topic_str.title()} – {role_str} Challenge",
-    "description": "Write a clear product scenario (250-400 words) in THREE paragraphs using NEUTRAL PROFESSIONAL LANGUAGE.
-        
-        CRITICAL: Do NOT use 'you', 'your', 'you should', 'you need to', 'you must', or 'you will'.
-        Instead use: 'The designer', 'The design', 'This task', 'The goal', 'The challenge', or passive voice.
-        
-        Paragraph 1 - Product Context (use phrases like 'A [product] requires...', 'The system needs...'):
-        - Describe the product/platform and its purpose
-        - Identify the primary user group (be specific about roles/personas)
-        - Explain the current situation or problem that needs solving
-        
-        Paragraph 2 - Design Problem (use phrases like 'The dashboard should...', 'The interface must...'):
-        - State what needs to be designed
-        - Explain the main goals or objectives
-        - Describe what the design should help users accomplish
-        
-        Paragraph 3 - Expected Outcome (use phrases like 'The goal is to create...', 'The design should include...'):
-        - Specify what the final deliverable should achieve
-        - Mention key sections or components to include
-        - State any specific requirements or focus areas
-        
-        EXAMPLE OF CORRECT NEUTRAL LANGUAGE:
-        'A hospital management system requires a simple dashboard that allows medical staff to quickly access important operational information. The dashboard should help a primary user group (such as hospital administrators or nurses) view key information without cognitive overload. The design must prioritize clarity, structured information hierarchy, and intuitive navigation. The goal is to create a basic dashboard structure with 2–3 primary sections that allow users to quickly locate essential information.'
-        
-        WRONG (DO NOT USE): 'You need to design a dashboard for hospital staff. Your task is to create...'
-        RIGHT (USE THIS): 'A hospital management system requires a dashboard for medical staff. The task involves creating...'",
+    "title": "{topic_str.replace('_', ' ').title()} – {role_str} Challenge",
+    "description": "Provide a concise description including:
+• product or domain context
+• design problem
+• target users
+• expected outcome
+
+Write in neutral professional language. Do NOT use 'you', 'your', 'you should', 'you need to'.
+Use phrases like: 'Design a [product]', 'The interface should', 'The goal is to', 'The layout must'.",
     "constraints": [
-        "List 6-8 structured constraints with measurable UI rules:",
-        "• Canvas width: [specify dimensions]",
-        "• Spacing system: [e.g., 8px grid]",
-        "• Color usage: [e.g., maximum 3 primary colors, contrast ratio 4.5:1]",
-        "• Typography hierarchy: [e.g., 3 levels minimum]",
-        "• Interaction states: [e.g., hover, active, disabled]",
-        "• Touch targets: [e.g., minimum 44px for mobile]",
-        "Include quantifiable rules that enable automated evaluation",
-        "Be specific and professional"
+        "Provide 6–8 measurable constraints.",
+        "IMPORTANT: Match canvas width to topic type:",
+        "• mobile_app → 375px mobile layout",
+        "• dashboard → 1440px desktop layout",
+        "• landing_page → 1440px desktop layout",
+        "Examples:",
+        "• Canvas width: [375px mobile OR 1440px desktop]",
+        "• Grid system: [specify]",
+        "• Spacing: [specify]",
+        "• Colors: [specify]",
+        "• Typography: [specify]",
+        "• Interactive elements: [specify]"
     ],
     "deliverables": [
-        "Specify required outputs based on difficulty:",
-        "• Wireframes or high-fidelity screens",
-        "• Flow diagrams (for UX/Product roles)",
-        "• Component list or style guide",
-        "• Design specifications",
-        "Be clear and specific about what must be submitted"
+        "Specify outputs such as:",
+        "• wireframes",
+        "• high fidelity screens",
+        "• design assets",
+        "• component specifications",
+        "• brand guidelines",
+        "• motion states"
     ],
     "evaluation_criteria": [
-        "Define 4-6 scoring factors professionally:",
-        "• Layout consistency and spacing adherence",
-        "• Visual hierarchy and typography",
-        "• Usability and user experience quality",
-        "• Constraint compliance",
-        "• Problem-solving clarity",
-        "• System thinking (for advanced levels)",
-        "Write as clear, measurable statements"
+        "Include scoring factors such as:",
+        "• layout consistency",
+        "• visual hierarchy",
+        "• usability",
+        "• constraint compliance",
+        "• creativity",
+        "• clarity of design solution"
     ],
     "time_limit_minutes": {time_limit}
 }}
 
 -----------------------------------------------------
-EXAMPLE OUTPUT
-
-Here is an example of a CORRECTLY formatted question with neutral professional language:
+EXAMPLE - BEGINNER (MOBILE)
 
 {{
-    "title": "Hospital Dashboard – UX Designer Challenge",
-    "description": "A hospital management system requires a simple dashboard that allows medical staff to quickly access important operational information. The primary user group includes hospital administrators and nurses who need to view key information without cognitive overload. The current system lacks a centralized view, forcing staff to navigate multiple screens to find essential data.\\n\\nThe dashboard should help medical staff view critical metrics, patient status, and operational alerts in a single interface. The design must prioritize clarity, structured information hierarchy, and intuitive navigation. The interface should minimize the time required to locate and understand essential information during busy shifts.\\n\\nThe goal is to create a basic dashboard structure with 2–3 primary sections that allow users to quickly locate essential information. The design should include clear visual hierarchy, appropriate use of color for status indicators, and a layout that works well on desktop monitors commonly used in hospital settings.",
+    "title": "Food Delivery App – UI Designer Challenge",
+    "description": "Design a restaurant listing screen for a food delivery mobile application. The interface should display restaurant cards with essential information including name, cuisine type, rating, delivery time, and promotional offers. The layout must prioritize visual clarity and easy scanning for mobile users.",
+    "constraints": [
+        "Canvas width: 375px mobile layout",
+        "Grid system: 8px spacing system",
+        "Maximum 3 primary colors",
+        "Typography hierarchy: minimum 3 levels",
+        "Minimum button height: 44px",
+        "Restaurant card height: 120–140px",
+        "Include search and filter options"
+    ],
+    "deliverables": [
+        "High-fidelity mobile screen design",
+        "Restaurant card component specifications",
+        "Typography and color style guide"
+    ],
+    "evaluation_criteria": [
+        "Visual hierarchy and layout clarity",
+        "Typography consistency",
+        "Spacing and alignment precision",
+        "Constraint compliance",
+        "Mobile usability"
+    ],
+    "time_limit_minutes": 45
+}}
+
+-----------------------------------------------------
+EXAMPLE - INTERMEDIATE (DESKTOP)
+
+{{
+    "title": "Food Delivery Dashboard – UI Designer Challenge",
+    "description": "Design a restaurant management dashboard for a food delivery platform. The interface should allow restaurant owners to view orders, manage menu items, track delivery status, and monitor performance metrics. The layout must present complex information in an organized and scannable format.",
     "constraints": [
         "Canvas width: 1440px desktop layout",
-        "Grid system: 8px spacing system",
-        "Dashboard must contain 2–3 primary sections",
-        "Use maximum 3 primary colors with clear contrast",
-        "Typography hierarchy must include at least 3 levels (heading, subheading, body)",
-        "Minimum interactive element height: 44px",
-        "Include one empty state or error state"
+        "12-column grid system with 16px gutter",
+        "8px baseline spacing system",
+        "Order card width: 280–320px",
+        "Maximum 4 primary colors with contrast ratio ≥ 4.5:1",
+        "Typography hierarchy: minimum 3 levels",
+        "Minimum interactive element size: 44px",
+        "Include hover and active states for interactive elements"
     ],
     "deliverables": [
-        "User flow diagram showing the main user journey",
-        "Low-to-mid fidelity wireframes for 2–3 key screens",
-        "Short design rationale explaining layout and navigation decisions"
+        "High-fidelity dashboard design",
+        "Order card component with multiple states",
+        "Navigation and filter panel design",
+        "Component style guide"
     ],
     "evaluation_criteria": [
-        "Logical and clear user flow",
-        "Layout consistency and spacing",
-        "Visual hierarchy and readability",
-        "Compliance with design constraints",
-        "Simplicity and usability of the dashboard"
+        "Grid system implementation",
+        "Component consistency",
+        "Visual hierarchy and information architecture",
+        "Interaction state design",
+        "Constraint compliance"
     ],
-    "time_limit_minutes": {time_limit}
+    "time_limit_minutes": 60
 }}
 
 -----------------------------------------------------
-IMPORTANT REMINDERS
+EXAMPLE - ADVANCED (MULTI-SCREEN)
 
-1. Do NOT use "you", "your", or "you should" - use neutral professional language
-2. Include measurable constraints (dimensions, spacing, colors, contrast ratios)
-3. Make constraints suitable for automated evaluation
-4. Vary complexity based on difficulty level
-5. Ensure role-specific focus (UI vs UX vs Product vs Visual)
-6. Provide clear product context and user personas
+{{
+    "title": "Food Delivery Platform – UI Designer Challenge",
+    "description": "Design a complete order flow for a food delivery platform including restaurant browsing, menu selection, cart management, checkout, and order tracking screens. The interface must maintain visual consistency across all screens while accommodating different content types and user actions.",
+    "constraints": [
+        "Canvas width: 375px mobile layout",
+        "12-column grid system",
+        "8px baseline spacing system",
+        "Minimum 5 screens covering complete flow",
+        "Maximum 4 primary colors",
+        "Typography hierarchy: minimum 4 levels",
+        "Minimum touch target: 44px",
+        "Include loading, empty, and error states"
+    ],
+    "deliverables": [
+        "High-fidelity designs for 5+ screens",
+        "User flow diagram",
+        "Component library with all states",
+        "Design system documentation"
+    ],
+    "evaluation_criteria": [
+        "Flow logic and completeness",
+        "Visual consistency across screens",
+        "Component reusability",
+        "Edge case handling",
+        "Constraint compliance",
+        "Overall user experience quality"
+    ],
+    "time_limit_minutes": 90
+}}
+
+-----------------------------------------------------
+CRITICAL REMINDERS
+
+1. Do NOT use "you", "your", "you should", "you need to"
+2. Use neutral professional language
+3. Match canvas width to topic type (mobile vs desktop)
+4. Include measurable constraints for automated evaluation
+5. Vary complexity based on difficulty level
+6. Ensure role-specific focus
 7. Return ONLY valid JSON
 
 Now generate ONE design challenge following all rules above. Return ONLY the JSON object."""
@@ -291,7 +439,7 @@ Now generate ONE design challenge following all rules above. Return ONLY the JSO
         response = await client.chat.completions.create(
             model=settings.AI_MODEL,
             messages=[
-                {"role": "system", "content": "You are a Design Assessment Question Generator for a professional hiring platform. Generate structured design challenges suitable for automated evaluation. CRITICAL: Use ONLY neutral professional language - NEVER use 'you', 'your', 'you should', 'you need to', 'you must', or 'you will'. Instead use phrases like: 'The designer', 'The design', 'This task', 'The goal', 'The challenge', 'A [product] requires', 'The system needs', 'The dashboard should', 'The interface must', 'The goal is to create'. Write descriptions in passive voice or third person. Include measurable constraints (dimensions, spacing, colors, contrast ratios) that enable automated evaluation. Vary complexity based on difficulty level. Provide clear product context and user personas."},
+                {"role": "system", "content": "Act as a Design Assessment Question Generator for a professional hiring platform. Generate structured UI/UX design challenges used in automated design interviews. CRITICAL: Use ONLY neutral professional language - NEVER use 'you', 'your', 'you should', 'you need to', 'you must', or 'you will'. Use neutral instructional tone with phrases like: 'The design task', 'The interface should', 'The goal is to', 'The challenge involves', 'Design a [product]', 'The layout should'. Include measurable constraints (dimensions, spacing, colors, contrast ratios) that enable automated evaluation. Vary complexity based on difficulty level. Provide clear product context and user personas. Return ONLY valid JSON."},
                 {"role": "user", "content": prompt}
             ],
             temperature=0.7,
@@ -314,6 +462,57 @@ Now generate ONE design challenge following all rules above. Return ONLY the JSO
             messages=[{"role": "user", "content": prompt}]
         )
         return response.content[0].text
+    
+    def _neutralize_language(self, text: str) -> str:
+        """Convert 'you/your' language to neutral professional language"""
+        import re
+        
+        if not text:
+            return text
+        
+        # Define replacement patterns (order matters - more specific first)
+        replacements = [
+            # Specific phrases
+            (r'\bYou are tasked with designing\b', 'The task involves designing'),
+            (r'\bYou are designing\b', 'The design task involves'),
+            (r'\bYou are creating\b', 'The task is to create'),
+            (r'\bYou are building\b', 'The task is to build'),
+            (r'\bYou are developing\b', 'The task is to develop'),
+            (r'\bYou need to design\b', 'The design must'),
+            (r'\bYou need to create\b', 'The task requires creating'),
+            (r'\bYou should design\b', 'The design should'),
+            (r'\bYou should create\b', 'The designer should create'),
+            (r'\bYou must design\b', 'The design must'),
+            (r'\bYou must create\b', 'The task requires creating'),
+            (r'\bYou will design\b', 'The design will'),
+            (r'\bYou will create\b', 'The task involves creating'),
+            
+            # Your + noun patterns
+            (r'\bYour task is to\b', 'The task is to'),
+            (r'\bYour goal is to\b', 'The goal is to'),
+            (r'\bYour objective is to\b', 'The objective is to'),
+            (r'\bYour task\b', 'The task'),
+            (r'\bYour goal\b', 'The goal'),
+            (r'\bYour objective\b', 'The objective'),
+            (r'\bYour design\b', 'The design'),
+            (r'\bYour solution\b', 'The solution'),
+            (r'\bYour work\b', 'The work'),
+            (r'\bYour focus\b', 'The focus'),
+            (r'\bYour approach\b', 'The approach'),
+            
+            # Generic you patterns (more general, so later in the list)
+            (r'\bYou can\b', 'The designer can'),
+            (r'\bYou may\b', 'The designer may'),
+            (r'\bYou could\b', 'The designer could'),
+            (r'\bYou might\b', 'The designer might'),
+        ]
+        
+        # Apply all replacements
+        result = text
+        for pattern, replacement in replacements:
+            result = re.sub(pattern, replacement, result, flags=re.IGNORECASE)
+        
+        return result
     
     def _parse_ai_response(
         self,
@@ -338,16 +537,24 @@ Now generate ONE design challenge following all rules above. Return ONLY the JSO
             
             data = json.loads(response)
             
+            # Apply neutral language post-processing to description
+            description = self._neutralize_language(data.get("description", ""))
+            
+            # Also apply to constraints, deliverables, and evaluation criteria if they contain text
+            constraints = [self._neutralize_language(c) if isinstance(c, str) else c for c in data.get("constraints", [])]
+            deliverables = [self._neutralize_language(d) if isinstance(d, str) else d for d in data.get("deliverables", [])]
+            evaluation_criteria = [self._neutralize_language(e) if isinstance(e, str) else e for e in data.get("evaluation_criteria", [])]
+            
             return DesignQuestionModel(
                 role=role,
                 difficulty=difficulty,
                 experience_level=experience_level,
                 task_type=task_type,
                 title=data["title"],
-                description=data["description"],
-                constraints=data.get("constraints", []),
-                deliverables=data.get("deliverables", []),
-                evaluation_criteria=data.get("evaluation_criteria", []),
+                description=description,
+                constraints=constraints,
+                deliverables=deliverables,
+                evaluation_criteria=evaluation_criteria,
                 time_limit_minutes=data.get("time_limit_minutes", 60),
                 created_by=created_by
             )
