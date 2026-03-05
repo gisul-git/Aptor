@@ -259,12 +259,12 @@ Include controlled testing environment such as:
 -----------------------------------------------------
 CRITICAL CANVAS WIDTH RULES
 
-MOBILE TOPICS (mobile_app, mobile_dashboard):
-• Use: Canvas width: 375px mobile layout
+MOBILE TOPICS (mobile_app):
+• ALWAYS use: Canvas width: 375px mobile layout
 • OR: Canvas width: 360px mobile layout
 
-DESKTOP TOPICS (dashboard, web_app, landing_page):
-• Use: Canvas width: 1440px desktop layout
+DESKTOP TOPICS (dashboard, landing_page):
+• ALWAYS use: Canvas width: 1440px desktop layout
 • OR: Canvas width: 1280px desktop layout
 
 TABLET TOPICS:
@@ -272,6 +272,12 @@ TABLET TOPICS:
 
 RESPONSIVE TOPICS:
 • Specify multiple breakpoints
+
+IMPORTANT: 
+- task_type "mobile_app" = MOBILE (375px)
+- task_type "dashboard" = DESKTOP (1440px)
+- task_type "landing_page" = DESKTOP (1440px)
+- task_type "component" = depends on context, default DESKTOP (1440px)
 
 -----------------------------------------------------
 OUTPUT FORMAT (STRICT)
@@ -288,12 +294,13 @@ Write in neutral professional language. Do NOT use 'you', 'your', 'you should', 
 Use phrases like: 'Design a [product]', 'The interface should', 'The goal is to', 'The layout must'.",
     "constraints": [
         "Provide 6–8 measurable constraints.",
-        "IMPORTANT: Match canvas width to topic type:",
-        "• mobile_app → 375px mobile layout",
-        "• dashboard → 1440px desktop layout",
-        "• landing_page → 1440px desktop layout",
-        "Examples:",
-        "• Canvas width: [375px mobile OR 1440px desktop]",
+        "CRITICAL: Match canvas width to task_type:",
+        "• IF task_type = 'mobile_app' → Canvas width: 375px mobile layout",
+        "• IF task_type = 'dashboard' → Canvas width: 1440px desktop layout",
+        "• IF task_type = 'landing_page' → Canvas width: 1440px desktop layout",
+        "• IF task_type = 'component' → Canvas width: 1440px desktop layout",
+        "",
+        "Other constraint examples:",
         "• Grid system: [specify]",
         "• Spacing: [specify]",
         "• Colors: [specify]",
@@ -463,6 +470,40 @@ Now generate ONE design challenge following all rules above. Return ONLY the JSO
         )
         return response.content[0].text
     
+    def _fix_canvas_width(self, constraints: list, task_type: TaskType) -> list:
+        """Fix canvas width based on task_type if AI generated wrong width"""
+        if not constraints:
+            return constraints
+        
+        # Define correct canvas widths for each task type
+        correct_widths = {
+            TaskType.MOBILE_APP: "Canvas width: 375px mobile layout",
+            TaskType.DASHBOARD: "Canvas width: 1440px desktop layout",
+            TaskType.LANDING_PAGE: "Canvas width: 1440px desktop layout",
+            TaskType.COMPONENT: "Canvas width: 1440px desktop layout"
+        }
+        
+        correct_width = correct_widths.get(task_type)
+        if not correct_width:
+            return constraints
+        
+        # Find and replace canvas width constraint
+        fixed_constraints = []
+        canvas_found = False
+        
+        for constraint in constraints:
+            if isinstance(constraint, str) and "canvas width" in constraint.lower():
+                fixed_constraints.append(correct_width)
+                canvas_found = True
+            else:
+                fixed_constraints.append(constraint)
+        
+        # If no canvas width found, add it at the beginning
+        if not canvas_found:
+            fixed_constraints.insert(0, correct_width)
+        
+        return fixed_constraints
+    
     def _neutralize_language(self, text: str) -> str:
         """Convert 'you/your' language to neutral professional language"""
         import re
@@ -542,6 +583,10 @@ Now generate ONE design challenge following all rules above. Return ONLY the JSO
             
             # Also apply to constraints, deliverables, and evaluation criteria if they contain text
             constraints = [self._neutralize_language(c) if isinstance(c, str) else c for c in data.get("constraints", [])]
+            
+            # Fix canvas width based on task_type
+            constraints = self._fix_canvas_width(constraints, task_type)
+            
             deliverables = [self._neutralize_language(d) if isinstance(d, str) else d for d in data.get("deliverables", [])]
             evaluation_criteria = [self._neutralize_language(e) if isinstance(e, str) else e for e in data.get("evaluation_criteria", [])]
             
