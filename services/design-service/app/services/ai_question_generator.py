@@ -227,12 +227,21 @@ These constraints allow automated evaluation.
 
 -----------------------------------------------------
 BEGINNER CONSTRAINT PATTERN
-Include:
+Include 5-6 constraints (not more):
 • canvas width
-• color limit
-• typography levels
-• spacing rule
-• element size rule
+• spacing system
+• color limit (max 3 colors)
+• typography levels (min 3)
+• element size rule (min 44px button height)
+• one component size constraint
+
+Example:
+• Canvas width: 375px mobile layout
+• Spacing system: 8px baseline grid
+• Maximum 3 primary colors
+• Typography hierarchy: minimum 3 levels
+• Minimum button height: 44px
+• Profile card height: 150–180px
 
 -----------------------------------------------------
 INTERMEDIATE CONSTRAINT PATTERN
@@ -293,19 +302,41 @@ OUTPUT FORMAT (STRICT)
 Write in neutral professional language. Do NOT use 'you', 'your', 'you should', 'you need to'.
 Use phrases like: 'Design a [product]', 'The interface should', 'The goal is to', 'The layout must'.",
     "constraints": [
-        "Provide 6–8 measurable constraints.",
+        "CRITICAL: Provide EXACTLY the right number of constraints based on difficulty:",
+        "• Beginner: 5-6 constraints ONLY",
+        "• Intermediate: 7-8 constraints",
+        "• Advanced: 8-10 constraints",
+        "",
         "CRITICAL: Match canvas width to task_type:",
         "• IF task_type = 'mobile_app' → Canvas width: 375px mobile layout",
         "• IF task_type = 'dashboard' → Canvas width: 1440px desktop layout",
         "• IF task_type = 'landing_page' → Canvas width: 1440px desktop layout",
         "• IF task_type = 'component' → Canvas width: 1440px desktop layout",
         "",
-        "Other constraint examples:",
-        "• Grid system: [specify]",
-        "• Spacing: [specify]",
-        "• Colors: [specify]",
-        "• Typography: [specify]",
-        "• Interactive elements: [specify]"
+        "Beginner constraints (5-6 total):",
+        "• Canvas width: [375px mobile OR 1440px desktop]",
+        "• Spacing system: 8px baseline grid",
+        "• Maximum 3 primary colors with contrast ratio ≥ 4.5:1",
+        "• Typography hierarchy: minimum 3 levels",
+        "• Minimum button height: 44px",
+        "• One component size (e.g., card height: 150-180px)",
+        "",
+        "Intermediate constraints (7-8 total):",
+        "• Canvas width",
+        "• Grid system: 12-column with 16px gutter",
+        "• Spacing system: 8px baseline",
+        "• Color limits with contrast ratios",
+        "• Typography hierarchy",
+        "• Component sizes",
+        "• Interaction states (hover, active, focus)",
+        "• Minimum interactive element size: 44px",
+        "",
+        "Advanced constraints (8-10 total):",
+        "• All intermediate constraints",
+        "• Multiple screen requirements",
+        "• Edge case states (loading, empty, error)",
+        "• Component system requirements",
+        "• Responsive behavior"
     ],
     "deliverables": [
         "Specify outputs such as:",
@@ -332,20 +363,19 @@ Use phrases like: 'Design a [product]', 'The interface should', 'The goal is to'
 EXAMPLE - BEGINNER (MOBILE)
 
 {{
-    "title": "Food Delivery App – UI Designer Challenge",
-    "description": "Design a restaurant listing screen for a food delivery mobile application. The interface should display restaurant cards with essential information including name, cuisine type, rating, delivery time, and promotional offers. The layout must prioritize visual clarity and easy scanning for mobile users.",
+    "title": "Healthcare Mobile App – UI Designer Challenge",
+    "description": "Design a patient profile screen for a healthcare mobile application. The interface should display essential patient information including name, age, medical history summary, upcoming appointments, and emergency contact details. The layout must prioritize clarity and easy scanning for healthcare professionals using mobile devices.",
     "constraints": [
         "Canvas width: 375px mobile layout",
-        "Grid system: 8px spacing system",
-        "Maximum 3 primary colors",
+        "Spacing system: 8px baseline grid",
+        "Maximum 3 primary colors with contrast ratio ≥ 4.5:1",
         "Typography hierarchy: minimum 3 levels",
         "Minimum button height: 44px",
-        "Restaurant card height: 120–140px",
-        "Include search and filter options"
+        "Profile card height: 150–180px"
     ],
     "deliverables": [
         "High-fidelity mobile screen design",
-        "Restaurant card component specifications",
+        "Profile card component specifications",
         "Typography and color style guide"
     ],
     "evaluation_criteria": [
@@ -362,13 +392,13 @@ EXAMPLE - BEGINNER (MOBILE)
 EXAMPLE - INTERMEDIATE (DESKTOP)
 
 {{
-    "title": "Food Delivery Dashboard – UI Designer Challenge",
-    "description": "Design a restaurant management dashboard for a food delivery platform. The interface should allow restaurant owners to view orders, manage menu items, track delivery status, and monitor performance metrics. The layout must present complex information in an organized and scannable format.",
+    "title": "Healthcare Portal – UI Designer Challenge",
+    "description": "Design a patient management dashboard for a healthcare portal. The interface should allow healthcare administrators to view patient lists, filter by status, search by name or ID, and access detailed patient records. The layout must present information in a structured grid system with clear visual hierarchy and consistent spacing.",
     "constraints": [
         "Canvas width: 1440px desktop layout",
         "12-column grid system with 16px gutter",
         "8px baseline spacing system",
-        "Order card width: 280–320px",
+        "Patient card width: 280–320px",
         "Maximum 4 primary colors with contrast ratio ≥ 4.5:1",
         "Typography hierarchy: minimum 3 levels",
         "Minimum interactive element size: 44px",
@@ -376,8 +406,8 @@ EXAMPLE - INTERMEDIATE (DESKTOP)
     ],
     "deliverables": [
         "High-fidelity dashboard design",
-        "Order card component with multiple states",
-        "Navigation and filter panel design",
+        "Patient card component with multiple states",
+        "Filter and search panel design",
         "Component style guide"
     ],
     "evaluation_criteria": [
@@ -469,6 +499,44 @@ Now generate ONE design challenge following all rules above. Return ONLY the JSO
             messages=[{"role": "user", "content": prompt}]
         )
         return response.content[0].text
+    
+    def _limit_constraints(self, constraints: list, difficulty: DifficultyLevel) -> list:
+        """Limit number of constraints based on difficulty level"""
+        if not constraints:
+            return constraints
+        
+        # Define max constraints for each difficulty
+        max_constraints = {
+            DifficultyLevel.BEGINNER: 6,
+            DifficultyLevel.INTERMEDIATE: 8,
+            DifficultyLevel.ADVANCED: 10
+        }
+        
+        max_count = max_constraints.get(difficulty, 8)
+        
+        # If we have too many constraints, keep the most important ones
+        if len(constraints) > max_count:
+            # Always keep canvas width if present
+            canvas_constraint = None
+            other_constraints = []
+            
+            for c in constraints:
+                if isinstance(c, str) and "canvas width" in c.lower():
+                    canvas_constraint = c
+                else:
+                    other_constraints.append(c)
+            
+            # Keep canvas + (max_count - 1) other constraints
+            result = []
+            if canvas_constraint:
+                result.append(canvas_constraint)
+                result.extend(other_constraints[:max_count - 1])
+            else:
+                result = constraints[:max_count]
+            
+            return result
+        
+        return constraints
     
     def _fix_canvas_width(self, constraints: list, task_type: TaskType) -> list:
         """Fix canvas width based on task_type if AI generated wrong width"""
@@ -586,6 +654,9 @@ Now generate ONE design challenge following all rules above. Return ONLY the JSO
             
             # Fix canvas width based on task_type
             constraints = self._fix_canvas_width(constraints, task_type)
+            
+            # Limit constraints based on difficulty
+            constraints = self._limit_constraints(constraints, difficulty)
             
             deliverables = [self._neutralize_language(d) if isinstance(d, str) else d for d in data.get("deliverables", [])]
             evaluation_criteria = [self._neutralize_language(e) if isinstance(e, str) else e for e in data.get("evaluation_criteria", [])]
