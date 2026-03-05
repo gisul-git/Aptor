@@ -1086,6 +1086,51 @@ async def get_all_submissions():
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/admin/analytics")
+async def get_admin_analytics():
+    """Get analytics for admin dashboard - matches AIML competency flow"""
+    try:
+        if design_repository.db is None:
+            await design_repository.initialize()
+        
+        db = design_repository.db
+        
+        # Count questions
+        total_questions = await db.design_questions.count_documents({})
+        
+        # Count submissions
+        total_submissions = await db.design_submissions.count_documents({})
+        
+        # Calculate average score (only for evaluated submissions)
+        pipeline = [
+            {"$match": {"final_score": {"$exists": True, "$ne": None}}},
+            {"$group": {
+                "_id": None,
+                "avg_score": {"$avg": "$final_score"}
+            }}
+        ]
+        
+        avg_result = await db.design_submissions.aggregate(pipeline).to_list(length=1)
+        average_score = round(avg_result[0]["avg_score"], 1) if avg_result else 0.0
+        
+        # Calculate completion rate
+        completed_submissions = await db.design_submissions.count_documents({"final_score": {"$exists": True}})
+        completion_rate = round((completed_submissions / total_submissions * 100), 1) if total_submissions > 0 else 0.0
+        
+        logger.info(f"📊 Analytics: {total_questions} questions, {total_submissions} submissions, {average_score} avg score")
+        
+        return {
+            "total_questions": total_questions,
+            "total_submissions": total_submissions,
+            "average_score": average_score,
+            "completion_rate": completion_rate
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to get analytics: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/admin/stats")
 async def get_admin_stats():
     """Get overall statistics for admin dashboard"""
