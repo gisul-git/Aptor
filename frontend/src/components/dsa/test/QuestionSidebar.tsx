@@ -21,6 +21,7 @@ interface QuestionSidebarProps {
   submittedQuestions?: Record<string, boolean>
   timerMode?: 'GLOBAL' | 'PER_QUESTION'
   onBack?: () => void
+ 
 }
 
 export function QuestionSidebar({
@@ -107,7 +108,7 @@ export function QuestionSidebar({
   }
 
   return (
-    <div className="w-80 bg-slate-900 border-r border-slate-700 flex flex-col h-full">
+    <div className="w-70 bg-slate-900 border-r border-slate-700 flex flex-col h-full">
       {/* Header */}
       <div className="p-4 border-b border-slate-700 bg-slate-800/50">
         <div className="flex items-center justify-between mb-3">
@@ -123,13 +124,6 @@ export function QuestionSidebar({
             )}
             <h2 className="font-bold text-lg text-white">{testTitle}</h2>
           </div>
-          <button
-            onClick={() => setCollapsed(true)}
-            className="text-slate-400 hover:text-white transition-colors"
-            title="Collapse sidebar"
-          >
-            ←
-          </button>
         </div>
       </div>
 

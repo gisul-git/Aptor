@@ -10,7 +10,7 @@ import { useAIMLTestForCandidate, useSubmitAIMLAnswer, useSubmitAIMLTest } from 
 import { useUniversalProctoring, CandidateLiveService, resolveUserIdForProctoring, type ProctoringViolation, type ProctoringEventType } from '@/universal-proctoring'
 import WebcamPreview from '../../../../components/WebcamPreview'
 import { ViolationToast, pushViolationToast } from '@/components/ViolationToast'
-import { Timer } from 'lucide-react';
+import { Timer, CheckCircle2, AlertTriangle, XCircle, Clock, CheckCircle, ArrowLeft, ArrowRight, Lock, ChevronRight, Check, PlayCircle, ShieldCheck } from 'lucide-react';
 
 // Fullscreen Lock imports
 import { FullscreenLockOverlay } from "@/components/FullscreenLockOverlay";
@@ -21,10 +21,8 @@ import { useActivityPatternProctor } from "@/hooks/proctoring/useActivityPattern
 
 const AIMLCompetencyNotebook = dynamic(
   () => import('../../../../components/aiml/competency/AIMLCompetencyNotebook'),
-  { ssr: false, loading: () => <div className="h-screen bg-gray-50 flex items-center justify-center"><div className="text-gray-500">Loading IDE...</div></div> }
+  { ssr: false, loading: () => <div style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center", backgroundColor: "#ffffff" }}><div style={{ color: "#6B7280", fontWeight: 500, display: "flex", alignItems: "center", gap: "0.5rem" }}><div className="animate-spin h-5 w-5 border-2 border-[#00684A] border-t-transparent rounded-full"></div> Loading Editor Environment...</div></div> }
 )
-
-// Removed: apiUrl - now using aimlApi which handles runtime URL configuration
 
 interface Task {
   id: string
@@ -39,7 +37,7 @@ interface Question {
   difficulty: string
   library?: string
   starter_code?: Record<string, string>
-  tasks?: Array<string | Task>  // Support both string and object format
+  tasks?: Array<string | Task>
   public_testcases?: Array<{ input: string; expected_output: string }>
   dataset?: {
     schema: Array<{ name: string; type: string }>
@@ -87,17 +85,11 @@ export default function AIMLTestTakePage() {
   const [token, setToken] = useState<string | null>(null)
   const [userId, setUserId] = useState<string | null>(null)
   
-    // ========================
-    // LIVE PROCTORING: Candidate WS connect (Lazy WebRTC)
-    // ========================
-    // REMOVED: Duplicate useEffect that created WebSocket but didn't start WebRTC
-    // The correct implementation is in the second useEffect below (lines 367-446)
   const [test, setTest] = useState<Test | null>(null)
   const [questions, setQuestions] = useState<Question[]>([])
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0)
   const [codeAnswers, setCodeAnswers] = useState<Record<string, string>>({})
   const [outputAnswers, setOutputAnswers] = useState<Record<string, string[]>>({})
-  // Use refs to store latest values for timer expiration (avoid closure issues)
   const codeAnswersRef = useRef<Record<string, string>>({})
   const outputAnswersRef = useRef<Record<string, string[]>>({})
   const [timeRemaining, setTimeRemaining] = useState<number | null>(null)
@@ -105,10 +97,8 @@ export default function AIMLTestTakePage() {
   const [submitting, setSubmitting] = useState(false)
   const [loading, setLoading] = useState(true)
   const [lastSaved, setLastSaved] = useState<Date | null>(null)
-  // In-page notification state (doesn't break fullscreen)
   const [notification, setNotification] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null)
   const [showSubmitConfirm, setShowSubmitConfirm] = useState(false)
-  // Access control states (matching Custom MCQ structure)
   const [waitingForStart, setWaitingForStart] = useState(false)
   const [accessError, setAccessError] = useState<string | null>(null)
   const [examStarted, setExamStarted] = useState(false)
@@ -118,38 +108,30 @@ export default function AIMLTestTakePage() {
   const autoSaveRef = useRef<NodeJS.Timeout | null>(null)
   const notificationTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   
-  // Auto-dismiss notification after 5 seconds
   useEffect(() => {
     if (notification) {
-      if (notificationTimeoutRef.current) {
-        clearTimeout(notificationTimeoutRef.current)
-      }
+      if (notificationTimeoutRef.current) clearTimeout(notificationTimeoutRef.current)
       notificationTimeoutRef.current = setTimeout(() => {
         setNotification(null)
       }, 5000)
     }
     return () => {
-      if (notificationTimeoutRef.current) {
-        clearTimeout(notificationTimeoutRef.current)
-      }
+      if (notificationTimeoutRef.current) clearTimeout(notificationTimeoutRef.current)
     }
   }, [notification])
   
   const [cameraProctorEnabled, setCameraProctorEnabled] = useState(true)
   const [candidateEmail, setCandidateEmail] = useState<string | null>(null)
   const [proctoringSettings, setProctoringSettings] = useState<any>({})
-  const [liveProctoringEnabled, setLiveProctoringEnabled] = useState(false) // Extract to separate state like DSA
+  const [liveProctoringEnabled, setLiveProctoringEnabled] = useState(false)
   const [liveProctorScreenStream, setLiveProctorScreenStream] = useState<MediaStream | null>(null)
   const [debugMode, setDebugMode] = useState(false)
-  // Per-question timer states
   const [expiredQuestions, setExpiredQuestions] = useState<Set<string>>(new Set())
   const [showTimerExpiryPopup, setShowTimerExpiryPopup] = useState(false)
   const [expiredQuestionId, setExpiredQuestionId] = useState<string | null>(null)
-  // Sequential question locking - only first question unlocked initially
   const [unlockedQuestions, setUnlockedQuestions] = useState<Set<string>>(new Set())
-  const [completedQuestions, setCompletedQuestions] = useState<Set<string>>(new Set()) // Questions that are expired or submitted
+  const [completedQuestions, setCompletedQuestions] = useState<Set<string>>(new Set()) 
 
-  // Proctoring refs
   const thumbVideoRef = useRef<HTMLVideoElement>(null)
   const liveProctoringServiceRef = useRef<CandidateLiveService | null>(null)
   const liveProctoringStartedRef = useRef(false)
@@ -166,9 +148,6 @@ export default function AIMLTestTakePage() {
     return messages[eventType] || 'Violation detected'
   }
 
-  // ============================================================================
-  // FULLSCREEN LOCK - Violation-driven lock state (SIMPLIFIED)
-  // ============================================================================
   const assessmentIdStr = String(testId || '')
   const candidateIdStr = candidateEmail || userId || ''
   
@@ -180,12 +159,7 @@ export default function AIMLTestTakePage() {
     requestFullscreen: requestFullscreenLock,
   } = useFullscreenLock();
 
-  // Handle violation callback from universal proctoring
-  // THIS IS THE SINGLE SOURCE OF TRUTH for fullscreen lock triggering
   const handleUniversalViolation = useCallback((violation: ProctoringViolation) => {
-    console.log('[AIML Take] Universal proctoring violation:', violation)
-    
-    // Show toast for all violations
     pushViolationToast({
       id: `${violation.eventType}-${Date.now()}`,
       eventType: violation.eventType,
@@ -193,15 +167,12 @@ export default function AIMLTestTakePage() {
       timestamp: violation.timestamp,
     })
 
-    // FULLSCREEN_EXIT violation triggers the fullscreen lock overlay (only when AI Proctoring enabled)
     if (violation.eventType === 'FULLSCREEN_EXIT' && cameraProctorEnabled) {
-      console.log('[AIML Take] FULLSCREEN_EXIT violation - locking screen');
       setFullscreenLocked(true);
       incrementFullscreenExitCount();
     }
   }, [setFullscreenLocked, incrementFullscreenExitCount, cameraProctorEnabled])
 
-  // Handle warning callback from universal proctoring (non-violation notifications)
   const handleUniversalWarning = useCallback((warning: any) => {
     if (warning.type === 'FACE_NOT_CLEARLY_VISIBLE') {
       pushViolationToast({
@@ -209,23 +180,17 @@ export default function AIMLTestTakePage() {
         eventType: warning.type,
         message: warning.message,
         timestamp: new Date(warning.timestamp).toISOString(),
-        isWarning: true, // Mark as warning (yellow styling)
+        isWarning: true,
       });
     }
   }, [])
 
-  // Handle fullscreen re-entry - unlock the screen
   const handleRequestFullscreen = useCallback(async (): Promise<boolean> => {
-    console.log('[AIML Take] Requesting fullscreen re-entry...');
     const success = await requestFullscreenLock();
-    if (success) {
-      console.log('[AIML Take] Fullscreen re-entered - unlocking screen');
-      setFullscreenLocked(false);
-    }
+    if (success) setFullscreenLocked(false);
     return success;
   }, [requestFullscreenLock, setFullscreenLocked]);
 
-  // Check if this is admin preview mode (compute BEFORE using in hooks)
   const isAdminPreview = useMemo(() => {
     if (typeof window !== 'undefined') {
       const urlParams = new URLSearchParams(window.location.search)
@@ -234,28 +199,21 @@ export default function AIMLTestTakePage() {
     return false
   }, [])
 
-  // Universal proctoring hook - handles AI proctoring, tab switch, fullscreen
-  // DISABLE PROCTORING IN ADMIN PREVIEW MODE
   const {
     state: proctoringState,
     isRunning: isProctoringRunning,
-    violations,
     startProctoring: startUniversalProctoring,
     stopProctoring: stopUniversalProctoring,
-    requestFullscreen: requestUniversalFullscreen,
-    isFullscreen,
   } = useUniversalProctoring({
     onViolation: handleUniversalViolation,
     onWarning: handleUniversalWarning,
     debug: debugMode,
   })
 
-  // Activity Pattern Proctor - monitors mouse, keyboard, scroll patterns
   useActivityPatternProctor({
     userId: userId || '',
     assessmentId: String(testId || ''),
     onViolation: (violation) => {
-      console.log('[AIML Take] Activity pattern violation:', violation);
       handleUniversalViolation({
         eventType: violation.eventType,
         timestamp: violation.timestamp,
@@ -264,22 +222,17 @@ export default function AIMLTestTakePage() {
         metadata: violation.metadata,
       });
     },
-    enabled: !!userId && !!testId && !submitted, // Only enable when test is active
-    copyPasteThreshold: 20, // Lower threshold for easier detection (default: 50)
+    enabled: !!userId && !!testId && !submitted,
+    copyPasteThreshold: 20, 
   });
 
-  // Unlock fullscreen when test is submitted
   useEffect(() => {
-    if (submitted) {
-      console.log('[AIML Take] Test submitted - unlocking fullscreen');
-      setFullscreenLocked(false);
-    }
+    if (submitted) setFullscreenLocked(false);
   }, [submitted, setFullscreenLocked]);
 
   useEffect(() => {
     if (!testId) return
     
-    // Skip precheck and token validation in admin preview mode
     if (isAdminPreview) {
       setToken('admin_preview_token')
       setUserId('admin_preview')
@@ -292,7 +245,6 @@ export default function AIMLTestTakePage() {
     const urlToken = urlParams.get('token')
     const urlUserId = urlParams.get('user_id')
 
-    // Enforce unified gate completion (deep-link safety)
     const id = String(testId)
     const precheckCompleted = sessionStorage.getItem(`precheckCompleted_${id}`)
     const instructionsAcknowledged = sessionStorage.getItem(`instructionsAcknowledged_${id}`)
@@ -317,37 +269,25 @@ export default function AIMLTestTakePage() {
     fetchTestData(urlToken, urlUserId)
   }, [testId, isAdminPreview])
 
-  // Get screen stream from window.__screenStream (set by identity-verify gate)
   useEffect(() => {
     if (typeof window !== 'undefined' && (window as any).__screenStream) {
       const stream = (window as any).__screenStream as MediaStream;
       if (stream && stream.active && stream.getVideoTracks().length > 0) {
         setLiveProctorScreenStream(stream);
-        console.log('[AIML Take] Found global screen stream for Live Proctoring');
       }
     }
   }, []);
 
-  // Start proctoring when test is loaded and ready (AI proctoring + tab switch + fullscreen)
-  // SKIP PROCTORING IN ADMIN PREVIEW MODE
   useEffect(() => {
-    if (isAdminPreview) {
-      console.log('[AIML Take] Admin preview mode - skipping proctoring')
-      return
-    }
+    if (isAdminPreview) return
     
     const localAssessmentIdStr = String(testId || '')
-    // Resolve userId with priority: URL param > email > anonymous
-    // Note: session.user.id would be ideal but requires SessionProvider context
     const localCandidateIdStr = resolveUserIdForProctoring(null, {
       urlParam: userId as string,
       email: candidateEmail,
     })
-    // Use the extracted state variable (matching DSA pattern)
     
     if (questions.length > 0 && !isProctoringRunning && !submitted && localCandidateIdStr && thumbVideoRef.current) {
-      console.log('[AIML Take] Starting Universal Proctoring...')
-      
       startUniversalProctoring({
         settings: {
           aiProctoringEnabled: cameraProctorEnabled,
@@ -360,25 +300,16 @@ export default function AIMLTestTakePage() {
         videoElement: cameraProctorEnabled ? thumbVideoRef.current : null,
       }).then(async (success) => {
         if (success) {
-          console.log('[AIML Take] ✅ Universal Proctoring started')
-          
-          // Start Agora Live Proctoring immediately after AI proctoring starts
           if (liveProctoringEnabled && !liveProctoringStartedRef.current) {
             await startLiveProctoring();
           }
-        } else {
-          console.error('[AIML Take] ❌ Failed to start Universal Proctoring')
         }
       })
     }
   }, [questions.length, isProctoringRunning, submitted, testId, candidateEmail, userId, cameraProctorEnabled, liveProctoringEnabled, startUniversalProctoring, isAdminPreview])
 
-  // Start Agora Live Proctoring when exam starts
   const startLiveProctoring = useCallback(async () => {
-    if (liveProctoringStartedRef.current) {
-      console.log('[AIML Take] Live Proctoring already started')
-      return
-    }
+    if (liveProctoringStartedRef.current) return
 
     const localAssessmentIdStr = String(testId || '')
     const localCandidateIdStr = resolveUserIdForProctoring(null, {
@@ -386,16 +317,9 @@ export default function AIMLTestTakePage() {
       email: candidateEmail,
     })
 
-    if (!localAssessmentIdStr || !localCandidateIdStr) {
-      console.error('[AIML Take] Missing assessmentId or candidateId for live proctoring')
-      return
-    }
-
-    console.log('[AIML Take] 🚀 Starting Agora Live Proctoring...')
+    if (!localAssessmentIdStr || !localCandidateIdStr) return
     liveProctoringStartedRef.current = true
 
-    // Extract raw candidateId for live proctoring (remove email: or public: prefix)
-    // Live proctoring backend expects raw email or token, not formatted userId
     let rawCandidateId = localCandidateIdStr;
     if (localCandidateIdStr.startsWith('email:')) {
       rawCandidateId = localCandidateIdStr.replace('email:', '');
@@ -410,13 +334,9 @@ export default function AIMLTestTakePage() {
         debugMode: debugMode,
       })
 
-      // Wait for webcam stream to be available (from AI proctoring)
       const existingWebcamStream = thumbVideoRef.current?.srcObject as MediaStream | null
-      
-      // If webcam not ready yet, wait a bit
       let webcamStream = existingWebcamStream;
       if (!webcamStream || !webcamStream.active) {
-        console.log('[AIML Take] ⏳ Waiting for webcam stream...')
         let retries = 0;
         while (retries < 20 && (!webcamStream || !webcamStream.active)) {
           await new Promise(resolve => setTimeout(resolve, 500));
@@ -427,40 +347,27 @@ export default function AIMLTestTakePage() {
 
       const success = await liveService.start(
         {
-          onStateChange: (state) => {
-            console.log('[AIML Take] Live proctoring state:', state)
-          },
-          onError: (error) => {
-            console.error('[AIML Take] Live Proctoring error:', error)
-          },
+          onStateChange: () => {},
+          onError: (error) => console.error('[AIML Take] Live Proctoring error:', error),
         },
         liveProctorScreenStream || null,
         webcamStream || null,
-        null, // sessionId - not needed for Agora
-        null  // WebSocket - not needed for Agora
+        null, null 
       )
 
       if (success) {
-        console.log('[AIML Take] ✅ Live Proctoring (Agora) started successfully')
         liveProctoringServiceRef.current = liveService
       } else {
-        console.error('[AIML Take] ❌ Failed to start Live Proctoring')
         liveProctoringStartedRef.current = false
       }
     } catch (error) {
-      console.error('[AIML Take] ❌ Error starting Live Proctoring:', error)
       liveProctoringStartedRef.current = false
     }
   }, [testId, userId, candidateEmail, debugMode, liveProctorScreenStream])
 
-  // Note: Old WebSocket-based lazy approach removed - now using immediate Agora start
-
-  // Stop proctoring when test is submitted
   useEffect(() => {
     if (submitted) {
-      console.log('[AIML Take] Test submitted, stopping proctoring')
       stopUniversalProctoring()
-      
       if (liveProctoringServiceRef.current) {
         liveProctoringServiceRef.current.stop()
         liveProctoringServiceRef.current = null
@@ -468,7 +375,6 @@ export default function AIMLTestTakePage() {
     }
   }, [submitted, stopUniversalProctoring])
 
-  // Cleanup on unmount
   useEffect(() => {
     return () => {
       stopUniversalProctoring()
@@ -479,56 +385,34 @@ export default function AIMLTestTakePage() {
     }
   }, [stopUniversalProctoring])
 
-
-  // NEW: Periodic server sync for timer accuracy (every 30 seconds)
   useEffect(() => {
     if (!token || !userId || !testId || submitted || timeRemaining === null || !examStarted) return
-
     const syncInterval = setInterval(async () => {
       try {
-        const response = await aimlApi.get(
-          `/tests/${testId}/candidate?user_id=${userId}`
-        )
-        
-        // Service already extracts response.data, so response IS the data
+        const response = await aimlApi.get(`/tests/${testId}/candidate?user_id=${userId}`)
         const testData = response?.data || response
         const accessControl = testData?.accessControl
-        
         if (accessControl?.timeRemaining !== null && accessControl?.timeRemaining !== undefined) {
-          // Sync with server-calculated time
           setTimeRemaining(Math.max(0, accessControl.timeRemaining))
         } else if (testData.time_remaining_seconds !== undefined && testData.time_remaining_seconds >= 0) {
-          // Fallback to backward compatibility field
           setTimeRemaining(Math.max(0, testData.time_remaining_seconds))
         }
-      } catch (err) {
-        console.error('Failed to sync timer with server:', err)
-        // Don't update timer on error, keep using client-side countdown
-      }
-    }, 30000) // Sync every 30 seconds
-
+      } catch (err) {}
+    }, 30000) 
     return () => clearInterval(syncInterval)
   }, [token, userId, testId, submitted, timeRemaining, examStarted])
 
-  // Auto-transition when exam time arrives (strict mode only - for pre-check to exam start)
-  // Matching Custom MCQ structure exactly
   useEffect(() => {
     if (!waitingForStart || !startTime || !test || !token || !userId || test.examMode !== "strict") return
-
     const checkStartTime = async () => {
       const now = new Date()
       if (now >= startTime) {
-        // Start time has arrived - reload test data to get updated accessControl
         if (!testId || !userId || !token) return
         try {
           const { aimlService } = await import('@/services/aiml')
           const response = await aimlService.getTestForCandidate(String(testId), userId, token)
-          
-          // Service already extracts response.data, so response IS the data
           const testData = response?.data || response
           setTest(testData)
-          
-          // Update state based on new accessControl
           const accessControl = testData.accessControl
           if (accessControl?.examStarted) {
             setWaitingForStart(false)
@@ -542,13 +426,8 @@ export default function AIMLTestTakePage() {
         }
       }
     }
-
-    // Check immediately
     checkStartTime()
-
-    // Check every second until exam time arrives
     const interval = setInterval(checkStartTime, 1000)
-
     return () => clearInterval(interval)
   }, [waitingForStart, startTime, test, token, userId, testId])
 
@@ -556,92 +435,39 @@ export default function AIMLTestTakePage() {
     if (!testId) return
     try {
       setLoading(true)
-      console.log('[AIML Take] fetchTestData called:', { testId, urlUserId, hasToken: !!urlToken, isAdminPreview })
       const { aimlService } = await import('@/services/aiml')
-      
-      // In admin preview mode, use a dummy token/userId or skip token validation
       let effectiveToken = urlToken
       let effectiveUserId = urlUserId
-      
       if (isAdminPreview) {
-        // For admin preview, we might need to handle this differently
-        // Try to get test data without full candidate validation
         effectiveToken = 'admin_preview_token'
         effectiveUserId = 'admin_preview'
       }
-      
-      console.log('[AIML Take] Calling aimlService.getTestForCandidate:', { testId, effectiveUserId, hasToken: !!effectiveToken })
       const response = await aimlService.getTestForCandidate(String(testId), effectiveUserId, effectiveToken)
-      
-      console.log('[AIML Take] getTestForCandidate response:', {
-        hasResponse: !!response,
-        responseType: typeof response,
-        responseKeys: response ? Object.keys(response) : [],
-        hasData: !!(response?.data),
-        hasQuestions: !!(response?.data?.questions),
-        questionsCount: (response?.data?.questions)?.length || 0,
-      })
-      
-      // AIML service's getTestForCandidate already extracts response.data from axios
-      // So response IS the data object (not wrapped in ApiResponse)
-      // Handle both cases: direct data or wrapped in data property
       const testData = response?.data || response
-      if (!testData) {
-        console.error('[AIML Take] ❌ testData is undefined!', { response })
-        throw new Error('Failed to load test data: response is undefined')
-      }
-      
-      if (!testData.questions) {
-        console.error('[AIML Take] ❌ testData.questions is undefined!', { testData })
-        throw new Error('Failed to load test questions: testData.questions is undefined')
-      }
+      if (!testData || !testData.questions) throw new Error('Failed to load test data')
       
       setTest(testData)
-      const questionsArray = testData.questions || []
-      console.log('[AIML Take] Setting questions:', {
-        questionsCount: questionsArray.length,
-        questions: questionsArray,
-        hasQuestions: questionsArray.length > 0
-      })
-      setQuestions(questionsArray)
+      setQuestions(testData.questions || [])
 
-      // Apply runtime camera toggle based on admin proctoring setting:
-      // Only explicit true enables camera/model; missing/false => OFF (per PROCTORING_AI_TOGGLE_NOTES.md)
-      // Load proctoring settings from test data (matching DSA pattern)
-      // DISABLE PROCTORING IN ADMIN PREVIEW MODE
       if (isAdminPreview) {
-        console.log('[AIML Take] Admin preview mode - disabling proctoring');
         setProctoringSettings({ aiProctoringEnabled: false, liveProctoringEnabled: false });
         setCameraProctorEnabled(false);
         setLiveProctoringEnabled(false);
       } else if (testData?.proctoringSettings) {
-        console.log('[AIML Take] Loading proctoring settings:', testData.proctoringSettings);
         setProctoringSettings(testData.proctoringSettings);
         setCameraProctorEnabled(testData.proctoringSettings.aiProctoringEnabled === true);
         setLiveProctoringEnabled(testData.proctoringSettings.liveProctoringEnabled === true);
       } else {
-        console.log('[AIML Take] No proctoring settings found in test data');
         setProctoringSettings({ aiProctoringEnabled: false, liveProctoringEnabled: false });
         setCameraProctorEnabled(false);
         setLiveProctoringEnabled(false);
       }
       
-      // NEW IMPLEMENTATION: Use accessControl from backend (matching Custom MCQ structure)
       const accessControl = testData.accessControl
       const schedule = testData.schedule || {}
       const startTimeStr = schedule.startTime || testData.start_time
       
-      console.log('[AIML Take] AccessControl from backend:', {
-        canAccess: accessControl?.canAccess,
-        examStarted: accessControl?.examStarted,
-        canStart: accessControl?.canStart,
-        waitingForStart: accessControl?.waitingForStart,
-        timeRemaining: accessControl?.timeRemaining,
-        errorMessage: accessControl?.errorMessage
-      })
-      
       if (testData.is_completed) {
-        // Test already completed, set time to 0 and mark as submitted
         setTimeRemaining(0)
         setSubmitted(true)
         setExamStarted(false)
@@ -649,39 +475,23 @@ export default function AIMLTestTakePage() {
         setAccessError(null)
       } else if (accessControl) {
         if (!accessControl.canAccess) {
-          // Cannot access - show error message
           setAccessError(accessControl.errorMessage || "You cannot access this assessment at this time.")
           setWaitingForStart(false)
           setExamStarted(false)
           setTimeRemaining(null)
           return
         }
-        
         if (accessControl.waitingForStart) {
-          // Can access but waiting for start (strict mode - pre-check phase)
           if (startTimeStr) {
-            const startTimeDate = new Date(startTimeStr)
             setWaitingForStart(true)
-            setStartTime(startTimeDate)
+            setStartTime(new Date(startTimeStr))
             setExamStarted(false)
             setTimeRemaining(null)
-            setAccessError(null) // Clear error, show waiting message in UI
+            setAccessError(null) 
           }
           return
         }
-        
-        if (accessControl.examStarted) {
-          // Exam has started (both strict and flexible mode now auto-start)
-          console.log('[AIML Take] Setting examStarted to true - accessControl.examStarted:', accessControl.examStarted, 'timeRemaining:', accessControl.timeRemaining)
-          setWaitingForStart(false)
-          setExamStarted(true)
-          setTimeRemaining(accessControl.timeRemaining || null)
-          setStartedAt(new Date())
-          setAccessError(null)
-        } else if (accessControl.canStart) {
-          // Can start - this shouldn't happen now as flexible mode auto-starts
-          // But keep as fallback
-          console.log('[AIML Take] Setting examStarted to true via canStart fallback - accessControl.canStart:', accessControl.canStart, 'timeRemaining:', accessControl.timeRemaining)
+        if (accessControl.examStarted || accessControl.canStart) {
           setWaitingForStart(false)
           setExamStarted(true)
           setTimeRemaining(accessControl.timeRemaining || null)
@@ -689,30 +499,23 @@ export default function AIMLTestTakePage() {
           setAccessError(null)
         }
       } else {
-        // Fallback if accessControl not available (shouldn't happen)
         setAccessError("Assessment access information is not available.")
       }
       
-      // Initialize code answers
       const initialCodes: Record<string, string> = {}
       testData.questions.forEach((q: Question) => {
         initialCodes[q.id] = q.starter_code?.python3 || q.starter_code?.python || ''
       })
       setCodeAnswers(initialCodes)
       
-      // Initialize sequential locking: only first question unlocked
       if (testData.questions && testData.questions.length > 0 && testData.timer_mode === 'PER_QUESTION') {
-        const firstQuestionId = testData.questions[0].id
-        setUnlockedQuestions(new Set<string>([firstQuestionId]))
+        setUnlockedQuestions(new Set<string>([testData.questions[0].id]))
         setCompletedQuestions(new Set<string>())
         setExpiredQuestions(new Set<string>())
       } else if (testData.timer_mode !== 'PER_QUESTION' && testData.questions) {
-        // GLOBAL mode: all questions unlocked
-        const allQuestionIds = new Set<string>(testData.questions.map((q: Question) => q.id))
-        setUnlockedQuestions(allQuestionIds)
+        setUnlockedQuestions(new Set<string>(testData.questions.map((q: Question) => q.id)))
       }
     } catch (err: any) {
-      console.error(err)
       alert(err.response?.data?.detail || 'Failed to load test')
       router.push('/dashboard')
     } finally {
@@ -722,52 +525,35 @@ export default function AIMLTestTakePage() {
 
   const currentQuestion = questions[currentQuestionIndex]
 
-  // Webcam preview tile (same as AI/DSA when enabled)
-  // Rendered at the top-level so it overlays the notebook IDE.
   const webcamTile = cameraProctorEnabled ? (
     <WebcamPreview
       ref={thumbVideoRef}
       cameraOn={proctoringState.isCameraOn}
       faceMeshStatus={proctoringState.isModelLoaded ? "loaded" : proctoringState.modelError ? "error" : "loading"}
       facesCount={proctoringState.facesCount}
-      // visible={true} // Uncomment to show camera preview to candidates
     />
   ) : null
 
   const autoSaveAnswer = useCallback(async (questionId: string, code: string) => {
     if (!token || !userId || !testId) return
-    
     try {
-      await aimlApi.post(
-        `/tests/${testId}/submit-answer`,
-        {
-          user_id: userId,
-          question_id: questionId,
-          source_code: code,
-          outputs: [],
-        }
-      )
+      await aimlApi.post(`/tests/${testId}/submit-answer`, {
+        user_id: userId,
+        question_id: questionId,
+        source_code: code,
+        outputs: [],
+      })
       setLastSaved(new Date())
-    } catch (err) {
-      console.error('Auto-save failed:', err)
-    }
+    } catch (err) {}
   }, [token, userId, testId])
 
   const handleCodeChange = useCallback((code: string) => {
-    if (currentQuestion && 
-        !expiredQuestions.has(currentQuestion.id) &&
-        (test?.timer_mode !== 'PER_QUESTION' || unlockedQuestions.has(currentQuestion.id))) {
+    if (currentQuestion && !expiredQuestions.has(currentQuestion.id) && (test?.timer_mode !== 'PER_QUESTION' || unlockedQuestions.has(currentQuestion.id))) {
       setCodeAnswers(prev => {
-        const updated = {
-          ...prev,
-          [currentQuestion.id]: code
-        }
-        // Update ref immediately for timer access
+        const updated = { ...prev, [currentQuestion.id]: code }
         codeAnswersRef.current = updated
         return updated
       })
-      
-      // Debounced auto-save (save 2 seconds after user stops typing)
       if (autoSaveRef.current) clearTimeout(autoSaveRef.current)
       autoSaveRef.current = setTimeout(() => {
         autoSaveAnswer(currentQuestion.id, code)
@@ -776,213 +562,86 @@ export default function AIMLTestTakePage() {
   }, [currentQuestion, autoSaveAnswer, expiredQuestions, test?.timer_mode, unlockedQuestions])
 
   const handleOutputChange = useCallback((outputs: string[]) => {
-    console.log('%c[PARENT] 🟡 handleOutputChange called', 'color: #ffaa00; font-weight: bold; font-size: 14px', {
-      currentQuestionId: currentQuestion?.id,
-      outputsCount: outputs.length,
-      outputs: outputs.map((o, idx) => ({ index: idx, length: o.length, preview: o.substring(0, 50) })),
-      isExpired: currentQuestion ? expiredQuestions.has(currentQuestion.id) : false,
-      timerMode: test?.timer_mode,
-      isUnlocked: currentQuestion ? unlockedQuestions.has(currentQuestion.id) : false
-    })
-    
-    if (currentQuestion && 
-        !expiredQuestions.has(currentQuestion.id) &&
-        (test?.timer_mode !== 'PER_QUESTION' || unlockedQuestions.has(currentQuestion.id))) {
-      console.log('%c[PARENT] ✅ Saving outputs to state', 'color: #00aa00; font-weight: bold; font-size: 14px', {
-        questionId: currentQuestion.id,
-        outputsCount: outputs.length
-      })
+    if (currentQuestion && !expiredQuestions.has(currentQuestion.id) && (test?.timer_mode !== 'PER_QUESTION' || unlockedQuestions.has(currentQuestion.id))) {
       setOutputAnswers(prev => {
-        const updated = {
-          ...prev,
-          [currentQuestion.id]: outputs
-        }
-        // Update ref immediately for timer access (avoid closure issues)
+        const updated = { ...prev, [currentQuestion.id]: outputs }
         outputAnswersRef.current = updated
-        console.log('%c[PARENT] 💾 Outputs stored in state AND ref', 'color: #00aa00; font-weight: bold; font-size: 14px', {
-          questionId: currentQuestion.id,
-          storedOutputs: updated[currentQuestion.id]?.length || 0,
-          allStoredQuestions: Object.keys(updated),
-          refOutputs: outputAnswersRef.current[currentQuestion.id]?.length || 0
-        })
         return updated
-      })
-    } else {
-      console.log('%c[PARENT] ❌ NOT saving outputs - conditions not met', 'color: #ff0000; font-weight: bold; font-size: 14px', {
-        hasCurrentQuestion: !!currentQuestion,
-        isExpired: currentQuestion ? expiredQuestions.has(currentQuestion.id) : 'N/A',
-        timerMode: test?.timer_mode,
-        isUnlocked: currentQuestion ? unlockedQuestions.has(currentQuestion.id) : 'N/A'
       })
     }
   }, [currentQuestion, expiredQuestions, test?.timer_mode, unlockedQuestions])
 
   const handleSubmitQuestion = async (code: string, outputs: string[]) => {
     if (!currentQuestion || submitting) return
-
     setSubmitting(true)
     try {
-      // Store outputs locally for final submission
-      setOutputAnswers(prev => ({
-        ...prev,
-        [currentQuestion.id]: outputs
-      }))
-
-      await aimlApi.post(
-        `/tests/${testId}/submit-answer`,
-        {
-          user_id: userId,
-          question_id: currentQuestion.id,
-          source_code: code,
-          outputs: outputs,
-        }
-      )
-      
-      // Mark question as completed (manually submitted)
-      setCompletedQuestions(prev => {
-        const newSet = new Set(prev)
-        newSet.add(currentQuestion.id)
-        return newSet
+      setOutputAnswers(prev => ({ ...prev, [currentQuestion.id]: outputs }))
+      await aimlApi.post(`/tests/${testId}/submit-answer`, {
+        user_id: userId, question_id: currentQuestion.id, source_code: code, outputs: outputs,
       })
       
-      // Lock current question and unlock next question (sequential locking)
-      // BUT do NOT auto-navigate - user stays on current question
+      setCompletedQuestions(prev => {
+        const newSet = new Set(prev); newSet.add(currentQuestion.id); return newSet;
+      })
+      
       const hasNextQuestion = currentQuestionIndex < questions.length - 1
       if (hasNextQuestion) {
         const nextQuestionId = questions[currentQuestionIndex + 1].id
         setUnlockedQuestions(prev => {
-          const newSet = new Set(prev)
-          newSet.delete(currentQuestion.id) // Lock current question
-          newSet.add(nextQuestionId) // Unlock next question
-          return newSet
+          const newSet = new Set(prev); newSet.delete(currentQuestion.id); newSet.add(nextQuestionId); return newSet;
         })
       }
-      
-      // Show success notification (only if there's a next question to unlock)
-      const toast = document.createElement('div')
-      toast.className = 'fixed bottom-4 right-4 bg-emerald-600 text-white px-4 py-2 rounded-lg shadow-lg z-50'
-      toast.textContent = hasNextQuestion 
-        ? '✓ Answer submitted. Next question unlocked!'
-        : '✓ Answer submitted successfully!'
-      document.body.appendChild(toast)
-      setTimeout(() => document.body.removeChild(toast), 3000)
-      
-      // DO NOT auto-navigate - user can manually click "Next" or question tab when ready
+      setNotification({ message: hasNextQuestion ? 'Answer saved. Proceed to the next question.' : 'All answers saved successfully!', type: 'success' })
     } catch (err: any) {
-      console.error(err)
-      alert(err.response?.data?.detail || 'Failed to save answer')
+      setNotification({ message: err.response?.data?.detail || 'Failed to save answer', type: 'error' })
     } finally {
       setSubmitting(false)
     }
   }
 
-  // Auto-submit function (no confirmation, used when timer expires)
   const handleAutoSubmitTest = async () => {
-    if (submitted || submitting) {
-      console.log('[AIML Take] Auto-submit skipped - already submitted or submitting')
-      return
-    }
-
-    console.log('[AIML Take] Auto-submitting test due to timer expiration')
+    if (submitted || submitting) return
     setSubmitting(true)
-    
     try {
-      // Save all current answers before submitting (use refs for latest values)
-      console.log('%c[AUTO-SUBMIT] 💾 Saving all answers before auto-submit', 'color: #0066ff; font-weight: bold; font-size: 14px')
       const savePromises = Object.entries(codeAnswersRef.current).map(async ([questionId, code]) => {
         try {
-          // Also save outputs when auto-saving
-          const outputs = outputAnswersRef.current[questionId] || []
-          await aimlApi.post(
-            `/tests/${testId}/submit-answer`,
-            {
-              user_id: userId,
-              question_id: questionId,
-              source_code: code,
-              outputs: outputs,  // Include outputs in auto-save
-            }
-          )
-        } catch (err) {
-          console.error(`%c[AUTO-SUBMIT] ❌ Failed to save answer for question ${questionId}`, 'color: #ff0000; font-weight: bold; font-size: 12px', err)
-        }
+          await aimlApi.post(`/tests/${testId}/submit-answer`, {
+            user_id: userId, question_id: questionId, source_code: code, outputs: outputAnswersRef.current[questionId] || [],  
+          })
+        } catch (err) {}
       })
       await Promise.all(savePromises)
-      console.log('%c[AUTO-SUBMIT] ✅ All answers saved, proceeding with submission', 'color: #00aa00; font-weight: bold; font-size: 14px')
       
-      // Get candidate requirements from sessionStorage
       const candidateRequirements: any = {};
       const phone = sessionStorage.getItem("candidatePhone");
       const linkedIn = sessionStorage.getItem("candidateLinkedIn");
       const github = sessionStorage.getItem("candidateGithub");
-      
       if (phone) candidateRequirements.phone = phone;
       if (linkedIn) candidateRequirements.linkedInUrl = linkedIn;
       if (github) candidateRequirements.githubUrl = github;
       
-      // Get custom fields from sessionStorage
       const customFieldsStr = sessionStorage.getItem("candidateCustomFields");
       if (customFieldsStr) {
-        try {
-          candidateRequirements.customFields = JSON.parse(customFieldsStr);
-        } catch (e) {
-          console.warn("Failed to parse custom fields:", e);
-        }
+        try { candidateRequirements.customFields = JSON.parse(customFieldsStr); } catch (e) {}
       }
 
-      if (!testId || !userId) {
-        throw new Error('Test ID and User ID are required')
-      }
+      if (!testId || !userId) throw new Error('Test ID and User ID are required')
 
       const { aimlService } = await import('@/services/aiml')
-      
-      // IMPORTANT: Read from refs to avoid closure issues (same fix as question expiration)
-      // Refs always have the latest values, state might be stale
-      console.log('%c[AUTO-SUBMIT] 📤 Reading all answers from refs for final submission', 'color: #0066ff; font-weight: bold; font-size: 14px', {
-        codeAnswersFromRef: Object.keys(codeAnswersRef.current),
-        outputAnswersFromRef: Object.keys(outputAnswersRef.current),
-        allQuestions: Object.keys(codeAnswers)
-      })
-      
-      // Backend expects 'answers' with 'source_code' field, not 'question_submissions' with 'code'
-      const response = await aimlService.submitTest(String(testId), {
+      await aimlService.submitTest(String(testId), {
         user_id: userId,
-        answers: Object.entries(codeAnswersRef.current).map(([questionId, code]) => {
-          const outputs = outputAnswersRef.current[questionId] || []
-          console.log('%c[AUTO-SUBMIT] 📝 Including answer', 'color: #00aa00; font-weight: bold; font-size: 12px', {
-            questionId,
-            codeLength: code.length,
-            outputsCount: outputs.length,
-            hasOutputs: outputs.length > 0
-          })
-          return {
-            question_id: questionId,
-            source_code: code,  // Backend expects 'source_code', not 'code'
-            outputs: outputs  // Read from ref, not state
-          }
-        }),
+        answers: Object.entries(codeAnswersRef.current).map(([questionId, code]) => ({
+          question_id: questionId, source_code: code, outputs: outputAnswersRef.current[questionId] || []
+        })),
         activity_logs: undefined,
         candidateRequirements: candidateRequirements
       })
       
-      console.log('[AIML Take] Auto-submission successful:', response.data)
-      
       setSubmitted(true)
       if (timerRef.current) clearInterval(timerRef.current)
-      
-      // Show in-page notification (doesn't break fullscreen)
-      setNotification({
-        message: 'Time is up! Your test has been automatically submitted and is being evaluated.',
-        type: 'success'
-      })
-      
-      // Stay on the same page - results page doesn't exist yet
+      setNotification({ message: 'Time is up! Your test has been automatically submitted.', type: 'success' })
     } catch (err: any) {
-      console.error('[AIML Take] Auto-submit error:', err)
-      // Show in-page error notification (doesn't break fullscreen)
-      setNotification({
-        message: err.response?.data?.detail || 'Time is up, but there was an error submitting your test. Please contact support.',
-        type: 'error'
-      })
+      setNotification({ message: err.response?.data?.detail || 'Time is up. Assessment closed.', type: 'error' })
     } finally {
       setSubmitting(false)
     }
@@ -990,8 +649,6 @@ export default function AIMLTestTakePage() {
 
   const handleSubmitTest = async () => {
     if (submitted || submitting) return
-
-    // Show in-page confirmation modal (doesn't break fullscreen)
     setShowSubmitConfirm(true)
   }
   
@@ -999,85 +656,41 @@ export default function AIMLTestTakePage() {
     setShowSubmitConfirm(false)
     setSubmitting(true)
     try {
-      // Get candidate requirements from sessionStorage
       const candidateRequirements: any = {};
       const phone = sessionStorage.getItem("candidatePhone");
       const linkedIn = sessionStorage.getItem("candidateLinkedIn");
       const github = sessionStorage.getItem("candidateGithub");
-      
       if (phone) candidateRequirements.phone = phone;
       if (linkedIn) candidateRequirements.linkedInUrl = linkedIn;
       if (github) candidateRequirements.githubUrl = github;
       
-      // Get custom fields from sessionStorage
       const customFieldsStr = sessionStorage.getItem("candidateCustomFields");
       if (customFieldsStr) {
-        try {
-          candidateRequirements.customFields = JSON.parse(customFieldsStr);
-        } catch (e) {
-          console.warn("Failed to parse custom fields:", e);
-        }
+        try { candidateRequirements.customFields = JSON.parse(customFieldsStr); } catch (e) {}
       }
 
-      if (!testId || !userId) {
-        throw new Error('Test ID and User ID are required')
-      }
+      if (!testId || !userId) throw new Error('Test ID and User ID are required')
 
       const { aimlService } = await import('@/services/aiml')
-      
-      // IMPORTANT: Read from refs to avoid closure issues (same fix as auto-submit)
-      console.log('%c[MANUAL-SUBMIT] 📤 Reading all answers from refs for final submission', 'color: #0066ff; font-weight: bold; font-size: 14px', {
-        codeAnswersFromRef: Object.keys(codeAnswersRef.current),
-        outputAnswersFromRef: Object.keys(outputAnswersRef.current)
-      })
-      
-      // Backend expects 'answers' with 'source_code' field
-      const response = await aimlService.submitTest(String(testId), {
+      await aimlService.submitTest(String(testId), {
         user_id: userId,
-        answers: Object.entries(codeAnswersRef.current).map(([questionId, code]) => {
-          const outputs = outputAnswersRef.current[questionId] || []
-          console.log('%c[MANUAL-SUBMIT] 📝 Including answer', 'color: #00aa00; font-weight: bold; font-size: 12px', {
-            questionId,
-            codeLength: code.length,
-            outputsCount: outputs.length,
-            hasOutputs: outputs.length > 0
-          })
-          return {
-            question_id: questionId,
-            source_code: code,  // Backend expects 'source_code', not 'code'
-            outputs: outputs  // Read from ref, not state
-          }
-        }),
+        answers: Object.entries(codeAnswersRef.current).map(([questionId, code]) => ({
+          question_id: questionId, source_code: code, outputs: outputAnswersRef.current[questionId] || []
+        })),
         activity_logs: undefined,
         candidateRequirements: candidateRequirements
       })
       
-      // Log the result for debugging
-      console.log('Submission result:', response.data)
-      
       setSubmitted(true)
       if (timerRef.current) clearInterval(timerRef.current)
-      
-      // Show in-page success notification (doesn't break fullscreen)
-      setNotification({
-        message: 'Test submitted successfully! Your answers are being evaluated.',
-        type: 'success'
-      })
-      
-      // Stay on the same page - results page doesn't exist yet
+      setNotification({ message: 'Test submitted successfully! You may close this window.', type: 'success' })
     } catch (err: any) {
-      console.error(err)
-      // Show in-page error notification (doesn't break fullscreen)
-      setNotification({
-        message: err.response?.data?.detail || 'Failed to submit test',
-        type: 'error'
-      })
+      setNotification({ message: err.response?.data?.detail || 'Failed to submit test', type: 'error' })
     } finally {
       setSubmitting(false)
     }
   }
 
-  // Use AITimer hook for per-question or global timer
   const currentQuestionForTimer = questions[currentQuestionIndex] || null
   const timerEnabled = examStarted && !submitted && questions.length > 0
   const timer = useAITimer({
@@ -1092,111 +705,66 @@ export default function AIMLTestTakePage() {
     currentQuestionId: currentQuestionForTimer?.id || null,
     onExpire: handleAutoSubmitTest,
     onQuestionExpire: async (questionId: string) => {
-      // IMPORTANT: Read from refs to get latest values (avoid closure/stale state issues)
-      // Refs are always up-to-date and don't have closure problems
       const currentCode = codeAnswersRef.current[questionId] || ''
       const currentOutputs = outputAnswersRef.current[questionId] || []
       
-      // Mark question as expired and completed
-      setExpiredQuestions(prev => {
-        const newSet = new Set(prev)
-        newSet.add(questionId)
-        return newSet
-      })
-      setCompletedQuestions(prev => {
-        const newSet = new Set(prev)
-        newSet.add(questionId)
-        return newSet
-      })
+      setExpiredQuestions(prev => { const newSet = new Set(prev); newSet.add(questionId); return newSet; })
+      setCompletedQuestions(prev => { const newSet = new Set(prev); newSet.add(questionId); return newSet; })
       setExpiredQuestionId(questionId)
       
-      // Submit the answer with outputs for evaluation (not just auto-save)
-      // This ensures the code is evaluated even if user didn't click submit
-      if (!token || !userId || !testId) {
-        return
-      }
+      if (!token || !userId || !testId) return
       
       try {
         const expiredQuestion = questions.find(q => q.id === questionId)
         if (expiredQuestion && currentCode) {
-          // Submit with outputs for evaluation (same as handleSubmitQuestion)
-          await aimlApi.post(
-            `/tests/${testId}/submit-answer`,
-            {
-              user_id: userId,
-              question_id: questionId,
-              source_code: currentCode,
-              outputs: currentOutputs,
-            }
-          )
+          await aimlApi.post(`/tests/${testId}/submit-answer`, {
+            user_id: userId, question_id: questionId, source_code: currentCode, outputs: currentOutputs,
+          })
         } else {
-          // Fallback to auto-save if no code or question not found
           await autoSaveAnswer(questionId, currentCode)
         }
       } catch (err) {
-        // Try to at least save the code as fallback
-        try {
-          await autoSaveAnswer(questionId, currentCode)
-        } catch (saveErr) {
-          // Silent fail - error already logged if needed
-        }
+        try { await autoSaveAnswer(questionId, currentCode) } catch (saveErr) {}
       }
       
-      // Lock current question and unlock next question (sequential locking)
       const currentIndex = questions.findIndex(q => q.id === questionId)
       if (currentIndex < questions.length - 1) {
         const nextQuestionId = questions[currentIndex + 1].id
         setUnlockedQuestions(prev => {
-          const newSet = new Set(prev)
-          newSet.delete(questionId) // Lock current question
-          newSet.add(nextQuestionId) // Unlock next question
-          return newSet
+          const newSet = new Set(prev); newSet.delete(questionId); newSet.add(nextQuestionId); return newSet;
         })
       }
       
-      // Show popup
       setShowTimerExpiryPopup(true)
-      
-      // After 2.5 seconds, navigate to next question or submit
       setTimeout(() => {
         setShowTimerExpiryPopup(false)
         if (currentIndex < questions.length - 1) {
-          // Move to next question
           setCurrentQuestionIndex(currentIndex + 1)
         } else {
-          // Last question - submit test
           handleSubmitTest()
         }
-      }, 2500) // 2.5 second delay
+      }, 2500) 
     },
     enabled: timerEnabled,
   })
 
-
-  // Update timeRemaining from timer hook (for GLOBAL mode)
-  // Only update when value actually changes to prevent unnecessary re-renders
   useEffect(() => {
     if (test?.timer_mode === 'GLOBAL' && timer.timeRemaining !== undefined && timer.timeRemaining !== null) {
-      setTimeRemaining(prev => {
-        // Only update if value actually changed
-        if (prev !== timer.timeRemaining) {
-          return timer.timeRemaining
-        }
-        return prev
-      })
+      setTimeRemaining(prev => prev !== timer.timeRemaining ? timer.timeRemaining : prev)
     }
   }, [timer.timeRemaining, test?.timer_mode])
 
+
+  // ============================================================================
+  // RENDER: LOADING STATE
+  // ============================================================================
   if (loading) {
     return (
-      <>
-        <div className="min-h-screen flex items-center justify-center bg-gray-50">
-          <div className="text-center">
-            <div className="w-12 h-12 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-            <p className="text-gray-600">Loading test...</p>
-          </div>
+      <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", backgroundColor: "#FAFCFB" }}>
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "1rem" }}>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-t-2 border-[#00684A]"></div>
+          <span style={{ fontWeight: 600, color: "#00684A", letterSpacing: "0.05em", textTransform: "uppercase", fontSize: "0.875rem" }}>Loading Assessment...</span>
         </div>
-        {/* Fullscreen Lock Overlay - only when AI Proctoring enabled */}
         {cameraProctorEnabled && (
           <FullscreenLockOverlay
             isLocked={isFullscreenLocked}
@@ -1206,26 +774,23 @@ export default function AIMLTestTakePage() {
             warningText={fullscreenExitCount > 0 ? "Exiting fullscreen is recorded as a violation." : undefined}
           />
         )}
-      </>
+      </div>
     )
   }
 
-  // Show access denied screen
+  // ============================================================================
+  // RENDER: ACCESS DENIED
+  // ============================================================================
   if (accessError && !examStarted) {
     return (
-      <>
-        <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-red-50 via-white to-orange-50 p-4">
-          <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-8 text-center">
-            <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
-              <svg className="w-8 h-8 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </div>
-            <h2 className="text-xl font-bold text-gray-800 mb-2">Access Denied</h2>
-            <p className="text-gray-600">{accessError}</p>
+      <div style={{ backgroundColor: "#FAFCFB", minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: "1rem" }}>
+        <div style={{ maxWidth: "450px", width: "100%", backgroundColor: "#ffffff", borderRadius: "1rem", padding: "3rem 2rem", textAlign: "center", border: "1px solid #E5E7EB", boxShadow: "0 10px 25px -5px rgba(0, 0, 0, 0.05)" }}>
+          <div style={{ width: "64px", height: "64px", backgroundColor: "#FEF2F2", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 1.5rem auto", border: "1px solid #FECACA" }}>
+            <XCircle size={32} color="#DC2626" />
           </div>
+          <h2 style={{ margin: "0 0 0.5rem 0", color: "#111827", fontSize: "1.5rem", fontWeight: 700 }}>Access Denied</h2>
+          <p style={{ margin: 0, color: "#6B7280", fontSize: "1rem", lineHeight: "1.5" }}>{accessError}</p>
         </div>
-        {/* Fullscreen Lock Overlay - only when AI Proctoring enabled */}
         {cameraProctorEnabled && (
           <FullscreenLockOverlay
             isLocked={isFullscreenLocked}
@@ -1235,49 +800,40 @@ export default function AIMLTestTakePage() {
             warningText={fullscreenExitCount > 0 ? "Exiting fullscreen is recorded as a violation." : undefined}
           />
         )}
-      </>
+      </div>
     )
   }
 
-  // Show waiting for start screen (strict mode pre-check phase)
-  // Matching Custom MCQ structure exactly
+  // ============================================================================
+  // RENDER: PRE-CHECK (WAITING FOR START)
+  // ============================================================================
   if (waitingForStart && !examStarted) {
-    const isStrictMode = test?.examMode === "strict"
-    
     return (
-      <>
-        <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-emerald-50 via-white to-teal-50 p-4">
-          <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-8 text-center">
-            <div className="w-16 h-16 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-4">
-              <svg className="w-8 h-8 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-            </div>
-            <h1 className="text-2xl font-bold text-gray-800 mb-2">Pre-Check Phase</h1>
-            <p className="text-gray-600 mb-4">
-              You can complete pre-checks now. The assessment will start automatically at the scheduled time.
-            </p>
-            {startTime && (
-              <div className="bg-emerald-50 rounded-lg p-4 mb-4">
-                <p className="text-sm text-emerald-800 font-semibold mb-1">Assessment starts at</p>
-                <p className="text-lg text-emerald-700 font-bold">
-                  {startTime.toLocaleString("en-US", {
-                    month: "short",
-                    day: "numeric",
-                    year: "numeric",
-                    hour: "numeric",
-                    minute: "2-digit",
-                    hour12: true,
-                  })}
-                </p>
-              </div>
-            )}
-            <p className="text-sm text-gray-500">
-              The assessment will automatically start when the scheduled time arrives. This page will refresh automatically.
-            </p>
+      <div style={{ backgroundColor: "#FAFCFB", minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: "1rem" }}>
+        <div style={{ maxWidth: "480px", width: "100%", backgroundColor: "#ffffff", borderRadius: "1rem", padding: "3rem 2rem", textAlign: "center", border: "1px solid #E5E7EB", boxShadow: "0 10px 25px -5px rgba(0, 0, 0, 0.05)" }}>
+          <div style={{ width: "64px", height: "64px", backgroundColor: "#F9FAFB", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 1.5rem auto", border: "1px solid #E5E7EB" }}>
+            <Clock size={32} color="#00684A" />
           </div>
+          <h1 style={{ margin: "0 0 1rem 0", color: "#111827", fontSize: "1.75rem", fontWeight: 800, letterSpacing: "-0.025em" }}>Pre-Check Phase</h1>
+          <p style={{ margin: "0 0 1.5rem 0", color: "#4B5563", fontSize: "1rem", lineHeight: "1.6" }}>
+            You have successfully completed your pre-checks. The assessment will begin automatically at the scheduled time.
+          </p>
+          
+          {startTime && (
+            <div style={{ backgroundColor: "#F9FAFB", border: "1px solid #E5E7EB", borderRadius: "0.75rem", padding: "1.5rem", marginBottom: "1.5rem" }}>
+              <p style={{ margin: "0 0 0.25rem 0", fontSize: "0.875rem", color: "#4B5563", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>Assessment Starts At</p>
+              <p style={{ margin: 0, fontSize: "1.5rem", fontWeight: 800, color: "#111827" }}>
+                {startTime.toLocaleString("en-US", {
+                  month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit", hour12: true,
+                })}
+              </p>
+            </div>
+          )}
+          
+          <p style={{ margin: 0, fontSize: "0.875rem", color: "#6B7280", fontStyle: "italic" }}>
+            Please remain on this page. It will refresh automatically when it's time to begin.
+          </p>
         </div>
-        {/* Fullscreen Lock Overlay - only when AI Proctoring enabled */}
         {cameraProctorEnabled && (
           <FullscreenLockOverlay
             isLocked={isFullscreenLocked}
@@ -1287,49 +843,53 @@ export default function AIMLTestTakePage() {
             warningText={fullscreenExitCount > 0 ? "Exiting fullscreen is recorded as a violation." : undefined}
           />
         )}
-      </>
+      </div>
     )
   }
 
+  // ============================================================================
+  // RENDER: SUBMITTED
+  // ============================================================================
   if (submitted) {
     return (
-      <>
-        <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-emerald-50 to-teal-50">
-          <div className="text-center bg-white p-8 rounded-2xl shadow-lg max-w-md">
-            <div className="w-20 h-20 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-6">
-              <svg className="w-10 h-10 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-              </svg>
-            </div>
-            <h1 className="text-2xl font-bold text-gray-800 mb-2">Test Submitted!</h1>
-            <p className="text-gray-600 mb-4">Your answers have been recorded and are being evaluated by AI.</p>
+      <div style={{ backgroundColor: "#FAFCFB", minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: "1rem" }}>
+        <div style={{ maxWidth: "480px", width: "100%", backgroundColor: "#ffffff", borderRadius: "1rem", padding: "3.5rem 2rem", textAlign: "center", border: "1px solid #E5E7EB", boxShadow: "0 10px 25px -5px rgba(0, 0, 0, 0.05)" }}>
+          <div style={{ width: "80px", height: "80px", backgroundColor: "#F9FAFB", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 1.5rem auto", border: "2px solid #E5E7EB" }}>
+            <CheckCircle size={40} color="#00684A" strokeWidth={2.5} />
+          </div>
+          <h1 style={{ margin: "0 0 1rem 0", color: "#111827", fontSize: "2rem", fontWeight: 800, letterSpacing: "-0.025em" }}>Test Submitted!</h1>
+          <p style={{ margin: "0 0 2rem 0", color: "#4B5563", fontSize: "1.05rem", lineHeight: "1.6" }}>
+            Your answers have been securely recorded and sent for evaluation.
+          </p>
           
-          <div className="bg-emerald-50 rounded-lg p-4 mb-6">
-            <p className="text-sm text-emerald-700">
-              🤖 AI is analyzing your code and outputs...
+          <div style={{ backgroundColor: "#F9FAFB", border: "1px solid #E5E7EB", borderRadius: "0.75rem", padding: "1.5rem", marginBottom: "2rem", textAlign: "left" }}>
+            <p style={{ margin: "0 0 0.75rem 0", fontSize: "0.95rem", color: "#111827", fontWeight: 600, display: "flex", alignItems: "center", gap: "0.5rem" }}>
+              <span className="animate-pulse">✨</span> Analysis in Progress...
             </p>
-            <p className="text-xs text-emerald-600 mt-2">
-              You will receive a detailed score (out of 100) and feedback from the test administrator.
+            <p style={{ margin: 0, fontSize: "0.875rem", color: "#4B5563", lineHeight: "1.5" }}>
+              Our system is reviewing your code, execution outputs, and overall approach. You will be contacted by the administrator regarding your results.
             </p>
           </div>
           
-          <p className="text-sm text-gray-500">You may close this window now.</p>
+          <p style={{ margin: 0, fontSize: "0.9rem", color: "#6B7280", fontWeight: 500 }}>
+            You may close this window safely.
+          </p>
         </div>
       </div>
-      </>
     )
   }
 
+  // ============================================================================
+  // RENDER: NOT FOUND
+  // ============================================================================
   if (!test || questions.length === 0) {
     return (
-      <>
-        <div className="min-h-screen flex items-center justify-center bg-gray-50">
-          <div className="text-center text-gray-600">
-            <p className="text-xl mb-2">Test not found</p>
-            <p className="text-sm">Please check the link and try again.</p>
-          </div>
+      <div style={{ backgroundColor: "#FAFCFB", minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: "1rem" }}>
+        <div style={{ maxWidth: "450px", width: "100%", backgroundColor: "#ffffff", borderRadius: "1rem", padding: "3rem 2rem", textAlign: "center", border: "1px solid #E5E7EB", boxShadow: "0 10px 25px -5px rgba(0, 0, 0, 0.05)" }}>
+          <AlertTriangle size={48} color="#9CA3AF" style={{ margin: "0 auto 1.5rem auto" }} />
+          <p style={{ margin: "0 0 0.5rem 0", color: "#111827", fontSize: "1.5rem", fontWeight: 700 }}>Test Not Found</p>
+          <p style={{ margin: 0, color: "#6B7280", fontSize: "1rem" }}>Please double-check your assessment link and try again.</p>
         </div>
-        {/* Fullscreen Lock Overlay - only when AI Proctoring enabled */}
         {cameraProctorEnabled && (
           <FullscreenLockOverlay
             isLocked={isFullscreenLocked}
@@ -1339,337 +899,129 @@ export default function AIMLTestTakePage() {
             warningText={fullscreenExitCount > 0 ? "Exiting fullscreen is recorded as a violation." : undefined}
           />
         )}
-      </>
+      </div>
     )
   }
 
+  // ============================================================================
+  // COMPUTE STATES FOR ACTIVE UI
+  // ============================================================================
+  const allQuestionsCompleted = questions.length > 0 && questions.every(q => completedQuestions.has(q.id) || expiredQuestions.has(q.id))
+
+  // Extract timer logic to prevent huge inline blocks
+  let timerDisplay = null;
+  if (test.timer_mode === 'PER_QUESTION' && currentQuestion && examStarted) {
+    const questionTime = timer.questionTimeRemaining[currentQuestion.id] || 0;
+    if (questionTime > 0) {
+      timerDisplay = (
+        <div style={{ 
+          padding: "0.75rem 1.25rem", borderRadius: "0.5rem", fontFamily: "monospace", fontWeight: 800, fontSize: "1.5rem", display: "flex", alignItems: "center", justifyContent: "center", gap: "0.5rem",
+          backgroundColor: questionTime < 60 ? "#FEF2F2" : "#FFFFFF",
+          color: questionTime < 60 ? "#DC2626" : "#111827",
+          border: `1px solid ${questionTime < 60 ? "#FECACA" : "#E5E7EB"}`,
+          boxShadow: "inset 0 2px 4px rgba(0,0,0,0.02)"
+        }}>
+          <Timer size={24} color={questionTime < 60 ? "#DC2626" : "#6B7280"} />
+          {Math.floor(questionTime / 60)}:{String(questionTime % 60).padStart(2, '0')}
+        </div>
+      );
+    }
+  } else if (timeRemaining !== null && !isNaN(timeRemaining) && timeRemaining >= 0) {
+    const displayTime = `${Math.floor(timeRemaining / 60)}:${String(timeRemaining % 60).padStart(2, '0')}`;
+    timerDisplay = (
+      <div style={{ 
+        padding: "0.75rem 1.25rem", borderRadius: "0.5rem", fontFamily: "monospace", fontWeight: 800, fontSize: "1.5rem", display: "flex", alignItems: "center", justifyContent: "center", gap: "0.5rem",
+        backgroundColor: timeRemaining < 300 ? "#FEF2F2" : "#FFFFFF",
+        color: timeRemaining < 300 ? "#DC2626" : "#111827",
+        border: `1px solid ${timeRemaining < 300 ? "#FECACA" : "#E5E7EB"}`,
+        boxShadow: "inset 0 2px 4px rgba(0,0,0,0.02)"
+      }}>
+        <Timer size={24} color={timeRemaining < 300 ? "#DC2626" : "#6B7280"} />
+        {displayTime}
+      </div>
+    );
+  }
+
+  // ============================================================================
+  // RENDER: ACTIVE TEST UI (Responsive Emerald Left-Sidebar Layout)
+  // ============================================================================
   return (
-    <div className="min-h-screen flex flex-col bg-gray-50">
+    <div className="flex flex-col md:flex-row h-screen bg-white font-sans overflow-hidden">
       <ViolationToast />
       {webcamTile}
       
-      {/* In-page Notification (doesn't break fullscreen) */}
+      {/* Top-Right Notification System */}
       {notification && (
-        <div className={`fixed top-4 right-4 z-[9999] max-w-md ${
-          notification.type === 'success' ? 'bg-emerald-600' : 
-          notification.type === 'error' ? 'bg-red-600' : 
-          'bg-blue-600'
-        } text-white px-6 py-4 rounded-lg shadow-xl flex items-start gap-3`}>
-          <div className="flex-shrink-0 mt-0.5">
-            {notification.type === 'success' ? (
-              <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-            ) : notification.type === 'error' ? (
-              <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-            ) : (
-              <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-            )}
+        <div style={{
+          position: "fixed", top: "1rem", right: "1rem", zIndex: 9999, maxWidth: "400px",
+          backgroundColor: notification.type === 'success' ? '#00684A' : notification.type === 'error' ? '#DC2626' : '#2563EB',
+          color: "#ffffff", padding: "1rem 1.25rem", borderRadius: "0.5rem", boxShadow: "0 10px 15px -3px rgba(0, 0, 0, 0.1)",
+          display: "flex", alignItems: "flex-start", gap: "0.75rem", animation: "slideIn 0.3s ease-out forwards"
+        }}>
+          <div style={{ marginTop: "0.125rem" }}>
+            {notification.type === 'success' ? <CheckCircle2 size={20} /> : notification.type === 'error' ? <AlertTriangle size={20} /> : <Clock size={20} />}
           </div>
-          <div className="flex-1">
-            <p className="font-medium text-sm leading-relaxed">{notification.message}</p>
+          <div style={{ flex: 1 }}>
+            <p style={{ margin: 0, fontWeight: 500, fontSize: "0.9rem", lineHeight: "1.4" }}>{notification.message}</p>
           </div>
-          <button
-            onClick={() => setNotification(null)}
-            className="flex-shrink-0 text-white/80 hover:text-white transition-colors"
-            aria-label="Close notification"
-          >
-            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
+          <button onClick={() => setNotification(null)} style={{ background: "transparent", border: "none", color: "rgba(255,255,255,0.8)", cursor: "pointer", padding: 0 }}>
+            <XCircle size={18} />
           </button>
         </div>
       )}
       
-      {/* Submit Confirmation Modal (doesn't break fullscreen) */}
+      {/* Submit Confirmation Modal */}
       {showSubmitConfirm && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[9998]" onClick={() => setShowSubmitConfirm(false)}>
-          <div className="bg-white rounded-lg shadow-xl p-6 max-w-md mx-4 z-[9999]" onClick={(e) => e.stopPropagation()}>
-            <div className="text-center">
-              <div className="mb-4">
-                <svg className="mx-auto h-12 w-12 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                </svg>
-              </div>
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">Confirm Submission</h3>
-              <p className="text-sm text-gray-600 mb-2">
-                Are you sure you want to submit the test?
-              </p>
-              <p className="text-sm text-gray-600 mb-4">
-                Your answers will be evaluated by AI and you will receive a score and feedback.
-              </p>
-              <p className="text-xs text-red-600 font-medium mb-6">
-                This action cannot be undone.
-              </p>
-              <div className="flex gap-3 justify-center">
-                <button
-                  onClick={() => setShowSubmitConfirm(false)}
-                  className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors font-medium"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleConfirmSubmit}
-                  disabled={submitting}
-                  className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {submitting ? 'Submitting...' : 'Yes, Submit Test'}
-                </button>
-              </div>
+        <div style={{ position: "fixed", inset: 0, backgroundColor: "rgba(17, 24, 39, 0.8)", backdropFilter: "blur(4px)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 9998 }} onClick={() => setShowSubmitConfirm(false)}>
+          <div style={{ backgroundColor: "#ffffff", borderRadius: "1rem", padding: "2rem", maxWidth: "450px", width: "90%", textAlign: "center", boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.25)", zIndex: 9999 }} onClick={(e) => e.stopPropagation()}>
+            <div style={{ width: "64px", height: "64px", backgroundColor: "#F9FAFB", border: "1px solid #E5E7EB", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 1.25rem auto" }}>
+              <AlertTriangle size={32} color="#00684A" />
+            </div>
+            <h3 style={{ margin: "0 0 0.5rem 0", fontSize: "1.25rem", fontWeight: 700, color: "#111827" }}>Confirm Submission</h3>
+            <p style={{ margin: "0 0 0.5rem 0", fontSize: "0.95rem", color: "#4B5563", lineHeight: "1.5" }}>Are you sure you want to finalize and submit the test?</p>
+            <p style={{ margin: "0 0 1.5rem 0", fontSize: "0.95rem", color: "#4B5563", lineHeight: "1.5" }}>Your answers will be saved and you will receive a score soon.</p>
+            <p style={{ margin: "0 0 2rem 0", fontSize: "0.85rem", color: "#DC2626", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>This action cannot be undone.</p>
+            
+            <div style={{ display: "flex", gap: "0.75rem", justifyItems: "center", justifyContent: "center" }}>
+              <button
+                onClick={() => setShowSubmitConfirm(false)}
+                style={{ padding: "0.75rem 1.5rem", backgroundColor: "#ffffff", color: "#374151", borderRadius: "0.5rem", border: "1px solid #D1D5DB", fontWeight: 600, cursor: "pointer", transition: "all 0.2s", height: "44px", display: "flex", alignItems: "center" }}
+                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = "#F9FAFB"}
+                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = "#ffffff"}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleConfirmSubmit}
+                disabled={submitting}
+                style={{ padding: "0.75rem 1.5rem", backgroundColor: "#00684A", color: "#ffffff", borderRadius: "0.5rem", border: "none", fontWeight: 600, cursor: submitting ? "not-allowed" : "pointer", opacity: submitting ? 0.7 : 1, transition: "all 0.2s", height: "44px", display: "flex", alignItems: "center" }}
+                onMouseEnter={(e) => { if(!submitting) e.currentTarget.style.backgroundColor = "#084A2A" }}
+                onMouseLeave={(e) => { if(!submitting) e.currentTarget.style.backgroundColor = "#00684A" }}
+              >
+                {submitting ? 'Submitting...' : 'Yes, Submit Test'}
+              </button>
             </div>
           </div>
         </div>
       )}
-      
-      {/* Header with Timer and Navigation */}
-      <header className="bg-white border-b border-emerald-200 shadow-sm">
-        <div className="px-4 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <h1 className="text-lg font-semibold text-gray-800">{test.title}</h1>
-            <span className="px-2 py-1 bg-emerald-100 text-emerald-700 rounded-full text-xs font-medium">
-              AIML Assessment
-            </span>
-          </div>
-          
-          <div className="flex items-center gap-4">
-            {/* Timer */}
-{test.timer_mode === 'PER_QUESTION' && currentQuestion && examStarted ? (
-  (() => {
-    const questionTime = timer.questionTimeRemaining[currentQuestion.id] || 0;
-    return questionTime > 0 ? (
-      <div className={`px-4 py-1.5 rounded text-sm font-mono font-bold flex items-center gap-2 border ${
-        questionTime < 60 ? 'bg-red-50 text-red-700 border-red-200' : 
-        questionTime < 180 ? 'bg-amber-50 text-amber-700 border-amber-200' : 
-        'bg-[#F0F9F4] text-[#00684A] border-[#E1F2E9]'
-      }`}>
-        <Timer className="w-4 h-4 opacity-70" strokeWidth={2.5} />
-        {Math.floor(questionTime / 60)}:{String(questionTime % 60).padStart(2, '0')}
-      </div>
-    ) : null;
-  })()
-) : (
-  timeRemaining !== null && !isNaN(timeRemaining) && timeRemaining >= 0 && (
-    (() => {
-      const displayTime = `${Math.floor(timeRemaining / 60)}:${String(timeRemaining % 60).padStart(2, '0')}`;
-      return (
-        <div 
-          key={`timer-${timeRemaining}`}
-          className={`px-4 py-1.5 rounded text-sm font-mono font-bold flex items-center gap-2 border ${
-            timeRemaining < 300 ? 'bg-red-50 text-red-700 border-red-200' : 
-            timeRemaining < 600 ? 'bg-amber-50 text-amber-700 border-amber-200' : 
-            'bg-gray-50 text-gray-700 border-gray-200'
-          }`}
-          title="Total Time Remaining"
-        >
-          <Timer className="w-4 h-4 opacity-70" strokeWidth={2.5} />
-          {displayTime}
-        </div>
-      );
-    })()
-  )
-)}
-            
-            
-            {examStarted && (() => {
-              // Check if all questions have been submitted
-              const allQuestionsCompleted = questions.length > 0 && 
-                questions.every(q => completedQuestions.has(q.id) || expiredQuestions.has(q.id))
-              const incompleteQuestions = questions.filter(q => 
-                !completedQuestions.has(q.id) && !expiredQuestions.has(q.id)
-              )
-              
-              return (
-                <div className="flex flex-col items-end gap-2">
-                  <button
-                    onClick={() => {
-                      if (allQuestionsCompleted) {
-                        // Call handleSubmitTest directly - it will show in-page confirmation modal (doesn't break fullscreen)
-                        handleSubmitTest()
-                      } else {
-                        // Show in-page notification (doesn't break fullscreen)
-                        setNotification({
-                          message: `Please submit all questions before submitting the test. Remaining: ${incompleteQuestions.length} question${incompleteQuestions.length > 1 ? 's' : ''}`,
-                          type: 'error'
-                        })
-                      }
-                    }}
-                    disabled={submitting || !allQuestionsCompleted}
-                    className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-md hover:shadow-lg"
-                    title={!allQuestionsCompleted ? `Submit all ${incompleteQuestions.length} remaining question${incompleteQuestions.length > 1 ? 's' : ''} first` : ''}
-                  >
-                    {submitting ? 'Submitting...' : 'Submit Test'}
-                  </button>
-                </div>
-              )
-            })()}
-          </div>
-        </div>
-        
-        {/* Question Navigation - Only show when exam started */}
-        {examStarted && (
-          <div className="px-4 py-2 bg-gray-50 border-t border-gray-100 flex items-center justify-between gap-2">
-            {/* Previous Button - Disabled for PER_QUESTION mode (no going back) */}
-            <button
-              onClick={() => {
-                const prevIndex = currentQuestionIndex - 1
-                if (prevIndex >= 0) {
-                  const prevQuestion = questions[prevIndex]
-                  // Only allow navigation if not PER_QUESTION mode and question not expired
-                  if (test.timer_mode !== 'PER_QUESTION' && !expiredQuestions.has(prevQuestion.id)) {
-                    setCurrentQuestionIndex(prevIndex)
-                  }
-                }
-              }}
-              disabled={
-                test.timer_mode === 'PER_QUESTION' || 
-                currentQuestionIndex === 0 || 
-                (currentQuestionIndex > 0 && expiredQuestions.has(questions[currentQuestionIndex - 1]?.id))
-              }
-              className="px-3 py-1.5 rounded-lg text-sm font-medium transition-colors bg-white border border-gray-300 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              ← Previous
-            </button>
-            
-            {/* Question Tabs */}
-            <div className="flex items-center gap-2 overflow-x-auto flex-1">
-              {questions.map((q, idx) => {
-                const isExpired = expiredQuestions.has(q.id)
-                const isLocked = test.timer_mode === 'PER_QUESTION' && !unlockedQuestions.has(q.id)
-                const isCompleted = completedQuestions.has(q.id)
-                const isCurrent = idx === currentQuestionIndex
-                
-                return (
-                  <button
-                    key={q.id}
-                    onClick={() => {
-                      // Only allow navigation to unlocked questions
-                      if (!isLocked && !isExpired) {
-                        setCurrentQuestionIndex(idx)
-                      }
-                    }}
-                    disabled={isLocked || isExpired}
-                    className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors whitespace-nowrap ${
-                      isCurrent
-                        ? 'bg-emerald-600 text-white'
-                        : isLocked
-                          ? 'bg-gray-200 text-gray-400 cursor-not-allowed border border-gray-300'
-                          : isExpired
-                            ? 'bg-gray-200 text-gray-400 cursor-not-allowed border border-gray-300'
-                            : isCompleted
-                              ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200'
-                              : codeAnswers[q.id] && codeAnswers[q.id].trim() !== ''
-                                ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200'
-                                : 'bg-white text-gray-600 hover:bg-gray-100 border border-gray-200'
-                    }`}
-                    title={
-                      isLocked 
-                        ? 'This question is locked. Complete previous questions first.' 
-                        : isExpired 
-                          ? 'Time expired for this question' 
-                          : ''
-                    }
-                  >
-                    Q{idx + 1}
-                    {isLocked && ' 🔒'}
-                  </button>
-                )
-              })}
-            </div>
-            
-            {/* Next Button - Disabled until current question is completed (for PER_QUESTION mode) */}
-            <button
-              onClick={() => {
-                const nextIndex = currentQuestionIndex + 1
-                // Safety check: ensure next question exists
-                if (nextIndex < questions.length && questions[nextIndex]) {
-                  const nextQuestion = questions[nextIndex]
-                  // Only allow navigation if question is unlocked
-                  if (test.timer_mode !== 'PER_QUESTION' || unlockedQuestions.has(nextQuestion.id)) {
-                    setCurrentQuestionIndex(nextIndex)
-                  }
-                }
-              }}
-              disabled={
-                // Disable if it's the last question (no next question exists)
-                currentQuestionIndex >= questions.length - 1 ||
-                // OR if in PER_QUESTION mode and current question isn't completed/expired
-                (test.timer_mode === 'PER_QUESTION' && 
-                 currentQuestion && 
-                 !completedQuestions.has(currentQuestion.id) &&
-                 !expiredQuestions.has(currentQuestion.id)) ||
-                // OR if next question doesn't exist (safety check)
-                !questions[currentQuestionIndex + 1]
-              }
-              className="px-3 py-1.5 rounded-lg text-sm font-medium transition-colors bg-white border border-gray-300 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-              title={
-                currentQuestionIndex >= questions.length - 1 || !questions[currentQuestionIndex + 1]
-                  ? 'No more questions'
-                  : test.timer_mode === 'PER_QUESTION' && 
-                    currentQuestion && 
-                    !completedQuestions.has(currentQuestion.id) &&
-                    !expiredQuestions.has(currentQuestion.id)
-                  ? 'Complete or wait for timer to expire on current question'
-                  : ''
-              }
-            >
-              Next →
-            </button>
-          </div>
-        )}
-      </header>
-
-      {/* Main Content - Competency Notebook IDE */}
-      <main className="flex-1 overflow-hidden">
-        {currentQuestion && examStarted && (
-          <AIMLCompetencyNotebook
-            key={currentQuestion.id}
-            question={currentQuestion}
-            sessionId={`test_${testId}_user_${userId}_q_${currentQuestion.id}`}
-            onCodeChange={handleCodeChange}
-            onOutputChange={handleOutputChange}
-            userId={userId || ''}
-            assessmentId={String(testId || '')}
-            onPasteViolation={(violation) => {
-              handleUniversalViolation({
-                eventType: violation.eventType as ProctoringEventType,
-                timestamp: violation.timestamp,
-                assessmentId: String(testId || ''),
-                userId: userId || '',
-                metadata: violation.metadata,
-              });
-            }}
-            onSubmit={handleSubmitQuestion}
-            showSubmit={true}
-            readOnly={expiredQuestions.has(currentQuestion.id)}
-          />
-        )}
-      </main>
 
       {/* Timer Expiry Popup Modal */}
       {showTimerExpiryPopup && expiredQuestionId && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg shadow-xl p-6 max-w-md mx-4">
-            <div className="text-center">
-              <div className="mb-4">
-                <svg className="mx-auto h-12 w-12 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-              </div>
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">Time's up!</h3>
-              <p className="text-gray-600 mb-4">Time's up! Moving to next question...</p>
-              <div className="flex justify-center">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-600"></div>
-              </div>
+        <div style={{ position: "fixed", inset: 0, backgroundColor: "rgba(17, 24, 39, 0.8)", backdropFilter: "blur(4px)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 9999 }}>
+          <div style={{ backgroundColor: "#ffffff", borderRadius: "1rem", padding: "2.5rem", maxWidth: "400px", width: "90%", textAlign: "center", boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.25)" }}>
+            <div style={{ width: "64px", height: "64px", backgroundColor: "#FEF2F2", border: "1px solid #FECACA", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 1.25rem auto" }}>
+              <Clock size={32} color="#DC2626" />
+            </div>
+            <h3 style={{ margin: "0 0 0.5rem 0", fontSize: "1.5rem", fontWeight: 800, color: "#111827" }}>Time's Up!</h3>
+            <p style={{ margin: "0 0 1.5rem 0", color: "#4B5563", fontSize: "1rem" }}>Saving your progress and advancing...</p>
+            <div style={{ display: "flex", justifyContent: "center" }}>
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-t-2 border-[#00684A]"></div>
             </div>
           </div>
         </div>
       )}
 
-      {/* Fullscreen Lock Overlay - only when AI Proctoring enabled */}
+      {/* FULLSCREEN LOCK OVERLAY */}
       {cameraProctorEnabled && (
         <FullscreenLockOverlay
           isLocked={isFullscreenLocked}
@@ -1679,6 +1031,203 @@ export default function AIMLTestTakePage() {
           warningText={fullscreenExitCount > 0 ? "Exiting fullscreen is recorded as a violation." : undefined}
         />
       )}
+
+      {/* ========================================================= */}
+      {/* SIDEBAR: Test Info, Timer, and Question List */}
+      {/* ========================================================= */}
+      {/* ========================================================= */}
+      {/* SIDEBAR: Test Info, Timer, and Question List */}
+      {/* ========================================================= */}
+      <aside className="w-full md:w-[220px] flex-shrink-0 bg-[#FAFCFB] border-b md:border-b-0 md:border-r border-[#E5E7EB] flex flex-col z-10 max-h-[35vh] md:max-h-full overflow-y-auto">
+        {/* Sidebar Header */}
+        <div style={{ padding: "1.25rem", borderBottom: "1px solid #E5E7EB", backgroundColor: "#ffffff" }}>
+          <h1 style={{ margin: "0 0 0.5rem 0", fontSize: "1.125rem", fontWeight: 800, color: "#111827", lineHeight: "1.3" }}>
+            {test.title}
+          </h1>
+          <span style={{ display: "inline-flex", alignItems: "center", gap: "0.375rem", padding: "0.25rem 0.625rem", backgroundColor: "#F9FAFB", color: "#4B5563", borderRadius: "1rem", fontSize: "0.75rem", fontWeight: 600, border: "1px solid #E5E7EB" }}>
+            <ShieldCheck size={12} /> Proctored Assessment
+          </span>
+        </div>
+
+        {/* Timer Widget */}
+        <div style={{ padding: "1.25rem 1.25rem 0.5rem 1.25rem" }}>
+          <div style={{ fontSize: "0.75rem", fontWeight: 700, color: "#6B7280", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "0.5rem" }}>
+            {test.timer_mode === 'PER_QUESTION' ? "Question Time Remaining" : "Total Time Remaining"}
+          </div>
+          {timerDisplay}
+        </div>
+
+        {/* Question List */}
+        <div style={{ flex: 1, padding: "1.25rem", display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+          <div style={{ fontSize: "0.75rem", fontWeight: 700, color: "#6B7280", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "0.25rem" }}>
+            Questions ({questions.length})
+          </div>
+          
+          {questions.map((q, idx) => {
+            const isExpired = expiredQuestions.has(q.id)
+            const isLocked = test.timer_mode === 'PER_QUESTION' && !unlockedQuestions.has(q.id)
+            const isCompleted = completedQuestions.has(q.id)
+            const isCurrent = idx === currentQuestionIndex
+            
+            const btnStyle = isCurrent 
+              ? { bg: "#ffffff", text: "#00684A", border: "#00684A", icon: <ChevronRight size={16} color="#00684A" /> }
+              : isLocked || isExpired
+                ? { bg: "#F9FAFB", text: "#9CA3AF", border: "#E5E7EB", icon: <Lock size={14} color="#9CA3AF" /> }
+                : isCompleted || (codeAnswers[q.id] && codeAnswers[q.id].trim() !== '')
+                  ? { bg: "#ffffff", text: "#059669", border: "#E5E7EB", icon: <Check size={16} color="#059669" /> }
+                  : { bg: "#ffffff", text: "#4B5563", border: "#E5E7EB", icon: <div style={{ width: "6px", height: "6px", borderRadius: "50%", backgroundColor: "#D1D5DB" }} /> }
+
+            return (
+              <button
+                key={q.id}
+                onClick={() => { if (!isLocked && !isExpired) setCurrentQuestionIndex(idx) }}
+                disabled={isLocked || isExpired}
+                style={{
+                  width: "100%", textAlign: "left", padding: "0.875rem", borderRadius: "0.5rem",
+                  backgroundColor: btnStyle.bg, color: btnStyle.text, 
+                  border: `1px solid ${btnStyle.border}`,
+                  cursor: (isLocked || isExpired) ? "not-allowed" : "pointer", 
+                  transition: "all 0.2s", display: "flex", alignItems: "center", justifyContent: "space-between",
+                  boxShadow: isCurrent ? "0 2px 4px rgba(0, 104, 74, 0.05)" : "none"
+                }}
+                onMouseEnter={(e) => { if(!isLocked && !isExpired && !isCurrent) e.currentTarget.style.backgroundColor = "#F3F4F6"; }}
+                onMouseLeave={(e) => { if(!isLocked && !isExpired && !isCurrent) e.currentTarget.style.backgroundColor = btnStyle.bg; }}
+              >
+                <div style={{ display: "flex", flexDirection: "column", gap: "0.15rem", overflow: "hidden", paddingRight: "0.5rem" }}>
+                  <span style={{ fontWeight: 700, fontSize: "0.85rem" }}>Question {idx + 1}</span>
+                  <span style={{ fontSize: "0.75rem", opacity: 0.8, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{q.title}</span>
+                </div>
+                <div style={{ flexShrink: 0 }}>
+                  {btnStyle.icon}
+                </div>
+              </button>
+            )
+          })}
+        </div>
+
+        {/* Submit Button Area */}
+        <div style={{ padding: "1.25rem", borderTop: "1px solid #E5E7EB", backgroundColor: "#ffffff", marginTop: "auto" }}>
+          <button
+            onClick={() => {
+              if (allQuestionsCompleted) {
+                handleSubmitTest()
+              } else {
+                setNotification({ message: `Please complete all questions before submitting.`, type: 'error' })
+              }
+            }}
+            disabled={submitting || !allQuestionsCompleted}
+            style={{ 
+              width: "100%", height: "44px", backgroundColor: "#00684A", color: "#ffffff", borderRadius: "0.5rem", 
+              fontSize: "0.95rem", fontWeight: 700, border: "none", cursor: (submitting || !allQuestionsCompleted) ? "not-allowed" : "pointer",
+              opacity: (submitting || !allQuestionsCompleted) ? 0.6 : 1, transition: "all 0.2s",
+              display: "flex", alignItems: "center", justifyContent: "center", gap: "0.5rem"
+            }}
+            onMouseEnter={(e) => { if(!(submitting || !allQuestionsCompleted)) e.currentTarget.style.backgroundColor = "#084A2A" }}
+            onMouseLeave={(e) => { if(!(submitting || !allQuestionsCompleted)) e.currentTarget.style.backgroundColor = "#00684A" }}
+          >
+            {submitting ? 'Submitting...' : 'Submit Assessment'}
+          </button>
+        </div>
+      </aside>
+
+      {/* ========================================================= */}
+      {/* MAIN CONTENT: Editor Header & IDE */}
+      {/* ========================================================= */}
+      <main className="flex-1 flex flex-col min-w-0 bg-white h-[65vh] md:h-full relative overflow-hidden">
+        
+        {/* Editor Top Bar */}
+        <header style={{ height: "60px", flexShrink: 0, borderBottom: "1px solid #E5E7EB", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 1.25rem", backgroundColor: "#ffffff" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
+            <h2 style={{ margin: 0, fontSize: "1.125rem", fontWeight: 700, color: "#111827" }}>
+              {currentQuestion?.title || "Loading..."}
+            </h2>
+            {currentQuestion?.difficulty && (
+              <span style={{ 
+                padding: "0.15rem 0.5rem", borderRadius: "0.25rem", fontSize: "0.7rem", fontWeight: 700, textTransform: "uppercase", 
+                backgroundColor: "#F9FAFB", color: "#4B5563", border: "1px solid #E5E7EB"
+              }}>
+                {currentQuestion.difficulty}
+              </span>
+            )}
+          </div>
+
+          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+            <button
+              onClick={() => {
+                const prevIndex = currentQuestionIndex - 1
+                if (prevIndex >= 0) {
+                  const prevQuestion = questions[prevIndex]
+                  if (test?.timer_mode !== 'PER_QUESTION' && !expiredQuestions.has(prevQuestion.id)) {
+                    setCurrentQuestionIndex(prevIndex)
+                  }
+                }
+              }}
+              disabled={test?.timer_mode === 'PER_QUESTION' || currentQuestionIndex === 0 || (currentQuestionIndex > 0 && expiredQuestions.has(questions[currentQuestionIndex - 1]?.id))}
+              style={{
+                display: "flex", alignItems: "center", justifyContent: "center", gap: "0.375rem", height: "36px", padding: "0 1rem", backgroundColor: "#ffffff", border: "1px solid #D1D5DB",
+                borderRadius: "0.375rem", fontSize: "0.875rem", fontWeight: 600, color: "#374151", cursor: "pointer", transition: "all 0.2s",
+                opacity: (test?.timer_mode === 'PER_QUESTION' || currentQuestionIndex === 0 || (currentQuestionIndex > 0 && expiredQuestions.has(questions[currentQuestionIndex - 1]?.id))) ? 0.5 : 1
+              }}
+              onMouseEnter={(e) => { if (e.currentTarget.style.opacity === '1') e.currentTarget.style.backgroundColor = "#F9FAFB" }}
+              onMouseLeave={(e) => { if (e.currentTarget.style.opacity === '1') e.currentTarget.style.backgroundColor = "#ffffff" }}
+            >
+              <ArrowLeft size={16} /> Prev
+            </button>
+            <button
+              onClick={() => {
+                const nextIndex = currentQuestionIndex + 1
+                if (nextIndex < questions.length && questions[nextIndex]) {
+                  const nextQuestion = questions[nextIndex]
+                  if (test?.timer_mode !== 'PER_QUESTION' || unlockedQuestions.has(nextQuestion.id)) {
+                    setCurrentQuestionIndex(nextIndex)
+                  }
+                }
+              }}
+              disabled={
+                currentQuestionIndex >= questions.length - 1 ||
+                (test?.timer_mode === 'PER_QUESTION' && currentQuestion && !completedQuestions.has(currentQuestion.id) && !expiredQuestions.has(currentQuestion.id)) ||
+                !questions[currentQuestionIndex + 1]
+              }
+              style={{
+                display: "flex", alignItems: "center", justifyContent: "center", gap: "0.375rem", height: "36px", padding: "0 1rem", backgroundColor: "#ffffff", border: "1px solid #D1D5DB",
+                borderRadius: "0.375rem", fontSize: "0.875rem", fontWeight: 600, color: "#374151", cursor: "pointer", transition: "all 0.2s",
+                opacity: (currentQuestionIndex >= questions.length - 1 || (test?.timer_mode === 'PER_QUESTION' && currentQuestion && !completedQuestions.has(currentQuestion.id) && !expiredQuestions.has(currentQuestion.id)) || !questions[currentQuestionIndex + 1]) ? 0.5 : 1
+              }}
+              onMouseEnter={(e) => { if (e.currentTarget.style.opacity === '1') e.currentTarget.style.backgroundColor = "#F9FAFB" }}
+              onMouseLeave={(e) => { if (e.currentTarget.style.opacity === '1') e.currentTarget.style.backgroundColor = "#ffffff" }}
+            >
+              Next <ArrowRight size={16} />
+            </button>
+          </div>
+        </header>
+
+        {/* IDE Area */}
+        <div style={{ flex: 1, position: "relative", overflow: "hidden" }}>
+          {currentQuestion && examStarted && (
+            <AIMLCompetencyNotebook
+              key={currentQuestion.id}
+              question={currentQuestion}
+              sessionId={`test_${testId}_user_${userId}_q_${currentQuestion.id}`}
+              onCodeChange={handleCodeChange}
+              onOutputChange={handleOutputChange}
+              userId={userId || ''}
+              assessmentId={String(testId || '')}
+              onPasteViolation={(violation) => {
+                handleUniversalViolation({
+                  eventType: violation.eventType as ProctoringEventType,
+                  timestamp: violation.timestamp,
+                  assessmentId: String(testId || ''),
+                  userId: userId || '',
+                  metadata: violation.metadata,
+                });
+              }}
+              onSubmit={handleSubmitQuestion}
+              showSubmit={true}
+              readOnly={expiredQuestions.has(currentQuestion.id)}
+            />
+          )}
+        </div>
+      </main>
     </div>
   )
 }
