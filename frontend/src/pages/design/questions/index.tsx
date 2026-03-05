@@ -36,7 +36,13 @@ export default function DesignQuestionsListPage() {
       const response = await fetch(`${API_URL}/questions`)
       if (response.ok) {
         const data = await response.json()
-        setQuestions(data)
+        // Sort by created_at DESC (newest first)
+        const sortedData = data.sort((a: Question, b: Question) => {
+          const dateA = new Date(a.created_at || 0).getTime()
+          const dateB = new Date(b.created_at || 0).getTime()
+          return dateB - dateA
+        })
+        setQuestions(sortedData)
       }
     } catch (error) {
       console.error('Failed to fetch questions:', error)
@@ -264,29 +270,6 @@ export default function DesignQuestionsListPage() {
                             </span>
                           </div>
                         )}
-                        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.5rem" }}>
-                          <span
-                            style={{
-                              display: "inline-flex",
-                              alignItems: "center",
-                              gap: "0.375rem",
-                              padding: "0.25rem 0.75rem",
-                              borderRadius: "0.375rem",
-                              fontSize: "0.875rem",
-                              fontWeight: 500,
-                              color: (q.is_scheduled !== undefined ? q.is_scheduled : q.is_published) ? "#059669" : "#6B7280",
-                              backgroundColor: (q.is_scheduled !== undefined ? q.is_scheduled : q.is_published) ? "#D1FAE5" : "#F3F4F6",
-                            }}
-                          >
-                            <span style={{
-                              width: "8px",
-                              height: "8px",
-                              borderRadius: "50%",
-                              backgroundColor: (q.is_scheduled !== undefined ? q.is_scheduled : q.is_published) ? "#059669" : "#6B7280",
-                            }}></span>
-                            {(q.is_scheduled !== undefined ? q.is_scheduled : q.is_published) ? "Scheduled" : "Not Scheduled"}
-                          </span>
-                        </div>
                         <p style={{ margin: 0, color: "#64748b", fontSize: "0.875rem", lineHeight: "1.5" }}>
                           {q.description.substring(0, 150)}...
                         </p>
