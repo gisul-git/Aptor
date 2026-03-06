@@ -6,11 +6,11 @@ import {
   Settings,
   CalendarClock,
   ListChecks,
-  Users,
   Server,
   Bot,
 } from "lucide-react";
 import { useCreateDevOpsTest } from "@/hooks/api/useDevOps";
+import apiClient from "@/services/api/client";
 
 type Difficulty = "easy" | "medium" | "hard";
 type QuestionKind = "command" | "terraform" | "lint";
@@ -23,34 +23,8 @@ interface DevOpsQuestion {
   kind: QuestionKind;
   points: number;
   ai_generated?: boolean;
+  is_published?: boolean;
 }
-
-const SAMPLE_QUESTIONS: DevOpsQuestion[] = [
-  {
-    id: "scenario-docker-node-fix",
-    title: "Scenario: Node.js Docker startup failure",
-    description: "Fix Dockerfile dependency installation and startup ordering for a Node.js app.",
-    difficulty: "easy",
-    kind: "lint",
-    points: 35,
-  },
-  {
-    id: "scenario-runtime-inspection",
-    title: "Scenario: Investigate unhealthy container",
-    description: "Write one command to list container names and statuses for quick triage.",
-    difficulty: "easy",
-    kind: "command",
-    points: 30,
-  },
-  {
-    id: "scenario-terraform-plan",
-    title: "Scenario: Validate infra change before apply",
-    description: "Provide minimal Terraform configuration that supports a clean plan execution.",
-    difficulty: "medium",
-    kind: "terraform",
-    points: 35,
-  },
-];
 
 function normalizeDifficulty(value: string): Difficulty {
   const lowered = String(value || "").toLowerCase();
@@ -73,12 +47,7 @@ export default function DevOpsCreateAssessmentPage() {
   const [faceMismatchEnabled, setFaceMismatchEnabled] = useState(false);
   const [liveProctoringEnabled, setLiveProctoringEnabled] = useState(false);
 
-  const [requirePhone, setRequirePhone] = useState(false);
-  const [requireResume, setRequireResume] = useState(false);
-  const [requireLinkedIn, setRequireLinkedIn] = useState(false);
-  const [requireGithub, setRequireGithub] = useState(false);
-
-  const [questions, setQuestions] = useState<DevOpsQuestion[]>(SAMPLE_QUESTIONS);
+  const [questions, setQuestions] = useState<DevOpsQuestion[]>([]);
   const [formData, setFormData] = useState({
     title: "",
     description: "",
@@ -89,26 +58,33 @@ export default function DevOpsCreateAssessmentPage() {
   });
 
   useEffect(() => {
-    try {
-      const raw = sessionStorage.getItem("devopsAIGeneratedPayload");
-      if (!raw) return;
-      const parsed = JSON.parse(raw) as { questions?: Array<Record<string, unknown>> };
-      if (!Array.isArray(parsed.questions) || parsed.questions.length === 0) return;
+    const loadPublishedQuestions = async () => {
+      try {
+        const response = await apiClient.get("/api/v1/devops/questions/published");
+        const rows = response?.data?.data || [];
+        if (!Array.isArray(rows)) {
+          setQuestions([]);
+          return;
+        }
 
-      const generated: DevOpsQuestion[] = parsed.questions.map((item, idx) => ({
-        id: String(item.id || `generated-devops-${idx + 1}`),
-        title: String(item.title || `Generated DevOps Question ${idx + 1}`),
-        description: String(item.description || "Generated DevOps question."),
-        difficulty: normalizeDifficulty(String(item.difficulty || "medium")),
-        kind: normalizeKind(String(item.kind || "command")),
-        points: Number(item.points || 10),
-        ai_generated: true,
-      }));
+        const publishedQuestions: DevOpsQuestion[] = rows.map((item: any, idx: number) => ({
+          id: String(item.question_id || item.id || item._id || `published-devops-${idx + 1}`),
+          title: String(item.title || `Published DevOps Question ${idx + 1}`),
+          description: String(item.description || "Published DevOps question."),
+          difficulty: normalizeDifficulty(String(item.difficulty || "medium")),
+          kind: normalizeKind(String(item.kind || "command")),
+          points: Number(item.points || 10),
+          ai_generated: Boolean(item.ai_generated),
+          is_published: Boolean(item.is_published),
+        }));
 
-      setQuestions(generated);
-    } catch {
-      // Keep sample list if generated payload is malformed.
-    }
+        setQuestions(publishedQuestions);
+      } catch {
+        setQuestions([]);
+      }
+    };
+
+    loadPublishedQuestions();
   }, []);
 
   const selectedQuestions = useMemo(
@@ -146,6 +122,7 @@ export default function DevOpsCreateAssessmentPage() {
         title: formData.title,
         description: formData.description,
         duration: formData.duration_minutes,
+        question_ids: selectedQuestions.map((q) => q.id),
         questions: selectedQuestions.map((q) => ({
           title: q.title,
           description: q.description,
@@ -202,12 +179,6 @@ export default function DevOpsCreateAssessmentPage() {
             aiProctoringEnabled,
             faceMismatchEnabled: aiProctoringEnabled ? faceMismatchEnabled : false,
             liveProctoringEnabled,
-          },
-          candidateRequirements: {
-            requirePhone,
-            requireResume,
-            requireLinkedIn,
-            requireGithub,
           },
         },
         questions: selectedQuestions.map((q) => ({
@@ -353,19 +324,6 @@ export default function DevOpsCreateAssessmentPage() {
                   style={{ width: "100%", padding: "0.75rem", border: "1px solid #D1D5DB", borderRadius: "0.5rem" }}
                 />
               </div>
-            </div>
-          </div>
-
-          <div style={{ backgroundColor: "#fff", padding: "2rem", borderRadius: "1rem", border: "1px solid #E5E7EB" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "1.5rem", paddingBottom: "1rem", borderBottom: "1px solid #F3F4F6" }}>
-              <Users size={20} color="#00684A" />
-              <h2 style={{ margin: 0, fontSize: "1.25rem", fontWeight: 700, color: "#111827" }}>Candidate Requirements</h2>
-            </div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.75rem" }}>
-              <label style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}><input type="checkbox" checked={requirePhone} onChange={(e) => setRequirePhone(e.target.checked)} style={{ accentColor: "#00684A" }} /> Phone Number</label>
-              <label style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}><input type="checkbox" checked={requireResume} onChange={(e) => setRequireResume(e.target.checked)} style={{ accentColor: "#00684A" }} /> Resume Upload</label>
-              <label style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}><input type="checkbox" checked={requireLinkedIn} onChange={(e) => setRequireLinkedIn(e.target.checked)} style={{ accentColor: "#00684A" }} /> LinkedIn URL</label>
-              <label style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}><input type="checkbox" checked={requireGithub} onChange={(e) => setRequireGithub(e.target.checked)} style={{ accentColor: "#00684A" }} /> GitHub URL</label>
             </div>
           </div>
 

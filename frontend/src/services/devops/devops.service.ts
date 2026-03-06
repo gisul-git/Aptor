@@ -32,6 +32,7 @@ export interface CreateDevOpsTestDto {
   title: string;
   description?: string;
   duration?: number;
+  question_ids?: string[];
   questions?: Omit<DevOpsQuestion, 'id'>[];
 }
 

@@ -67,3 +67,15 @@ class DevOpsQuestion(DevOpsQuestionBase):
         "arbitrary_types_allowed": True,
         "json_encoders": {PyObjectId: str},
     }
+
+
+class DevOpsAIGenerationRequest(BaseModel):
+    yearsOfExperience: str = "2-4 years"
+    difficulty: str = "intermediate"
+    topicsRequired: str = "CI/CD pipelines"
+    questionCount: int = 3
+    jobRole: str = "DevOps Engineer"
+    timeLimit: int = 60
+    focusArea: str = "balanced"
+    title: str = "DevOps AI Assessment"
+    description: str = ""

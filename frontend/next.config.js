@@ -51,7 +51,17 @@ const nextConfig = {
                      ? 'http://api-gateway:80'  // Azure Container Apps service name
                      : 'http://localhost:80');  // API Gateway on port 80 for local development
     
-    return [
+    const devopsUrl = process.env.DEVOPS_SERVICE_URL;
+
+    const rewrites = [
+      ...(devopsUrl
+        ? [
+            {
+              source: '/api/v1/devops/:path*',
+              destination: `${devopsUrl}/api/v1/devops/:path*`,
+            },
+          ]
+        : []),
       {
         source: '/api/v1/:path*',
         destination: `${apiUrl}/api/v1/:path*`, 
@@ -61,6 +71,7 @@ const nextConfig = {
         destination: `${apiUrl}/api/v2/:path*`, 
       },
     ];
+    return rewrites;
   },
   // Ensure static files in public/ are served with correct MIME types
   async headers() {

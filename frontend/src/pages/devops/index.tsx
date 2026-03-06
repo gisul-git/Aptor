@@ -56,7 +56,18 @@ export default function DevOpsMainPage() {
         </div>
 
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: "1.5rem" }}>
-          <Link href="/devops/questions" style={{ textDecoration: "none" }}>
+          <div
+            role="button"
+            tabIndex={0}
+            onClick={() => router.push("/devops/questions")}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                router.push("/devops/questions");
+              }
+            }}
+            style={{ textDecoration: "none" }}
+          >
             <div
               style={{
                 backgroundColor: "#ffffff",
@@ -105,7 +116,7 @@ export default function DevOpsMainPage() {
                 </span>
               </div>
             </div>
-          </Link>
+          </div>
 
           <Link href="/devops/questions/create" style={{ textDecoration: "none" }}>
             <div

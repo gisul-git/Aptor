@@ -32,7 +32,7 @@ if (!(Test-Path '.\.venv\Scripts\python.exe')) {
 }
 uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 "@
-Start-ServiceWindow -Title "DevOps FastAPI :8000" -WorkingDir $devopsApiDir -Command $devopsCommand
+Start-ServiceWindow -Title "DevOps FastAPI :8010" -WorkingDir $devopsApiDir -Command ($devopsCommand -replace "8000","8010")
 
 # API Gateway
 $gatewayCommand = @"
@@ -49,6 +49,6 @@ npm run dev -- -p 3001
 Start-ServiceWindow -Title "Frontend :3001" -WorkingDir $frontendDir -Command $frontendCommand
 
 Write-Host "Started:"
-Write-Host " - DevOps FastAPI: http://localhost:8000"
+Write-Host " - DevOps FastAPI: http://localhost:8010"
 Write-Host " - API Gateway:   http://localhost:8080"
 Write-Host " - Frontend:      http://localhost:3001/devops"

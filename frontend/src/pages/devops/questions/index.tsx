@@ -15,6 +15,7 @@ import {
   FileText,
   Server,
 } from "lucide-react";
+import apiClient from "@/services/api/client";
 
 type Difficulty = "easy" | "medium" | "hard";
 type QuestionKind = "command" | "terraform" | "lint";
@@ -29,43 +30,11 @@ interface DevOpsQuestionView {
   ai_generated?: boolean;
   is_published: boolean;
   created_at: string;
+  instructions?: string[];
+  constraints?: string[];
+  hints?: string[];
+  starterCode?: string;
 }
-
-const SAMPLE_QUESTIONS: DevOpsQuestionView[] = [
-  {
-    id: "scenario-docker-node-fix",
-    title: "Scenario: Node.js Docker startup failure",
-    description:
-      "A Node.js app fails to start in Docker with missing dependencies. Fix the Dockerfile to install dependencies in a cache-friendly order.",
-    difficulty: "easy",
-    kind: "lint",
-    points: 35,
-    is_published: true,
-    created_at: new Date().toISOString(),
-  },
-  {
-    id: "scenario-runtime-inspection",
-    title: "Scenario: Investigate unhealthy container",
-    description:
-      "Write one operational command to list container names and statuses for quick triage.",
-    difficulty: "easy",
-    kind: "command",
-    points: 30,
-    is_published: true,
-    created_at: new Date().toISOString(),
-  },
-  {
-    id: "scenario-terraform-plan",
-    title: "Scenario: Validate infra change before apply",
-    description:
-      "Prepare minimal Terraform configuration that supports plan execution successfully.",
-    difficulty: "medium",
-    kind: "terraform",
-    points: 35,
-    is_published: false,
-    created_at: new Date().toISOString(),
-  },
-];
 
 interface DeleteConfirmModalProps {
   isOpen: boolean;
@@ -153,6 +122,130 @@ function DeleteConfirmModal({ isOpen, questionTitle, onConfirm, onCancel }: Dele
   );
 }
 
+interface PreviewModalProps {
+  isOpen: boolean;
+  question: DevOpsQuestionView | null;
+  onClose: () => void;
+}
+
+function PreviewModal({ isOpen, question, onClose }: PreviewModalProps) {
+  if (!isOpen || !question) return null;
+  return (
+    <div
+      style={{
+        position: "fixed",
+        inset: 0,
+        backgroundColor: "rgba(17, 24, 39, 0.7)",
+        backdropFilter: "blur(4px)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        zIndex: 10000,
+        padding: "1rem",
+      }}
+      onClick={onClose}
+    >
+      <div
+        style={{
+          backgroundColor: "#ffffff",
+          borderRadius: "1rem",
+          width: "100%",
+          maxWidth: "860px",
+          maxHeight: "85vh",
+          overflowY: "auto",
+          padding: "2rem",
+          boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.25)",
+          border: "1px solid #E5E7EB",
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div style={{ display: "flex", justifyContent: "space-between", gap: "1rem", marginBottom: "1rem" }}>
+          <div>
+            <h3 style={{ margin: 0, fontSize: "1.4rem", fontWeight: 800, color: "#111827" }}>{question.title}</h3>
+            <p style={{ margin: "0.45rem 0 0 0", color: "#6B7280", fontSize: "0.9rem" }}>
+              {question.kind.toUpperCase()} | {question.difficulty.toUpperCase()} | {question.points} points
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            style={{
+              border: "1px solid #D1D5DB",
+              backgroundColor: "#ffffff",
+              color: "#374151",
+              borderRadius: "0.5rem",
+              padding: "0.55rem 0.9rem",
+              fontWeight: 600,
+              cursor: "pointer",
+              height: "fit-content",
+            }}
+          >
+            Close
+          </button>
+        </div>
+
+        <div style={{ marginBottom: "1rem", padding: "1rem", borderRadius: "0.65rem", border: "1px solid #E5E7EB", background: "#FAFCFB" }}>
+          <p style={{ margin: 0, color: "#374151", lineHeight: "1.65", whiteSpace: "pre-wrap" }}>{question.description}</p>
+        </div>
+
+        {Array.isArray(question.instructions) && question.instructions.length > 0 && (
+          <div style={{ marginBottom: "1rem" }}>
+            <h4 style={{ margin: "0 0 0.4rem 0", fontSize: "0.95rem", color: "#111827" }}>Instructions</h4>
+            <ul style={{ margin: 0, paddingLeft: "1.2rem", color: "#374151", lineHeight: "1.6" }}>
+              {question.instructions.map((item, idx) => (
+                <li key={`ins-${question.id}-${idx}`}>{item}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {Array.isArray(question.constraints) && question.constraints.length > 0 && (
+          <div style={{ marginBottom: "1rem" }}>
+            <h4 style={{ margin: "0 0 0.4rem 0", fontSize: "0.95rem", color: "#111827" }}>Constraints</h4>
+            <ul style={{ margin: 0, paddingLeft: "1.2rem", color: "#374151", lineHeight: "1.6" }}>
+              {question.constraints.map((item, idx) => (
+                <li key={`con-${question.id}-${idx}`}>{item}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {Array.isArray(question.hints) && question.hints.length > 0 && (
+          <div style={{ marginBottom: "1rem" }}>
+            <h4 style={{ margin: "0 0 0.4rem 0", fontSize: "0.95rem", color: "#111827" }}>Hints</h4>
+            <ul style={{ margin: 0, paddingLeft: "1.2rem", color: "#374151", lineHeight: "1.6" }}>
+              {question.hints.map((item, idx) => (
+                <li key={`hint-${question.id}-${idx}`}>{item}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {question.starterCode && (
+          <div>
+            <h4 style={{ margin: "0 0 0.4rem 0", fontSize: "0.95rem", color: "#111827" }}>Starter Code</h4>
+            <pre
+              style={{
+                margin: 0,
+                padding: "1rem",
+                borderRadius: "0.65rem",
+                border: "1px solid #E5E7EB",
+                backgroundColor: "#F9FAFB",
+                color: "#111827",
+                overflowX: "auto",
+                fontSize: "0.83rem",
+                lineHeight: "1.5",
+              }}
+            >
+              {question.starterCode}
+            </pre>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function normalizeDifficulty(value: string): Difficulty {
   const lowered = String(value || "").toLowerCase();
   if (lowered === "easy" || lowered === "medium" || lowered === "hard") return lowered;
@@ -178,35 +271,45 @@ function getDifficultyColor(difficulty: Difficulty) {
 
 export default function DevOpsQuestionsPage() {
   const router = useRouter();
-  const [questions, setQuestions] = useState<DevOpsQuestionView[]>(SAMPLE_QUESTIONS);
+  const [questions, setQuestions] = useState<DevOpsQuestionView[]>([]);
+  const [previewQuestion, setPreviewQuestion] = useState<DevOpsQuestionView | null>(null);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [questionToDelete, setQuestionToDelete] = useState<{ id: string; title: string } | null>(null);
   const [successToast, setSuccessToast] = useState({ isOpen: false, message: "" });
   const [errorToast, setErrorToast] = useState({ isOpen: false, message: "" });
 
-  useEffect(() => {
+  const loadQuestionsFromDb = async () => {
     try {
-      const raw = sessionStorage.getItem("devopsAIGeneratedPayload");
-      if (!raw) return;
-      const parsed = JSON.parse(raw) as { questions?: Array<Record<string, unknown>> };
-      if (!Array.isArray(parsed.questions) || parsed.questions.length === 0) return;
-
-      const generated = parsed.questions.map((item, idx) => ({
-        id: String(item.id || `generated-devops-${idx + 1}`),
-        title: String(item.title || `Generated DevOps Question ${idx + 1}`),
-        description: String(item.description || "Generated DevOps question."),
-        difficulty: normalizeDifficulty(String(item.difficulty || "medium")),
-        kind: normalizeKind(String(item.kind || "command")),
-        points: Number(item.points || 10),
-        ai_generated: true,
-        is_published: true,
-        created_at: new Date().toISOString(),
+      const response = await apiClient.get("/api/devops/questions");
+      const rows = response?.data?.data || [];
+      if (!Array.isArray(rows)) {
+        setQuestions([]);
+        return;
+      }
+      const mapped: DevOpsQuestionView[] = rows.map((q: any, idx: number) => ({
+        id: String(q.id || q._id || `devops-question-${idx + 1}`),
+        title: String(q.title || `DevOps Question ${idx + 1}`),
+        description: String(q.description || ""),
+        difficulty: normalizeDifficulty(String(q.difficulty || "medium")),
+        kind: normalizeKind(String(q.kind || "command")),
+        points: Number(q.points || 10),
+        ai_generated: Boolean(q.ai_generated),
+        is_published: Boolean(q.is_published),
+        created_at: String(q.created_at || new Date().toISOString()),
+        instructions: Array.isArray(q.instructions) ? q.instructions.map(String) : [],
+        constraints: Array.isArray(q.constraints) ? q.constraints.map(String) : [],
+        hints: Array.isArray(q.hints) ? q.hints.map(String) : [],
+        starterCode: String(q.starterCode || q.starter_code?.bash || q.starter_code || ""),
       }));
-
-      setQuestions(generated);
+      setQuestions(mapped);
     } catch {
-      setErrorToast({ isOpen: true, message: "Failed to load generated DevOps questions." });
+      setQuestions([]);
+      setErrorToast({ isOpen: true, message: "Failed to load questions from DB." });
     }
+  };
+
+  useEffect(() => {
+    loadQuestionsFromDb();
   }, []);
 
   useEffect(() => {
@@ -228,19 +331,34 @@ export default function DevOpsQuestionsPage() {
     setDeleteModalOpen(true);
   };
 
-  const handleDeleteConfirm = () => {
+  const handleDeleteConfirm = async () => {
     if (!questionToDelete) return;
-    setQuestions((prev) => prev.filter((q) => q.id !== questionToDelete.id));
-    setDeleteModalOpen(false);
-    setSuccessToast({ isOpen: true, message: "Question deleted successfully!" });
-    setQuestionToDelete(null);
+    const questionId = questionToDelete.id;
+    try {
+      await apiClient.delete(`/api/devops/questions?id=${encodeURIComponent(questionId)}`);
+      await loadQuestionsFromDb();
+      setSuccessToast({ isOpen: true, message: "Question deleted successfully!" });
+    } catch {
+      setErrorToast({ isOpen: true, message: "Failed to delete question." });
+    } finally {
+      setDeleteModalOpen(false);
+      setQuestionToDelete(null);
+    }
   };
 
-  const handleTogglePublish = (questionId: string) => {
-    setQuestions((prev) =>
-      prev.map((q) => (q.id === questionId ? { ...q, is_published: !q.is_published } : q))
-    );
-    setSuccessToast({ isOpen: true, message: "Question status updated." });
+  const handleTogglePublish = async (questionId: string) => {
+    const target = questions.find((q) => q.id === questionId);
+    if (!target) return;
+    const nextState = !target.is_published;
+    try {
+      await apiClient.patch(`/api/devops/questions?id=${encodeURIComponent(questionId)}`, {
+        is_published: nextState,
+      });
+      await loadQuestionsFromDb();
+      setSuccessToast({ isOpen: true, message: "Question status updated." });
+    } catch {
+      setErrorToast({ isOpen: true, message: "Failed to update publish status." });
+    }
   };
 
   return (
@@ -266,6 +384,11 @@ export default function DevOpsQuestionsPage() {
             setDeleteModalOpen(false);
             setQuestionToDelete(null);
           }}
+        />
+        <PreviewModal
+          isOpen={!!previewQuestion}
+          question={previewQuestion}
+          onClose={() => setPreviewQuestion(null)}
         />
 
         {successToast.isOpen && (
@@ -347,7 +470,7 @@ export default function DevOpsQuestionsPage() {
                 DevOps Question Repository
               </h1>
               <p style={{ margin: "0.5rem 0 0 0", color: "#6B7280", fontSize: "1rem" }}>
-                Manage {sortedQuestions.length} existing DevOps questions.
+                Review, publish, and maintain {sortedQuestions.length} DevOps questions in your bank.
               </p>
             </div>
 
@@ -492,32 +615,32 @@ export default function DevOpsQuestionsPage() {
                         </div>
                       </div>
                       <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexShrink: 0 }}>
-                        <Link href="/devops/tests/sample/take" style={{ textDecoration: "none" }}>
-                          <button
-                            style={{
-                              display: "flex",
-                              alignItems: "center",
-                              gap: "0.375rem",
-                              padding: "0.5rem 0.75rem",
-                              fontSize: "0.875rem",
-                              fontWeight: 600,
-                              color: "#4B5563",
-                              backgroundColor: "#ffffff",
-                              border: "1px solid #D1D5DB",
-                              borderRadius: "0.5rem",
-                              cursor: "pointer",
-                            }}
-                          >
-                            <Eye size={16} /> Preview
-                          </button>
-                        </Link>
+                        <button
+                          type="button"
+                          onClick={() => setPreviewQuestion(q)}
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "0.375rem",
+                            padding: "0.65rem 1.1rem",
+                            fontSize: "0.875rem",
+                            fontWeight: 600,
+                            color: "#4B5563",
+                            backgroundColor: "#ffffff",
+                            border: "1px solid #D1D5DB",
+                            borderRadius: "0.75rem",
+                            cursor: "pointer",
+                          }}
+                        >
+                          <Eye size={16} /> Preview
+                        </button>
                         <button
                           onClick={() => handleTogglePublish(q.id)}
                           style={{
                             display: "flex",
                             alignItems: "center",
                             gap: "0.375rem",
-                            padding: "0.5rem 0.75rem",
+                            padding: "0.55rem 0.5rem",
                             fontSize: "0.875rem",
                             fontWeight: 600,
                             color: q.is_published ? "#D97706" : "#059669",
@@ -537,7 +660,7 @@ export default function DevOpsQuestionsPage() {
                             display: "flex",
                             alignItems: "center",
                             justifyContent: "center",
-                            padding: "0.5rem",
+                            padding: "0.55rem 0.4rem",
                             color: "#DC2626",
                             backgroundColor: "transparent",
                             border: "1px solid transparent",

@@ -43,4 +43,7 @@ async def _ensure_indexes() -> None:
     await _db.devops_tests.create_index("created_by")
     await _db.devops_tests.create_index("created_at")
     await _db.devops_tests.create_index("is_published")
+    await _db.devops_published_questions.create_index("created_by")
+    await _db.devops_published_questions.create_index("question_id", unique=True)
+    await _db.devops_published_questions.create_index("published_at")
 
