@@ -76,23 +76,33 @@ export default function DesignQuestionsListPage() {
   }
 
   const handleTogglePublish = async (questionId: string, currentStatus: boolean) => {
+    const newStatus = !currentStatus
+    
+    // Optimistically update local state for immediate UI feedback
+    setQuestions(prev => prev.map(q => 
+      (q.id || q._id) === questionId ? { ...q, is_published: newStatus } : q
+    ))
+    
     try {
-      const response = await fetch(`${API_URL}/questions/${questionId}/publish`, {
+      const response = await fetch(`${API_URL}/questions/${questionId}/publish?is_published=${newStatus}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ is_published: !currentStatus }),
       })
       
       if (response.ok) {
+        // Refetch to ensure consistency with backend
         await fetchQuestions()
-        alert('Publish status updated successfully!')
       } else {
         const error = await response.text()
         console.error('Publish error:', error)
+        // Revert optimistic update on error
+        await fetchQuestions()
         alert('Failed to update publish status')
       }
     } catch (error) {
       console.error('Publish error:', error)
+      // Revert optimistic update on error
+      await fetchQuestions()
       alert('Failed to update publish status')
     }
   }

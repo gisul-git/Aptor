@@ -197,13 +197,14 @@ async def get_question(question_id: str):
 
 
 @router.patch("/questions/{question_id}/publish")
-async def toggle_publish_status(question_id: str, request: PublishStatusRequest):
+async def toggle_publish_status(
+    question_id: str,
+    is_published: bool = Query(..., description="Publish status to set")
+):
     """Toggle question publish status"""
     try:
         if design_repository.db is None:
             await design_repository.initialize()
-        
-        is_published = request.is_published
         
         # Convert to ObjectId
         try:
@@ -445,13 +446,14 @@ async def get_test(test_id: str):
 
 @router.patch("/tests/{test_id}/publish")
 @router.post("/tests/{test_id}/publish")
-async def toggle_test_publish_status(test_id: str, request: PublishStatusRequest):
+async def toggle_test_publish_status(
+    test_id: str,
+    is_published: bool = Query(..., description="Publish status to set")
+):
     """Toggle test publish status"""
     try:
         if design_repository.db is None:
             await design_repository.initialize()
-        
-        is_published = request.is_published
         
         db = design_repository.db
         
@@ -1822,35 +1824,3 @@ async def send_invitations_to_all(test_id: str):
 
 
 
-@router.patch("/questions/{question_id}/publish")
-async def toggle_question_publish(question_id: str):
-    """Toggle question publish status"""
-    try:
-        if design_repository.db is None:
-            await design_repository.initialize()
-        
-        db = design_repository.db
-        
-        # Get current question
-        question = await db.design_questions.find_one({"_id": question_id})
-        if not question:
-            raise HTTPException(status_code=404, detail="Question not found")
-        
-        # Toggle publish status
-        new_status = not question.get("is_published", False)
-        
-        result = await db.design_questions.update_one(
-            {"_id": question_id},
-            {"$set": {"is_published": new_status, "updated_at": datetime.utcnow()}}
-        )
-        
-        if result.matched_count == 0:
-            raise HTTPException(status_code=404, detail="Question not found")
-        
-        return {"message": "Question publish status updated", "is_published": new_status}
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Failed to update publish status: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
