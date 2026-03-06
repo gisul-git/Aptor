@@ -64,6 +64,11 @@ class Settings(BaseSettings):
     RULE_BASED_WEIGHT: float = 0.6
     AI_BASED_WEIGHT: float = 0.4
     
+    # SendGrid Email Configuration
+    SENDGRID_API_KEY: str = ""
+    SENDGRID_FROM_EMAIL: str = ""
+    SENDGRID_FROM_NAME: str = "Aptor Design Assessment"
+    
     class Config:
         env_file = ".env"
         case_sensitive = True
