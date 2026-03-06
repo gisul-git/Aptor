@@ -140,40 +140,40 @@ Focus on micro-interactions, transitions, motion states, and interaction feedbac
 DIFFICULTY SCALING
 
 Beginner
-• Single screen or simple asset
-• Basic layout constraints
-• Simple user goal
+- Single screen or simple asset
+- Basic layout constraints
+- Simple user goal
 
 Intermediate
-• Multi-section layout or dashboard
-• Component-based design
-• Structured hierarchy
+- Multi-section layout or dashboard
+- Component-based design
+- Structured hierarchy
 
 Advanced
-• Multi-screen workflows
-• Interaction states
-• Edge case handling
+- Multi-screen workflows
+- Interaction states
+- Edge case handling
 
 Expert
-• Product-level thinking
-• Personas and business objectives
-• System-level design
-• Strategic decision making
+- Product-level thinking
+- Personas and business objectives
+- System-level design
+- Strategic decision making
 
 --------------------------------------------------
 CONSTRAINT RULES
 Constraints must include measurable design rules.
 
 Examples:
-• Canvas width: 375px mobile layout
-• Canvas width: 1440px desktop layout
-• Grid system: 12-column grid
-• Spacing system: 8px baseline grid
-• Maximum 3–4 primary colors
-• Minimum contrast ratio: 4.5:1
-• Typography hierarchy: minimum 3 levels
-• Minimum button height: 44px
-• Component width constraints
+- Canvas width: 375px mobile layout
+- Canvas width: 1440px desktop layout
+- Grid system: 12-column grid
+- Spacing system: 8px baseline grid
+- Maximum 3-4 primary colors
+- Minimum contrast ratio: 4.5:1
+- Typography hierarchy: minimum 3 levels
+- Minimum button height: 44px
+- Component width constraints
 
 These rules must enable automated evaluation.
 
@@ -181,66 +181,66 @@ These rules must enable automated evaluation.
 OUTPUT FORMAT
 
 Title:
-{{Domain or Product}} – {{Role}} Challenge
+Domain or Product - Role Challenge
 
 Role:
-{{Role}}
+Role name
 
 Level:
-{{Difficulty Level}}
+Difficulty Level
 
 Experience:
-{{Experience Level}}
+Experience Level
 
 Topic:
-{{Topic}}
+Topic name
 
 Time:
-{{Time Limit}}
+Time Limit
 
 Design Challenge
 Provide a concise description including:
-• product or domain context
-• design problem
-• target users
-• expected outcome
+- product or domain context
+- design problem
+- target users
+- expected outcome
 
 Constraints
-List 6–8 measurable constraints.
+List 6-8 measurable constraints.
 
 Deliverables
 Specify required outputs such as:
-• wireframes
-• high fidelity screens
-• design assets
-• component specifications
-• design tokens or style guide
+- wireframes
+- high fidelity screens
+- design assets
+- component specifications
+- design tokens or style guide
 
 Evaluation Criteria
 Define scoring factors such as:
-• layout consistency
-• visual hierarchy
-• usability
-• constraint compliance
-• clarity of design solution
+- layout consistency
+- visual hierarchy
+- usability
+- constraint compliance
+- clarity of design solution
 
 --------------------------------------------------
 Return ONLY valid JSON in this exact structure:
 
 {{
-    "title": "{{topic_str}} – {{role_str}} Challenge",
+    "title": "{topic_str} - {role_str} Challenge",
     "description": "Provide a concise description including product or domain context, design problem, target users, and expected outcome. Write in neutral professional language. Do NOT use 'you', 'your', 'you should'. Use phrases like: 'Design a [product]', 'The interface should', 'The goal is to', 'The layout must'.",
     "constraints": [
         "List 6-8 measurable constraints based on difficulty level.",
         "Examples:",
-        "• Canvas width: 375px mobile layout OR 1440px desktop layout",
-        "• Grid system: 12-column grid",
-        "• Spacing system: 8px baseline grid",
-        "• Maximum 3-4 primary colors",
-        "• Minimum contrast ratio: 4.5:1",
-        "• Typography hierarchy: minimum 3 levels",
-        "• Minimum button height: 44px",
-        "• Component width constraints"
+        "- Canvas width: 375px mobile layout OR 1440px desktop layout",
+        "- Grid system: 12-column grid",
+        "- Spacing system: 8px baseline grid",
+        "- Maximum 3-4 primary colors",
+        "- Minimum contrast ratio: 4.5:1",
+        "- Typography hierarchy: minimum 3 levels",
+        "- Minimum button height: 44px",
+        "- Component width constraints"
     ],
     "deliverables": [
         "Specify required outputs based on role and difficulty:",
@@ -253,16 +253,16 @@ Return ONLY valid JSON in this exact structure:
     ],
     "evaluation_criteria": [
         "Define scoring factors such as:",
-        "• Layout consistency",
-        "• Visual hierarchy",
-        "• Usability",
-        "• Constraint compliance",
-        "• Clarity of design solution",
+        "- Layout consistency",
+        "- Visual hierarchy",
+        "- Usability",
+        "- Constraint compliance",
+        "- Clarity of design solution",
         "Role-specific criteria:",
-        "• UI Designer: Pixel-perfect execution, grid implementation",
-        "• UX Designer: User flow completeness, navigation clarity",
-        "• Visual Designer: Creative execution, visual aesthetics",
-        "• Product Designer: Strategic thinking, business alignment"
+        "- UI Designer: Pixel-perfect execution, grid implementation",
+        "- UX Designer: User flow completeness, navigation clarity",
+        "- Visual Designer: Creative execution, visual aesthetics",
+        "- Product Designer: Strategic thinking, business alignment"
     ],
     "time_limit_minutes": {time_limit}
 }}
@@ -276,421 +276,6 @@ CRITICAL REMINDERS
 4. Vary complexity based on difficulty level
 5. Ensure role-specific focus
 6. Make the challenge specific to the topic "{topic_str}"
-7. Return ONLY valid JSON
-
-Now generate ONE design challenge following all rules above. Return ONLY the JSON object."""
-        
-        return base_prompt.strip()
-
------------------------------------------------------
-ROLE-SPECIFIC QUESTION LOGIC
-
-UI Designer
-Focus on:
-• layout design
-• grid systems
-• spacing
-• typography hierarchy
-• component design
-
-UX Designer
-Focus on:
-• user flows
-• navigation
-• information architecture
-• usability
-• interaction patterns
-
-Product Designer
-Focus on:
-• product workflows
-• business goals
-• user personas
-• strategic design thinking
-
-Visual Designer
-Focus on:
-• visual identity
-• iconography
-• illustration systems
-• aesthetics
-
-Brand Designer
-Focus on:
-• brand identity
-• logo systems
-• typography systems
-• brand guidelines
-
-Graphic Designer
-Focus on:
-• posters
-• marketing assets
-• social media creatives
-• print layout
-
-Interaction Designer
-Focus on:
-• micro-interactions
-• motion states
-• transitions
-• interaction feedback
-
------------------------------------------------------
-DIFFICULTY SCALING
-
-Beginner
-• single screen or simple asset
-• limited constraints
-• basic layout or composition
-
-Intermediate
-• multi-section layout or component set
-• structured hierarchy
-• moderate constraints
-
-Advanced
-• multiple screens or assets
-• interaction states or design systems
-• complex workflows
-
-Expert
-• product-level thinking
-• brand systems or design systems
-• multiple user scenarios
-• strategic design decisions
-
------------------------------------------------------
-CONSTRAINT DESIGN RULES
-Constraints must be measurable whenever possible.
-
-Examples:
-• Canvas width: 375px mobile layout
-• Canvas width: 1440px desktop layout
-• Grid system: 12-column grid
-• Spacing system: 8px baseline grid
-• Maximum 3–4 primary colors
-• Contrast ratio ≥ 4.5:1
-• Typography hierarchy: minimum 3 levels
-• Minimum button height: 44px
-• Component width constraints
-
-These constraints allow automated evaluation.
-
------------------------------------------------------
-BEGINNER CONSTRAINT PATTERN
-Include 5-6 constraints (not more):
-• canvas width
-• spacing system
-• color limit (max 3 colors)
-• typography levels (min 3)
-• element size rule (min 44px button height)
-• one component size constraint
-
-Example:
-• Canvas width: 375px mobile layout
-• Spacing system: 8px baseline grid
-• Maximum 3 primary colors
-• Typography hierarchy: minimum 3 levels
-• Minimum button height: 44px
-• Profile card height: 150–180px
-
------------------------------------------------------
-INTERMEDIATE CONSTRAINT PATTERN
-Include:
-• grid systems
-• card or component layout
-• interaction states
-• responsive behavior
-
------------------------------------------------------
-ADVANCED / SENIOR REQUIREMENTS
-Include:
-• multi-screen workflows
-• edge cases
-• component systems
-• interaction states
-
-If difficulty level = Expert:
-Include controlled testing environment such as:
-• proctored assessment
-• fullscreen enforcement
-• time-bound design session
-
------------------------------------------------------
-CRITICAL CANVAS WIDTH RULES
-
-MOBILE TOPICS (mobile_app):
-• ALWAYS use: Canvas width: 375px mobile layout
-• OR: Canvas width: 360px mobile layout
-
-DESKTOP TOPICS (dashboard, landing_page):
-• ALWAYS use: Canvas width: 1440px desktop layout
-• OR: Canvas width: 1280px desktop layout
-
-TABLET TOPICS:
-• Use: Canvas width: 768px tablet layout
-
-RESPONSIVE TOPICS:
-• Specify multiple breakpoints
-
-IMPORTANT: 
-- task_type "mobile_app" = MOBILE (375px)
-- task_type "dashboard" = DESKTOP (1440px)
-- task_type "landing_page" = DESKTOP (1440px)
-- task_type "component" = depends on context, default DESKTOP (1440px)
-
------------------------------------------------------
-OUTPUT FORMAT (STRICT)
-
-{{
-    "title": "{topic_str.replace('_', ' ').title()} {task_str.title()} – {role_str} Challenge",
-    "description": "CRITICAL: Write a SPECIFIC, DETAILED description for a {task_str} that includes:
-• EXACT product/domain context (e.g., 'e-commerce fashion store', 'healthcare patient portal', 'food delivery service')
-• SPECIFIC design problem to solve (e.g., 'improve checkout conversion', 'simplify appointment booking', 'reduce order time')
-• TARGET user persona (e.g., 'busy professionals aged 25-40', 'elderly patients with limited tech experience', 'restaurant owners managing orders')
-• EXPECTED outcome (e.g., 'increase user engagement by 30%', 'reduce booking time by 50%', 'improve order accuracy')
-• KEY features to include (e.g., 'product filtering, wishlist, quick checkout', 'appointment calendar, doctor profiles, prescription refills')
-
-AVOID GENERIC DESCRIPTIONS. Be specific about:
-- What type of {topic_str} {task_str} (e.g., 'Agriculture crop monitoring dashboard' not just 'Agriculture dashboard')
-- What specific screens/sections for {task_str} (e.g., 'data visualization panels, KPI cards, charts' for dashboard; 'hero section, features, CTA' for landing page)
-- What user actions (e.g., 'monitor crop health, view analytics, track yields' for dashboard; 'learn about product, sign up, contact' for landing page)
-
-TASK TYPE SPECIFIC REQUIREMENTS:
-IF task_type = "dashboard":
-- Focus on: data visualization, charts, KPIs, filters, tables, analytics
-- Include: metrics cards, graphs, data tables, filter panels
-- Example: "Design an agriculture crop monitoring dashboard showing real-time field data, weather conditions, soil health metrics, and yield predictions"
-
-IF task_type = "landing_page":
-- Focus on: hero section, value proposition, features, testimonials, CTA
-- Include: headline, benefits, social proof, conversion elements
-- Example: "Design a landing page for an agriculture SaaS platform showcasing smart farming solutions, customer success stories, and pricing plans"
-
-IF task_type = "mobile_app":
-- Focus on: mobile screens, touch interactions, navigation
-- Include: mobile-optimized layouts, bottom navigation, swipe gestures
-- Example: "Design a mobile app screen for farmers to track crop health, receive alerts, and manage irrigation schedules"
-
-IF task_type = "component":
-- Focus on: reusable UI elements, states, variations
-- Include: component anatomy, interaction states, size variants
-- Example: "Design a data card component for displaying crop statistics with multiple states and size options"
-
-Write in neutral professional language. Do NOT use 'you', 'your', 'you should', 'you need to'.
-Use phrases like: 'Design a [specific product]', 'The interface should [specific action]', 'The goal is to [specific outcome]', 'The layout must [specific requirement]'.
-
-GOOD EXAMPLE: 'Design a product listing page for a luxury fashion e-commerce platform. The interface should allow users to browse premium clothing items, filter by category, price range, and brand, and add items to a wishlist. The layout must emphasize high-quality product imagery while maintaining fast load times. Target users are fashion-conscious professionals aged 25-45 with high purchasing power.'
-
-BAD EXAMPLE: 'Design a landing page for a Shopping. The page needs to make a strong first impression and clearly communicate the value proposition to visitors.'",
-    "constraints": [
-        "CRITICAL: Provide EXACTLY the right number of constraints based on difficulty:",
-        "• Beginner: 5-6 constraints ONLY",
-        "• Intermediate: 7-8 constraints",
-        "• Advanced: 8-10 constraints",
-        "",
-        "CRITICAL: Match canvas width to task_type:",
-        "• IF task_type = 'mobile_app' → Canvas width: 375px mobile layout",
-        "• IF task_type = 'dashboard' → Canvas width: 1440px desktop layout",
-        "• IF task_type = 'landing_page' → Canvas width: 1440px desktop layout",
-        "• IF task_type = 'component' → Canvas width: 1440px desktop layout",
-        "",
-        "Beginner constraints (5-6 total):",
-        "• Canvas width: [375px mobile OR 1440px desktop]",
-        "• Spacing system: 8px baseline grid",
-        "• Maximum 3 primary colors with contrast ratio ≥ 4.5:1",
-        "• Typography hierarchy: minimum 3 levels",
-        "• Minimum button height: 44px",
-        "• One component size (e.g., card height: 150-180px)",
-        "",
-        "Intermediate constraints (7-8 total):",
-        "• Canvas width",
-        "• Grid system: 12-column with 16px gutter",
-        "• Spacing system: 8px baseline",
-        "• Color limits with contrast ratios",
-        "• Typography hierarchy",
-        "• Component sizes",
-        "• Interaction states (hover, active, focus)",
-        "• Minimum interactive element size: 44px",
-        "",
-        "Advanced constraints (8-10 total):",
-        "• All intermediate constraints",
-        "• Multiple screen requirements",
-        "• Edge case states (loading, empty, error)",
-        "• Component system requirements",
-        "• Responsive behavior"
-    ],
-    "deliverables": [
-        "CRITICAL: Be SPECIFIC about deliverables based on difficulty and role:",
-        "",
-        "For UI Designer:",
-        "• High-fidelity UI screens (specify exact number based on difficulty)",
-        "• Component specifications with dimensions and spacing",
-        "• Typography scale and color palette documentation",
-        "• Interactive state designs (hover, active, focus, disabled)",
-        "",
-        "For UX Designer:",
-        "• User flow diagrams showing complete journey",
-        "• Wireframes for key screens",
-        "• Information architecture diagram",
-        "• Interaction specifications",
-        "",
-        "For Visual Designer:",
-        "• Visual design mockups with brand identity",
-        "• Icon set or illustration system",
-        "• Style guide with visual elements",
-        "• Asset specifications",
-        "",
-        "For Product Designer:",
-        "• Product strategy document",
-        "• User personas and scenarios",
-        "• Feature prioritization matrix",
-        "• High-fidelity prototypes",
-        "",
-        "BEGINNER: 2-3 deliverables",
-        "INTERMEDIATE: 3-4 deliverables",
-        "ADVANCED: 4-5 deliverables"
-    ],
-    "evaluation_criteria": [
-        "CRITICAL: Include MEASURABLE evaluation criteria:",
-        "",
-        "ALWAYS include:",
-        "• Constraint compliance (measurable: did they follow canvas width, spacing, colors?)",
-        "• Visual hierarchy clarity (measurable: typography levels, size contrast)",
-        "• Layout consistency (measurable: spacing consistency, alignment precision)",
-        "• Component quality (measurable: number of components, detail level)",
-        "",
-        "For UI Designer, ADD:",
-        "• Pixel-perfect execution and alignment",
-        "• Grid system implementation",
-        "• Typography hierarchy (minimum 3 levels)",
-        "• Color system consistency",
-        "",
-        "For UX Designer, ADD:",
-        "• User flow completeness",
-        "• Navigation clarity",
-        "• Information architecture logic",
-        "• Usability and accessibility",
-        "",
-        "For Visual Designer, ADD:",
-        "• Creative visual execution",
-        "• Brand identity strength",
-        "• Visual aesthetics and appeal",
-        "• Illustration/icon quality",
-        "",
-        "For Product Designer, ADD:",
-        "• Strategic thinking and business alignment",
-        "• User research integration",
-        "• Feature prioritization logic",
-        "• Product vision clarity"
-    ],
-    "time_limit_minutes": {time_limit}
-}}
-
------------------------------------------------------
-EXAMPLE - BEGINNER (MOBILE)
-
-{{
-    "title": "Healthcare Mobile App – UI Designer Challenge",
-    "description": "Design a patient profile screen for a healthcare mobile application. The interface should display essential patient information including name, age, medical history summary, upcoming appointments, and emergency contact details. The layout must prioritize clarity and easy scanning for healthcare professionals using mobile devices.",
-    "constraints": [
-        "Canvas width: 375px mobile layout",
-        "Spacing system: 8px baseline grid",
-        "Maximum 3 primary colors with contrast ratio ≥ 4.5:1",
-        "Typography hierarchy: minimum 3 levels",
-        "Minimum button height: 44px",
-        "Profile card height: 150–180px"
-    ],
-    "deliverables": [
-        "High-fidelity mobile screen design",
-        "Profile card component specifications",
-        "Typography and color style guide"
-    ],
-    "evaluation_criteria": [
-        "Visual hierarchy and layout clarity",
-        "Typography consistency",
-        "Spacing and alignment precision",
-        "Constraint compliance",
-        "Mobile usability"
-    ],
-    "time_limit_minutes": 45
-}}
-
------------------------------------------------------
-EXAMPLE - INTERMEDIATE (DESKTOP)
-
-{{
-    "title": "Healthcare Portal – UI Designer Challenge",
-    "description": "Design a patient management dashboard for a healthcare portal. The interface should allow healthcare administrators to view patient lists, filter by status, search by name or ID, and access detailed patient records. The layout must present information in a structured grid system with clear visual hierarchy and consistent spacing.",
-    "constraints": [
-        "Canvas width: 1440px desktop layout",
-        "12-column grid system with 16px gutter",
-        "8px baseline spacing system",
-        "Patient card width: 280–320px",
-        "Maximum 4 primary colors with contrast ratio ≥ 4.5:1",
-        "Typography hierarchy: minimum 3 levels",
-        "Minimum interactive element size: 44px",
-        "Include hover and active states for interactive elements"
-    ],
-    "deliverables": [
-        "High-fidelity dashboard design",
-        "Patient card component with multiple states",
-        "Filter and search panel design",
-        "Component style guide"
-    ],
-    "evaluation_criteria": [
-        "Grid system implementation",
-        "Component consistency",
-        "Visual hierarchy and information architecture",
-        "Interaction state design",
-        "Constraint compliance"
-    ],
-    "time_limit_minutes": 60
-}}
-
------------------------------------------------------
-EXAMPLE - ADVANCED (MULTI-SCREEN)
-
-{{
-    "title": "Food Delivery Platform – UI Designer Challenge",
-    "description": "Design a complete order flow for a food delivery platform including restaurant browsing, menu selection, cart management, checkout, and order tracking screens. The interface must maintain visual consistency across all screens while accommodating different content types and user actions.",
-    "constraints": [
-        "Canvas width: 375px mobile layout",
-        "12-column grid system",
-        "8px baseline spacing system",
-        "Minimum 5 screens covering complete flow",
-        "Maximum 4 primary colors",
-        "Typography hierarchy: minimum 4 levels",
-        "Minimum touch target: 44px",
-        "Include loading, empty, and error states"
-    ],
-    "deliverables": [
-        "High-fidelity designs for 5+ screens",
-        "User flow diagram",
-        "Component library with all states",
-        "Design system documentation"
-    ],
-    "evaluation_criteria": [
-        "Flow logic and completeness",
-        "Visual consistency across screens",
-        "Component reusability",
-        "Edge case handling",
-        "Constraint compliance",
-        "Overall user experience quality"
-    ],
-    "time_limit_minutes": 90
-}}
-
------------------------------------------------------
-CRITICAL REMINDERS
-
-1. Do NOT use "you", "your", "you should", "you need to"
-2. Use neutral professional language
-3. Match canvas width to topic type (mobile vs desktop)
-4. Include measurable constraints for automated evaluation
-5. Vary complexity based on difficulty level
-6. Ensure role-specific focus
 7. Return ONLY valid JSON
 
 Now generate ONE design challenge following all rules above. Return ONLY the JSON object."""
