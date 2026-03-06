@@ -1,160 +1,153 @@
-# AI Question Generator - Status Report
+# AI Question Generator Status
 
-## ✅ WORKING CORRECTLY
+## Current Issue
 
-The AI question generator is now fully functional and producing correctly formatted questions.
+The AI question generation is **NOT working properly** due to an **invalid OpenAI API key**.
 
-## Test Results
+### Test Results
 
-### Test 1: Beginner - Mobile App
-- ✅ Canvas Width: 375px mobile layout (CORRECT)
-- ✅ Neutral Language: No "you/your" detected
-- ✅ Time: 45 minutes
-- ✅ Constraints: 6-8 measurable rules
-- ✅ Role-specific: UI Designer focus
+**Test Parameters:**
+- Role: Senior UX Designer
+- Task Type: Agriculture Dashboard
+- Experience: 3-5 years
+- Difficulty: Advanced
 
-### Test 2: Intermediate - Dashboard
-- ✅ Canvas Width: 1440px desktop layout (CORRECT)
-- ✅ Neutral Language: No "you/your" detected
-- ✅ Time: 60 minutes
-- ✅ Constraints: Grid systems, interaction states
-- ✅ Complexity: Multi-section layout
-
-### Test 3: Advanced - Mobile App (UX Designer)
-- ✅ Canvas Width: 375px mobile layout (CORRECT)
-- ✅ Neutral Language: No "you/your" detected
-- ✅ Time: 90 minutes
-- ✅ Constraints: Multi-screen workflows, edge cases
-- ✅ Role-specific: UX Designer focus
-
-## Features Implemented
-
-### 1. Canvas Width Auto-Fix
-- Automatically corrects canvas width based on task_type
-- Rules:
-  - `mobile_app` → 375px mobile layout
-  - `dashboard` → 1440px desktop layout
-  - `landing_page` → 1440px desktop layout
-  - `component` → 1440px desktop layout
-
-### 2. Neutral Language Post-Processing
-- Automatically removes "you/your" language
-- Replacements:
-  - "You are tasked with" → "The task involves"
-  - "Your goal is to" → "The goal is to"
-  - "You need to design" → "The design must"
-  - And 20+ more patterns
-
-### 3. Role-Specific Question Logic
-Supports 8 design roles:
-- UI Designer (layout, spacing, typography, components)
-- UX Designer (flows, navigation, usability)
-- Product Designer (strategy, personas, business goals)
-- Visual Designer (branding, aesthetics, visual identity)
-- Brand Designer (brand systems, logo, guidelines)
-- Graphic Designer (posters, marketing, print)
-- Interaction Designer (micro-interactions, transitions)
-- Motion Designer (animation, motion states)
-
-### 4. Difficulty Scaling
-- **Beginner**: Single screen, simple constraints, 45 min
-- **Intermediate**: Multi-section, grid systems, 60 min
-- **Advanced**: Multiple screens, workflows, 90 min
-- **Expert**: Product strategy, design systems, 120 min
-
-### 5. Measurable Constraints
-All questions include 6-8 measurable constraints:
-- Canvas width (375px or 1440px)
-- Grid system (8px, 12-column, etc.)
-- Color limits (max 3-4 colors)
-- Typography hierarchy (min 3 levels)
-- Interactive elements (min 44px)
-- Contrast ratios (≥ 4.5:1)
-- Component sizes (specific px ranges)
-
-## API Configuration
-
-### Environment Variables
-- `OPENAI_API_KEY`: Configured and working
-- `AI_PROVIDER`: openai
-- `AI_MODEL`: gpt-4o
-
-### Endpoint
+**Generated Question (Current - GENERIC):**
 ```
-POST http://localhost:3006/api/v1/design/questions/generate
+Title: Agriculture dashboard Dashboard - Ux Designer Challenge
+
+Description: Design a complete user journey with multiple screens dashboard UX system for a Agriculture dashboard with advanced workflows. Create comprehensive information architecture for different types of users with different needs. Think through the whole experience and handle different scenarios. Optimize for users with different skill levels.
 ```
 
-### Request Body
-```json
-{
-  "role": "ui_designer",
-  "difficulty": "beginner",
-  "task_type": "mobile_app",
-  "topic": "Food Delivery",
-  "experience_level": "Fresher"
-}
+**Expected Question (With Working AI - SPECIFIC):**
+```
+Title: Agriculture Crop Monitoring Dashboard - UX Designer Challenge
+
+Description: Design a comprehensive dashboard UX system for an agriculture management platform that enables farmers and agricultural consultants to monitor crop health, track field conditions, analyze weather patterns, and manage irrigation schedules. The interface should allow users to view real-time sensor data from multiple fields, receive alerts for critical conditions, compare historical trends, and make data-driven farming decisions. Target users include farm managers (who need quick overviews), field technicians (who need detailed sensor data), and agricultural consultants (who need analytical tools). The goal is to reduce crop monitoring time by 50% and improve decision-making accuracy through clear data visualization and intuitive workflows.
+
+Constraints:
+- Canvas width: 1440px desktop layout
+- 12-column grid system with 16px gutter
+- Design multi-step user flows for: field monitoring, alert management, and data analysis
+- Include accessibility features for outdoor use (high contrast, large touch targets)
+- Design for 3 user personas: farm managers, field technicians, consultants
+- Include error states for sensor failures and network issues
+- Provide data export and reporting workflows
+- Optimize for users with varying technical expertise
+
+Deliverables:
+- Complete user flow diagrams for all 3 personas
+- Information architecture showing dashboard sections and navigation
+- Low-to-mid fidelity wireframes for 8-10 key screens
+- UX rationale document explaining design decisions
+- Accessibility compliance documentation
+
+Evaluation Criteria:
+- User flow logic and completeness for agriculture workflows
+- Information architecture clarity for complex agricultural data
+- Accessibility and inclusive design for diverse users
+- Error handling for sensor and network failures
+- Strategic thinking in addressing real farming challenges
 ```
 
-### Response Format
-```json
-{
-  "_id": "...",
-  "role": "ui_designer",
-  "difficulty": "beginner",
-  "task_type": "mobile_app",
-  "title": "Food Delivery App – UI Designer Challenge",
-  "description": "Design a home screen for a food delivery mobile application...",
-  "constraints": [
-    "Canvas width: 375px mobile layout",
-    "Grid system: 8px spacing system",
-    "Maximum 3 primary colors",
-    ...
-  ],
-  "deliverables": [...],
-  "evaluation_criteria": [...],
-  "time_limit_minutes": 45,
-  "created_by": "system",
-  "created_at": "2026-03-05T..."
-}
+## Root Cause
+
+### Error in Logs:
+```
+2026-03-06 20:24:00,800 - httpx - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 401 Unauthorized"
+2026-03-06 20:24:00,808 - app.services.ai_question_generator - ERROR - AI question generation failed: Error code: 401 - {'error': {'message': 'Incorrect API key provided...
 ```
 
-## Files Modified
-
-1. `Aptor/services/design-service/app/services/ai_question_generator.py`
-   - Added `_fix_canvas_width()` method
-   - Added `_neutralize_language()` method
-   - Updated `_build_generation_prompt()` with improved prompt
-   - Updated `_parse_ai_response()` to apply post-processing
-
-2. `Aptor/.env`
-   - Updated OPENAI_API_KEY with correct value
-
-3. `Aptor/test_question_gen.ps1`
-   - Created test script for verification
-
-## Testing
-
-Run the test script to verify:
-```powershell
-cd Aptor
-./test_question_gen.ps1
+### Current API Key (Invalid):
+```
+OPENAI_API_KEY=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
 ```
 
-This will test:
-- Beginner mobile app question
-- Intermediate dashboard question
-- Advanced mobile app question
-- Canvas width validation
-- Neutral language check
+This API key is returning 401 Unauthorized, which means it's either:
+1. Expired
+2. Invalid
+3. Revoked
+4. Incorrectly formatted
 
-## Next Steps (Optional Improvements)
+## Fallback Behavior
 
-1. **Constraint Library**: Create a library of 60+ reusable constraints that can be randomly combined
-2. **Few-Shot Examples**: Add more examples for each role and difficulty
-3. **Topic Variations**: Expand topic options (e-commerce, healthcare, finance, education, etc.)
-4. **Automated Evaluation**: Implement rule-based scoring for generated designs
-5. **Question Caching**: Cache generated questions to reduce API costs
+When AI generation fails, the system falls back to `_generate_topic_based_question()` which uses generic templates:
 
-## Status: ✅ PRODUCTION READY
+```python
+# Line 665 - UX Designer Advanced Dashboard template
+TaskType.DASHBOARD: f"Design {scope} dashboard UX system for a {topic} with advanced workflows. Create comprehensive information architecture for {user_scope}. {complexity} Optimize for users with different skill levels."
+```
 
-The AI question generator is working correctly and ready for use in the design competency assessment platform.
+This template:
+- ❌ Does NOT mention agriculture-specific features (crop monitoring, field data, weather, irrigation)
+- ❌ Does NOT provide specific user personas (farmers, consultants)
+- ❌ Does NOT include agriculture-specific constraints (outdoor use, sensor data)
+- ❌ Does NOT mention agriculture-specific deliverables (field monitoring flows, sensor dashboards)
+- ✅ Only provides generic UX dashboard guidance
+
+## Solutions
+
+### Option 1: Fix OpenAI API Key (RECOMMENDED)
+1. Get a valid OpenAI API key from https://platform.openai.com/api-keys
+2. Update `.env` file:
+   ```
+   OPENAI_API_KEY=sk-proj-YOUR_VALID_KEY_HERE
+   ```
+3. Restart the design service
+4. Test question generation again
+
+### Option 2: Use Alternative AI Provider
+If OpenAI is not available, switch to Gemini or Claude:
+
+**For Gemini:**
+```env
+AI_PROVIDER=gemini
+GEMINI_API_KEY=your_gemini_api_key_here
+```
+
+**For Claude:**
+```env
+AI_PROVIDER=claude
+CLAUDE_API_KEY=your_claude_api_key_here
+```
+
+### Option 3: Improve Fallback Templates (NOT RECOMMENDED)
+We could hardcode agriculture-specific templates, but this defeats the purpose of AI generation and won't scale to other topics.
+
+## Prompt Quality
+
+The new prompt structure (implemented in latest commit) is **GOOD** and will generate high-quality questions **IF** the AI provider is working:
+
+✅ Clear role-specific task generation
+✅ Difficulty scaling guidelines
+✅ Measurable constraint rules
+✅ Professional neutral language requirements
+✅ Specific output format with examples
+
+The prompt is ready - we just need a valid API key to use it!
+
+## Next Steps
+
+1. **URGENT**: Get a valid OpenAI API key
+2. Update the `.env` file with the new key
+3. Restart the design service
+4. Test question generation with the same parameters
+5. Verify that agriculture-specific details are included in the generated question
+
+## Testing Command
+
+Once API key is fixed, test with:
+```bash
+curl -X POST http://localhost:3007/api/v1/design/questions/generate \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -d '{
+    "role": "ux_designer",
+    "difficulty": "advanced",
+    "task_type": "dashboard",
+    "topic": "Agriculture dashboard",
+    "experience_level": "3-5 years"
+  }'
+```
+
+Expected result: Specific agriculture dashboard question with crop monitoring, field data, weather conditions, irrigation, etc.
