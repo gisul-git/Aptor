@@ -33,14 +33,20 @@ async def fetch_seeded_sql_schema() -> Dict[str, Any]:
             "Example: SQL_ENGINE_URL=https://sql-engine.internal.delightfulpebble-b20f7903.centralindia.azurecontainerapps.io/api"
         )
 
-    url = f"{base}/schema"
-    logger.info(f"[SQL Seeded Dataset] Fetching seeded schema from {url}")
+    # Remove /api suffix if present (we'll add it back for the endpoint)
+    if base.endswith('/api'):
+        base = base[:-4]
+    
+    # Use POST /api/schema with empty body to get the default/preloaded database
+    url = f"{base}/api/schema"
+    logger.info(f"[SQL Seeded Dataset] Fetching default/preloaded database schema from {url}")
 
     timeout = httpx.Timeout(connect=5.0, read=15.0, write=5.0, pool=5.0)
 
     try:
         async with httpx.AsyncClient(timeout=timeout) as client:
-            resp = await client.get(url)
+            # POST with empty body to get default seed (preloaded database)
+            resp = await client.post(url, json={})
     except httpx.ConnectError as e:
         logger.error(f"[SQL Seeded Dataset] Connection error: {e}")
         raise RuntimeError(
@@ -74,36 +80,59 @@ async def fetch_seeded_sql_schema() -> Dict[str, Any]:
             f"Failed to parse JSON response from SQL execution engine. Error: {str(e)}"
         )
     
-    schemas = data.get("schemas") or {}
-    raw_sample = data.get("sample_data") or {}
+    # SQL engine returns: { schema: [{ table: "...", columns: [...], data: [...] }] }
+    # We need to convert to: { schemas: { tableName: { columns: {...} } }, sample_data: { tableName: [[...], [...]] } }
+    
+    schema_array = data.get("schema") or []
+    
+    if not schema_array:
+        logger.warning("[SQL Seeded Dataset] No schema found in response. Response data: %s", str(data)[:200])
+        # Return empty schemas, let the frontend handle it
+        return {
+            "schemas": {},
+            "sample_data": {},
+        }
 
-    if not schemas:
-        logger.warning("[SQL Seeded Dataset] No schemas found in response. Response data: %s", str(data)[:200])
-        # Don't raise an error - return empty schemas, let the frontend handle it
-        # This allows the UI to show a message that no tables were found
-
-    # Normalize sample data to list-of-lists per table, ordered by schema columns
+    # Convert SQL engine format to DSA question format
+    schemas: Dict[str, Dict[str, Dict[str, str]]] = {}
     normalized_sample: Dict[str, List[List[Any]]] = {}
-    for table_name, rows in raw_sample.items():
-        table_def = schemas.get(table_name) or {}
-        columns_dict = table_def.get("columns") or {}
+    
+    for table_info in schema_array:
+        table_name = table_info.get("table")
+        if not table_name:
+            continue
+        
+        # Convert columns array to object format
+        columns_dict: Dict[str, str] = {}
+        columns_array = table_info.get("columns") or []
+        for col in columns_array:
+            col_name = col.get("name")
+            col_type = col.get("type")
+            if col_name and col_type:
+                columns_dict[col_name] = col_type
+        
+        schemas[table_name] = {"columns": columns_dict}
+        
+        # Convert data array to list-of-lists format
+        # SQL engine returns: [{ col1: val1, col2: val2 }, ...]
+        # We need: [[val1, val2], [val3, val4], ...]
         column_names = list(columns_dict.keys())
-
+        data_array = table_info.get("data") or []
+        
         normalized_rows: List[List[Any]] = []
-        for row in rows or []:
-            # Engine returns dicts; keep list rows as-is just in case
+        for row in data_array:
             if isinstance(row, dict):
-                normalized_rows.append(
-                    [row.get(col) for col in column_names]
-                )
+                # Extract values in column order
+                normalized_rows.append([row.get(col) for col in column_names])
             elif isinstance(row, list):
                 normalized_rows.append(row)
             else:
-                # Fallback: wrap scalar into single-column row
                 normalized_rows.append([row])
-
+        
         normalized_sample[table_name] = normalized_rows
 
+    logger.info(f"[SQL Seeded Dataset] Converted {len(schemas)} table(s) from default/preloaded database")
+    
     return {
         "schemas": schemas,
         "sample_data": normalized_sample,
