@@ -23,6 +23,7 @@ from app.services.ai_question_generator import ai_question_generator
 from app.services.penpot_rpc import penpot_rpc_service as penpot_service
 from app.services.evaluation_engine import evaluation_engine
 from app.repositories.design_repository import design_repository
+from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -1647,9 +1648,9 @@ async def send_invitation(test_id: str, request: SendInvitationRequest):
         """
         
         # Send email using SendGrid
-        import os
-        sendgrid_api_key = os.getenv("SENDGRID_API_KEY")
-        sendgrid_from_email = os.getenv("SENDGRID_FROM_EMAIL", "noreply@aaptor.com")
+        sendgrid_api_key = settings.SENDGRID_API_KEY
+        sendgrid_from_email = settings.SENDGRID_FROM_EMAIL or "noreply@aaptor.com"
+        sendgrid_from_name = settings.SENDGRID_FROM_NAME or "Aptor Design Assessment"
         
         if not sendgrid_api_key:
             logger.warning("SendGrid API key not configured, skipping email send")
@@ -1664,7 +1665,7 @@ async def send_invitation(test_id: str, request: SendInvitationRequest):
         from sendgrid.helpers.mail import Mail
         
         message = Mail(
-            from_email=sendgrid_from_email,
+            from_email=(sendgrid_from_email, sendgrid_from_name),
             to_emails=candidate_email,
             subject=f"Invitation: {test_title}",
             html_content=html_content
