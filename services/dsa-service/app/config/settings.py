@@ -13,7 +13,7 @@ class Settings(BaseSettings):
     judge0_timeout: int = 60
     openai_api_key: str | None = None
     
-    # Custom Execution Engine Configuration
+  
     custom_python_engine_url: str = "http://localhost:9000"
     use_custom_engine: bool = True  
 
