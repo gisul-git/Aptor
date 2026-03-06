@@ -340,7 +340,7 @@ class DesignEvaluationEngine:
         screenshot_path: str,
         question_data: Dict[str, Any]
     ) -> Tuple[float, Dict[str, Any]]:
-        """AI-based evaluation with question context"""
+        """AI-based evaluation with question context - STRICT scoring"""
         
         try:
             # Extract question context
@@ -349,73 +349,74 @@ class DesignEvaluationEngine:
             difficulty = question_data.get("difficulty", "intermediate")
             task_type = question_data.get("task_type", "design")
             
-            # For now, return context-aware moderate score
-            # In production, this would call vision AI APIs with question context
+            # STRICT: Base score on actual work done
+            # Without actual AI vision analysis, we should be conservative
+            # Default to low score that matches rule-based assessment
             
-            score = 70.0
+            score = 10.0  # Very low base score for minimal/no work
             
             # Role-specific feedback
             if role == "ui_designer":
                 strengths = [
-                    f"Attempted to create UI elements for {task_type}",
-                    "Basic visual structure present"
+                    "Submission received"
                 ]
                 improvements = [
-                    f"Add more UI components to meet {difficulty} level standards",
-                    "Improve pixel-perfect execution and alignment",
-                    "Enhance typography and color system",
-                    f"Address all requirements in '{question_title}'"
+                    f"Create complete UI components for {task_type}",
+                    "Add pixel-perfect execution and alignment",
+                    "Develop comprehensive typography and color system",
+                    f"Address ALL requirements in '{question_title}'",
+                    f"This is {difficulty} level - much more detail required"
                 ]
             elif role == "ux_designer":
                 strengths = [
-                    f"Started working on {task_type} user experience",
-                    "Basic layout structure attempted"
+                    "Submission received"
                 ]
                 improvements = [
-                    f"Add user flow documentation for {difficulty} level",
-                    "Include more interaction states and error handling",
-                    "Improve information architecture",
-                    f"Complete all deliverables for '{question_title}'"
+                    f"Create complete user flows for {task_type}",
+                    "Add interaction states and error handling",
+                    "Develop information architecture",
+                    f"Complete ALL deliverables for '{question_title}'",
+                    f"This is {difficulty} level - comprehensive UX work needed"
                 ]
             elif role == "product_designer":
                 strengths = [
-                    f"Initiated {task_type} product design",
-                    "Basic concept present"
+                    "Submission received"
                 ]
                 improvements = [
-                    f"Add strategic thinking elements for {difficulty} level",
+                    f"Develop strategic product design for {task_type}",
                     "Include user personas and business goals",
-                    "Develop complete product flows",
-                    f"Address all aspects of '{question_title}'"
+                    "Create complete product flows",
+                    f"Address ALL aspects of '{question_title}'",
+                    f"This is {difficulty} level - strategic thinking required"
                 ]
             else:  # visual_designer
                 strengths = [
-                    f"Started visual design for {task_type}",
-                    "Basic visual elements present"
+                    "Submission received"
                 ]
                 improvements = [
-                    f"Add more creative visual elements for {difficulty} level",
+                    f"Create rich visual design for {task_type}",
                     "Develop unique brand identity",
-                    "Include custom illustrations or graphics",
-                    f"Fully realize the vision for '{question_title}'"
+                    "Include custom illustrations and graphics",
+                    f"Fully realize the creative vision for '{question_title}'",
+                    f"This is {difficulty} level - exceptional creativity expected"
                 ]
             
             feedback = {
-                "visual_aesthetics": 18,
-                "ux_clarity": 17,
-                "creativity": 18,
-                "technical_execution": 17,
+                "visual_aesthetics": 2,
+                "ux_clarity": 2,
+                "creativity": 3,
+                "technical_execution": 3,
                 "strengths": strengths,
                 "improvements": improvements,
-                "overall": f"Your submission for '{question_title}' shows initial effort, but needs significant additional work to meet {difficulty} level {role} standards. Focus on completing all deliverables and addressing the specific constraints provided.",
-                "note": "AI vision evaluation will be enhanced with API integration for more detailed analysis"
+                "overall": f"Your submission for '{question_title}' is incomplete and does not meet {difficulty} level {role} standards. Significant work is required to address all deliverables and constraints. Please review the requirements carefully and submit a complete design.",
+                "note": "Score reflects minimal/incomplete work. AI vision evaluation will provide detailed analysis when properly integrated."
             }
             
             return score, feedback
             
         except Exception as e:
             logger.error(f"AI evaluation failed: {e}")
-            return 60.0, {"error": str(e), "fallback": True}
+            return 10.0, {"error": str(e), "fallback": True}
 
 
     async def evaluate(

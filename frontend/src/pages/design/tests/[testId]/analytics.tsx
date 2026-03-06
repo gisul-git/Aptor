@@ -988,84 +988,57 @@ export default function DesignAnalyticsPage() {
                     <div style={{ padding: "1rem", backgroundColor: "#ffffff", borderRadius: "0.5rem" }}>
                       <h3 style={{ fontSize: "1rem", fontWeight: 600, marginBottom: "0.5rem" }}>Feedback Summary</h3>
                       <div style={{ fontSize: "0.875rem", color: "#475569", lineHeight: "1.6" }}>
-                        {typeof analytics.submission.feedback.feedback_summary === 'string' ? (
-                          <p style={{ margin: 0 }}>{analytics.submission.feedback.feedback_summary}</p>
-                        ) : analytics.submission.feedback.feedback_summary && typeof analytics.submission.feedback.feedback_summary === 'object' ? (
-                          <div>
-                            {/* Overall Summary */}
-                            {analytics.submission.feedback.feedback_summary.overall_summary && (
-                              <div style={{ marginBottom: "1rem" }}>
-                                <p style={{ margin: 0, fontWeight: 600, color: "#1e293b", marginBottom: "0.5rem" }}>Overall Assessment:</p>
-                                <p style={{ margin: 0 }}>{analytics.submission.feedback.feedback_summary.overall_summary}</p>
-                              </div>
-                            )}
-                            
-                            {/* Components Feedback */}
-                            {analytics.submission.feedback.feedback_summary.components && (
-                              <div style={{ marginBottom: "1rem" }}>
-                                <p style={{ margin: 0, fontWeight: 600, color: "#1e293b", marginBottom: "0.5rem" }}>Components:</p>
-                                <p style={{ margin: 0 }}>{analytics.submission.feedback.feedback_summary.components}</p>
-                              </div>
-                            )}
-                            
-                            {/* Layout Feedback */}
-                            {analytics.submission.feedback.feedback_summary.layout && (
-                              <div style={{ marginBottom: "1rem" }}>
-                                <p style={{ margin: 0, fontWeight: 600, color: "#1e293b", marginBottom: "0.5rem" }}>Layout:</p>
-                                <p style={{ margin: 0 }}>{analytics.submission.feedback.feedback_summary.layout}</p>
-                              </div>
-                            )}
-                            
-                            {/* Completeness Feedback */}
-                            {analytics.submission.feedback.feedback_summary.completeness && (
-                              <div style={{ marginBottom: "1rem" }}>
-                                <p style={{ margin: 0, fontWeight: 600, color: "#1e293b", marginBottom: "0.5rem" }}>Completeness:</p>
-                                <p style={{ margin: 0 }}>{analytics.submission.feedback.feedback_summary.completeness}</p>
-                              </div>
-                            )}
-                            
-                            {/* Hierarchy Feedback */}
-                            {analytics.submission.feedback.feedback_summary.hierarchy && (
-                              <div style={{ marginBottom: "1rem" }}>
-                                <p style={{ margin: 0, fontWeight: 600, color: "#1e293b", marginBottom: "0.5rem" }}>Visual Hierarchy:</p>
-                                <p style={{ margin: 0 }}>{analytics.submission.feedback.feedback_summary.hierarchy}</p>
-                              </div>
-                            )}
-                            
-                            {/* Execution Feedback */}
-                            {analytics.submission.feedback.feedback_summary.execution && (
-                              <div style={{ marginBottom: "1rem" }}>
-                                <p style={{ margin: 0, fontWeight: 600, color: "#1e293b", marginBottom: "0.5rem" }}>Execution:</p>
-                                <p style={{ margin: 0 }}>{analytics.submission.feedback.feedback_summary.execution}</p>
-                              </div>
-                            )}
-                            
-                            {/* System Feedback */}
-                            {analytics.submission.feedback.feedback_summary.system && (
-                              <div style={{ marginBottom: "1rem" }}>
-                                <p style={{ margin: 0, fontWeight: 600, color: "#1e293b", marginBottom: "0.5rem" }}>Design System:</p>
-                                <p style={{ margin: 0 }}>{analytics.submission.feedback.feedback_summary.system}</p>
-                              </div>
-                            )}
-                            
-                            {/* Improvements */}
-                            {analytics.submission.feedback.feedback_summary.improvements && (
-                              <div style={{ marginBottom: "1rem" }}>
-                                <p style={{ margin: 0, fontWeight: 600, color: "#1e293b", marginBottom: "0.5rem" }}>Suggested Improvements:</p>
-                                <p style={{ margin: 0 }}>{analytics.submission.feedback.feedback_summary.improvements}</p>
-                              </div>
-                            )}
-                            
-                            {/* Feedback as fallback */}
-                            {analytics.submission.feedback.feedback_summary.feedback && !analytics.submission.feedback.feedback_summary.overall_summary && (
-                              <div>
-                                <p style={{ margin: 0 }}>{analytics.submission.feedback.feedback_summary.feedback}</p>
-                              </div>
-                            )}
+                        {/* Check for overall_summary in rule_based feedback first */}
+                        {analytics.submission.feedback.rule_based?.overall_summary ? (
+                          <div style={{ marginBottom: "1rem" }}>
+                            <p style={{ margin: 0, fontWeight: 600, color: "#1e293b", marginBottom: "0.5rem" }}>Overall Assessment:</p>
+                            <p style={{ margin: 0 }}>{analytics.submission.feedback.rule_based.overall_summary}</p>
                           </div>
-                        ) : (
+                        ) : null}
+                        
+                        {/* Show AI-based overall feedback */}
+                        {analytics.submission.feedback.ai_based?.overall ? (
+                          <div style={{ marginBottom: "1rem" }}>
+                            <p style={{ margin: 0, fontWeight: 600, color: "#1e293b", marginBottom: "0.5rem" }}>AI Evaluation:</p>
+                            <p style={{ margin: 0 }}>{analytics.submission.feedback.ai_based.overall}</p>
+                          </div>
+                        ) : null}
+                        
+                        {/* Show detailed rule-based feedback */}
+                        {analytics.submission.feedback.rule_based?.feedback ? (
+                          <div style={{ marginBottom: "1rem" }}>
+                            <p style={{ margin: 0, fontWeight: 600, color: "#1e293b", marginBottom: "0.5rem" }}>Detailed Feedback:</p>
+                            {Object.entries(analytics.submission.feedback.rule_based.feedback).map(([key, value]) => (
+                              <div key={key} style={{ marginBottom: "0.5rem", paddingLeft: "1rem" }}>
+                                <span style={{ fontWeight: 600, textTransform: "capitalize" }}>{key}:</span> {value as string}
+                              </div>
+                            ))}
+                          </div>
+                        ) : null}
+                        
+                        {/* Show AI improvements */}
+                        {analytics.submission.feedback.ai_based?.improvements && analytics.submission.feedback.ai_based.improvements.length > 0 ? (
+                          <div style={{ marginBottom: "1rem" }}>
+                            <p style={{ margin: 0, fontWeight: 600, color: "#1e293b", marginBottom: "0.5rem" }}>Suggested Improvements:</p>
+                            <ul style={{ margin: 0, paddingLeft: "1.5rem" }}>
+                              {analytics.submission.feedback.ai_based.improvements.map((improvement: string, idx: number) => (
+                                <li key={idx} style={{ marginBottom: "0.25rem" }}>{improvement}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        ) : null}
+                        
+                        {/* Fallback for old feedback_summary format */}
+                        {typeof analytics.submission.feedback.feedback_summary === 'string' && !analytics.submission.feedback.rule_based?.overall_summary ? (
+                          <p style={{ margin: 0 }}>{analytics.submission.feedback.feedback_summary}</p>
+                        ) : null}
+                        
+                        {/* Show message if no feedback available */}
+                        {!analytics.submission.feedback.rule_based?.overall_summary && 
+                         !analytics.submission.feedback.ai_based?.overall && 
+                         !analytics.submission.feedback.feedback_summary ? (
                           <p style={{ margin: 0, color: "#94a3b8" }}>No detailed feedback available</p>
-                        )}
+                        ) : null}
                       </div>
                     </div>
                   </div>
