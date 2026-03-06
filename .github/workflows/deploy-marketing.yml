@@ -1,0 +1,134 @@
+name: Build and Deploy Marketing Site to Azure Container Apps
+
+on:
+  push:
+    branches:
+      - dev
+    paths:
+      - 'marketing/**'
+      - '.github/workflows/deploy-marketing.yml'
+  pull_request:
+    types: [closed]
+    branches:
+      - dev
+    paths:
+      - 'marketing/**'
+  workflow_dispatch: # Allow manual triggering
+
+env:
+  AZURE_RESOURCE_GROUP: Aaptor
+  CONTAINER_APP_NAME: aptor-marketing-env
+  DOCKER_IMAGE_NAME: marketing
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    # Only run on push to dev, merged PRs, or manual dispatch
+    if: |
+      github.event_name == 'push' ||
+      (github.event_name == 'pull_request' && github.event.pull_request.merged == true) ||
+      github.event_name == 'workflow_dispatch'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: marketing/package-lock.json
+
+      - name: Install dependencies
+        working-directory: ./marketing
+        run: npm ci
+
+      - name: Run linter
+        working-directory: ./marketing
+        run: npm run lint
+        continue-on-error: true
+
+      - name: Build Next.js application
+        working-directory: ./marketing
+        run: npm run build
+        env:
+          NODE_ENV: production
+
+      - name: Login to Azure
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Install Azure Container Apps extension
+        run: |
+          az extension add --name containerapp --upgrade
+
+      - name: Login to Azure Container Registry
+        run: |
+          echo ${{ secrets.ACR_PASSWORD }} | docker login ${{ secrets.ACR_LOGIN_SERVER }} \
+            -u ${{ secrets.ACR_USERNAME }} --password-stdin
+
+      - name: Build Docker image
+        working-directory: ./marketing
+        run: |
+          docker build -t ${{ secrets.ACR_LOGIN_SERVER }}/${{ env.DOCKER_IMAGE_NAME }}:${{ github.sha }} .
+          docker build -t ${{ secrets.ACR_LOGIN_SERVER }}/${{ env.DOCKER_IMAGE_NAME }}:latest .
+
+      - name: Push Docker image to ACR
+        run: |
+          docker push ${{ secrets.ACR_LOGIN_SERVER }}/${{ env.DOCKER_IMAGE_NAME }}:${{ github.sha }}
+          docker push ${{ secrets.ACR_LOGIN_SERVER }}/${{ env.DOCKER_IMAGE_NAME }}:latest
+
+      - name: Wait for in-progress operations
+        run: |
+          echo "Checking for in-progress operations on container app: ${{ env.CONTAINER_APP_NAME }}"
+          max_wait=300
+          wait_interval=10
+          elapsed=0
+          while [ $elapsed -lt $max_wait ]; do
+            provisioning_state=$(az containerapp show \
+              --name ${{ env.CONTAINER_APP_NAME }} \
+              --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+              --query "properties.provisioningState" -o tsv 2>/dev/null || echo "Unknown")
+            
+            if [ "$provisioning_state" != "InProgress" ] && [ "$provisioning_state" != "Updating" ]; then
+              echo "✅ Container app is ready. Provisioning state: $provisioning_state"
+              break
+            fi
+            
+            echo "⏳ Waiting for operation to complete... (State: $provisioning_state, Elapsed: ${elapsed}s)"
+            sleep $wait_interval
+            elapsed=$((elapsed + wait_interval))
+          done
+          
+          if [ $elapsed -ge $max_wait ]; then
+            echo "⚠️ Timeout waiting for operation to complete. Proceeding anyway..."
+          fi
+
+      - name: Deploy to Azure Container Apps
+        run: |
+          az containerapp update \
+            --name ${{ env.CONTAINER_APP_NAME }} \
+            --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+            --image ${{ secrets.ACR_LOGIN_SERVER }}/${{ env.DOCKER_IMAGE_NAME }}:${{ github.sha }} \
+            --set-env-vars \
+              NODE_ENV=production \
+              NEXT_PUBLIC_API_URL=${{ secrets.NEXT_PUBLIC_API_URL }} \
+              DEMO_SERVICE_URL=${{ secrets.DEMO_SERVICE_URL }}
+
+      - name: Get Container App URL
+        id: get-url
+        run: |
+          FQDN=$(az containerapp show \
+            --name ${{ env.CONTAINER_APP_NAME }} \
+            --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+            --query "properties.configuration.ingress.fqdn" -o tsv)
+          echo "url=https://$FQDN" >> $GITHUB_OUTPUT
+          echo "Marketing site URL: https://$FQDN"
+
+      - name: Deployment Summary
+        run: |
+          echo "✅ Marketing site deployed successfully!"
+          echo "🌐 URL: ${{ steps.get-url.outputs.url }}"
+          echo "🐳 Image: ${{ secrets.ACR_LOGIN_SERVER }}/${{ env.DOCKER_IMAGE_NAME }}:${{ github.sha }}"

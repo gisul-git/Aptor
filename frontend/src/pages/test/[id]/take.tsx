@@ -3031,7 +3031,7 @@ export default function TestTakePage() {
 
   return (
     <div className="h-screen flex flex-col bg-slate-950 overflow-hidden">
-      {/* Proctoring Components */}
+      {/* Proctoring Components xxyy*/}
       <ViolationToast />
       
       {/* Webcam Preview - only show when AI proctoring is enabled */}

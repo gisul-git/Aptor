@@ -7,7 +7,7 @@ import { GetServerSideProps } from 'next'
 import { requireAuth } from '../../../../lib/auth'
 import { AdminLiveService } from '../../../../universal-proctoring/live/AdminLiveService'
 import { CandidateStreamInfo, AdminLiveState } from '../../../../universal-proctoring/live/types'
-import { ArrowLeft, Maximize2, Minimize2, RefreshCw, Users, Loader2, Flag, X } from 'lucide-react'
+import { ArrowLeft, Maximize2, Minimize2, RefreshCw, Users, Loader2, Flag, X, Video, AlertCircle } from 'lucide-react'
 import Link from 'next/link'
 import { useAIMLCandidates } from '@/hooks/api/useAIML'
 import dynamic from 'next/dynamic'
@@ -18,7 +18,7 @@ const FixedSizeGrid = dynamic(
   () => import('react-window').then((mod) => (mod as any).FixedSizeGrid),
   { 
     ssr: false,
-    loading: () => <div className="text-center py-8">Loading grid...</div>
+    loading: () => <div style={{ textAlign: "center", padding: "2rem", color: "#6B7280" }}>Loading grid...</div>
   }
 ) as any
 
@@ -560,105 +560,109 @@ export default function LiveProctoringDashboard({
     return () => clearTimeout(timeoutId)
   }, [expandedSessionId, candidates])
 
-  // Responsive grid size calculation
-  const getGridClass = () => {
-    const count = candidates.length
-    if (count <= 2) return 'grid-cols-1 md:grid-cols-2'
-    if (count <= 4) return 'grid-cols-2'
-    return 'grid-cols-2 md:grid-cols-3'
-  }
 
-  // Loading state
+  // ============================================================================
+  // RENDER: LOADING STATE
+  // ============================================================================
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <Loader2 className="w-12 h-12 animate-spin text-blue-600 mx-auto mb-4" />
-          <p className="text-gray-600">Connecting to Live Proctoring...</p>
+      <div style={{ backgroundColor: "#FAFCFB", minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "1rem", color: "#00684A" }}>
+          <Loader2 size={40} className="animate-spin" />
+          <span style={{ fontWeight: 500 }}>Connecting to Live Proctoring...</span>
         </div>
       </div>
     )
   }
 
-  // Expanded view
+  // ============================================================================
+  // RENDER: EXPANDED VIEW (Cinematic Dark Mode)
+  // ============================================================================
   if (expandedSessionId) {
     const expandedCandidate = candidates.find((c) => c.sessionId === expandedSessionId)
 
     return (
-      <div className="min-h-screen bg-black">
+      <div style={{ minHeight: "100vh", backgroundColor: "#000000", display: "flex", flexDirection: "column" }}>
         {/* Header */}
-        <div className="bg-gray-900 border-b border-gray-700 p-4 flex items-center justify-between">
-          <div className="flex items-center gap-4">
+        <div style={{ 
+          backgroundColor: "#111827", borderBottom: "1px solid #1F2937", padding: "1rem 1.5rem", 
+          display: "flex", alignItems: "center", justifyContent: "space-between" 
+        }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
             <button
               onClick={() => setExpandedSessionId(null)}
-              className="p-2 hover:bg-gray-800 rounded-lg transition-colors"
+              style={{ 
+                padding: "0.5rem", backgroundColor: "transparent", border: "none", color: "#ffffff",
+                cursor: "pointer", borderRadius: "0.5rem", transition: "background-color 0.2s" 
+              }}
+              onMouseEnter={(e) => e.currentTarget.style.backgroundColor = "#374151"}
+              onMouseLeave={(e) => e.currentTarget.style.backgroundColor = "transparent"}
             >
-              <Minimize2 className="w-5 h-5 text-white" />
+              <Minimize2 size={20} />
             </button>
-            <div className="text-white">
-              <p className="font-semibold">
-                {expandedCandidate?.candidateName || expandedCandidate?.candidateEmail || 'Unknown'}
+            <div style={{ color: "#ffffff" }}>
+              <p style={{ margin: 0, fontWeight: 600, fontSize: "1.125rem" }}>
+                {expandedCandidate?.candidateName || expandedCandidate?.candidateEmail || 'Unknown Candidate'}
               </p>
-              <p className="text-sm text-gray-400">Session: {expandedSessionId}</p>
+              <p style={{ margin: 0, fontSize: "0.875rem", color: "#9CA3AF" }}>Session ID: {expandedSessionId}</p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            <div
-              className={`px-3 py-1 rounded-full text-xs font-medium ${
-                expandedCandidate?.status === 'connected'
-                  ? 'bg-green-500/20 text-green-400'
-                  : expandedCandidate?.status === 'connecting'
-                  ? 'bg-yellow-500/20 text-yellow-400'
-                  : 'bg-red-500/20 text-red-400'
-              }`}
+          <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+            <div style={{
+                padding: "0.25rem 0.75rem", borderRadius: "9999px", fontSize: "0.75rem", fontWeight: 600,
+                backgroundColor: expandedCandidate?.status === 'connected' ? "rgba(16, 185, 129, 0.2)" : expandedCandidate?.status === 'connecting' ? "rgba(245, 158, 11, 0.2)" : "rgba(239, 68, 68, 0.2)",
+                color: expandedCandidate?.status === 'connected' ? "#34D399" : expandedCandidate?.status === 'connecting' ? "#FBBF24" : "#F87171",
+                textTransform: "uppercase", letterSpacing: "0.05em"
+              }}
             >
               {expandedCandidate?.status || 'Unknown'}
             </div>
             <button
               onClick={() => refreshCandidate(expandedSessionId)}
-              className="p-2 hover:bg-gray-800 rounded-lg transition-colors"
+              style={{ 
+                padding: "0.5rem", backgroundColor: "transparent", border: "none", color: "#ffffff",
+                cursor: "pointer", borderRadius: "0.5rem", transition: "background-color 0.2s" 
+              }}
+              onMouseEnter={(e) => e.currentTarget.style.backgroundColor = "#374151"}
+              onMouseLeave={(e) => e.currentTarget.style.backgroundColor = "transparent"}
+              title="Refresh connection"
             >
-              <RefreshCw className="w-5 h-5 text-white" />
-            </button>
-            <button
-              onClick={() => expandedCandidate && setFlaggingCandidate(expandedCandidate.candidateId)}
-              className="p-2 hover:bg-gray-800 rounded-lg transition-colors"
-              title="Flag candidate for suspicious behavior"
-            >
-              <Flag className="w-5 h-5 text-white" />
+              <RefreshCw size={20} />
             </button>
           </div>
         </div>
 
-        {/* Expanded Video View */}
-        <div className="relative w-full h-[calc(100vh-73px)]">
-          {/* Screen Share (Primary) */}
+        {/* Expanded Video View Area */}
+        <div style={{ position: "relative", width: "100%", flex: 1, minHeight: "0" }}>
+          {/* Screen Share (Primary Background) */}
           {expandedCandidate?.screenStream ? (
             <video
-              ref={(el) => {
-                if (el) videoRefs.current.set(`screen-${expandedSessionId}`, el)
-              }}
+              ref={(el) => { if (el) videoRefs.current.set(`screen-${expandedSessionId}`, el) }}
               autoPlay
               playsInline
-              className="w-full h-full object-contain"
+              style={{ width: "100%", height: "100%", objectFit: "contain" }}
             />
           ) : (
-            <div className="w-full h-full flex items-center justify-center">
-              <p className="text-gray-500">No screen share available</p>
+            <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <p style={{ color: "#6B7280", fontSize: "1.125rem", display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                <Video size={24} /> No screen share available
+              </p>
             </div>
           )}
 
           {/* Webcam (Picture-in-Picture) */}
           {expandedCandidate?.webcamStream && (
-            <div className="absolute bottom-4 right-4 w-64 h-48 bg-gray-900 rounded-lg overflow-hidden shadow-2xl border-2 border-gray-700">
+            <div style={{ 
+              position: "absolute", bottom: "1.5rem", right: "1.5rem", width: "280px", height: "200px", 
+              backgroundColor: "#111827", borderRadius: "0.75rem", overflow: "hidden", 
+              boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.5)", border: "2px solid #374151" 
+            }}>
               <video
-                ref={(el) => {
-                  if (el) videoRefs.current.set(`webcam-${expandedSessionId}`, el)
-                }}
+                ref={(el) => { if (el) videoRefs.current.set(`webcam-${expandedSessionId}`, el) }}
                 autoPlay
                 playsInline
                 muted
-                className="w-full h-full object-cover"
+                style={{ width: "100%", height: "100%", objectFit: "cover" }}
               />
             </div>
           )}
@@ -667,54 +671,70 @@ export default function LiveProctoringDashboard({
     )
   }
 
-  // Grid view
+  // ============================================================================
+  // RENDER: GRID VIEW (Emerald Dashboard)
+  // ============================================================================
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div style={{ backgroundColor: "#FAFCFB", minHeight: "100vh", fontFamily: "system-ui, -apple-system, sans-serif" }}>
+      
       {/* Header */}
-      <div className="bg-white border-b border-gray-200 p-4">
-        <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-4">
+      <div style={{ backgroundColor: "#ffffff", borderBottom: "1px solid #E5E7EB", padding: "1rem 2rem", position: "sticky", top: 0, zIndex: 40 }}>
+        <div style={{ maxWidth: "1400px", margin: "0 auto", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "1rem" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "1.25rem" }}>
             {onClose ? (
               <button
                 onClick={onClose}
-                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                style={{ display: "flex", alignItems: "center", gap: "0.5rem", padding: "0.5rem", backgroundColor: "transparent", border: "none", color: "#6B7280", cursor: "pointer", borderRadius: "0.5rem", transition: "all 0.2s" }}
+                onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = "#F3F4F6"; e.currentTarget.style.color = "#111827"; }}
+                onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = "transparent"; e.currentTarget.style.color = "#6B7280"; }}
                 title="Close"
               >
-                <ArrowLeft className="w-5 h-5" />
+                <ArrowLeft size={20} />
               </button>
             ) : (
               <Link
                 href={`/aiml/tests/${assessmentId}/analytics`}
-                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                style={{ display: "flex", alignItems: "center", gap: "0.5rem", padding: "0.5rem", backgroundColor: "transparent", border: "none", color: "#6B7280", cursor: "pointer", borderRadius: "0.5rem", transition: "all 0.2s" }}
+                onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = "#F3F4F6"; e.currentTarget.style.color = "#111827"; }}
+                onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = "transparent"; e.currentTarget.style.color = "#6B7280"; }}
               >
-                <ArrowLeft className="w-5 h-5" />
+                <ArrowLeft size={20} />
               </Link>
             )}
-            <div>
-              <h1 className="text-xl font-semibold text-gray-900">Live Proctoring Dashboard</h1>
-            </div>
+            <h1 style={{ margin: 0, fontSize: "1.5rem", fontWeight: 700, color: "#111827" }}>
+              Live Proctoring
+            </h1>
           </div>
-          <div className="flex items-center gap-3">
-            <div className="flex items-center gap-2 px-3 py-2 bg-blue-50 rounded-lg">
-              <Users className="w-5 h-5 text-blue-600" />
-              <span className="text-sm font-medium text-blue-900">
-                {candidates.length} {candidates.length === 1 ? 'Candidate' : 'Candidates'}
+          
+          <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", padding: "0.5rem 1rem", backgroundColor: "#F0F9F4", borderRadius: "0.5rem", border: "1px solid #A8E8BC" }}>
+              <Users size={18} color="#00684A" />
+              <span style={{ fontSize: "0.875rem", fontWeight: 600, color: "#00684A" }}>
+                {candidates.length} Candidate{candidates.length !== 1 ? 's' : ''}
               </span>
             </div>
+            
             {isMonitoring && (
-              <div className="flex items-center gap-2 px-3 py-2 bg-green-50 rounded-lg">
-                <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-                <span className="text-sm font-medium text-green-900">Live</span>
+              <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", padding: "0.5rem 1rem", backgroundColor: "#FEF2F2", borderRadius: "0.5rem", border: "1px solid #FECACA" }}>
+                <div style={{ width: "8px", height: "8px", backgroundColor: "#DC2626", borderRadius: "50%" }} className="animate-pulse"></div>
+                <span style={{ fontSize: "0.875rem", fontWeight: 600, color: "#991B1B", textTransform: "uppercase", letterSpacing: "0.05em" }}>Live</span>
               </div>
             )}
+            
             {candidates.length > 0 && (
               <button
                 onClick={refreshAllCandidates}
-                className="flex items-center gap-2 px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                style={{
+                  display: "flex", alignItems: "center", gap: "0.5rem", padding: "0.625rem 1.25rem",
+                  backgroundColor: "#00684A", color: "#ffffff", border: "none", borderRadius: "0.5rem",
+                  fontWeight: 600, fontSize: "0.875rem", cursor: "pointer", transition: "all 0.2s",
+                  boxShadow: "0 1px 2px rgba(0,0,0,0.05)"
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = "#084A2A"}
+                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = "#00684A"}
                 title="Refresh all candidate streams"
               >
-                <RefreshCw className="w-4 h-4" />
-                <span className="text-sm font-medium">Refresh All</span>
+                <RefreshCw size={16} /> Refresh All
               </button>
             )}
           </div>
@@ -723,21 +743,21 @@ export default function LiveProctoringDashboard({
 
       {/* Error Banner */}
       {error && (
-        <div className="bg-red-50 border-b border-red-200 p-4">
-          <div className="max-w-7xl mx-auto">
-            <p className="text-sm text-red-800">{error}</p>
+        <div style={{ backgroundColor: "#FEF2F2", borderBottom: "1px solid #FECACA", padding: "1rem 2rem" }}>
+          <div style={{ maxWidth: "1400px", margin: "0 auto", display: "flex", alignItems: "center", gap: "0.5rem", color: "#991B1B", fontSize: "0.875rem", fontWeight: 500 }}>
+            <AlertCircle size={16} /> {error}
           </div>
         </div>
       )}
 
       {/* Candidates Grid */}
-      <div className="max-w-7xl mx-auto p-6">
+      <div style={{ maxWidth: "1400px", margin: "0 auto", padding: "2rem" }}>
         {candidates.length === 0 ? (
-          <div className="text-center py-16">
-            <Users className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-            <h2 className="text-xl font-semibold text-gray-700 mb-2">No Active Candidates</h2>
-            <p className="text-gray-500">
-              Candidates will appear here when they start their assessment with Live Proctoring enabled.
+          <div style={{ textAlign: "center", padding: "6rem 2rem", backgroundColor: "#ffffff", borderRadius: "1rem", border: "1px dashed #D1D5DB" }}>
+            <Users size={64} color="#D1D5DB" style={{ margin: "0 auto 1rem auto" }} />
+            <h2 style={{ margin: "0 0 0.5rem 0", fontSize: "1.25rem", fontWeight: 600, color: "#374151" }}>No Active Candidates</h2>
+            <p style={{ margin: 0, color: "#6B7280", fontSize: "1rem" }}>
+              Candidates will appear here instantly when they connect and begin their assessment.
             </p>
           </div>
         ) : (
@@ -747,31 +767,17 @@ export default function LiveProctoringDashboard({
               ...candidate
             }));
 
-            console.log('[Live Dashboard] Rendering candidates:', {
-              candidatesCount: candidates.length,
-              candidatesArrayLength: candidatesArray.length,
-              candidates: candidatesArray.map(c => ({
-                id: c.id,
-                sessionId: c.sessionId,
-                candidateId: c.candidateId,
-                name: c.candidateName,
-                email: c.candidateEmail,
-                hasWebcam: !!c.webcamStream,
-                hasScreen: !!c.screenStream,
-                status: c.status
-              }))
-            });
-
-            const CARD_WIDTH = 320;
-            const CARD_HEIGHT = 280;
-            const containerWidth = typeof window !== 'undefined' ? window.innerWidth - 100 : 1200;
+            // Grid calculations
+            const CARD_WIDTH = 340;
+            const CARD_HEIGHT = 300;
+            const containerWidth = typeof window !== 'undefined' ? Math.min(window.innerWidth - 64, 1400) : 1200;
             const COLUMNS = Math.max(1, Math.floor(containerWidth / CARD_WIDTH));
             const rowCount = Math.max(1, Math.ceil(candidatesArray.length / COLUMNS));
 
-            // Fallback to regular grid if FixedSizeGrid isn't ready or for small lists
+            // Fallback to regular flex grid if FixedSizeGrid isn't ready or for small lists
             if (candidatesArray.length <= 4) {
               return (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <div style={{ display: "grid", gridTemplateColumns: `repeat(${Math.min(COLUMNS, candidatesArray.length)}, 1fr)`, gap: "1rem" }}>
                   {candidatesArray.map((candidate) => (
                     <CandidateTile
                       key={candidate.id}
@@ -790,11 +796,11 @@ export default function LiveProctoringDashboard({
               <FixedSizeGrid
                 columnCount={COLUMNS}
                 columnWidth={CARD_WIDTH}
-                height={800}
+                height={Math.max(600, typeof window !== 'undefined' ? window.innerHeight - 200 : 800)}
                 rowCount={rowCount}
                 rowHeight={CARD_HEIGHT}
                 width={containerWidth}
-                className="candidate-grid"
+                style={{ overflowX: "hidden" }}
               >
                 {({ columnIndex, rowIndex, style }: { columnIndex: number; rowIndex: number; style: React.CSSProperties }) => {
                   const index = rowIndex * COLUMNS + columnIndex;
@@ -803,7 +809,7 @@ export default function LiveProctoringDashboard({
                   const candidate = candidatesArray[index];
                   
                   return (
-                    <div style={style} key={candidate.id}>
+                    <div style={{ ...style, padding: "0.75rem" }} key={candidate.id}>
                       <CandidateTile
                         candidate={candidate}
                         onExpand={toggleExpand}
@@ -822,126 +828,111 @@ export default function LiveProctoringDashboard({
 
       {/* Flag Candidate Modal */}
       {flaggingCandidate && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-semibold text-gray-900">Flag Candidate</h2>
-              <button
-                onClick={() => {
-                  setFlaggingCandidate(null);
-                  setFlagReason('');
-                  setFlagSeverity('medium');
-                }}
-                className="text-gray-400 hover:text-gray-600"
-              >
-                <X className="w-5 h-5" />
+        <div style={{ position: "fixed", inset: 0, backgroundColor: "rgba(17, 24, 39, 0.7)", backdropFilter: "blur(4px)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000, padding: "1rem" }}
+          onClick={() => {
+            setFlaggingCandidate(null);
+            setFlagReason('');
+            setFlagSeverity('medium');
+          }}
+        >
+          <div style={{ backgroundColor: "#ffffff", borderRadius: "1rem", padding: "2rem", width: "100%", maxWidth: "480px", boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.25)" }} onClick={(e) => e.stopPropagation()}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1.5rem" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                <div style={{ backgroundColor: "#FEF2F2", padding: "0.5rem", borderRadius: "0.5rem", color: "#DC2626" }}><Flag size={20} /></div>
+                <h3 style={{ margin: 0, fontSize: "1.25rem", fontWeight: 700, color: "#111827" }}>Flag Candidate</h3>
+              </div>
+              <button onClick={() => { setFlaggingCandidate(null); setFlagReason(''); setFlagSeverity('medium'); }} style={{ background: "transparent", border: "none", color: "#9CA3AF", cursor: "pointer", transition: "color 0.2s" }} onMouseEnter={(e) => e.currentTarget.style.color = "#4B5563"} onMouseLeave={(e) => e.currentTarget.style.color = "#9CA3AF"}>
+                <X size={20} />
               </button>
             </div>
             
-            <div className="mb-4">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Reason for flagging
-              </label>
-              <textarea
-                value={flagReason}
-                onChange={(e) => setFlagReason(e.target.value)}
-                placeholder="Enter reason for flagging this candidate..."
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                rows={4}
-              />
-            </div>
-
-            <div className="mb-6">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Severity
-              </label>
-              <div className="flex gap-2">
-                {(['low', 'medium', 'high'] as const).map((severity) => (
-                  <button
-                    key={severity}
-                    onClick={() => setFlagSeverity(severity)}
-                    className={`flex-1 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-                      flagSeverity === severity
-                        ? severity === 'low'
-                          ? 'bg-yellow-100 text-yellow-800 border-2 border-yellow-500'
-                          : severity === 'medium'
-                          ? 'bg-orange-100 text-orange-800 border-2 border-orange-500'
-                          : 'bg-red-100 text-red-800 border-2 border-red-500'
-                        : 'bg-gray-100 text-gray-700 border-2 border-transparent hover:bg-gray-200'
-                    }`}
-                  >
-                    {severity.charAt(0).toUpperCase() + severity.slice(1)}
-                  </button>
-                ))}
+            <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
+              <div>
+                <label style={{ display: "block", fontSize: "0.875rem", fontWeight: 600, color: "#374151", marginBottom: "0.5rem" }}>Reason for flagging</label>
+                <textarea
+                  value={flagReason}
+                  onChange={(e) => setFlagReason(e.target.value)}
+                  placeholder="Describe the suspicious behavior observed..."
+                  rows={4}
+                  style={{ width: "100%", padding: "0.75rem 1rem", border: "1px solid #D1D5DB", borderRadius: "0.5rem", outline: "none", boxSizing: "border-box", fontSize: "0.95rem", fontFamily: "inherit", resize: "vertical" }}
+                  onFocus={(e) => e.currentTarget.style.borderColor = "#DC2626"}
+                  onBlur={(e) => e.currentTarget.style.borderColor = "#D1D5DB"}
+                />
               </div>
-            </div>
 
-            <div className="flex gap-3">
-              <button
-                onClick={() => {
-                  setFlaggingCandidate(null);
-                  setFlagReason('');
-                  setFlagSeverity('medium');
-                }}
-                className="flex-1 px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={async () => {
-                  if (!flagReason.trim()) {
-                    alert('Please enter a reason for flagging');
-                    return;
-                  }
-                  
-                  if (serviceRef.current) {
-                    const success = await serviceRef.current.flagCandidate(
-                      flaggingCandidate,
-                      flagReason.trim(),
-                      flagSeverity
-                    );
-                    
-                    if (success) {
-                      setSuccessModal({
-                        isOpen: true,
-                        message: 'Candidate flagged successfully',
-                      });
-                      setFlaggingCandidate(null);
-                      setFlagReason('');
-                      setFlagSeverity('medium');
-                    } else {
-                      setSuccessModal({
-                        isOpen: true,
-                        message: 'Failed to flag candidate. Please try again.',
-                      });
+              <div>
+                <label style={{ display: "block", fontSize: "0.875rem", fontWeight: 600, color: "#374151", marginBottom: "0.5rem" }}>Severity Level</label>
+                <div style={{ display: "flex", gap: "0.5rem" }}>
+                  {(['low', 'medium', 'high'] as const).map((severity) => (
+                    <button
+                      key={severity}
+                      onClick={() => setFlagSeverity(severity)}
+                      style={{
+                        flex: 1, padding: "0.625rem", borderRadius: "0.5rem", fontSize: "0.875rem", fontWeight: 600, textTransform: "capitalize", cursor: "pointer", transition: "all 0.2s",
+                        backgroundColor: flagSeverity === severity 
+                          ? (severity === 'low' ? "#FEF3C7" : severity === 'medium' ? "#FFEDD5" : "#FEE2E2") 
+                          : "#F9FAFB",
+                        color: flagSeverity === severity 
+                          ? (severity === 'low' ? "#92400E" : severity === 'medium' ? "#C2410C" : "#B91C1C") 
+                          : "#6B7280",
+                        border: flagSeverity === severity 
+                          ? `2px solid ${severity === 'low' ? "#F59E0B" : severity === 'medium' ? "#F97316" : "#EF4444"}` 
+                          : "1px solid #E5E7EB",
+                      }}
+                    >
+                      {severity}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div style={{ display: "flex", gap: "1rem", marginTop: "0.5rem" }}>
+                <button
+                  onClick={() => { setFlaggingCandidate(null); setFlagReason(''); setFlagSeverity('medium'); }}
+                  style={{ flex: 1, padding: "0.75rem", backgroundColor: "#ffffff", border: "1px solid #D1D5DB", borderRadius: "0.5rem", fontWeight: 600, color: "#374151", cursor: "pointer", transition: "all 0.2s" }}
+                  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = "#F9FAFB"}
+                  onMouseLeave={(e) => e.currentTarget.style.backgroundColor = "#ffffff"}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={async () => {
+                    if (!flagReason.trim()) { alert('Please enter a reason for flagging'); return; }
+                    if (serviceRef.current) {
+                      const success = await serviceRef.current.flagCandidate(flaggingCandidate, flagReason.trim(), flagSeverity);
+                      if (success) {
+                        setSuccessModal({ isOpen: true, message: 'Candidate flagged successfully' });
+                        setFlaggingCandidate(null); setFlagReason(''); setFlagSeverity('medium');
+                      } else {
+                        setSuccessModal({ isOpen: true, message: 'Failed to flag candidate. Please try again.' });
+                      }
                     }
-                  }
-                }}
-                className="flex-1 px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors"
-              >
-                Flag Candidate
-              </button>
+                  }}
+                  style={{ flex: 2, padding: "0.75rem", backgroundColor: "#DC2626", border: "1px solid #DC2626", borderRadius: "0.5rem", fontWeight: 600, color: "#ffffff", cursor: "pointer", transition: "all 0.2s" }}
+                  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = "#B91C1C"}
+                  onMouseLeave={(e) => e.currentTarget.style.backgroundColor = "#DC2626"}
+                >
+                  Submit Flag
+                </button>
+              </div>
             </div>
           </div>
         </div>
       )}
 
-      {/* Success Modal */}
       <SuccessModal
         isOpen={successModal.isOpen}
         title="Success"
         message={successModal.message}
         confirmText="OK"
-        onConfirm={() => {
-          setSuccessModal({ isOpen: false, message: '' })
-        }}
+        onConfirm={() => setSuccessModal({ isOpen: false, message: '' })}
       />
     </div>
   )
 }
 
 // ============================================================================
-// Candidate Tile Component
+// Candidate Tile Component (Inline Styled)
 // ============================================================================
 
 interface CandidateTileProps {
@@ -954,87 +945,96 @@ interface CandidateTileProps {
 
 function CandidateTile({ candidate, onExpand, onRefresh, onFlag, videoRefs }: CandidateTileProps) {
   return (
-    <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+    <div style={{ 
+      backgroundColor: "#ffffff", borderRadius: "0.75rem", border: "1px solid #E5E7EB", 
+      overflow: "hidden", display: "flex", flexDirection: "column", height: "100%",
+      boxShadow: "0 1px 3px rgba(0,0,0,0.05)"
+    }}>
+      
       {/* Header */}
-      <div className="p-4 border-b border-gray-200 flex items-center justify-between">
-        <div className="flex-1 min-w-0">
-          <p className="font-medium text-gray-900 truncate">
+      <div style={{ padding: "0.75rem 1rem", borderBottom: "1px solid #E5E7EB", display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "0.5rem" }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <p style={{ margin: 0, fontWeight: 600, fontSize: "0.95rem", color: "#111827", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
             {candidate.candidateName || candidate.candidateEmail || 'Unknown Candidate'}
           </p>
           {candidate.candidateEmail && candidate.candidateEmail !== candidate.candidateName && (
-            <p className="text-xs text-gray-500 truncate">{candidate.candidateEmail}</p>
+            <p style={{ margin: "0.15rem 0 0 0", fontSize: "0.75rem", color: "#6B7280", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+              {candidate.candidateEmail}
+            </p>
           )}
         </div>
-        <div className="flex items-center gap-2">
-          <div
-            className={`px-2 py-1 rounded text-xs font-medium ${
-              candidate.status === 'connected'
-                ? 'bg-green-100 text-green-700'
-                : candidate.status === 'connecting'
-                ? 'bg-yellow-100 text-yellow-700'
-                : 'bg-red-100 text-red-700'
-            }`}
-          >
-            {candidate.status}
-          </div>
+        <div style={{
+          padding: "0.2rem 0.5rem", borderRadius: "1rem", fontSize: "0.7rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", flexShrink: 0,
+          backgroundColor: candidate.status === 'connected' ? "#D1FAE5" : candidate.status === 'connecting' ? "#FEF3C7" : "#FEE2E2",
+          color: candidate.status === 'connected' ? "#059669" : candidate.status === 'connecting' ? "#D97706" : "#DC2626",
+          border: `1px solid ${candidate.status === 'connected' ? "#A7F3D0" : candidate.status === 'connecting' ? "#FDE68A" : "#FECACA"}`
+        }}>
+          {candidate.status}
         </div>
       </div>
 
-      {/* Video Feeds */}
-      <div className="aspect-video bg-gray-900 relative">
-        {/* Screen Share (Background) - Always render video element */}
+      {/* Video Feeds Area */}
+      <div style={{ position: "relative", backgroundColor: "#111827", flex: 1, width: "100%", minHeight: 0 }}>
+        
+        {/* Screen Share (Background) */}
         <video
-          ref={(el) => {
-            if (el) videoRefs.current.set(`screen-${candidate.sessionId}`, el)
-          }}
+          ref={(el) => { if (el) videoRefs.current.set(`screen-${candidate.sessionId}`, el) }}
           autoPlay
           playsInline
-          className={`w-full h-full object-contain ${candidate.screenStream && candidate.screenStream.active ? 'block' : 'hidden'}`}
+          style={{ width: "100%", height: "100%", objectFit: "contain", display: (candidate.screenStream && candidate.screenStream.active) ? 'block' : 'none' }}
         />
-        {!candidate.screenStream || !candidate.screenStream.active ? (
-          <div className="w-full h-full flex items-center justify-center absolute inset-0">
-            <p className="text-gray-500 text-sm">No screen share</p>
+        {(!candidate.screenStream || !candidate.screenStream.active) && (
+          <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <p style={{ color: "#4B5563", fontSize: "0.875rem", margin: 0, display: "flex", alignItems: "center", gap: "0.375rem" }}>
+              <Video size={16} /> No screen share
+            </p>
           </div>
-        ) : null}
+        )}
 
-        {/* Webcam (Overlay - Top Right) - Always render video element */}
-        <div className={`absolute top-2 right-2 w-24 h-18 bg-gray-800 rounded overflow-hidden shadow-lg border border-gray-700 ${candidate.webcamStream && candidate.webcamStream.active ? 'block' : 'hidden'}`}>
+        {/* Webcam (Picture-in-Picture Overlay) */}
+        <div style={{ 
+          position: "absolute", top: "0.5rem", right: "0.5rem", width: "80px", height: "60px", 
+          backgroundColor: "#1F2937", borderRadius: "0.375rem", overflow: "hidden", 
+          boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.3)", border: "1px solid #374151",
+          display: (candidate.webcamStream && candidate.webcamStream.active) ? 'block' : 'none'
+        }}>
           <video
-            ref={(el) => {
-              if (el) videoRefs.current.set(`webcam-${candidate.sessionId}`, el)
-            }}
+            ref={(el) => { if (el) videoRefs.current.set(`webcam-${candidate.sessionId}`, el) }}
             autoPlay
             playsInline
             muted
-            className="w-full h-full object-cover"
+            style={{ width: "100%", height: "100%", objectFit: "cover" }}
           />
         </div>
       </div>
 
-      {/* Actions */}
-      <div className="p-3 flex items-center justify-between bg-gray-50">
+      {/* Footer Actions */}
+      <div style={{ padding: "0.5rem 0.75rem", backgroundColor: "#F9FAFB", borderTop: "1px solid #E5E7EB", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <button
           onClick={() => onRefresh(candidate.sessionId)}
-          className="flex items-center gap-2 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-200 rounded transition-colors"
+          style={{ display: "flex", alignItems: "center", gap: "0.375rem", padding: "0.375rem 0.75rem", fontSize: "0.75rem", fontWeight: 600, color: "#4B5563", backgroundColor: "transparent", border: "1px solid #D1D5DB", borderRadius: "0.375rem", cursor: "pointer", transition: "all 0.2s" }}
+          onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = "#ffffff"; e.currentTarget.style.borderColor = "#9CA3AF"; }}
+          onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = "transparent"; e.currentTarget.style.borderColor = "#D1D5DB"; }}
         >
-          <RefreshCw className="w-4 h-4" />
-          Refresh
+          <RefreshCw size={14} /> Refresh
         </button>
-        <div className="flex items-center gap-2">
+        <div style={{ display: "flex", gap: "0.5rem" }}>
           <button
             onClick={onFlag}
-            className="flex items-center gap-2 px-3 py-1.5 text-sm bg-red-600 text-white hover:bg-red-700 rounded transition-colors"
-            title="Flag candidate for suspicious behavior"
+            style={{ display: "flex", alignItems: "center", gap: "0.375rem", padding: "0.375rem 0.75rem", fontSize: "0.75rem", fontWeight: 600, color: "#ffffff", backgroundColor: "#DC2626", border: "1px solid #DC2626", borderRadius: "0.375rem", cursor: "pointer", transition: "all 0.2s" }}
+            onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = "#B91C1C"; e.currentTarget.style.borderColor = "#B91C1C"; }}
+            onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = "#DC2626"; e.currentTarget.style.borderColor = "#DC2626"; }}
+            title="Flag suspicious behavior"
           >
-            <Flag className="w-4 h-4" />
-            Flag
+            <Flag size={14} /> Flag
           </button>
           <button
             onClick={() => onExpand(candidate.sessionId)}
-            className="flex items-center gap-2 px-3 py-1.5 text-sm bg-blue-600 text-white hover:bg-blue-700 rounded transition-colors"
+            style={{ display: "flex", alignItems: "center", gap: "0.375rem", padding: "0.375rem 0.75rem", fontSize: "0.75rem", fontWeight: 600, color: "#ffffff", backgroundColor: "#00684A", border: "1px solid #00684A", borderRadius: "0.375rem", cursor: "pointer", transition: "all 0.2s" }}
+            onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = "#084A2A"; e.currentTarget.style.borderColor = "#084A2A"; }}
+            onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = "#00684A"; e.currentTarget.style.borderColor = "#00684A"; }}
           >
-            <Maximize2 className="w-4 h-4" />
-            Expand
+            <Maximize2 size={14} /> Expand
           </button>
         </div>
       </div>

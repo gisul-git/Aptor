@@ -12,7 +12,10 @@ import {
   PenTool, 
   ClipboardList, 
   Timer, 
-  ListChecks 
+  ListChecks,
+  FolderCog,
+  Users,
+  BarChart2
 } from "lucide-react";
 
 export default function DSAMainPage() {
@@ -209,6 +212,56 @@ export default function DSAMainPage() {
                 </span>
                 <span style={{ display: "flex", alignItems: "center", gap: "0.375rem", fontSize: "0.75rem", fontWeight: 600, color: "#00684A", backgroundColor: "#F0F9F4", padding: "0.375rem 0.75rem", borderRadius: "0.5rem", border: "1px solid #E1F2E9" }}>
                   <ListChecks size={14} /> Question Selection
+                </span>
+              </div>
+            </div>
+          </Link>
+
+          {/* 4. Test Management Option */}
+          <Link href="/dsa/tests" style={{ textDecoration: "none" }}>
+            <div
+              style={{
+                backgroundColor: "#ffffff",
+                padding: "2rem",
+                borderRadius: "1rem",
+                cursor: "pointer",
+                transition: "all 0.2s ease",
+                border: "1px solid #E1F2E9",
+                height: "100%",
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "flex-start",
+                boxShadow: "0 1px 3px rgba(0,0,0,0.05)",
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.borderColor = "#00684A";
+                e.currentTarget.style.transform = "translateY(-4px)";
+                e.currentTarget.style.boxShadow = "0 10px 25px rgba(0, 104, 74, 0.1)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.borderColor = "#E1F2E9";
+                e.currentTarget.style.transform = "translateY(0)";
+                e.currentTarget.style.boxShadow = "0 1px 3px rgba(0,0,0,0.05)";
+              }}
+            >
+              <div style={{ 
+                backgroundColor: "#F0F9F4", 
+                padding: "1rem", 
+                borderRadius: "0.75rem", 
+                color: "#00684A",
+                marginBottom: "1.5rem" 
+              }}>
+                <FolderCog size={32} strokeWidth={1.5} />
+              </div>
+              <h2 style={{ margin: "0 0 1rem 0", color: "#111827", fontSize: "1.25rem", fontWeight: 600 }}>
+                Test Management
+              </h2>
+              <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", marginTop: "auto" }}>
+                <span style={{ display: "flex", alignItems: "center", gap: "0.375rem", fontSize: "0.75rem", fontWeight: 600, color: "#00684A", backgroundColor: "#F0F9F4", padding: "0.375rem 0.75rem", borderRadius: "0.5rem", border: "1px solid #E1F2E9" }}>
+                  <Users size={14} /> Manage Candidates
+                </span>
+                <span style={{ display: "flex", alignItems: "center", gap: "0.375rem", fontSize: "0.75rem", fontWeight: 600, color: "#00684A", backgroundColor: "#F0F9F4", padding: "0.375rem 0.75rem", borderRadius: "0.5rem", border: "1px solid #E1F2E9" }}>
+                  <BarChart2 size={14} /> View Analytics
                 </span>
               </div>
             </div>
