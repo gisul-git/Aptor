@@ -988,27 +988,27 @@ export default function DesignAnalyticsPage() {
                     <div style={{ padding: "1rem", backgroundColor: "#ffffff", borderRadius: "0.5rem" }}>
                       <h3 style={{ fontSize: "1rem", fontWeight: 600, marginBottom: "0.5rem" }}>Feedback Summary</h3>
                       <div style={{ fontSize: "0.875rem", color: "#475569", lineHeight: "1.6" }}>
-                        {/* Check for overall_summary in rule_based feedback first */}
-                        {analytics.submission.feedback.rule_based?.overall_summary ? (
+                        {/* Check for overall_summary in feedback_summary.rule_based */}
+                        {analytics.submission.feedback.feedback_summary?.rule_based?.overall_summary ? (
                           <div style={{ marginBottom: "1rem" }}>
                             <p style={{ margin: 0, fontWeight: 600, color: "#1e293b", marginBottom: "0.5rem" }}>Overall Assessment:</p>
-                            <p style={{ margin: 0 }}>{analytics.submission.feedback.rule_based.overall_summary}</p>
+                            <p style={{ margin: 0 }}>{analytics.submission.feedback.feedback_summary.rule_based.overall_summary}</p>
                           </div>
                         ) : null}
                         
                         {/* Show AI-based overall feedback */}
-                        {analytics.submission.feedback.ai_based?.overall ? (
+                        {analytics.submission.feedback.feedback_summary?.ai_based?.overall ? (
                           <div style={{ marginBottom: "1rem" }}>
                             <p style={{ margin: 0, fontWeight: 600, color: "#1e293b", marginBottom: "0.5rem" }}>AI Evaluation:</p>
-                            <p style={{ margin: 0 }}>{analytics.submission.feedback.ai_based.overall}</p>
+                            <p style={{ margin: 0 }}>{analytics.submission.feedback.feedback_summary.ai_based.overall}</p>
                           </div>
                         ) : null}
                         
                         {/* Show detailed rule-based feedback */}
-                        {analytics.submission.feedback.rule_based?.feedback ? (
+                        {analytics.submission.feedback.feedback_summary?.rule_based?.feedback ? (
                           <div style={{ marginBottom: "1rem" }}>
                             <p style={{ margin: 0, fontWeight: 600, color: "#1e293b", marginBottom: "0.5rem" }}>Detailed Feedback:</p>
-                            {Object.entries(analytics.submission.feedback.rule_based.feedback).map(([key, value]) => (
+                            {Object.entries(analytics.submission.feedback.feedback_summary.rule_based.feedback).map(([key, value]) => (
                               <div key={key} style={{ marginBottom: "0.5rem", paddingLeft: "1rem" }}>
                                 <span style={{ fontWeight: 600, textTransform: "capitalize" }}>{key}:</span> {value as string}
                               </div>
@@ -1017,26 +1017,26 @@ export default function DesignAnalyticsPage() {
                         ) : null}
                         
                         {/* Show AI improvements */}
-                        {analytics.submission.feedback.ai_based?.improvements && analytics.submission.feedback.ai_based.improvements.length > 0 ? (
+                        {analytics.submission.feedback.feedback_summary?.ai_based?.improvements && analytics.submission.feedback.feedback_summary.ai_based.improvements.length > 0 ? (
                           <div style={{ marginBottom: "1rem" }}>
                             <p style={{ margin: 0, fontWeight: 600, color: "#1e293b", marginBottom: "0.5rem" }}>Suggested Improvements:</p>
                             <ul style={{ margin: 0, paddingLeft: "1.5rem" }}>
-                              {analytics.submission.feedback.ai_based.improvements.map((improvement: string, idx: number) => (
+                              {analytics.submission.feedback.feedback_summary.ai_based.improvements.map((improvement: string, idx: number) => (
                                 <li key={idx} style={{ marginBottom: "0.25rem" }}>{improvement}</li>
                               ))}
                             </ul>
                           </div>
                         ) : null}
                         
-                        {/* Fallback for old feedback_summary format */}
-                        {typeof analytics.submission.feedback.feedback_summary === 'string' && !analytics.submission.feedback.rule_based?.overall_summary ? (
+                        {/* Fallback for string feedback_summary */}
+                        {typeof analytics.submission.feedback.feedback_summary === 'string' ? (
                           <p style={{ margin: 0 }}>{analytics.submission.feedback.feedback_summary}</p>
                         ) : null}
                         
                         {/* Show message if no feedback available */}
-                        {!analytics.submission.feedback.rule_based?.overall_summary && 
-                         !analytics.submission.feedback.ai_based?.overall && 
-                         !analytics.submission.feedback.feedback_summary ? (
+                        {!analytics.submission.feedback.feedback_summary?.rule_based?.overall_summary && 
+                         !analytics.submission.feedback.feedback_summary?.ai_based?.overall && 
+                         typeof analytics.submission.feedback.feedback_summary !== 'string' ? (
                           <p style={{ margin: 0, color: "#94a3b8" }}>No detailed feedback available</p>
                         ) : null}
                       </div>
