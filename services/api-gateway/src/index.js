@@ -89,8 +89,11 @@ async function verifyToken(req, res, next) {
     '/api/v1/dsa/assessment',
     '/api/v1/assessments/start-session', 
     '/api/v1/assessment',
-    '/api/v1/demo/schedule', // Demo request form - public 
-    '/api/v1/data-engineering', // Data Engineering service - public for development
+    '/api/v1/demo/schedule', // Demo request form - public
+    '/api/v1/data-engineering/questions/generate', // Question generation - public for testing
+    '/api/v1/data-engineering/questions/topics', // Topics list - public
+    // Note: Only candidate routes are public, NOT all data-engineering routes
+    // '/api/v1/data-engineering/candidate' is handled by candidatePublicPatterns below
   ];
 
   let pathToCheck = (req.originalUrl || req.url || req.path || '').split('?')[0];
@@ -111,7 +114,7 @@ async function verifyToken(req, res, next) {
     publicRoutes: publicRoutes,
   });
   
-  // Candidate-specific public endpoints for DSA/AIML/Custom MCQ tests (no auth required)
+  // Candidate-specific public endpoints for DSA/AIML/Custom MCQ/Data Engineering tests (no auth required)
   // These are accessed by candidates via test links with just name/email verification
   const candidatePublicPatterns = [
     /^\/api\/v1\/dsa\/tests\/[^/]+\/verify-link$/,
@@ -140,6 +143,8 @@ async function verifyToken(req, res, next) {
     /^\/api\/v1\/custom-mcq\/take\/[^/]+$/, // Custom MCQ take assessment (candidate view)
     /^\/api\/v1\/custom-mcq\/verify-candidate$/, // Custom MCQ verify candidate
     /^\/api\/v1\/custom-mcq\/submit$/, // Custom MCQ submit assessment
+    // Data Engineering candidate endpoints - accessed via test links
+    /^\/api\/v1\/data-engineering\/candidate/, // All candidate routes under this path
     // Proctoring endpoints - candidates need to record violations without auth
     /^\/api\/v1\/proctor\/record$/,
     /^\/api\/v1\/proctor\/upload$/,
@@ -907,14 +912,40 @@ app.use(
 );
 
 // Route: Data Engineering Service
+console.log('🔵 [API Gateway] Setting up data-engineering service proxy:', {
+  route: '/api/v1/data-engineering',
+  target: SERVICES.dataEngineering,
+});
+
 app.use(
   '/api/v1/data-engineering',
+  (req, res, next) => {
+    console.log('🟡 [API Gateway] Data Engineering service route matched:', {
+      method: req.method,
+      url: req.url,
+      originalUrl: req.originalUrl,
+      path: req.path,
+      hasAuthHeader: !!req.headers.authorization,
+      userId: req.headers['x-user-id'],
+      target: SERVICES.dataEngineering,
+      timestamp: new Date().toISOString(),
+    });
+    next();
+  },
   createProxyMiddleware({
     ...proxyOptions,
     target: SERVICES.dataEngineering,
     pathRewrite: {
       '^/api/v1/data-engineering': '/api/v1', // Rewrite to service's API prefix
     },
+    logLevel: 'debug',
+    logProvider: () => ({
+      log: (msg) => console.log('🟡 [HPM-DataEng]', msg),
+      debug: (msg) => console.log('🔵 [HPM-DataEng]', msg),
+      info: (msg) => console.log('🟢 [HPM-DataEng]', msg),
+      warn: (msg) => console.warn('🟠 [HPM-DataEng]', msg),
+      error: (msg) => console.error('🔴 [HPM-DataEng]', msg),
+    }),
   })
 );
 

@@ -4,7 +4,7 @@ Authentication and authorization utilities.
 
 import structlog
 from typing import Optional, Dict, Any
-from fastapi import HTTPException, Security, Depends
+from fastapi import HTTPException, Security, Depends, Header
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from datetime import datetime, timedelta
 import hashlib
@@ -61,29 +61,33 @@ def verify_token(token: str) -> Optional[Dict[str, Any]]:
         return None
 
 
+async def get_current_user_id(
+    x_user_id: Optional[str] = Header(None, alias="X-User-Id"),
+) -> str:
+    """Get current user ID from gateway-injected header."""
+    if not x_user_id:
+        raise HTTPException(
+            status_code=401,
+            detail="User ID not found in request headers. Authentication required."
+        )
+    return x_user_id
+
+
 async def get_current_user(
-    credentials: Optional[HTTPAuthorizationCredentials] = Security(security)
+    x_user_id: Optional[str] = Header(None, alias="X-User-Id"),
+    x_org_id: Optional[str] = Header(None, alias="X-Org-Id"),
+    x_role: Optional[str] = Header(None, alias="X-Role")
 ) -> Optional[Dict[str, Any]]:
-    """Get current user from token (optional authentication)."""
-    if not credentials:
-        return None
-    
-    token = credentials.credentials
-    payload = verify_token(token)
-    
-    if not payload:
-        return None
-    
-    user_id = payload.get("sub")
-    if not user_id:
+    """Get current user from gateway headers (optional - returns None if not authenticated)."""
+    if not x_user_id:
         return None
     
     return {
-        "user_id": user_id,
-        "email": payload.get("email"),
-        "experience_level": payload.get("experience_level", 0),
-        "preferences": payload.get("preferences", {}),
-        "role": payload.get("role", "user")
+        "user_id": x_user_id,
+        "id": x_user_id,
+        "_id": x_user_id,
+        "org_id": x_org_id,
+        "role": x_role or "user"
     }
 
 

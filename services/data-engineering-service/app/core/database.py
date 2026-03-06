@@ -170,6 +170,23 @@ async def create_indexes() -> None:
             partialFilterExpression={"status": {"$in": ["completed", "failed", "timeout"]}}
         )
         
+        # Tests collection indexes
+        await database.tests.create_index("created_by")
+        await database.tests.create_index("is_published")
+        await database.tests.create_index("test_type")
+        await database.tests.create_index("created_at")
+        await database.tests.create_index([("created_by", 1), ("test_type", 1)])  # Compound for user tests by type
+        await database.tests.create_index([("created_by", 1), ("is_published", 1)])  # For filtering user's published tests
+        await database.tests.create_index([("test_type", 1), ("created_at", -1)])  # For recent tests by type
+        
+        # Test candidates collection indexes
+        await database.test_candidates.create_index("test_id")
+        await database.test_candidates.create_index("email")
+        await database.test_candidates.create_index("user_id")
+        await database.test_candidates.create_index([("test_id", 1), ("email", 1)], unique=True)  # Prevent duplicate candidates
+        await database.test_candidates.create_index([("test_id", 1), ("status", 1)])  # For filtering by status
+        await database.test_candidates.create_index([("test_id", 1), ("created_at", -1)])  # For recent candidates
+        
         logger.info("Database indexes created successfully")
         
     except Exception as e:

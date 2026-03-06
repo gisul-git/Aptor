@@ -1,63 +1,87 @@
-import { useState, useEffect } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/router";
 import { GetServerSideProps } from "next";
-import { requireAuth } from "../../lib/auth";
+import { requireAuth } from "../../../../lib/auth";
 import apiClient from "@/services/api/client";
 import { 
-  ArrowLeft, 
-  Settings, 
-  ShieldCheck, 
-  CalendarClock, 
-  Users, 
-  ListChecks, 
-  Plus, 
-  Trash2, 
-  Bot 
+  ArrowLeft, Settings, ShieldCheck, CalendarClock, 
+  Users, ListChecks, Loader2
 } from "lucide-react";
 
 interface Question {
   id: string;
   title: string;
   difficulty_level: string;
-  topic: string;
 }
 
-// Timer mode types
 type TimerMode = "GLOBAL" | "PER_QUESTION";
-
-// Exam window mode (mirrors Custom MCQ scheduling semantics)
 type ExamMode = "strict" | "flexible";
 
-// Question timing for per-question mode
 interface QuestionTiming {
   question_id: string;
   duration_minutes: number;
 }
 
-export default function CreateDataEngineeringTestPage() {
+interface DataEngineeringTest {
+  id: string;
+  title: string;
+  description: string;
+  question_ids: string[];
+  duration_minutes: number;
+  start_time: string | null;
+  end_time: string | null;
+  examMode?: ExamMode;
+  schedule?: { 
+    startTime?: string; 
+    endTime?: string; 
+    duration?: number;
+    candidateRequirements?: {
+      requirePhone?: boolean;
+      requireResume?: boolean;
+      requireLinkedIn?: boolean;
+      requireGithub?: boolean;
+    };
+  } | null;
+  timer_mode?: TimerMode;
+  question_timings?: Array<{ question_id: string; duration_minutes: number }> | null;
+  question_time_limits?: Record<string, number> | null; // Legacy field
+  proctoringSettings?: {
+    aiProctoringEnabled?: boolean;
+    faceMismatchEnabled?: boolean;
+    liveProctoringEnabled?: boolean;
+  } | null;
+}
+
+export default function EditDataEngineeringTestPage() {
   const router = useRouter();
-  const [loading, setLoading] = useState(false);
+  const { id } = router.query;
+  const testId = typeof id === "string" ? id : null;
+
+  // State for data fetching
+  const [testData, setTestData] = useState<DataEngineeringTest | null>(null);
   const [questions, setQuestions] = useState<Question[]>([]);
-  // Simple AI proctoring toggle (controls camera-based proctoring on candidate side)
-  const [proctoringSettings, setProctoringSettings] = useState({
-    aiProctoringEnabled: false, // default OFF until explicitly enabled
-    faceMismatchEnabled: false, // default OFF until explicitly enabled
-    liveProctoringEnabled: false, // default OFF until explicitly enabled
-  });
-  
-  // Timer mode state
+  const [loadingTest, setLoadingTest] = useState(true);
+  const [loadingQuestions, setLoadingQuestions] = useState(true);
+  const [loading, setLoading] = useState(false);
+
+  // Timer/exam config (must mirror backend semantics)
   const [timerMode, setTimerMode] = useState<TimerMode>("GLOBAL");
   const [questionTimings, setQuestionTimings] = useState<Record<string, number>>({});
-
-  // Exam window configuration (mirrors Custom MCQ)
   const [examMode, setExamMode] = useState<ExamMode>("strict");
   
+  // Proctoring settings
+  const [proctoringSettings, setProctoringSettings] = useState({
+    aiProctoringEnabled: false,
+    faceMismatchEnabled: false,
+    liveProctoringEnabled: false,
+  });
+
   // Candidate Requirements
   const [requirePhone, setRequirePhone] = useState(false);
   const [requireResume, setRequireResume] = useState(false);
   const [requireLinkedIn, setRequireLinkedIn] = useState(false);
   const [requireGithub, setRequireGithub] = useState(false);
-  
+
   const [formData, setFormData] = useState({
     title: "",
     description: "",
@@ -67,71 +91,207 @@ export default function CreateDataEngineeringTestPage() {
     end_time: "",
   });
 
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:80";
+  const selectedQuestions = useMemo(
+    () => questions.filter((q) => formData.question_ids.includes(q.id)),
+    [questions, formData.question_ids]
+  );
 
-  useEffect(() => {
-    fetchQuestions();
+  const calculateTotalDuration = () => {
+    return formData.question_ids.reduce((sum, qid) => sum + (questionTimings[qid] || 0), 0);
+  };
+
+  // Get question title by ID
+  const getQuestionTitle = (questionId: string): string => {
+    const question = questions.find(q => q.id === questionId);
+    return question?.title || "Unknown Question";
+  };
+
+  const hydrateFromTest = (test: DataEngineeringTest) => {
+    // Helper function to convert ISO datetime string (UTC) to datetime-local format (local timezone)
+    // The backend stores datetimes in UTC, but datetime-local inputs need local time
+    const isoToLocalDatetime = (isoString: string | null | undefined): string => {
+      if (!isoString) return "";
+      try {
+        // Ensure the ISO string is treated as UTC if it doesn't have timezone info
+        let normalizedIso = isoString;
+        // If the string doesn't end with Z or have timezone offset, assume it's UTC and add Z
+        if (!normalizedIso.endsWith('Z') && !normalizedIso.match(/[+-]\d{2}:\d{2}$/)) {
+          // If it's just YYYY-MM-DDTHH:mm or YYYY-MM-DDTHH:mm:ss, add Z to indicate UTC
+          if (normalizedIso.match(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?$/)) {
+            normalizedIso = normalizedIso + 'Z';
+          }
+        }
+        
+        // Create Date object from ISO string (JavaScript automatically converts UTC to local)
+        const date = new Date(normalizedIso);
+        if (isNaN(date.getTime())) {
+          console.warn("Invalid date:", isoString, "normalized:", normalizedIso);
+          return "";
+        }
+        
+        // Get local time components (getFullYear, getMonth, etc. return local timezone values)
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        const hours = String(date.getHours()).padStart(2, '0');
+        const minutes = String(date.getMinutes()).padStart(2, '0');
+        
+        const result = `${year}-${month}-${day}T${hours}:${minutes}`;
+        // Debug: Show both UTC and local time to verify conversion
+        const utcHours = String(date.getUTCHours()).padStart(2, '0');
+        const utcMinutes = String(date.getUTCMinutes()).padStart(2, '0');
+        console.log(`[isoToLocalDatetime] ${isoString} (normalized: ${normalizedIso}) -> UTC: ${utcHours}:${utcMinutes}, Local: ${hours}:${minutes} (timezone: ${Intl.DateTimeFormat().resolvedOptions().timeZone})`);
+        return result;
+      } catch (error) {
+        console.error("Error converting datetime:", error, isoString);
+        return "";
+      }
+    };
+
+    // Try to get start_time from schedule.startTime if available, otherwise use start_time
+    const startTimeValue = test.schedule?.startTime || test.start_time;
+    // For end_time, only use it if examMode is flexible
+    const endTimeValue = test.examMode === "flexible" ? (test.schedule?.endTime || test.end_time) : null;
+
+    console.log("[hydrateFromTest] Loading test data:", {
+      start_time: test.start_time,
+      schedule_startTime: test.schedule?.startTime,
+      end_time: test.end_time,
+      schedule_endTime: test.schedule?.endTime,
+      examMode: test.examMode,
+      startTimeValue,
+      endTimeValue,
+      converted_start: isoToLocalDatetime(startTimeValue),
+      converted_end: isoToLocalDatetime(endTimeValue)
+    });
+
+    setFormData({
+      title: test.title || "",
+      description: test.description || "",
+      question_ids: test.question_ids || [],
+      duration_minutes: test.duration_minutes || 60,
+      start_time: isoToLocalDatetime(startTimeValue),
+      end_time: isoToLocalDatetime(endTimeValue),
+    });
+
+    const mode = (test.examMode as ExamMode) || "strict";
+    setExamMode(mode);
+
+    // Use question_timings (new format) or fallback to question_time_limits (legacy)
+    const timings = test.question_timings || test.question_time_limits || null;
+    if (timings) {
+      // Handle array format (question_timings) or object format (question_time_limits)
+      if (Array.isArray(timings) && timings.length > 0) {
+        setTimerMode("PER_QUESTION");
+        const limits: Record<string, number> = {};
+        timings.forEach((t: any) => {
+          if (t.question_id && t.duration_minutes) {
+            limits[t.question_id] = t.duration_minutes;
+          }
+        });
+        setQuestionTimings(Object.keys(limits).length > 0 ? limits : {});
+      } else if (typeof timings === 'object' && !Array.isArray(timings) && Object.keys(timings).length > 0) {
+        setTimerMode("PER_QUESTION");
+        setQuestionTimings(timings as Record<string, number>);
+      } else {
+        setTimerMode("GLOBAL");
+        setQuestionTimings({});
+      }
+    } else {
+      setTimerMode("GLOBAL");
+      setQuestionTimings({});
+    }
     
-    // Refresh questions when page becomes visible (e.g., returning from question creation)
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') {
-        fetchQuestions();
+    // Load proctoring settings
+    const proctoring = test.proctoringSettings || {};
+    setProctoringSettings({
+      aiProctoringEnabled: proctoring.aiProctoringEnabled === true,
+      faceMismatchEnabled: proctoring.faceMismatchEnabled === true,
+      liveProctoringEnabled: proctoring.liveProctoringEnabled === true,
+    });
+
+    // Load candidate requirements from schedule
+    const candidateReqs = test.schedule?.candidateRequirements || {};
+    setRequirePhone(candidateReqs.requirePhone === true);
+    setRequireResume(candidateReqs.requireResume === true);
+    setRequireLinkedIn(candidateReqs.requireLinkedIn === true);
+    setRequireGithub(candidateReqs.requireGithub === true);
+  };
+
+  // Fetch test data and questions
+  useEffect(() => {
+    const fetchData = async () => {
+      if (!testId) return;
+      
+      try {
+        setLoadingTest(true);
+        setLoadingQuestions(true);
+        
+        // Fetch test data
+        const testResponse = await apiClient.get(`/api/v1/data-engineering/tests/${testId}`);
+        setTestData(testResponse.data);
+        
+        // Fetch questions
+        const questionsResponse = await apiClient.get('/api/v1/data-engineering/questions?is_published=true');
+        const data = questionsResponse.data;
+        setQuestions(data.questions || data || []);
+        
+      } catch (error: any) {
+        console.error('Error fetching data:', error);
+        alert(error.response?.data?.detail || 'Failed to load test data');
+        router.push('/data-engineering/tests');
+      } finally {
+        setLoadingTest(false);
+        setLoadingQuestions(false);
       }
     };
     
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    
-    // Also refresh on focus (when user switches back to the tab)
-    const handleFocus = () => {
-      fetchQuestions();
-    };
-    
-    window.addEventListener('focus', handleFocus);
-    
-    return () => {
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-      window.removeEventListener('focus', handleFocus);
-    };
-  }, []);
+    fetchData();
+  }, [testId, router]);
 
-  const fetchQuestions = async () => {
-    try {
-      const response = await apiClient.get("/api/v1/data-engineering/questions?is_published=true");
-      const data = response.data;
-      setQuestions(data.questions || data || []);
-    } catch (error) {
-      console.error("Error fetching questions:", error);
+  // Hydrate form when test data is loaded
+  useEffect(() => {
+    if (testData) {
+      hydrateFromTest(testData as any);
     }
-  };
+  }, [testData]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!testId) return;
 
-    // Exam window validation
-    if (!formData.start_time) {
-      alert("Start time is required.");
-      return;
-    }
-    // For Flexible Window, end_time is required
-    if (examMode === "flexible") {
+    // Exam window validation (matching create page)
+    if (examMode === "strict") {
+      if (!formData.start_time) {
+        alert("Start time is required for strict window mode.");
+        return;
+      }
+      const durationForSchedule = timerMode === "PER_QUESTION" ? calculateTotalDuration() : formData.duration_minutes;
+      if (!durationForSchedule || durationForSchedule < 1) {
+        alert("Duration is required for strict window mode.");
+        return;
+      }
+      // endTime is calculated from startTime + duration, not required from user
+    } else if (examMode === "flexible") {
+      if (!formData.start_time) {
+        alert("Schedule start time is required for flexible window mode.");
+        return;
+      }
       if (!formData.end_time) {
-        alert("End time is required for flexible exam mode.");
+        alert("Schedule end time is required for flexible window mode.");
         return;
       }
       if (new Date(formData.start_time) >= new Date(formData.end_time)) {
         alert("End time must be after start time.");
         return;
       }
-    }
-    if (examMode === "flexible") {
-      const durationForSchedule =
-        timerMode === "PER_QUESTION" ? calculateTotalDuration() : formData.duration_minutes;
+      const durationForSchedule = timerMode === "PER_QUESTION" ? calculateTotalDuration() : formData.duration_minutes;
       if (!durationForSchedule || durationForSchedule < 1) {
         alert("Duration is required for flexible exam mode.");
         return;
       }
     }
-    
+
     // Validation for per-question mode
     if (timerMode === "PER_QUESTION") {
       for (const qid of formData.question_ids) {
@@ -142,23 +302,20 @@ export default function CreateDataEngineeringTestPage() {
         }
       }
     }
-    
-    setLoading(true);
 
+    setLoading(true);
+    
     try {
-      // Build payload based on timer mode
-      console.log('[DSA Create] Proctoring settings being sent:', JSON.stringify({
-        proctoringSettings,
-        aiProctoringEnabled: proctoringSettings.aiProctoringEnabled,
-        liveProctoringEnabled: proctoringSettings.liveProctoringEnabled,
-      }, null, 2));
+      const durationForSchedule = timerMode === "PER_QUESTION" ? calculateTotalDuration() : formData.duration_minutes;
+
+      // Build payload - exclude end_time for strict mode
+      const { end_time, ...formDataWithoutEndTime } = formData;
       
       const payload: any = {
-        ...formData,
+        ...formDataWithoutEndTime,
         start_time: new Date(formData.start_time).toISOString(),
         timer_mode: timerMode,
-        proctoringSettings,
-        // New scheduling payload (mirrors Custom MCQ)
+        // New scheduling payload
         examMode,
         schedule: {
           startTime: new Date(formData.start_time).toISOString(),
@@ -196,7 +353,7 @@ export default function CreateDataEngineeringTestPage() {
         // Explicitly remove end_time for strict mode to avoid sending empty string
         delete payload.end_time;
       }
-      
+
       if (timerMode === "PER_QUESTION") {
         // Convert questionTimings record to array format expected by backend
         payload.question_timings = formData.question_ids.map(qid => ({
@@ -205,95 +362,51 @@ export default function CreateDataEngineeringTestPage() {
         }));
         // Set total duration as sum of all question timings
         payload.duration_minutes = calculateTotalDuration();
-      }
-      
-      // Create the test
-      const response = await apiClient.post("/api/v1/data-engineering/tests", payload);
-      
-      const testId = response.data?.id || response.data?._id;
-
-      alert("Test created successfully!");
-      if (testId) {
-        router.push(`/data-engineering/tests?testId=${encodeURIComponent(String(testId))}&refreshed=true`);
       } else {
-        router.push("/data-engineering/tests");
+        payload.question_timings = null;
       }
+      
+      // Include proctoring settings in payload
+      payload.proctoringSettings = {
+        aiProctoringEnabled: proctoringSettings.aiProctoringEnabled,
+        faceMismatchEnabled: proctoringSettings.aiProctoringEnabled ? proctoringSettings.faceMismatchEnabled : false,
+        liveProctoringEnabled: proctoringSettings.liveProctoringEnabled,
+      };
+
+      await apiClient.patch(`/api/v1/data-engineering/tests/${testId}`, payload);
+      
+      alert("Test updated successfully!");
+      setTimeout(() => {
+        router.push(`/data-engineering/tests?testId=${encodeURIComponent(String(testId))}&refreshed=true`);
+      }, 200);
     } catch (error: any) {
-      alert(error.response?.data?.detail || error.response?.data?.message || "Failed to create Data Engineering test");
+      console.error("Update error:", error);
+      alert(error.response?.data?.detail || error.response?.data?.message || error.message || "Failed to update test");
+    } finally {
       setLoading(false);
     }
   };
 
-  const toggleQuestion = (questionId: string) => {
-    if (formData.question_ids.includes(questionId)) {
-      // Remove from selected questions
-      setFormData({
-        ...formData,
-        question_ids: formData.question_ids.filter((id) => id !== questionId),
-      });
-      // Also remove from question timings
-      const newTimings = { ...questionTimings };
-      delete newTimings[questionId];
-      setQuestionTimings(newTimings);
-    } else {
-      // Add to selected questions
-      setFormData({
-        ...formData,
-        question_ids: [...formData.question_ids, questionId],
-      });
-      // Initialize timing with default value (10 minutes)
-      setQuestionTimings({
-        ...questionTimings,
-        [questionId]: 10,
-      });
-    }
-  };
-
-  // Update timing for a specific question
   const updateQuestionTiming = (questionId: string, minutes: number) => {
     setQuestionTimings({
       ...questionTimings,
-      [questionId]: Math.max(1, minutes), // Minimum 1 minute
+      [questionId]: Math.max(1, minutes),
     });
   };
 
-  // Calculate total duration from per-question timings
-  const calculateTotalDuration = (): number => {
-    return formData.question_ids.reduce((total, qid) => {
-      return total + (questionTimings[qid] || 10);
-    }, 0);
-  };
-
-  // Get question title by ID
-  const getQuestionTitle = (questionId: string): string => {
-    const question = questions.find(q => q.id === questionId);
-    return question?.title || "Unknown Question";
-  };
-
-
-  const handleDeleteQuestion = async (questionId: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    
-    if (!confirm('Are you sure you want to delete this question? This action cannot be undone.')) {
-      return;
-    }
-
-    try {
-      await apiClient.delete(`/api/v1/data-engineering/questions/${questionId}`);
-      
-      if (formData.question_ids.includes(questionId)) {
-        setFormData({
-          ...formData,
-          question_ids: formData.question_ids.filter((id) => id !== questionId),
-        });
-      }
-      
-      await fetchQuestions();
-      alert('Question deleted successfully!');
-    } catch (error: any) {
-      alert(error.response?.data?.detail || error.response?.data?.message || 'Failed to delete question');
-    }
-  };
+  // Show loading state while fetching test or questions data
+  if (loadingTest || loadingQuestions || !testData) {
+    return (
+      <div style={{ backgroundColor: "#FAFCFB", minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "1rem", color: "#00684A" }}>
+          <Loader2 size={40} className="animate-spin" />
+          <span style={{ fontWeight: 500 }}>
+            {loadingTest ? "Loading test data..." : loadingQuestions ? "Loading questions..." : "Loading..."}
+          </span>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div style={{ backgroundColor: "#FAFCFB", minHeight: "100vh", fontFamily: "system-ui, -apple-system, sans-serif" }}>
@@ -303,7 +416,7 @@ export default function CreateDataEngineeringTestPage() {
         <div style={{ marginBottom: "2rem" }}>
           <button
             type="button"
-            onClick={() => router.back()}
+            onClick={() => router.push("/dashboard")}
             style={{
               display: "flex", alignItems: "center", gap: "0.5rem", padding: "0.5rem 0",
               fontSize: "0.875rem", color: "#6B7280", backgroundColor: "transparent",
@@ -312,17 +425,17 @@ export default function CreateDataEngineeringTestPage() {
             onMouseOver={(e) => { e.currentTarget.style.color = "#00684A"; }}
             onMouseOut={(e) => { e.currentTarget.style.color = "#6B7280"; }}
           >
-            <ArrowLeft size={16} strokeWidth={2.5} /> Back
+            <ArrowLeft size={16} strokeWidth={2.5} /> Back to Dashboard
           </button>
         </div>
 
         {/* Page Header */}
         <div style={{ marginBottom: "2.5rem" }}>
           <h1 style={{ margin: "0 0 0.5rem 0", color: "#111827", fontSize: "2.25rem", fontWeight: 800, letterSpacing: "-0.025em" }}>
-            Create Data Engineering Test
+            Edit Data Engineering Test
           </h1>
           <p style={{ color: "#6B7280", fontSize: "1rem", margin: 0 }}>
-            Configure test settings, schedule, and select PySpark questions.
+            Update test configuration, timer settings, and modify question selections.
           </p>
         </div>
 
@@ -349,14 +462,8 @@ export default function CreateDataEngineeringTestPage() {
                   borderRadius: "0.5rem", fontSize: "0.95rem", transition: "all 0.2s ease",
                   outline: "none", boxSizing: "border-box"
                 }}
-                onFocus={(e) => {
-                  e.currentTarget.style.borderColor = "#00684A";
-                  e.currentTarget.style.boxShadow = "0 0 0 3px rgba(0, 104, 74, 0.1)";
-                }}
-                onBlur={(e) => {
-                  e.currentTarget.style.borderColor = "#D1D5DB";
-                  e.currentTarget.style.boxShadow = "none";
-                }}
+                onFocus={(e) => { e.currentTarget.style.borderColor = "#00684A"; e.currentTarget.style.boxShadow = "0 0 0 3px rgba(0, 104, 74, 0.1)"; }}
+                onBlur={(e) => { e.currentTarget.style.borderColor = "#D1D5DB"; e.currentTarget.style.boxShadow = "none"; }}
                 placeholder="e.g., Senior SDE Coding Assessment"
               />
             </div>
@@ -374,86 +481,14 @@ export default function CreateDataEngineeringTestPage() {
                   fontFamily: "inherit", resize: "vertical", transition: "all 0.2s ease",
                   outline: "none", boxSizing: "border-box"
                 }}
-                onFocus={(e) => {
-                  e.currentTarget.style.borderColor = "#00684A";
-                  e.currentTarget.style.boxShadow = "0 0 0 3px rgba(0, 104, 74, 0.1)";
-                }}
-                onBlur={(e) => {
-                  e.currentTarget.style.borderColor = "#D1D5DB";
-                  e.currentTarget.style.boxShadow = "none";
-                }}
-                placeholder="Briefly describe what this test evaluates..."
+                onFocus={(e) => { e.currentTarget.style.borderColor = "#00684A"; e.currentTarget.style.boxShadow = "0 0 0 3px rgba(0, 104, 74, 0.1)"; }}
+                onBlur={(e) => { e.currentTarget.style.borderColor = "#D1D5DB"; e.currentTarget.style.boxShadow = "none"; }}
+                placeholder="Describe the test..."
               />
             </div>
           </div>
 
-          {/* Section 2: Proctoring Settings */}
-          <div style={{ backgroundColor: "#ffffff", padding: "2rem", borderRadius: "1rem", border: "1px solid #E5E7EB", boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "1.5rem", paddingBottom: "1rem", borderBottom: "1px solid #F3F4F6" }}>
-              <ShieldCheck size={20} color="#00684A" />
-              <h2 style={{ margin: 0, fontSize: "1.25rem", fontWeight: 700, color: "#111827" }}>Proctoring Settings</h2>
-            </div>
-            
-            <label style={{ display: "flex", alignItems: "flex-start", gap: "0.75rem", cursor: "pointer", marginBottom: "1rem", padding: "1rem", backgroundColor: proctoringSettings.aiProctoringEnabled ? "#F0F9F4" : "#F9FAFB", border: `1px solid ${proctoringSettings.aiProctoringEnabled ? "#A8E8BC" : "#E5E7EB"}`, borderRadius: "0.5rem" }}>
-              <input
-                type="checkbox"
-                checked={proctoringSettings.aiProctoringEnabled}
-                onChange={(e) => {
-                  const checked = e.target.checked;
-                  setProctoringSettings((prev) => ({
-                    ...prev,
-                    aiProctoringEnabled: checked,
-                    faceMismatchEnabled: checked ? prev.faceMismatchEnabled : false,
-                  }));
-                }}
-                style={{ marginTop: "0.25rem", width: "16px", height: "16px", accentColor: "#00684A", cursor: "pointer" }}
-              />
-              <div>
-                <div style={{ fontWeight: 600, color: "#111827" }}>Enable AI Proctoring</div>
-                <div style={{ fontSize: "0.875rem", color: "#6B7280", marginTop: "0.25rem" }}>Camera-based AI detection for missing face, multiple faces, and gaze tracking.</div>
-              </div>
-            </label>
-
-            {proctoringSettings.aiProctoringEnabled && (
-              <label style={{ display: "flex", alignItems: "flex-start", gap: "0.75rem", cursor: "pointer", marginBottom: "1rem", marginLeft: "2rem", padding: "1rem", backgroundColor: proctoringSettings.faceMismatchEnabled ? "#F0F9F4" : "#F9FAFB", border: `1px solid ${proctoringSettings.faceMismatchEnabled ? "#A8E8BC" : "#E5E7EB"}`, borderRadius: "0.5rem" }}>
-                <input
-                  type="checkbox"
-                  checked={proctoringSettings.faceMismatchEnabled}
-                  onChange={(e) => {
-                    setProctoringSettings((prev) => ({
-                      ...prev,
-                      faceMismatchEnabled: e.target.checked,
-                    }));
-                  }}
-                  style={{ marginTop: "0.25rem", width: "16px", height: "16px", accentColor: "#00684A", cursor: "pointer" }}
-                />
-                <div>
-                  <div style={{ fontWeight: 600, color: "#111827" }}>Face Mismatch Detection</div>
-                  <div style={{ fontSize: "0.875rem", color: "#6B7280", marginTop: "0.25rem" }}>Continuously matches the candidate's face against the initial identity photo.</div>
-                </div>
-              </label>
-            )}
-
-            <label style={{ display: "flex", alignItems: "flex-start", gap: "0.75rem", cursor: "pointer", padding: "1rem", backgroundColor: proctoringSettings.liveProctoringEnabled ? "#F0F9F4" : "#F9FAFB", border: `1px solid ${proctoringSettings.liveProctoringEnabled ? "#A8E8BC" : "#E5E7EB"}`, borderRadius: "0.5rem" }}>
-              <input
-                type="checkbox"
-                checked={proctoringSettings.liveProctoringEnabled}
-                onChange={(e) => {
-                  setProctoringSettings((prev) => ({
-                    ...prev,
-                    liveProctoringEnabled: e.target.checked,
-                  }));
-                }}
-                style={{ marginTop: "0.25rem", width: "16px", height: "16px", accentColor: "#00684A", cursor: "pointer" }}
-              />
-              <div>
-                <div style={{ fontWeight: 600, color: "#111827" }}>Enable Live Proctoring</div>
-                <div style={{ fontSize: "0.875rem", color: "#6B7280", marginTop: "0.25rem" }}>Real-time streaming of webcam and screen to the admin dashboard.</div>
-              </div>
-            </label>
-          </div>
-
-          {/* Section 3: Exam Window & Timing */}
+          {/* Section 2: Exam Window Configuration & Timing */}
           <div style={{ backgroundColor: "#ffffff", padding: "2rem", borderRadius: "1rem", border: "1px solid #E5E7EB", boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
             <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "1.5rem", paddingBottom: "1rem", borderBottom: "1px solid #F3F4F6" }}>
               <CalendarClock size={20} color="#00684A" />
@@ -487,6 +522,9 @@ export default function CreateDataEngineeringTestPage() {
                   onFocus={(e) => e.currentTarget.style.borderColor = "#00684A"}
                   onBlur={(e) => e.currentTarget.style.borderColor = "#D1D5DB"}
                 />
+                {examMode === "strict" && (
+                  <p style={{ margin: "0.5rem 0 0 0", fontSize: "0.8rem", color: "#6B7280" }}>Test automatically ends based on duration.</p>
+                )}
               </div>
               {examMode === "flexible" && (
                 <div>
@@ -526,6 +564,7 @@ export default function CreateDataEngineeringTestPage() {
               <div>
                 <label style={{ display: "block", marginBottom: "0.5rem", fontWeight: 600, color: "#374151", fontSize: "0.875rem" }}>
                   Duration (minutes) <span style={{ color: "#DC2626" }}>*</span>
+                  {examMode === "strict" && <span style={{ fontWeight: 400, color: "#6B7280", marginLeft: "0.5rem" }}>(Calculates end time)</span>}
                 </label>
                 <input 
                   type="number" 
@@ -534,20 +573,11 @@ export default function CreateDataEngineeringTestPage() {
                   value={formData.duration_minutes} 
                   onChange={(e) => {
                     const value = e.target.value;
-                    if (value === '') {
-                      setFormData({ ...formData, duration_minutes: 0 });
-                      return;
-                    }
+                    if (value === '') { setFormData({ ...formData, duration_minutes: 0 }); return; }
                     const numValue = parseInt(value, 10);
-                    if (!isNaN(numValue) && numValue >= 0) {
-                      setFormData({ ...formData, duration_minutes: numValue });
-                    }
+                    if (!isNaN(numValue) && numValue >= 1) { setFormData({ ...formData, duration_minutes: numValue }); }
                   }}
-                  onBlur={() => {
-                    if (formData.duration_minutes < 1) {
-                      setFormData({ ...formData, duration_minutes: 1 });
-                    }
-                  }}
+                  onBlur={() => { if (formData.duration_minutes < 1) setFormData({ ...formData, duration_minutes: 1 }); }}
                   style={{ width: "200px", padding: "0.75rem", border: "1px solid #D1D5DB", borderRadius: "0.5rem", outline: "none", boxSizing: "border-box" }} 
                   onFocus={(e) => e.currentTarget.style.borderColor = "#00684A"}
                   onBlurCapture={(e) => e.currentTarget.style.borderColor = "#D1D5DB"}
@@ -559,28 +589,29 @@ export default function CreateDataEngineeringTestPage() {
               <div style={{ border: "1px solid #D1D5DB", borderRadius: "0.5rem", padding: "1.25rem", backgroundColor: "#F9FAFB" }}>
                 <p style={{ fontSize: "0.875rem", color: "#4B5563", margin: "0 0 1rem 0", fontWeight: 600 }}>Set duration for each individual question:</p>
                 <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-                  {formData.question_ids.map((qid, index) => (
-                    <div key={qid} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0.75rem 1rem", backgroundColor: "#ffffff", borderRadius: "0.375rem", border: "1px solid #E5E7EB" }}>
-                      <span style={{ fontWeight: 500, color: "#111827", fontSize: "0.95rem" }}>
-                        {index + 1}. {getQuestionTitle(qid)}
-                      </span>
-                      <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-                        <input 
-                          type="number" 
-                          min="1" 
-                          value={questionTimings[qid] || 10} 
-                          onChange={(e) => {
-                            const value = parseInt(e.target.value, 10);
-                            if (!isNaN(value)) {
-                              updateQuestionTiming(qid, value);
-                            }
-                          }}
-                          style={{ width: "70px", padding: "0.375rem", border: "1px solid #D1D5DB", borderRadius: "0.375rem", textAlign: "center", outline: "none" }} 
-                        />
-                        <span style={{ fontSize: "0.875rem", color: "#6B7280" }}>min</span>
+                  {formData.question_ids.map((qid, index) => {
+                    const question = questions.find(q => q.id === qid);
+                    return (
+                      <div key={qid} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0.75rem 1rem", backgroundColor: "#ffffff", borderRadius: "0.375rem", border: "1px solid #E5E7EB" }}>
+                        <span style={{ fontWeight: 500, color: "#111827", fontSize: "0.95rem" }}>
+                          {index + 1}. {question?.title || "Unknown Question"}
+                        </span>
+                        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                          <input 
+                            type="number" 
+                            min="1" 
+                            value={questionTimings[qid] || 10} 
+                            onChange={(e) => {
+                              const value = parseInt(e.target.value, 10);
+                              if (!isNaN(value)) updateQuestionTiming(qid, value);
+                            }}
+                            style={{ width: "70px", padding: "0.375rem", border: "1px solid #D1D5DB", borderRadius: "0.375rem", textAlign: "center", outline: "none" }} 
+                          />
+                          <span style={{ fontSize: "0.875rem", color: "#6B7280" }}>min</span>
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
                 <div style={{ marginTop: "1rem", padding: "1rem", backgroundColor: "#F0F9F4", borderRadius: "0.5rem", display: "flex", justifyContent: "space-between", alignItems: "center", border: "1px solid #E1F2E9" }}>
                   <span style={{ fontWeight: 600, color: "#00684A" }}>Total Duration</span>
@@ -590,7 +621,7 @@ export default function CreateDataEngineeringTestPage() {
             )}
           </div>
 
-          {/* Section 4: Candidate Requirements */}
+          {/* Section 3: Candidate Info Requirements */}
           <div style={{ backgroundColor: "#ffffff", padding: "2rem", borderRadius: "1rem", border: "1px solid #E5E7EB", boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
             <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "1.5rem", paddingBottom: "1rem", borderBottom: "1px solid #F3F4F6" }}>
               <Users size={20} color="#00684A" />
@@ -619,6 +650,75 @@ export default function CreateDataEngineeringTestPage() {
             </div>
           </div>
 
+          {/* Section 4: Proctoring Settings */}
+          <div style={{ backgroundColor: "#ffffff", padding: "2rem", borderRadius: "1rem", border: "1px solid #E5E7EB", boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "1.5rem", paddingBottom: "1rem", borderBottom: "1px solid #F3F4F6" }}>
+              <ShieldCheck size={20} color="#00684A" />
+              <h2 style={{ margin: 0, fontSize: "1.25rem", fontWeight: 700, color: "#111827" }}>Proctoring Settings</h2>
+            </div>
+            
+            <label style={{ display: "flex", alignItems: "flex-start", gap: "0.75rem", cursor: "pointer", marginBottom: "1rem", padding: "1rem", backgroundColor: proctoringSettings.aiProctoringEnabled ? "#F0F9F4" : "#F9FAFB", border: `1px solid ${proctoringSettings.aiProctoringEnabled ? "#A8E8BC" : "#E5E7EB"}`, borderRadius: "0.5rem" }}>
+              <input
+                type="checkbox"
+                checked={proctoringSettings.aiProctoringEnabled}
+                onChange={(e) => {
+                  const checked = e.target.checked;
+                  setProctoringSettings((prev) => ({
+                    ...prev,
+                    aiProctoringEnabled: checked,
+                    faceMismatchEnabled: checked ? prev.faceMismatchEnabled : false,
+                    liveProctoringEnabled: prev.liveProctoringEnabled && checked ? prev.liveProctoringEnabled : (prev.liveProctoringEnabled && !checked ? false : prev.liveProctoringEnabled),
+                  }));
+                }}
+                style={{ marginTop: "0.25rem", width: "16px", height: "16px", accentColor: "#00684A", cursor: "pointer" }}
+              />
+              <div>
+                <div style={{ fontWeight: 600, color: "#111827" }}>Enable AI Proctoring</div>
+                <div style={{ fontSize: "0.875rem", color: "#6B7280", marginTop: "0.25rem" }}>Camera-based AI detection for missing face, multiple faces, and gaze tracking. Identity photo capture + fullscreen + screen share gate remain required.</div>
+              </div>
+            </label>
+
+            {proctoringSettings.aiProctoringEnabled && (
+              <label style={{ display: "flex", alignItems: "flex-start", gap: "0.75rem", cursor: "pointer", marginBottom: "1rem", marginLeft: "2rem", padding: "1rem", backgroundColor: proctoringSettings.faceMismatchEnabled ? "#F0F9F4" : "#F9FAFB", border: `1px solid ${proctoringSettings.faceMismatchEnabled ? "#A8E8BC" : "#E5E7EB"}`, borderRadius: "0.5rem" }}>
+                <input
+                  type="checkbox"
+                  checked={proctoringSettings.faceMismatchEnabled}
+                  onChange={(e) => {
+                    setProctoringSettings((prev) => ({
+                      ...prev,
+                      faceMismatchEnabled: e.target.checked,
+                    }));
+                  }}
+                  style={{ marginTop: "0.25rem", width: "16px", height: "16px", accentColor: "#00684A", cursor: "pointer" }}
+                />
+                <div>
+                  <div style={{ fontWeight: 600, color: "#111827" }}>Enable Face Mismatch Detection</div>
+                  <div style={{ fontSize: "0.875rem", color: "#6B7280", marginTop: "0.25rem" }}>Continuously matches the candidate's face against the initial identity photo.</div>
+                </div>
+              </label>
+            )}
+
+            <label style={{ display: "flex", alignItems: "flex-start", gap: "0.75rem", cursor: "pointer", padding: "1rem", backgroundColor: proctoringSettings.liveProctoringEnabled ? "#F0F9F4" : "#F9FAFB", border: `1px solid ${proctoringSettings.liveProctoringEnabled ? "#A8E8BC" : "#E5E7EB"}`, borderRadius: "0.5rem" }}>
+              <input
+                type="checkbox"
+                checked={proctoringSettings.liveProctoringEnabled}
+                onChange={(e) => {
+                  const checked = e.target.checked;
+                  setProctoringSettings((prev) => ({
+                    ...prev,
+                    liveProctoringEnabled: checked,
+                    aiProctoringEnabled: checked ? true : prev.aiProctoringEnabled,
+                  }));
+                }}
+                style={{ marginTop: "0.25rem", width: "16px", height: "16px", accentColor: "#00684A", cursor: "pointer" }}
+              />
+              <div>
+                <div style={{ fontWeight: 600, color: "#111827" }}>Enable Live Proctoring</div>
+                <div style={{ fontSize: "0.875rem", color: "#6B7280", marginTop: "0.25rem" }}>Real-time streaming of webcam and screen to the admin dashboard.</div>
+              </div>
+            </label>
+          </div>
+
           {/* Section 5: Question Selection */}
           <div style={{ backgroundColor: "#ffffff", padding: "2rem", borderRadius: "1rem", border: "1px solid #E5E7EB", boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "1.5rem", paddingBottom: "1rem", borderBottom: "1px solid #F3F4F6" }}>
@@ -626,83 +726,67 @@ export default function CreateDataEngineeringTestPage() {
                 <ListChecks size={20} color="#00684A" />
                 <h2 style={{ margin: 0, fontSize: "1.25rem", fontWeight: 700, color: "#111827" }}>Select Questions</h2>
               </div>
-              <button
-                type="button"
-                onClick={() => router.push("/data-engineering/questions/create")}
-                style={{ 
-                  display: "flex", alignItems: "center", gap: "0.375rem",
-                  padding: "0.5rem 1rem", backgroundColor: "#F0F9F4", color: "#00684A", 
-                  border: "1px solid #E1F2E9", borderRadius: "0.5rem", fontSize: "0.875rem", 
-                  fontWeight: 600, cursor: "pointer", transition: "all 0.2s"
-                }}
-                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = "#E1F2E9"}
-                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = "#F0F9F4"}
-              >
-                <Plus size={16} /> Author New
-              </button>
             </div>
 
             {questions.length === 0 ? (
               <div style={{ padding: "3rem", border: "1px dashed #D1D5DB", borderRadius: "0.5rem", textAlign: "center", backgroundColor: "#F9FAFB" }}>
-                <Bot size={32} color="#9CA3AF" style={{ margin: "0 auto 1rem auto" }} />
-                <p style={{ color: "#4B5563", fontWeight: 500 }}>No questions available in the repository.</p>
-                <p style={{ color: "#6B7280", fontSize: "0.875rem" }}>Create a question first to add it to this assessment.</p>
+                <p style={{ color: "#6B7280", fontWeight: 500, margin: 0 }}>No questions available in the repository.</p>
               </div>
             ) : (
               <>
                 <div style={{ border: "1px solid #E5E7EB", borderRadius: "0.5rem", padding: "1rem", maxHeight: "400px", overflowY: "auto", backgroundColor: "#F9FAFB" }}>
-                  {questions.map((q) => (
-                    <div
-                      key={q.id}
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "1rem",
-                        padding: "1rem",
-                        marginBottom: "0.5rem",
-                        border: formData.question_ids.includes(q.id) ? "2px solid #00684A" : "1px solid #E5E7EB",
-                        borderRadius: "0.5rem",
-                        cursor: "pointer",
-                        backgroundColor: formData.question_ids.includes(q.id) ? "#F0F9F4" : "#ffffff",
-                        transition: "all 0.2s"
-                      }}
-                      onClick={() => toggleQuestion(q.id)}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={formData.question_ids.includes(q.id)}
-                        onChange={() => toggleQuestion(q.id)}
-                        style={{ width: "18px", height: "18px", accentColor: "#00684A", cursor: "pointer" }}
-                      />
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontWeight: 600, color: "#111827", fontSize: "1rem", marginBottom: "0.25rem", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                          {q.title}
-                        </div>
-                        <div style={{ fontSize: "0.8rem", display: "flex", gap: "0.5rem", alignItems: "center" }}>
-                          <span style={{ 
-                            padding: "0.15rem 0.5rem", borderRadius: "0.25rem", fontWeight: 600, textTransform: "capitalize",
-                            backgroundColor: q.difficulty_level === 'Beginner' ? "#D1FAE5" : q.difficulty_level === 'Intermediate' ? "#FEF3C7" : "#FEE2E2",
-                            color: q.difficulty_level === 'Beginner' ? "#059669" : q.difficulty_level === 'Intermediate' ? "#D97706" : "#DC2626"
-                          }}>
-                            {q.difficulty_level}
-                          </span>
+                  {questions.map((q) => {
+                    const isChecked = formData.question_ids.includes(q.id);
+                    return (
+                      <div
+                        key={q.id}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "1rem",
+                          padding: "1rem",
+                          marginBottom: "0.5rem",
+                          border: isChecked ? "2px solid #00684A" : "1px solid #E5E7EB",
+                          borderRadius: "0.5rem",
+                          cursor: "pointer",
+                          backgroundColor: isChecked ? "#F0F9F4" : "#ffffff",
+                          transition: "all 0.2s"
+                        }}
+                        onClick={() => {
+                          const next = isChecked
+                            ? formData.question_ids.filter((x) => x !== q.id)
+                            : [...formData.question_ids, q.id];
+                          setFormData({ ...formData, question_ids: next });
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          onChange={(e) => {
+                            const next = e.target.checked
+                              ? [...formData.question_ids, q.id]
+                              : formData.question_ids.filter((x) => x !== q.id);
+                            setFormData({ ...formData, question_ids: next });
+                          }}
+                          style={{ width: "18px", height: "18px", accentColor: "#00684A", cursor: "pointer" }}
+                        />
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontWeight: 600, color: "#111827", fontSize: "1rem", marginBottom: "0.25rem", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                            {q.title}
+                          </div>
+                          <div style={{ fontSize: "0.8rem", display: "flex", gap: "0.5rem", alignItems: "center" }}>
+                            <span style={{ 
+                              padding: "0.15rem 0.5rem", borderRadius: "0.25rem", fontWeight: 600, textTransform: "capitalize",
+                              backgroundColor: q.difficulty_level === 'easy' ? "#D1FAE5" : q.difficulty_level === 'medium' ? "#FEF3C7" : "#FEE2E2",
+                              color: q.difficulty_level === 'easy' ? "#059669" : q.difficulty_level === 'medium' ? "#D97706" : "#DC2626"
+                            }}>
+                              {q.difficulty_level}
+                            </span>
+                          </div>
                         </div>
                       </div>
-                      <button
-                        type="button"
-                        onClick={(e) => handleDeleteQuestion(q.id, e)}
-                        style={{
-                          padding: "0.5rem", border: "none", backgroundColor: "transparent", color: "#EF4444", 
-                          cursor: "pointer", borderRadius: "0.375rem", transition: "all 0.2s"
-                        }}
-                        onMouseEnter={(e) => e.currentTarget.style.backgroundColor = "#FEE2E2"}
-                        onMouseLeave={(e) => e.currentTarget.style.backgroundColor = "transparent"}
-                        title="Delete permanently"
-                      >
-                        <Trash2 size={18} />
-                      </button>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "1rem", padding: "0 0.5rem" }}>
                   <span style={{ fontSize: "0.9rem", fontWeight: 600, color: formData.question_ids.length > 0 ? "#00684A" : "#6B7280" }}>
@@ -721,20 +805,14 @@ export default function CreateDataEngineeringTestPage() {
           }}>
             <button
               type="button"
-              onClick={() => router.push("/data-engineering")}
+              onClick={() => router.push("/data-engineering/tests")}
               style={{ 
                 padding: "0.5rem 1.25rem", fontSize: "0.875rem", fontWeight: 600, color: "#4B5563",
                 backgroundColor: "#ffffff", border: "1px solid #D1D5DB", borderRadius: "9999px",
                 cursor: "pointer", transition: "all 0.2s", boxShadow: "0 1px 2px rgba(0,0,0,0.05)"
               }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.backgroundColor = "#F9FAFB";
-                e.currentTarget.style.borderColor = "#9CA3AF";
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.backgroundColor = "#ffffff";
-                e.currentTarget.style.borderColor = "#D1D5DB";
-              }}
+              onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = "#F9FAFB"; e.currentTarget.style.borderColor = "#9CA3AF"; }}
+              onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = "#ffffff"; e.currentTarget.style.borderColor = "#D1D5DB"; }}
             >
               Cancel
             </button>
@@ -761,7 +839,7 @@ export default function CreateDataEngineeringTestPage() {
                 }
               }}
             >
-              {loading ? "Creating..." : "Save & Create Assessment"}
+              {loading ? "Updating..." : "Update Data Engineering Test"}
             </button>
           </div>
         </form>
@@ -769,5 +847,3 @@ export default function CreateDataEngineeringTestPage() {
     </div>
   );
 }
-
-export const getServerSideProps: GetServerSideProps = requireAuth;

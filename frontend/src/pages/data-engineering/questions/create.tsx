@@ -4,6 +4,7 @@ import { GetServerSideProps } from "next";
 import { requireAuth } from "../../../lib/auth";
 import { ArrowLeft, Bot, PenTool, Sparkles, Loader2 } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
+import { dataEngineeringService } from "../../../services/data-engineering/data-engineering.service";
 
 // Topic display names mapping
 const TOPIC_DISPLAY_NAMES: Record<string, string> = {
@@ -94,20 +95,13 @@ export default function CreateDataEngineeringQuestionPage() {
         difficulty: difficulty
       });
 
-      const response = await fetch(`/api/v1/data-engineering/questions/generate?${params.toString()}`, {
-        method: "GET",
-        headers: {
-          "Content-Type": "application/json",
-        },
+      const result = await dataEngineeringService.generateQuestion({
+        experience_level: experienceLevelForDifficulty,
+        topic: topic.trim() || undefined,
+        difficulty: difficulty
       });
 
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.detail || "Failed to generate question");
-      }
-
-      const data = await response.json();
-      console.log('Question generated:', data);
+      console.log('Question generated:', result.data);
       
       // Invalidate questions cache to refresh the list
       queryClient.invalidateQueries({ queryKey: ['data-engineering', 'questions'] });
@@ -308,28 +302,40 @@ export default function CreateDataEngineeringQuestionPage() {
                   <label style={{ display: "block", marginBottom: "0.5rem", fontWeight: 600, color: "#374151", fontSize: "0.875rem" }}>
                     Topic <span style={{ color: "#DC2626" }}>*</span>
                   </label>
-                  <select
-                    value={topic}
-                    onChange={(e) => setTopic(e.target.value)}
-                    disabled={loadingTopics}
-                    style={{
-                      width: "100%", padding: "0.75rem 1rem", border: "1px solid #D1D5DB",
-                      borderRadius: "0.5rem", fontSize: "0.95rem", backgroundColor: "#ffffff",
-                      cursor: loadingTopics ? "wait" : "pointer", transition: "all 0.2s ease", outline: "none"
-                    }}
-                    onFocus={(e) => e.currentTarget.style.borderColor = "#00684A"}
-                    onBlur={(e) => e.currentTarget.style.borderColor = "#D1D5DB"}
-                  >
-                    {loadingTopics ? (
-                      <option>Loading topics...</option>
-                    ) : (
-                      topics.map(t => (
+                  <div style={{ position: "relative" }}>
+                    <input
+                      type="text"
+                      list="topic-suggestions"
+                      value={topic}
+                      onChange={(e) => setTopic(e.target.value)}
+                      placeholder={loadingTopics ? "Loading topics..." : "Select or type a topic"}
+                      disabled={loadingTopics}
+                      style={{
+                        width: "100%", 
+                        padding: "0.75rem 1rem", 
+                        border: "1px solid #D1D5DB",
+                        borderRadius: "0.5rem", 
+                        fontSize: "0.95rem", 
+                        backgroundColor: "#ffffff",
+                        cursor: loadingTopics ? "wait" : "text", 
+                        transition: "all 0.2s ease", 
+                        outline: "none",
+                        boxSizing: "border-box"
+                      }}
+                      onFocus={(e) => e.currentTarget.style.borderColor = "#00684A"}
+                      onBlur={(e) => e.currentTarget.style.borderColor = "#D1D5DB"}
+                    />
+                    <datalist id="topic-suggestions">
+                      {!loadingTopics && topics.map(t => (
                         <option key={t} value={t}>
                           {TOPIC_DISPLAY_NAMES[t] || t}
                         </option>
-                      ))
-                    )}
-                  </select>
+                      ))}
+                    </datalist>
+                  </div>
+                  <p style={{ fontSize: "0.75rem", color: "#6B7280", marginTop: "0.375rem", marginBottom: 0 }}>
+                    Select from dropdown or type your own topic
+                  </p>
                 </div>
 
                 <div>

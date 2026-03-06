@@ -362,14 +362,15 @@ services:
       - "3010:3010"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
+      - ./services/data-engineering-service/app:/app/app
     environment:
       - ENVIRONMENT=production
       - API_V1_STR=/api/v1
       - MONGODB_URL=${MONGO_URI}
       - MONGODB_DATABASE=data_engineer_platform
       - REDIS_URL=redis://redis:6379/2
-      - GROQ_API_KEY=${GROQ_API_KEY}
-      - GROQ_MODEL=llama-3.3-70b-versatile
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - OPENAI_MODEL=gpt-4o-mini
       - DOCKER_SOCKET=unix:///var/run/docker.sock
       - EXECUTION_IMAGE=data-engineering-service/pyspark-executor:latest
       - SECRET_KEY=${DATA_ENGINEERING_SECRET_KEY:-your-secret-key-change-in-production-12345}

@@ -12,7 +12,9 @@ import {
   PenTool, 
   ClipboardList, 
   Timer, 
-  ListChecks 
+  ListChecks,
+  Settings,
+  Users
 } from "lucide-react";
 
 export default function DataEngineeringMainPage() {
@@ -251,10 +253,10 @@ export default function DataEngineeringMainPage() {
                 <ClipboardList size={36} strokeWidth={2} />
               </div>
               <h2 style={{ margin: "0 0 0.5rem 0", color: "#111827", fontSize: "1.375rem", fontWeight: 700, lineHeight: "1.3" }}>
-                Build Assessment
+                Create Assessment
               </h2>
               <p style={{ margin: "0 0 1.5rem 0", color: "#6B7280", fontSize: "0.9rem", lineHeight: "1.5" }}>
-                Compose tests from your published questions
+                Build new tests from your published questions
               </p>
               <div style={{ display: "flex", gap: "0.625rem", flexWrap: "wrap", marginTop: "auto" }}>
                 <span style={{ display: "flex", alignItems: "center", gap: "0.375rem", fontSize: "0.75rem", fontWeight: 600, color: "#0369A1", backgroundColor: "#E0F2FE", padding: "0.5rem 0.875rem", borderRadius: "0.625rem", border: "1px solid #BAE6FD" }}>
@@ -262,6 +264,62 @@ export default function DataEngineeringMainPage() {
                 </span>
                 <span style={{ display: "flex", alignItems: "center", gap: "0.375rem", fontSize: "0.75rem", fontWeight: 600, color: "#0369A1", backgroundColor: "#E0F2FE", padding: "0.5rem 0.875rem", borderRadius: "0.625rem", border: "1px solid #BAE6FD" }}>
                   <ListChecks size={14} /> Select
+                </span>
+              </div>
+            </div>
+          </Link>
+
+          {/* 4. Test Management Option */}
+          <Link href="/data-engineering/tests" style={{ textDecoration: "none" }}>
+            <div
+              style={{
+                backgroundColor: "#ffffff",
+                padding: "2.5rem",
+                borderRadius: "1.25rem",
+                cursor: "pointer",
+                transition: "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
+                border: "2px solid #E1F2E9",
+                height: "100%",
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "flex-start",
+                boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03)",
+                position: "relative",
+                overflow: "hidden"
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.borderColor = "#F59E0B";
+                e.currentTarget.style.transform = "translateY(-6px)";
+                e.currentTarget.style.boxShadow = "0 20px 25px -5px rgba(245, 158, 11, 0.15), 0 10px 10px -5px rgba(245, 158, 11, 0.08)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.borderColor = "#E1F2E9";
+                e.currentTarget.style.transform = "translateY(0)";
+                e.currentTarget.style.boxShadow = "0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03)";
+              }}
+            >
+              <div style={{ 
+                background: "linear-gradient(135deg, #F59E0B 0%, #FBBF24 100%)",
+                padding: "1.25rem", 
+                borderRadius: "1rem", 
+                color: "#ffffff",
+                marginBottom: "1.75rem",
+                boxShadow: "0 4px 12px rgba(245, 158, 11, 0.2)"
+              }}>
+                <Settings size={36} strokeWidth={2} />
+              </div>
+              <h2 style={{ margin: "0 0 0.5rem 0", color: "#111827", fontSize: "1.375rem", fontWeight: 700, lineHeight: "1.3" }}>
+                Test Management
+              </h2>
+              <p style={{ margin: "0 0 1.5rem 0", color: "#6B7280", fontSize: "0.9rem", lineHeight: "1.5" }}>
+                Manage tests, candidates, and view analytics
+              </p>
+              <div style={{ display: "flex", gap: "0.625rem", flexWrap: "wrap", marginTop: "auto" }}>
+                <span style={{ display: "flex", alignItems: "center", gap: "0.375rem", fontSize: "0.75rem", fontWeight: 600, color: "#D97706", backgroundColor: "#FEF3C7", padding: "0.5rem 0.875rem", borderRadius: "0.625rem", border: "1px solid #FDE68A" }}>
+                  <Edit3 size={14} /> Edit
+                </span>
+                <span style={{ display: "flex", alignItems: "center", gap: "0.375rem", fontSize: "0.75rem", fontWeight: 600, color: "#D97706", backgroundColor: "#FEF3C7", padding: "0.5rem 0.875rem", borderRadius: "0.625rem", border: "1px solid #FDE68A" }}>
+                  <Users size={14} /> Candidates
                 </span>
               </div>
             </div>

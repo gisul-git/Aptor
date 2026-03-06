@@ -35,177 +35,13 @@ class QuestionGeneratorService:
     def __init__(self):
         self.logger = logger.bind(service="question_generator")
         self.redis_client = None
-        self._fallback_questions = self._load_fallback_questions()
+        # Fallback questions removed - AI generation only
     
     async def _get_redis_client(self):
         """Get Redis client for caching."""
         if not self.redis_client:
             self.redis_client = await get_redis()
         return self.redis_client
-    
-    def _load_fallback_questions(self) -> Dict[str, List[Dict[str, Any]]]:
-        """
-        Load fallback questions for when AI service fails.
-        
-        Returns:
-            Dictionary of fallback questions organized by difficulty and topic
-        """
-        fallback_questions = {
-            "beginner": {
-                "transformations": [
-                    {
-                        "title": "Basic DataFrame Filtering",
-                        "description": "Filter a DataFrame to show only employees with salary greater than 50000. Use the filter() or where() method to accomplish this task.",
-                        "input_schema": {
-                            "employee_id": "int",
-                            "name": "string", 
-                            "department": "string",
-                            "salary": "double"
-                        },
-                        "sample_input": {
-                            "data": [
-                                {"employee_id": 1, "name": "Alice", "department": "Engineering", "salary": 75000.0},
-                                {"employee_id": 2, "name": "Bob", "department": "Marketing", "salary": 45000.0},
-                                {"employee_id": 3, "name": "Charlie", "department": "Engineering", "salary": 80000.0},
-                                {"employee_id": 4, "name": "Diana", "department": "Sales", "salary": 55000.0}
-                            ]
-                        },
-                        "expected_output": {
-                            "data": [
-                                {"employee_id": 1, "name": "Alice", "department": "Engineering", "salary": 75000.0},
-                                {"employee_id": 3, "name": "Charlie", "department": "Engineering", "salary": 80000.0},
-                                {"employee_id": 4, "name": "Diana", "department": "Sales", "salary": 55000.0}
-                            ]
-                        }
-                    },
-                    {
-                        "title": "Column Selection and Renaming",
-                        "description": "Select specific columns from a DataFrame and rename them. Select 'name' and 'salary' columns, renaming 'name' to 'employee_name'.",
-                        "input_schema": {
-                            "employee_id": "int",
-                            "name": "string",
-                            "department": "string", 
-                            "salary": "double"
-                        },
-                        "sample_input": {
-                            "data": [
-                                {"employee_id": 1, "name": "Alice", "department": "Engineering", "salary": 75000.0},
-                                {"employee_id": 2, "name": "Bob", "department": "Marketing", "salary": 45000.0}
-                            ]
-                        },
-                        "expected_output": {
-                            "data": [
-                                {"employee_name": "Alice", "salary": 75000.0},
-                                {"employee_name": "Bob", "salary": 45000.0}
-                            ]
-                        }
-                    }
-                ],
-                "aggregations": [
-                    {
-                        "title": "Basic Aggregation",
-                        "description": "Calculate the average salary by department using groupBy and agg functions.",
-                        "input_schema": {
-                            "employee_id": "int",
-                            "name": "string",
-                            "department": "string",
-                            "salary": "double"
-                        },
-                        "sample_input": {
-                            "data": [
-                                {"employee_id": 1, "name": "Alice", "department": "Engineering", "salary": 75000.0},
-                                {"employee_id": 2, "name": "Bob", "department": "Marketing", "salary": 45000.0},
-                                {"employee_id": 3, "name": "Charlie", "department": "Engineering", "salary": 80000.0}
-                            ]
-                        },
-                        "expected_output": {
-                            "data": [
-                                {"department": "Engineering", "avg_salary": 77500.0},
-                                {"department": "Marketing", "avg_salary": 45000.0}
-                            ]
-                        }
-                    }
-                ]
-            },
-            "intermediate": {
-                "joins": [
-                    {
-                        "title": "Inner Join with Multiple Conditions",
-                        "description": "Perform an inner join between employees and departments DataFrames on department_id, then filter results.",
-                        "input_schema": {
-                            "employee_id": "int",
-                            "name": "string",
-                            "department_id": "int",
-                            "salary": "double"
-                        },
-                        "sample_input": {
-                            "data": [
-                                {"employee_id": 1, "name": "Alice", "department_id": 1, "salary": 75000.0},
-                                {"employee_id": 2, "name": "Bob", "department_id": 2, "salary": 45000.0}
-                            ]
-                        },
-                        "expected_output": {
-                            "data": [
-                                {"employee_id": 1, "name": "Alice", "department_name": "Engineering", "salary": 75000.0}
-                            ]
-                        }
-                    }
-                ],
-                "window_functions": [
-                    {
-                        "title": "Ranking with Window Functions",
-                        "description": "Use window functions to rank employees by salary within each department.",
-                        "input_schema": {
-                            "employee_id": "int",
-                            "name": "string",
-                            "department": "string",
-                            "salary": "double"
-                        },
-                        "sample_input": {
-                            "data": [
-                                {"employee_id": 1, "name": "Alice", "department": "Engineering", "salary": 75000.0},
-                                {"employee_id": 2, "name": "Bob", "department": "Engineering", "salary": 80000.0},
-                                {"employee_id": 3, "name": "Charlie", "department": "Marketing", "salary": 45000.0}
-                            ]
-                        },
-                        "expected_output": {
-                            "data": [
-                                {"employee_id": 2, "name": "Bob", "department": "Engineering", "salary": 80000.0, "rank": 1},
-                                {"employee_id": 1, "name": "Alice", "department": "Engineering", "salary": 75000.0, "rank": 2},
-                                {"employee_id": 3, "name": "Charlie", "department": "Marketing", "salary": 45000.0, "rank": 1}
-                            ]
-                        }
-                    }
-                ]
-            },
-            "advanced": {
-                "performance_optimization": [
-                    {
-                        "title": "Optimizing Join Performance",
-                        "description": "Optimize a join operation between large DataFrames using broadcast joins and proper partitioning strategies.",
-                        "input_schema": {
-                            "transaction_id": "long",
-                            "customer_id": "int",
-                            "product_id": "int",
-                            "amount": "double",
-                            "timestamp": "timestamp"
-                        },
-                        "sample_input": {
-                            "data": [
-                                {"transaction_id": 1, "customer_id": 101, "product_id": 1, "amount": 99.99, "timestamp": "2023-01-01T10:00:00"},
-                                {"transaction_id": 2, "customer_id": 102, "product_id": 2, "amount": 149.99, "timestamp": "2023-01-01T11:00:00"}
-                            ]
-                        },
-                        "expected_output": {
-                            "data": [
-                                {"transaction_id": 1, "customer_name": "John Doe", "product_name": "Widget A", "amount": 99.99}
-                            ]
-                        }
-                    }
-                ]
-            }
-        }
-        return fallback_questions
     
     def _validate_question_quality(self, question_data: Dict[str, Any]) -> List[str]:
         """
@@ -567,279 +403,6 @@ class QuestionGeneratorService:
         
         return max(0.0, min(10.0, score))
     
-    def _get_fallback_question(self, experience_level: int, topic: Optional[str] = None) -> Dict[str, Any]:
-        """
-        Get a fallback question when AI service fails with enhanced selection logic.
-        
-        Args:
-            experience_level: User's years of experience
-            topic: Optional topic filter
-            
-        Returns:
-            Fallback question data
-        """
-        # Determine difficulty level
-        if experience_level <= 2:
-            difficulty = "beginner"
-        elif experience_level <= 7:
-            difficulty = "intermediate"
-        else:
-            difficulty = "advanced"
-        
-        # Get available topics for this difficulty
-        available_topics = list(self._fallback_questions.get(difficulty, {}).keys())
-        
-        # Filter by requested topic if specified
-        if topic:
-            topic_key = self._map_topic_to_key(topic)
-            if topic_key in available_topics:
-                available_topics = [topic_key]
-            else:
-                # If requested topic not available, try to find similar topics
-                similar_topics = self._find_similar_topics(topic_key, available_topics)
-                if similar_topics:
-                    available_topics = similar_topics
-        
-        if not available_topics:
-            # Fallback to beginner transformations if nothing else available
-            difficulty = "beginner"
-            available_topics = list(self._fallback_questions.get("beginner", {}).keys())
-            if not available_topics:
-                available_topics = ["transformations"]  # Ultimate fallback
-        
-        # Select topic with preference for variety
-        selected_topic = self._select_topic_with_variety(available_topics, experience_level)
-        
-        # Get questions for selected topic
-        questions = self._fallback_questions.get(difficulty, {}).get(selected_topic, [])
-        if not questions:
-            # Fallback to beginner transformations
-            questions = self._fallback_questions.get("beginner", {}).get("transformations", [])
-        
-        if not questions:
-            # Ultimate fallback - create a basic question
-            return self._create_emergency_fallback_question(experience_level)
-        
-        # Select question with some randomization but prefer higher quality
-        selected_question = self._select_best_fallback_question(questions)
-        
-        # Enhance the fallback question
-        enhanced_question = self._enhance_fallback_question(selected_question, difficulty, selected_topic)
-        
-        self.logger.info(
-            "Using enhanced fallback question",
-            difficulty=difficulty,
-            topic=selected_topic,
-            title=enhanced_question["title"],
-            enhanced=True
-        )
-        
-        return enhanced_question
-    
-    def _find_similar_topics(self, requested_topic: str, available_topics: List[str]) -> List[str]:
-        """Find topics similar to the requested topic."""
-        topic_similarities = {
-            "transformations": ["aggregations", "data_quality"],
-            "aggregations": ["transformations", "window_functions"],
-            "joins": ["transformations", "performance_optimization"],
-            "window_functions": ["aggregations", "joins"],
-            "performance_optimization": ["joins", "transformations"],
-            "data_quality": ["transformations", "aggregations"],
-            "streaming": ["transformations", "performance_optimization"]
-        }
-        
-        similar = topic_similarities.get(requested_topic, [])
-        return [topic for topic in similar if topic in available_topics]
-    
-    def _select_topic_with_variety(self, available_topics: List[str], experience_level: int) -> str:
-        """Select topic with preference for variety and user experience level."""
-        if len(available_topics) == 1:
-            return available_topics[0]
-        
-        # Prefer certain topics based on experience level
-        if experience_level <= 2:
-            preferred_order = ["transformations", "aggregations", "joins"]
-        elif experience_level <= 7:
-            preferred_order = ["joins", "window_functions", "aggregations", "transformations"]
-        else:
-            preferred_order = ["performance_optimization", "window_functions", "joins"]
-        
-        # Select first available topic from preferred order
-        for preferred in preferred_order:
-            if preferred in available_topics:
-                return preferred
-        
-        # If no preferred topic available, select randomly
-        return random.choice(available_topics)
-    
-    def _select_best_fallback_question(self, questions: List[Dict[str, Any]]) -> Dict[str, Any]:
-        """Select the best fallback question from available options."""
-        if len(questions) == 1:
-            return questions[0]
-        
-        # Score questions based on quality indicators
-        scored_questions = []
-        for question in questions:
-            score = 0
-            
-            # Prefer questions with longer descriptions
-            description_length = len(question.get("description", ""))
-            score += min(description_length / 100, 3)  # Max 3 points
-            
-            # Prefer questions with more sample data
-            sample_data = question.get("sample_input", {}).get("data", [])
-            score += min(len(sample_data) / 2, 2)  # Max 2 points
-            
-            # Prefer questions with more diverse schema
-            schema = question.get("input_schema", {})
-            score += min(len(schema) / 2, 2)  # Max 2 points
-            
-            # Prefer questions with test cases
-            test_cases = question.get("test_cases", [])
-            score += len(test_cases)  # 1 point per test case
-            
-            scored_questions.append((score, question))
-        
-        # Sort by score and add some randomization
-        scored_questions.sort(key=lambda x: x[0], reverse=True)
-        
-        # Select from top 3 questions with some randomization
-        top_questions = scored_questions[:3]
-        weights = [3, 2, 1][:len(top_questions)]
-        selected = random.choices(top_questions, weights=weights, k=1)[0]
-        
-        return selected[1]
-    
-    def _enhance_fallback_question(self, question: Dict[str, Any], difficulty: str, topic: str) -> Dict[str, Any]:
-        """Enhance fallback question with additional metadata and validation."""
-        enhanced = question.copy()
-        
-        # Add test cases if missing
-        if "test_cases" not in enhanced or not enhanced["test_cases"]:
-            enhanced["test_cases"] = [
-                {
-                    "description": "Basic functionality test",
-                    "input_data": enhanced["sample_input"],
-                    "expected_output": enhanced["expected_output"]
-                }
-            ]
-        
-        # Add enhanced metadata
-        enhanced["metadata"] = enhanced.get("metadata", {})
-        enhanced["metadata"].update({
-            "fallback_used": True,
-            "fallback_reason": "AI service unavailable",
-            "fallback_difficulty": difficulty,
-            "fallback_topic": topic,
-            "fallback_enhanced": True,
-            "fallback_timestamp": datetime.utcnow().isoformat(),
-            "quality_score": self._calculate_quality_score(enhanced)
-        })
-        
-        # Validate and fix common issues
-        enhanced = self._fix_common_fallback_issues(enhanced)
-        
-        return enhanced
-    
-    def _fix_common_fallback_issues(self, question: Dict[str, Any]) -> Dict[str, Any]:
-        """Fix common issues in fallback questions."""
-        fixed = question.copy()
-        
-        # Ensure description is adequate length
-        if len(fixed.get("description", "")) < 50:
-            fixed["description"] = (
-                f"{fixed.get('description', '')} "
-                "This problem tests your ability to work with PySpark DataFrames "
-                "and apply data transformation techniques commonly used in data engineering."
-            ).strip()
-        
-        # Ensure sample data has at least 3 rows
-        sample_data = fixed.get("sample_input", {}).get("data", [])
-        if len(sample_data) < 3 and len(sample_data) > 0:
-            # Duplicate existing rows with slight modifications
-            while len(sample_data) < 3:
-                new_row = sample_data[0].copy()
-                # Modify numeric values slightly
-                for key, value in new_row.items():
-                    if isinstance(value, (int, float)):
-                        new_row[key] = value + len(sample_data)
-                    elif isinstance(value, str) and key.lower() in ["name", "id"]:
-                        new_row[key] = f"{value}_{len(sample_data)}"
-                sample_data.append(new_row)
-        
-        return fixed
-    
-    def _create_emergency_fallback_question(self, experience_level: int) -> Dict[str, Any]:
-        """Create an emergency fallback question when all else fails."""
-        difficulty_level = "beginner" if experience_level <= 2 else "intermediate" if experience_level <= 7 else "advanced"
-        
-        emergency_question = {
-            "title": "DataFrame Basic Operations",
-            "description": (
-                "Work with a PySpark DataFrame to perform basic data operations. "
-                "Filter the data based on given conditions and select specific columns. "
-                "This exercise tests fundamental DataFrame manipulation skills essential for data engineering."
-            ),
-            "input_schema": {
-                "id": "int",
-                "name": "string",
-                "value": "double",
-                "category": "string"
-            },
-            "sample_input": {
-                "data": [
-                    {"id": 1, "name": "item_1", "value": 100.0, "category": "A"},
-                    {"id": 2, "name": "item_2", "value": 200.0, "category": "B"},
-                    {"id": 3, "name": "item_3", "value": 150.0, "category": "A"},
-                    {"id": 4, "name": "item_4", "value": 300.0, "category": "C"}
-                ]
-            },
-            "expected_output": {
-                "data": [
-                    {"name": "item_2", "value": 200.0},
-                    {"name": "item_4", "value": 300.0}
-                ]
-            },
-            "test_cases": [
-                {
-                    "description": "Filter and select test",
-                    "input_data": {
-                        "data": [
-                            {"id": 1, "name": "item_1", "value": 100.0, "category": "A"},
-                            {"id": 2, "name": "item_2", "value": 200.0, "category": "B"}
-                        ]
-                    },
-                    "expected_output": {
-                        "data": [
-                            {"name": "item_2", "value": 200.0}
-                        ]
-                    }
-                }
-            ],
-            "metadata": {
-                "emergency_fallback": True,
-                "difficulty_level": difficulty_level,
-                "created_at": datetime.utcnow().isoformat(),
-                "quality_score": 6.0
-            }
-        }
-        
-        self.logger.warning("Using emergency fallback question", experience_level=experience_level)
-        return emergency_question
-    
-    def _map_topic_to_key(self, topic: str) -> str:
-        """Map topic enum to fallback question key."""
-        topic_mapping = {
-            "transformations": "transformations",
-            "aggregations": "aggregations", 
-            "joins": "joins",
-            "window_functions": "window_functions",
-            "performance_optimization": "performance_optimization",
-            "data_quality": "data_quality",
-            "streaming": "streaming"
-        }
-        return topic_mapping.get(topic, "transformations")
-    
     def _map_topic_to_enum(self, topic_str: Optional[str]) -> QuestionTopic:
         """Map topic string to QuestionTopic enum."""
         if not topic_str:
@@ -1055,7 +618,7 @@ class QuestionGeneratorService:
             "experience_years": experience_years,
             "requested_topic": topic,
             "ai_generated": True,
-            "model": settings.GROQ_MODEL
+            "model": settings.OPENAI_MODEL
         }
         
         # Preserve any existing metadata from ai_data (e.g., fallback metadata)
@@ -1197,7 +760,7 @@ class QuestionGeneratorService:
     
     async def generate_question(self, user_id: str, experience_level: int, topic: Optional[str] = None) -> Question:
         """
-        Generate a PySpark question based on experience level and topic with enhanced validation and caching.
+        Generate a PySpark question based on experience level and topic with enhanced validation.
         
         Args:
             user_id: User identifier for rate limiting
@@ -1212,24 +775,16 @@ class QuestionGeneratorService:
             RateLimitError: If rate limit is exceeded
         """
         self.logger.info(
-            "Generating question with enhanced validation",
+            "Generating question with AI",
             user_id=user_id,
             experience_level=experience_level,
             topic=topic
         )
         
         ai_data = None
-        use_fallback = False
-        fallback_reason = None
-        
-        # DISABLED: Caching to ensure unique questions every time
-        # cached_question = await self._try_get_cached_question(user_id, experience_level, topic)
-        # if cached_question:
-        #     self.logger.info("Using cached question", question_id=cached_question.id, user_id=user_id)
-        #     return cached_question
         
         try:
-            # Try to generate question using AI service
+            # Generate question using AI service
             self.logger.info("Calling AI service to generate question", user_id=user_id)
             ai_data = await ai_service.generate_question(user_id, experience_level, topic)
             self.logger.info("AI service returned data", user_id=user_id, has_data=ai_data is not None)
@@ -1251,84 +806,57 @@ class QuestionGeneratorService:
             quality_issues = self._validate_question_quality(ai_data)
             quality_score = self._calculate_quality_score(ai_data)
             
-            # Determine if quality is acceptable (lenient thresholds to allow AI creativity)
-            if len(quality_issues) > 20 or quality_score < 1.0:
+            # Log quality metrics but don't fail on quality issues
+            self.logger.info(
+                "AI question quality metrics",
+                user_id=user_id,
+                quality_score=quality_score,
+                issues_count=len(quality_issues)
+            )
+            
+            # Enhance the question with additional validation
+            ai_data = self._enhance_question_with_validation(ai_data)
+            
+            # Additional content validation
+            content_issues = self._validate_question_content(ai_data)
+            if content_issues:
                 self.logger.warning(
-                    "AI generated question has too many quality issues, using fallback",
+                    "AI question has content issues",
                     user_id=user_id,
-                    issues_count=len(quality_issues),
-                    quality_score=quality_score,
-                    issues=quality_issues[:5]  # Log first 5 issues
+                    content_issues=content_issues[:3]  # Log first 3 issues
                 )
-                use_fallback = True
-                fallback_reason = f"Quality issues: {len(quality_issues)} issues, score: {quality_score}"
-            else:
-                # Enhance the question with additional validation
-                ai_data = self._enhance_question_with_validation(ai_data)
-                
-                # Additional content validation
-                content_issues = self._validate_question_content(ai_data)
-                if content_issues:
-                    self.logger.warning(
-                        "AI question has content issues",
-                        user_id=user_id,
-                        content_issues=content_issues
-                    )
-                    # Don't fail on content issues, but log them
-                
-                self.logger.info(
-                    "AI question validated successfully",
-                    user_id=user_id,
-                    quality_score=quality_score,
-                    issues_count=len(quality_issues)
-                )
+            
+            self.logger.info(
+                "AI question validated successfully",
+                user_id=user_id,
+                quality_score=quality_score,
+                issues_count=len(quality_issues)
+            )
             
         except RateLimitError as e:
-            self.logger.warning("Rate limit exceeded, using fallback question", user_id=user_id, error=str(e))
-            use_fallback = True
-            fallback_reason = f"Rate limit exceeded: {str(e)}"
-            # Re-raise rate limit errors to inform the caller
-            raise
+            self.logger.error("Rate limit exceeded", user_id=user_id, error=str(e))
+            raise QuestionGenerationError(f"Rate limit exceeded. Please try again later: {str(e)}")
             
         except (AIServiceError, QuestionGenerationError) as e:
-            self.logger.warning(
-                "AI service failed, using fallback question",
+            self.logger.error(
+                "AI service failed",
                 user_id=user_id,
                 error=str(e),
                 error_type=type(e).__name__
             )
-            use_fallback = True
-            fallback_reason = f"AI service error: {str(e)}"
+            raise QuestionGenerationError(f"Failed to generate question: {str(e)}")
             
         except Exception as e:
             self.logger.error(
-                "Unexpected error during AI generation, using fallback",
+                "Unexpected error during AI generation",
                 user_id=user_id,
                 error=str(e),
                 error_type=type(e).__name__
             )
-            use_fallback = True
-            fallback_reason = f"Unexpected error: {str(e)}"
+            raise QuestionGenerationError(f"Unexpected error during question generation: {str(e)}")
         
-        # Use fallback question if AI failed or quality is poor
-        if use_fallback or ai_data is None:
-            try:
-                ai_data = self._get_fallback_question(experience_level, topic)
-                ai_data = self._enhance_question_with_validation(ai_data)
-                
-                # Add fallback metadata
-                ai_data["metadata"] = ai_data.get("metadata", {})
-                ai_data["metadata"].update({
-                    "fallback_used": True,
-                    "fallback_reason": fallback_reason or "AI service unavailable",
-                    "fallback_timestamp": datetime.utcnow().isoformat()
-                })
-                
-                self.logger.info("Using enhanced fallback question", user_id=user_id, reason=fallback_reason)
-                
-            except Exception as e:
-                self.logger.error("Fallback question generation failed", error=str(e), user_id=user_id)
-                raise QuestionGenerationError(f"Both AI and fallback question generation failed: {str(e)}")
+        if ai_data is None:
+            raise QuestionGenerationError("AI service returned no data")
         
         try:
             # Convert to Question model
@@ -1338,24 +866,18 @@ class QuestionGeneratorService:
             validation_errors = validate_question_data_integrity(question)
             if validation_errors:
                 self.logger.warning(
-                    "Question failed final validation",
+                    "Question has validation warnings",
                     question_id=question.id,
                     errors=[error.message for error in validation_errors[:3]]  # Log first 3 errors
                 )
-                # Don't fail completely, but log the issues for monitoring
-            
-            # DISABLED: Caching to ensure unique questions every time
-            # await self._cache_question_with_retry(question)
-            # await self._cache_user_question_preferences(user_id, question)
             
             # Update generation metrics
-            await self._update_generation_metrics(user_id, use_fallback, len(validation_errors))
+            await self._update_generation_metrics(user_id, len(validation_errors))
             
             self.logger.info(
-                "Question generated successfully with enhanced validation",
+                "Question generated successfully",
                 question_id=question.id,
                 user_id=user_id,
-                fallback_used=use_fallback,
                 quality_score=ai_data.get("quality_score", "unknown"),
                 validation_errors=len(validation_errors)
             )
@@ -1464,7 +986,7 @@ class QuestionGeneratorService:
                     )
                     # Don't fail the entire operation due to cache failure
     
-    async def _update_generation_metrics(self, user_id: str, fallback_used: bool, validation_errors: int) -> None:
+    async def _update_generation_metrics(self, user_id: str, validation_errors: int) -> None:
         """Update metrics for question generation monitoring."""
         try:
             cache_manager = CacheManager()
@@ -1472,14 +994,11 @@ class QuestionGeneratorService:
             
             metrics = await cache_manager.get_cache(metrics_key) or {
                 "total_generated": 0,
-                "fallback_used": 0,
                 "validation_errors": 0,
                 "last_updated": datetime.utcnow().isoformat()
             }
             
             metrics["total_generated"] += 1
-            if fallback_used:
-                metrics["fallback_used"] += 1
             if validation_errors > 0:
                 metrics["validation_errors"] += 1
             metrics["last_updated"] = datetime.utcnow().isoformat()

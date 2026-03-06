@@ -46,9 +46,9 @@ class Settings(BaseSettings):
     REDIS_DB: int = 0
     
     # AI Service Configuration
-    GROQ_API_KEY: Optional[str] = None
-    GROQ_API_BASE_URL: str = "https://api.groq.com/openai/v1"
-    GROQ_MODEL: str = "llama-3.3-70b-versatile"
+    OPENAI_API_KEY: Optional[str] = None
+    OPENAI_API_BASE_URL: str = "https://api.openai.com/v1"
+    OPENAI_MODEL: str = "gpt-4o-mini"  # Cost-effective and high quality
     
     # Docker Configuration
     DOCKER_SOCKET: str = "unix:///var/run/docker.sock"

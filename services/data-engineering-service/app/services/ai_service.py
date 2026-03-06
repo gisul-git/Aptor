@@ -1,6 +1,6 @@
 """
-AI service wrapper for GROQ API integration.
-Handles question generation and code review using GROQ's AI models.
+AI service wrapper for OpenAI API integration.
+Handles question generation and code review using OpenAI's AI models.
 """
 
 import asyncio
@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from enum import Enum
 
 import structlog
-from groq import AsyncGroq
+from openai import AsyncOpenAI
 import httpx
 
 from app.core.config import settings
@@ -53,17 +53,17 @@ class ExperienceLevel(Enum):
 
 class AIService:
     """
-    AI service wrapper for GROQ API integration.
+    AI service wrapper for OpenAI API integration.
     Provides question generation and code review capabilities with rate limiting.
     """
     
     def __init__(self):
         self.logger = logger.bind(service="ai_service")
-        self.client = AsyncGroq(api_key=settings.GROQ_API_KEY) if settings.GROQ_API_KEY else None
+        self.client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY) if settings.OPENAI_API_KEY else None
         self.redis_client = None
         
         if not self.client:
-            self.logger.warning("GROQ API key not configured, AI service will be disabled")
+            self.logger.warning("OpenAI API key not configured, AI service will be disabled")
     
     async def _get_redis_client(self):
         """Get Redis client for rate limiting."""
@@ -147,132 +147,120 @@ class AIService:
         Returns:
             Formatted prompt string for AI question generation
         """
-        # Add randomization elements to ensure uniqueness
-        import random
-        import time
         from datetime import datetime
         
-        # Random seed based on timestamp for uniqueness
-        random_seed = int(time.time() * 1000000) % 1000000
         timestamp = datetime.now().isoformat()
         
-        # Random scenario variations
-        scenarios = [
-            "e-commerce transactions", "customer behavior", "sales data", "product inventory",
-            "user activity logs", "sensor readings", "financial transactions", "healthcare records",
-            "social media interactions", "website analytics", "supply chain data", "employee records",
-            "IoT device data", "weather measurements", "network traffic", "application logs",
-            "streaming data", "mobile app events", "payment processing", "order fulfillment",
-            "customer support tickets", "marketing campaigns", "subscription data", "user sessions"
-        ]
-        
-        operations = [
-            "filtering and aggregation", "data transformation", "joining datasets", 
-            "window functions", "data cleaning", "deduplication", "pivoting",
-            "time-series analysis", "ranking and sorting", "statistical calculations",
-            "data enrichment", "schema evolution", "data validation", "complex aggregations"
-        ]
-        
-        business_contexts = [
-            "retail analytics", "financial reporting", "user engagement", "operational metrics",
-            "performance monitoring", "fraud detection", "customer segmentation", "trend analysis"
-        ]
-        
-        # Additional variation elements
-        data_types = ["transactions", "events", "measurements", "records", "logs", "metrics"]
-        actions = ["analyze", "process", "transform", "aggregate", "filter", "join", "deduplicate", "enrich"]
-        
-        # Random example topics to avoid
-        avoid_topics = [
-            "user activity logs", "customer transactions", "sales data", "employee records",
-            "product inventory", "order processing", "payment data", "session tracking"
-        ]
-        random.shuffle(avoid_topics)
-        avoid_list = ", ".join(avoid_topics[:3])
-        
-        random_scenario = random.choice(scenarios)
-        random_operation = random.choice(operations)
-        random_context = random.choice(business_contexts)
-        random_data_type = random.choice(data_types)
-        random_action = random.choice(actions)
-        
-        base_prompt = f"""You are an expert data engineer creating PySpark coding questions for assessment. 
-Generate a UNIQUE and ORIGINAL PySpark problem that tests practical data engineering skills.
+        base_prompt = f"""You are an expert data engineer creating PySpark coding questions for technical assessments.
+Generate a unique, practical PySpark problem that tests real-world data engineering skills.
 
-CRITICAL UNIQUENESS REQUIREMENTS:
-- Create a completely NEW problem scenario (not a common textbook example)
-- DO NOT use these topics: {avoid_list}
-- DO NOT repeat previous questions - be creative and original
-- Use DIFFERENT data domains, column names, and business logic each time
-- Vary the problem type, data structure, and transformation requirements
-- Generation ID: {random_seed}
-- Timestamp: {timestamp}
-- Required focus: {random_action} {random_data_type} for {random_context}
-- Scenario domain: {random_scenario}
-- Technical operation: {random_operation}
-- IMPORTANT: Each question must be COMPLETELY DIFFERENT from any previous questions
-- Use unique business scenarios, creative column names, and varied data structures
-
-Requirements:
-- Create a complete problem with clear description, input data, and expected output
-- Include realistic sample data with appropriate schema and data types (3-5 rows minimum)
+IMPORTANT REQUIREMENTS:
+- Create an original problem scenario with realistic business context
+- Use clear, descriptive column names that reflect the business domain
+- Include realistic sample data with appropriate data types (minimum 3-5 rows)
 - Ensure the expected output is deterministic and verifiable
-- Focus on practical data engineering scenarios
-- Provide input data as JSON format with schema information
-- Make the problem solvable with PySpark DataFrame operations
-- Use creative, varied column names and realistic business scenarios
+- Make the problem solvable using PySpark DataFrame operations
+- Focus on practical scenarios that data engineers encounter in production
+
+Generation timestamp: {timestamp}
 
 """
         
         # Experience-specific requirements
         if experience_level == ExperienceLevel.BEGINNER:
-            experience_prompt = """Experience Level: BEGINNER (0-2 years)
-- Focus on basic DataFrame operations: select, filter, withColumn, groupBy
-- Use simple transformations and aggregations
-- Avoid complex joins or window functions
-- Keep data volumes small (< 1000 rows)
-- Test fundamental PySpark concepts
+            experience_prompt = """DIFFICULTY LEVEL: BEGINNER (0-2 years experience)
 
-Example topics: basic filtering, simple aggregations, column transformations, basic joins
+Focus on fundamental PySpark operations:
+- Basic DataFrame operations: select, filter, withColumn, groupBy
+- Simple transformations and aggregations (count, sum, avg, max, min)
+- Basic column operations and data type conversions
+- Simple filtering conditions
+- Keep the problem straightforward with clear requirements
+
+Avoid: Complex joins, window functions, advanced optimizations
 """
         elif experience_level == ExperienceLevel.INTERMEDIATE:
-            experience_prompt = """Experience Level: INTERMEDIATE (3-7 years)
-- Include multiple DataFrame operations in sequence
-- Use joins, window functions, and complex aggregations
-- Test data quality and validation concepts
-- Include moderate data volumes (1000-10000 rows)
-- Combine multiple PySpark concepts in one problem
+            experience_prompt = """DIFFICULTY LEVEL: INTERMEDIATE (3-7 years experience)
 
-Example topics: complex joins, window functions, data deduplication, multi-step transformations
+Focus on multi-step data processing:
+- Combine multiple DataFrame operations in sequence
+- Use joins (inner, left, right) between datasets
+- Apply window functions for ranking, running totals, or partitioned calculations
+- Implement data quality checks and deduplication logic
+- Handle null values and data cleaning scenarios
+
+Include moderate complexity with 2-3 transformation steps
 """
         else:  # ADVANCED
-            experience_prompt = """Experience Level: ADVANCED (8+ years)
-- Focus on performance optimization and complex data processing
-- Include advanced PySpark features: partitioning, caching, broadcast joins
-- Test scalability and efficiency considerations
-- Use larger data volumes and complex schemas
-- Require optimization thinking and best practices
+            experience_prompt = """DIFFICULTY LEVEL: ADVANCED (8+ years experience)
 
-Example topics: performance optimization, complex analytics, data pipeline design, advanced SQL
+Focus on complex data engineering challenges:
+- Performance optimization techniques (partitioning, caching, broadcast joins)
+- Advanced window functions with complex partitioning
+- Complex multi-table joins with aggregations
+- Data pipeline design considerations
+- Scalability and efficiency optimization
+- Advanced SQL operations and complex business logic
+
+Require sophisticated thinking and best practices
 """
         
-        # Topic-specific guidance
+        # Topic-specific guidance - CRITICAL: This must be respected
         topic_prompt = ""
         if topic and topic.strip():
-            topic_prompt = f"\nSpecific Topic Focus: {topic}\n- Ensure the problem specifically tests {topic} concepts\n"
+            # Map topic to specific requirements
+            topic_lower = topic.lower().replace("_", " ")
+            
+            topic_prompt = f"""
+REQUIRED TOPIC: {topic}
+
+The problem MUST specifically focus on and test {topic_lower} concepts.
+This is the PRIMARY requirement - ensure the question directly addresses this topic.
+
+"""
+            # Add topic-specific guidance
+            if "transformation" in topic_lower:
+                topic_prompt += """- Focus on data transformation operations (withColumn, select, cast, etc.)
+- Include column manipulations, data type conversions, or derived columns
+"""
+            elif "aggregation" in topic_lower:
+                topic_prompt += """- Focus on aggregation operations (groupBy, agg, sum, count, avg, etc.)
+- Include grouped calculations and summary statistics
+"""
+            elif "join" in topic_lower:
+                topic_prompt += """- Focus on joining multiple datasets (inner, left, right, outer joins)
+- Include scenarios requiring data from multiple sources
+"""
+            elif "window" in topic_lower:
+                topic_prompt += """- Focus on window functions (row_number, rank, lag, lead, running totals)
+- Include partitioning and ordering within groups
+"""
+            elif "performance" in topic_lower or "optimization" in topic_lower:
+                topic_prompt += """- Focus on performance optimization (partitioning, caching, broadcast)
+- Include scenarios where efficiency and scalability matter
+"""
+            elif "quality" in topic_lower:
+                topic_prompt += """- Focus on data quality checks (null handling, deduplication, validation)
+- Include data cleaning and quality assurance scenarios
+"""
+            elif "streaming" in topic_lower:
+                topic_prompt += """- Focus on streaming data processing concepts
+- Include real-time or incremental data processing scenarios
+"""
         
         # Output format requirements
         format_prompt = """
-Output Format (JSON):
+OUTPUT FORMAT (Valid JSON only):
 {
-  "title": "Clear, descriptive problem title",
-  "description": "Detailed problem description with context and requirements",
+  "title": "Clear, specific problem title that describes the task",
+  "description": "Detailed problem description with business context, requirements, and expected behavior. Be specific about what transformations or operations are needed.",
   "input_schema": {
     "column_name": "data_type",
     "another_column": "data_type"
   },
   "sample_input": {
     "data": [
+      {"column_name": "value", "another_column": "value"},
       {"column_name": "value", "another_column": "value"},
       {"column_name": "value", "another_column": "value"}
     ]
@@ -291,7 +279,7 @@ Output Format (JSON):
   ]
 }
 
-Generate exactly one complete problem following this format.
+CRITICAL: Return ONLY valid JSON. No markdown, no code blocks, no explanations - just the JSON object.
 """
         
         return base_prompt + experience_prompt + topic_prompt + format_prompt
@@ -369,41 +357,27 @@ Return ONLY the JSON object, no additional text before or after.
             APIError: If API call fails after retries
         """
         if not self.client:
-            raise APIError("GROQ API client not configured")
-        
-        # Add randomization to system prompt for uniqueness
-        import random
-        random_num = random.randint(1, 1000000)
-        
-        # Create varied conversation to force different responses
-        previous_topics = [
-            "user activity deduplication",
-            "session tracking analysis", 
-            "log processing",
-            "activity monitoring"
-        ]
-        random.shuffle(previous_topics)
-        avoid_topic = previous_topics[0]
+            raise APIError("OpenAI API client not configured")
         
         for attempt in range(max_retries):
             try:
                 self.logger.debug(f"Making API call, attempt {attempt + 1}")
                 
                 response = await self.client.chat.completions.create(
-                    model=settings.GROQ_MODEL,
+                    model=settings.OPENAI_MODEL,
                     messages=[
                         {
                             "role": "system",
-                            "content": f"You are an expert data engineer and PySpark specialist. Generate unique, creative questions. Variation seed: {random_num}. Avoid topics like: {avoid_topic}"
+                            "content": "You are an expert data engineer and PySpark specialist. Generate high-quality, practical questions for technical assessments."
                         },
                         {
                             "role": "user",
                             "content": prompt
                         }
                     ],
-                    temperature=1.5,  # Maximum variation
+                    temperature=0.8,
                     max_tokens=4000,
-                    top_p=0.9,
+                    top_p=0.95,
                     stream=False
                 )
                 
@@ -412,7 +386,7 @@ Return ONLY the JSON object, no additional text before or after.
                     self.logger.debug("API call successful")
                     return content
                 else:
-                    raise APIError("Empty response from GROQ API")
+                    raise APIError("Empty response from OpenAI API")
                     
             except httpx.HTTPStatusError as e:
                 if e.response.status_code == 429:  # Rate limit

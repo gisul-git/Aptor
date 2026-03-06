@@ -167,4 +167,36 @@ export const dataEngineeringService = {
     );
     return response.data;
   },
+
+  /**
+   * Generate a new question using AI
+   */
+  generateQuestion: async (params: {
+    experience_level: number;
+    topic?: string;
+    difficulty?: string;
+  }): Promise<ApiResponse<any>> => {
+    const queryParams = new URLSearchParams({
+      experience_level: params.experience_level.toString(),
+    });
+    
+    if (params.topic) {
+      queryParams.append('topic', params.topic);
+    }
+    
+    if (params.difficulty) {
+      queryParams.append('difficulty', params.difficulty);
+    }
+    
+    const response = await apiClient.get<any>(
+      `/api/v1/data-engineering/questions/generate?${queryParams.toString()}`
+    );
+    
+    // Backend returns question object directly, wrap it in ApiResponse structure
+    return {
+      success: true,
+      data: response.data,
+      message: 'Question generated successfully'
+    };
+  },
 };
