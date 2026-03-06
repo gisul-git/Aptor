@@ -85,9 +85,6 @@ export default function PreviewQuestionPage() {
           <span style={{ padding: '0.25rem 0.75rem', background: '#F3E8FF', color: '#9333EA', borderRadius: '9999px', fontSize: '0.875rem' }}>
             {question.task_type}
           </span>
-          <span style={{ padding: '0.25rem 0.75rem', background: '#E8B4FA', color: '#9333EA', borderRadius: '9999px', fontSize: '0.875rem' }}>
-            {question.time_limit_minutes} minutes
-          </span>
         </div>
 
         <div style={{ marginBottom: '1.5rem' }}>
