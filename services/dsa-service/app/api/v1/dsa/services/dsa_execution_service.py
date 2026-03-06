@@ -117,13 +117,28 @@ def _map_response_to_internal(
     n = len(test_cases)
     results: List[Dict[str, Any]] = []
     failed_index = response.get("failed_test_case_index", 0)
-    error_message = response.get("error_message") or response.get("actual_output") or ""
+    error_message = response.get("error_message") or ""
     actual_output = response.get("actual_output")
     expected_output_resp = response.get("expected_output")
+    
+    # Handle actual_output - can be a list of outputs (one per test case) or a string
+    actual_outputs = []
+    if isinstance(actual_output, list):
+        # Convert each output to string for display
+        actual_outputs = [json.dumps(out) if not isinstance(out, str) else out for out in actual_output]
+    elif actual_output is not None:
+        # Single output or error message
+        if not error_message:
+            error_message = str(actual_output)
 
     if verdict == "accepted":
         passed_count = n
         for i, tc in enumerate(test_cases):
+            # Get the actual output for this test case
+            stdout_value = ""
+            if i < len(actual_outputs):
+                stdout_value = actual_outputs[i]
+            
             r = {
                 "test_case_id": tc.get("id", f"tc_{i}"),
                 "is_hidden": tc.get("is_hidden", False),
@@ -132,7 +147,7 @@ def _map_response_to_internal(
                 "status_id": 3,
                 "time": None,
                 "memory": None,
-                "stdout": "",
+                "stdout": stdout_value,
                 "stderr": "",
                 "compile_output": "",
             }
@@ -183,6 +198,13 @@ def _map_response_to_internal(
                     r["expected_output"] = tc.get("expected_output", "")
                 results.append(r)
             elif i == failed_index:
+                # Get the actual output for the failed test case
+                stdout_value = ""
+                if i < len(actual_outputs):
+                    stdout_value = actual_outputs[i]
+                elif not isinstance(actual_output, list) and actual_output is not None:
+                    stdout_value = str(actual_output)
+                
                 r = {
                     "test_case_id": tc.get("id", f"tc_{i}"),
                     "is_hidden": is_hidden,
@@ -191,7 +213,7 @@ def _map_response_to_internal(
                     "status_id": status_id,
                     "time": None,
                     "memory": None,
-                    "stdout": actual_output if actual_output is not None else "",
+                    "stdout": stdout_value,
                     "stderr": error_message if verdict == "runtime_error" else "",
                     "compile_output": "",
                 }
@@ -301,11 +323,23 @@ async def execute_dsa_single(
         raise DSAExecutionError(f"Invalid JSON from DSA execution API: {e}") from e
     verdict = (data.get("verdict") or "").strip().lower()
     out = {"verdict": verdict}
+    
+    # Handle actual_output - can be a list or a single value
+    actual_output = data.get("actual_output")
+    stdout_value = ""
+    
+    if isinstance(actual_output, list):
+        # If it's a list, get the first element (single test case)
+        if actual_output:
+            stdout_value = json.dumps(actual_output[0]) if not isinstance(actual_output[0], str) else actual_output[0]
+    elif actual_output is not None:
+        stdout_value = str(actual_output)
+    
     if verdict == "accepted":
-        out["stdout"] = data.get("actual_output", "")
+        out["stdout"] = stdout_value
         out["stderr"] = ""
     else:
-        out["stdout"] = data.get("actual_output", "")
+        out["stdout"] = stdout_value
         out["stderr"] = data.get("error_message", "")
         out["error_message"] = data.get("error_message", "")
         if "failed_test_case_index" in data:
