@@ -13,9 +13,9 @@ class Settings(BaseSettings):
     judge0_timeout: int = 60
     openai_api_key: str | None = None
     
-    # Custom Execution Engine Configuration
+  
     custom_python_engine_url: str = "http://localhost:9000"
-    use_custom_engine: bool = True  # Feature flag to enable/disable custom engine
+    use_custom_engine: bool = True  
 
     # Email / SendGrid configuration
     email_provider: str = "sendgrid"

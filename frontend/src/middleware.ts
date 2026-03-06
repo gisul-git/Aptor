@@ -113,7 +113,8 @@ export default withAuth(
           "/auth/reset-password",  // Reset password page
           "/auth/set-password",  // Employee set password page
           "/auth/employee-login",  // Employee login page
-          "/super-admin/mfa",  // MFA page - user is in the middle of login flow
+          "/auth/mfa",  // MFA routes - user is in the middle of login flow (setup, verify)
+          "/super-admin/mfa",  // Super admin MFA page - user is in the middle of login flow
           "/schedule-demo",  // Schedule demo page - public landing page
           "/thank-you",  // Thank you page after demo submission
           "/api/auth",

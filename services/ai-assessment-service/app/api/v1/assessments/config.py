@@ -18,6 +18,9 @@ class AssessmentConfig(BaseSettings):
     judge0_max_polls: int = 20
     judge0_api_key: str = ""  # For RapidAPI hosted Judge0
     
+    # SQL Execution Engine Configuration
+    sql_engine_url: str = ""
+    
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
@@ -39,4 +42,5 @@ JUDGE0_TIMEOUT = _config.judge0_timeout
 JUDGE0_POLL_INTERVAL = _config.judge0_poll_interval
 JUDGE0_MAX_POLLS = _config.judge0_max_polls
 JUDGE0_API_KEY = _config.judge0_api_key
+SQL_ENGINE_URL = _config.sql_engine_url
 

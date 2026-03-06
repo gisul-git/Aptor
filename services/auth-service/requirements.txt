@@ -22,5 +22,6 @@ dnspython==2.6.1
 cryptography==42.0.5
 python-dateutil==2.9.0
 pyotp==2.9.0
+qrcode[pil]==7.4.2
 beautifulsoup4==4.12.3
 

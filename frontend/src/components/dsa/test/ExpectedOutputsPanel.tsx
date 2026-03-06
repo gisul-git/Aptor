@@ -23,6 +23,17 @@ const statusStyles = {
   error: 'border-amber-500/50 bg-amber-500/10',
 }
 
+/** Format API output for display (handles array/object from DSA execution) */
+function formatOutputForDisplay(v: unknown): string {
+  if (v == null) return ''
+  if (typeof v === 'string') return v
+  try {
+    return JSON.stringify(v, null, 2)
+  } catch {
+    return String(v)
+  }
+}
+
 const statusLabels: Record<string, { text: string; color: string; icon: string }> = {
   pending: { text: 'Pending', color: 'text-slate-400', icon: '○' },
   running: { text: 'Running...', color: 'text-blue-400', icon: '◌' },
@@ -182,8 +193,8 @@ export function ExpectedOutputsPanel({ testcases, results = [], isLoading = fals
 
                     // If the test passed and we have an actual output, use that as the effective expected value
                     if (result?.passed) {
-                      const userOut = (result.stdout || (result as any).output || '') as string
-                      if (userOut && userOut.trim().length > 0) {
+                      const userOut = formatOutputForDisplay(result.stdout ?? (result as any).output)
+                      if (userOut.trim().length > 0) {
                         return userOut
                       }
                     }
@@ -202,9 +213,9 @@ export function ExpectedOutputsPanel({ testcases, results = [], isLoading = fals
                       ? 'bg-emerald-950/30 border-emerald-800/50 text-emerald-300'
                       : 'bg-red-950/30 border-red-800/50 text-red-300'
                   }`}>
-                    {(result.stdout || result.output) 
-                      ? (result.stdout || result.output) 
-                      : result.passed 
+                    {(result.stdout != null || (result as any).output != null)
+                      ? formatOutputForDisplay(result.stdout ?? (result as any).output)
+                      : result.passed
                         ? tc.expected || '(empty - matches expected)'
                         : '(no output)'}
                   </pre>

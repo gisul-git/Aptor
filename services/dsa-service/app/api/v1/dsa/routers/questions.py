@@ -624,6 +624,11 @@ async def get_question(
         question_dict["constraints"] = question.get("constraints")
     if question.get("examples"):
         question_dict["examples"] = question.get("examples")
+    # SQL Execution Engine fields
+    if question.get("groupId"):
+        question_dict["groupId"] = question.get("groupId")
+    if question.get("seedSql"):
+        question_dict["seedSql"] = question.get("seedSql")
 
     # For DSA coding questions, compute expected_output for AI-generated (stdin-only) testcases.
     # This is done server-side using a trusted reference solution and is NOT persisted.
@@ -795,6 +800,30 @@ async def create_question(
                     # Log but don't fail the creation - expected outputs computation is best-effort
                     logger.warning(f"[create_question] Failed to compute expected outputs: {e}. Question creation will proceed without computed outputs.")
     
+    # For SQL questions, create seed if schemas and sample_data exist
+    if _is_sql_question(question_dict):
+        schemas = question_dict.get("schemas", {})
+        sample_data = question_dict.get("sample_data", {})
+        
+        # Only create seed if we have schemas and sample_data, and no existing groupId
+        if schemas and sample_data and not question_dict.get("groupId"):
+            try:
+                from ..services.sql_question_service import get_sql_question_service
+                from ..services.sql_seed_converter import convert_to_seed_sql
+                
+                logger.info(f"[create_question] Creating seed for SQL question")
+                sql_service = get_sql_question_service()
+                group_id = await sql_service.create_seed_for_question(schemas, sample_data)
+                seed_sql = convert_to_seed_sql(schemas, sample_data)
+                
+                question_dict["groupId"] = group_id
+                question_dict["seedSql"] = seed_sql
+                
+                logger.info(f"[create_question] Created seed with groupId: {group_id}")
+            except Exception as e:
+                # Log but don't fail the creation - seed can be created later
+                logger.warning(f"[create_question] Failed to create seed for SQL question: {e}. Question creation will proceed without seed.")
+    
     result = await db.questions.insert_one(question_dict)
     
     # Verify the question was created with correct created_by
@@ -925,6 +954,36 @@ async def update_question(
                 except Exception as e:
                     # Log but don't fail the update - expected outputs computation is best-effort
                     logger.warning(f"[update_question] Failed to compute expected outputs: {e}. Question update will proceed without computed outputs.")
+    
+    # For SQL questions, create/update seed if schemas and sample_data are updated
+    if _is_sql_question(merged_payload):
+        schemas = update_data.get("schemas") or existing_question.get("schemas", {})
+        sample_data = update_data.get("sample_data") or existing_question.get("sample_data", {})
+        existing_group_id = existing_question.get("groupId")
+        
+        # Create seed if:
+        # 1. We have schemas and sample_data
+        # 2. Either no existing groupId, OR schemas/sample_data were updated
+        schemas_updated = "schemas" in update_data
+        sample_data_updated = "sample_data" in update_data
+        
+        if schemas and sample_data and (not existing_group_id or schemas_updated or sample_data_updated):
+            try:
+                from ..services.sql_question_service import get_sql_question_service
+                from ..services.sql_seed_converter import convert_to_seed_sql
+                
+                logger.info(f"[update_question] Creating/updating seed for SQL question")
+                sql_service = get_sql_question_service()
+                group_id = await sql_service.create_seed_for_question(schemas, sample_data)
+                seed_sql = convert_to_seed_sql(schemas, sample_data)
+                
+                update_data["groupId"] = group_id
+                update_data["seedSql"] = seed_sql
+                
+                logger.info(f"[update_question] Created/updated seed with groupId: {group_id}")
+            except Exception as e:
+                # Log but don't fail the update - seed can be created later
+                logger.warning(f"[update_question] Failed to create/update seed for SQL question: {e}. Question update will proceed without seed.")
     
     update_data["updated_at"] = datetime.utcnow()
     
