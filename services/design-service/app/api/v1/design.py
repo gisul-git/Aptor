@@ -205,10 +205,9 @@ async def toggle_publish_question(
     Toggle publish status of a question
     """
     try:
-        if design_repository.db is None:
-            await design_repository.initialize()
-        
-        db = design_repository.db
+        # Get database connection
+        from app.db.mongo import get_database
+        db = get_database()
         
         # Validate ObjectId
         if not ObjectId.is_valid(question_id):
@@ -239,7 +238,6 @@ async def toggle_publish_question(
         raise
     except Exception as e:
         logger.error(f"Failed to update publish status: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
         raise HTTPException(status_code=500, detail=str(e))
 
 

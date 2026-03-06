@@ -1,135 +1,137 @@
 """
-Final verification that everything is working
+Final Verification Script for Design Competency Publish Feature
+Tests:
+1. Cloud database connection
+2. Backend API endpoint
+3. Publish/Unpublish functionality
+4. Data persistence
 """
 
-import pymongo
+import asyncio
 import requests
+from motor.motor_asyncio import AsyncIOMotorClient
+from bson import ObjectId
+from dotenv import load_dotenv
+import os
 
-print("=" * 80)
-print("FINAL SYSTEM VERIFICATION")
-print("=" * 80)
-print()
+load_dotenv("services/design-service/.env")
 
-# 1. Check Cloud Database
-print("1. CHECKING CLOUD DATABASE")
-print("-" * 80)
-
-CLOUD_URI = "mongodb+srv://gisul2102_db_user:5cNJ1DcNCxwaJDaU@cluster0.dwcfp0l.mongodb.net/aptor_design_Competency?retryWrites=true&w=majority&appName=Cluster0"
-CLOUD_DB = "aptor_design_Competency"
-
-try:
-    client = pymongo.MongoClient(CLOUD_URI, serverSelectionTimeoutMS=5000)
-    db = client[CLOUD_DB]
+async def verify_all():
+    print("=" * 60)
+    print("DESIGN COMPETENCY - FINAL VERIFICATION")
+    print("=" * 60)
     
-    # Test connection
-    client.server_info()
+    # 1. Verify Cloud Database Connection
+    print("\n[1/5] Verifying Cloud Database Connection...")
+    mongo_uri = os.getenv("MONGODB_URL")
+    db_name = os.getenv("MONGODB_DB_NAME")
     
-    collections = db.list_collection_names()
-    total_docs = sum(db[coll].count_documents({}) for coll in collections)
+    if not mongo_uri or not db_name:
+        print("   ERROR: Database configuration missing!")
+        return False
     
-    print(f"✅ Connected to cloud database")
-    print(f"   Database: {CLOUD_DB}")
-    print(f"   Collections: {len(collections)}")
-    print(f"   Total documents: {total_docs}")
-    print()
+    client = AsyncIOMotorClient(mongo_uri)
+    db = client[db_name]
     
-    # Show key data
-    tests_count = db['design_tests'].count_documents({})
-    questions_count = db['design_questions'].count_documents({})
-    submissions_count = db['design_submissions'].count_documents({})
-    candidates_count = db['design_candidates'].count_documents({})
+    try:
+        collections = await db.list_collection_names()
+        question_count = await db.design_questions.count_documents({})
+        print(f"   SUCCESS: Connected to {db_name}")
+        print(f"   Collections: {len(collections)}")
+        print(f"   Questions: {question_count}")
+    except Exception as e:
+        print(f"   ERROR: {e}")
+        return False
     
-    print(f"   📊 Tests: {tests_count}")
-    print(f"   📋 Questions: {questions_count}")
-    print(f"   📝 Submissions: {submissions_count}")
-    print(f"   👥 Candidates: {candidates_count}")
-    print()
+    # 2. Get a test question
+    print("\n[2/5] Getting test question...")
+    question = await db.design_questions.find_one({})
+    if not question:
+        print("   ERROR: No questions found!")
+        return False
+    
+    question_id = str(question["_id"])
+    initial_status = question.get("is_published", False)
+    print(f"   Question ID: {question_id}")
+    print(f"   Title: {question.get('title', 'N/A')}")
+    print(f"   Initial Status: {initial_status}")
+    
+    # 3. Test Backend API - Publish
+    print("\n[3/5] Testing Backend API - Publish...")
+    api_url = f"http://localhost:3007/api/v1/design/questions/{question_id}/publish"
+    
+    try:
+        response = requests.patch(api_url, params={"is_published": True})
+        if response.status_code == 200:
+            data = response.json()
+            print(f"   SUCCESS: {data.get('message')}")
+            print(f"   New Status: {data.get('is_published')}")
+        else:
+            print(f"   ERROR: Status {response.status_code}")
+            print(f"   Response: {response.text}")
+            return False
+    except Exception as e:
+        print(f"   ERROR: {e}")
+        return False
+    
+    # 4. Verify in Database
+    print("\n[4/5] Verifying in Database...")
+    await asyncio.sleep(1)
+    updated_question = await db.design_questions.find_one({"_id": ObjectId(question_id)})
+    db_status = updated_question.get("is_published", False)
+    
+    if db_status == True:
+        print(f"   SUCCESS: Database updated correctly")
+        print(f"   Published: {db_status}")
+    else:
+        print(f"   ERROR: Database not updated!")
+        print(f"   Expected: True, Got: {db_status}")
+        return False
+    
+    # 5. Test Unpublish
+    print("\n[5/5] Testing Unpublish...")
+    try:
+        response = requests.patch(api_url, params={"is_published": False})
+        if response.status_code == 200:
+            data = response.json()
+            print(f"   SUCCESS: {data.get('message')}")
+            print(f"   New Status: {data.get('is_published')}")
+        else:
+            print(f"   ERROR: Status {response.status_code}")
+            return False
+    except Exception as e:
+        print(f"   ERROR: {e}")
+        return False
+    
+    # Final verification
+    await asyncio.sleep(1)
+    final_question = await db.design_questions.find_one({"_id": ObjectId(question_id)})
+    final_status = final_question.get("is_published", False)
+    
+    if final_status == False:
+        print(f"   SUCCESS: Unpublish verified in database")
+    else:
+        print(f"   ERROR: Unpublish failed!")
+        return False
+    
+    # Summary
+    print("\n" + "=" * 60)
+    print("VERIFICATION COMPLETE")
+    print("=" * 60)
+    print("\nAll tests passed!")
+    print("\nConfiguration:")
+    print(f"  Database: {db_name}")
+    print(f"  Backend Port: 3007")
+    print(f"  Frontend Port: 3002")
+    print("\nFeatures Working:")
+    print("  - Cloud database connection")
+    print("  - Publish/Unpublish API endpoint")
+    print("  - Data persistence")
+    print("  - Query parameter support")
     
     client.close()
-    
-except Exception as e:
-    print(f"❌ Database connection failed: {e}")
-    print()
+    return True
 
-# 2. Check Local Database (should be empty/deleted)
-print("2. CHECKING LOCAL DATABASE")
-print("-" * 80)
-
-LOCAL_URI = "mongodb://localhost:27017/"
-LOCAL_DB = "aptor_design"
-
-try:
-    local_client = pymongo.MongoClient(LOCAL_URI, serverSelectionTimeoutMS=5000)
-    
-    if LOCAL_DB in local_client.list_database_names():
-        print(f"⚠️  Local database '{LOCAL_DB}' still exists")
-        local_db = local_client[LOCAL_DB]
-        collections = local_db.list_collection_names()
-        print(f"   Collections: {len(collections)}")
-    else:
-        print(f"✅ Local database '{LOCAL_DB}' deleted successfully")
-    
-    print()
-    local_client.close()
-    
-except Exception as e:
-    print(f"⚠️  Cannot connect to local MongoDB: {e}")
-    print()
-
-# 3. Check Design Service
-print("3. CHECKING DESIGN SERVICE")
-print("-" * 80)
-
-try:
-    response = requests.get("http://localhost:3006/health", timeout=5)
-    
-    if response.status_code == 200:
-        print(f"✅ Design service is running")
-        print(f"   URL: http://localhost:3006")
-        print(f"   Status: {response.json()}")
-    else:
-        print(f"⚠️  Design service returned status {response.status_code}")
-    
-    print()
-    
-except Exception as e:
-    print(f"❌ Design service not responding: {e}")
-    print()
-
-# 4. Check Frontend
-print("4. CHECKING FRONTEND")
-print("-" * 80)
-
-try:
-    response = requests.get("http://localhost:3002", timeout=5)
-    
-    if response.status_code == 200:
-        print(f"✅ Frontend is running")
-        print(f"   URL: http://localhost:3002")
-    else:
-        print(f"⚠️  Frontend returned status {response.status_code}")
-    
-    print()
-    
-except Exception as e:
-    print(f"❌ Frontend not responding: {e}")
-    print()
-
-# 5. Summary
-print("=" * 80)
-print("SUMMARY")
-print("=" * 80)
-print()
-print("✅ Cloud database: aptor_design_Competency (MongoDB Atlas)")
-print("✅ Design service: http://localhost:3006")
-print("✅ Frontend: http://localhost:3002")
-print()
-print("🎯 NEXT STEPS:")
-print("   1. Go to: http://localhost:3002/dashboard")
-print("   2. Find your Design Assessment")
-print("   3. Click 'View Details' to see analytics")
-print("   4. Add candidates and send test links")
-print()
-print("=" * 80)
-print("✅ SYSTEM IS READY!")
-print("=" * 80) 
+if __name__ == "__main__":
+    success = asyncio.run(verify_all())
+    exit(0 if success else 1)
