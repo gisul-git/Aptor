@@ -3,6 +3,7 @@ import { useRouter } from 'next/router'
 import { GetServerSideProps } from 'next'
 import { requireAuth } from '../../../lib/auth'
 import Link from 'next/link'
+import { usePublishDesignQuestion } from '@/hooks/api/useDesign'
 
 interface Question {
   id: string
@@ -24,8 +25,9 @@ export default function DesignQuestionsListPage() {
   const [questions, setQuestions] = useState<Question[]>([])
   const [loading, setLoading] = useState(true)
   const [deletingId, setDeletingId] = useState<string | null>(null)
+  const publishQuestionMutation = usePublishDesignQuestion()
   
-  const API_URL = process.env.NEXT_PUBLIC_DESIGN_SERVICE_URL || 'http://localhost:3006/api/v1/design'
+  const API_URL = process.env.NEXT_PUBLIC_DESIGN_SERVICE_URL || 'http://localhost:3007/api/v1/design'
 
   useEffect(() => {
     fetchQuestions()
@@ -84,20 +86,14 @@ export default function DesignQuestionsListPage() {
     ))
     
     try {
-      const response = await fetch(`${API_URL}/questions/${questionId}/publish?is_published=${newStatus}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-      })
-      
-      if (response.ok) {
-        // Refetch to ensure consistency with backend
-        await fetchQuestions()
-      } else {
-        const error = await response.text()
-        console.error('Publish error:', error)
-        // Revert optimistic update on error
-        await fetchQuestions()
-        alert('Failed to update publish status')
+      await publishQuestionMutation.mutateAsync({ questionId, isPublished: newStatus })
+      // Refetch to ensure consistency with backend
+      await fetchQuestions()
+    } catch (error: any) {
+      console.error('Publish error:', error)
+      // Revert optimistic update on error
+      await fetchQuestions()
+      alert('Failed to update publish status')
       }
     } catch (error) {
       console.error('Publish error:', error)

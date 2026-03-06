@@ -248,6 +248,25 @@ class DesignService {
       throw error;
     }
   }
+
+  /**
+   * Publish/unpublish a design question
+   */
+  async publishQuestion(questionId: string, isPublished: boolean): Promise<{ message: string; is_published: boolean }> {
+    try {
+      const response = await axios.patch(
+        `${DESIGN_SERVICE_URL}/questions/${questionId}/publish`,
+        null,
+        {
+          params: { is_published: isPublished }
+        }
+      );
+      return response.data;
+    } catch (error) {
+      console.error('Failed to publish/unpublish question:', error);
+      throw error;
+    }
+  }
 }
 
 // Export singleton instance

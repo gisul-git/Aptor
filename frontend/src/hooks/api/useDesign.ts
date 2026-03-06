@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { designService, type DesignTest, type CreateDesignTestDto } from '@/services/design';
+import { designService } from '@/services/designService';
+import type { DesignTest, CreateDesignTestDto } from '@/services/design';
 
 const QUERY_KEYS = {
   tests: ['design', 'tests'] as const,
@@ -102,6 +103,22 @@ export const useCloneDesignTest = () => {
       designService.cloneTest(testId, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.tests });
+    },
+  });
+};
+
+/**
+ * Publish/unpublish Design question mutation
+ */
+export const usePublishDesignQuestion = () => {
+  const queryClient = useQueryClient();
+  
+  return useMutation({
+    mutationFn: ({ questionId, isPublished }: { questionId: string; isPublished: boolean }) =>
+      designService.publishQuestion(questionId, isPublished),
+    onSuccess: () => {
+      // Invalidate queries to refetch questions
+      queryClient.invalidateQueries({ queryKey: ['design', 'questions'] });
     },
   });
 };
