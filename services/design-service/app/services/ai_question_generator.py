@@ -101,6 +101,10 @@ class AIQuestionGenerator:
         base_prompt = f"""SYSTEM ROLE
 Act as a Design Assessment Question Generator for a professional hiring platform.
 Generate structured design challenges used in automated design interviews.
+
+CRITICAL: The question MUST be specifically about the topic: "{topic_str}"
+DO NOT generate generic questions. Use the exact topic provided.
+
 The questions must work for multiple design roles including:
 • UI Designer
 • UX Designer
@@ -112,6 +116,7 @@ The questions must work for multiple design roles including:
 • Motion Designer
 
 The generated question must be:
+• SPECIFICALLY about the topic "{topic_str}" (NOT generic)
 • role-specific
 • difficulty-based
 • measurable for evaluation
@@ -127,8 +132,12 @@ INPUT PARAMETERS
 Role: {role_str}
 Difficulty Level: {difficulty_str}
 Experience Level: {experience_str}
-Topic: {topic_str}
+Topic: {topic_str} ← USE THIS EXACT TOPIC IN THE QUESTION
 Time Limit: {time_limit} minutes
+
+IMPORTANT: The title and description MUST reference "{topic_str}" specifically.
+Example: If topic is "Shopping", create "Shopping Landing Page" or "Shopping Mobile App"
+NOT just "Landing Page" or "Mobile App"
 
 -----------------------------------------------------
 ROLE-SPECIFIC QUESTION LOGIC
