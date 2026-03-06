@@ -245,3 +245,86 @@ async def send_email(to_address: str, subject: str, html_body: str) -> None:
     """Send an email using the configured email service."""
     service = get_email_service()
     await service.send_email(to_address, subject, html_body)
+
+
+async def send_mfa_otp_email(to_email: str, name: str, otp_code: str) -> None:
+    """Send MFA OTP verification code email."""
+    subject = "Your Aaptor Verification Code"
+    
+    html_body = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Verification Code</title>
+    </head>
+    <body style="margin: 0; padding: 0; font-family: Arial, sans-serif; background-color: #f5f5f5;">
+        <table role="presentation" style="width: 100%; border-collapse: collapse;">
+            <tr>
+                <td align="center" style="padding: 40px 0;">
+                    <table role="presentation" style="width: 600px; border-collapse: collapse; background-color: #ffffff; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                        <!-- Header -->
+                        <tr>
+                            <td style="padding: 40px 40px 20px 40px; text-align: center;">
+                                <h1 style="margin: 0; color: #1f2937; font-size: 28px; font-weight: 600;">Verification Code</h1>
+                            </td>
+                        </tr>
+                        
+                        <!-- Content -->
+                        <tr>
+                            <td style="padding: 0 40px 40px 40px;">
+                                <p style="margin: 0 0 20px 0; color: #4b5563; font-size: 16px; line-height: 24px;">
+                                    Hi {name},
+                                </p>
+                                <p style="margin: 0 0 20px 0; color: #4b5563; font-size: 16px; line-height: 24px;">
+                                    You requested a verification code to sign in to your Aaptor account. Use the code below to complete your sign-in:
+                                </p>
+                                
+                                <!-- OTP Code Box -->
+                                <div style="background-color: #f3f4f6; border: 2px solid #e5e7eb; border-radius: 8px; padding: 30px; text-align: center; margin: 30px 0;">
+                                    <div style="font-size: 36px; font-weight: bold; color: #1f2937; letter-spacing: 8px; font-family: 'Courier New', monospace;">
+                                        {otp_code}
+                                    </div>
+                                </div>
+                                
+                                <p style="margin: 0 0 20px 0; color: #4b5563; font-size: 16px; line-height: 24px;">
+                                    This code will expire in <strong>10 minutes</strong>.
+                                </p>
+                                
+                                <p style="margin: 0 0 20px 0; color: #4b5563; font-size: 16px; line-height: 24px;">
+                                    If you didn't request this code, please ignore this email or contact support if you have concerns.
+                                </p>
+                                
+                                <!-- Security Notice -->
+                                <div style="background-color: #fef2f2; border-left: 4px solid #ef4444; padding: 16px; margin: 20px 0; border-radius: 4px;">
+                                    <p style="margin: 0; color: #991b1b; font-size: 14px; line-height: 20px;">
+                                        <strong>Security Notice:</strong> Never share this code with anyone. Aaptor will never ask you for this code.
+                                    </p>
+                                </div>
+                            </td>
+                        </tr>
+                        
+                        <!-- Footer -->
+                        <tr>
+                            <td style="padding: 30px 40px; background-color: #f9fafb; border-top: 1px solid #e5e7eb; border-radius: 0 0 8px 8px;">
+                                <p style="margin: 0 0 10px 0; color: #6b7280; font-size: 14px; line-height: 20px;">
+                                    Best regards,<br>
+                                    The Aaptor Team
+                                </p>
+                                <p style="margin: 0; color: #9ca3af; font-size: 12px; line-height: 18px;">
+                                    This is an automated email. Please do not reply to this message.
+                                </p>
+                            </td>
+                        </tr>
+                    </table>
+                </td>
+            </tr>
+        </table>
+    </body>
+    </html>
+    """
+    
+    service = get_email_service()
+    await service.send_email(to_email, subject, html_body)
+

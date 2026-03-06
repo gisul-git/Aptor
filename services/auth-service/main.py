@@ -11,6 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config.settings import get_settings
 from app.db.mongo import connect_to_mongo, close_mongo_connection
 from app.api.v1.auth.routers import router as auth_router
+from app.api.v1.auth.mfa_routers import router as mfa_router
 from app.api.v1.users.routers import router as users_router
 from app.exceptions.handlers import (
     validation_exception_handler,
@@ -116,6 +117,7 @@ app.add_middleware(
 
 # Include routers
 app.include_router(auth_router)
+app.include_router(mfa_router)
 app.include_router(users_router)
 
 # Setup exception handlers
