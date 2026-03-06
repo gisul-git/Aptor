@@ -313,11 +313,15 @@ export default function DesignTestManagePage() {
                     </div>
                   </div>
                   <div style={{ display: "flex", gap: "0.5rem" }}>
-                    <button className="btn-primary" style={{ padding: "0.75rem 1.5rem", fontSize: "0.875rem" }}>
+                    <button 
+                      onClick={() => {
+                        const testUrl = `${window.location.origin}/design/tests/${testId}/take?token=${test.test_token}`;
+                        window.open(testUrl, '_blank');
+                      }}
+                      className="btn-primary" 
+                      style={{ padding: "0.75rem 1.5rem", fontSize: "0.875rem" }}
+                    >
                       🧪 Test This Test
-                    </button>
-                    <button className="btn-secondary" style={{ padding: "0.75rem 1.5rem", fontSize: "0.875rem" }}>
-                      ✏️ Edit Email Template
                     </button>
                   </div>
                 </>
