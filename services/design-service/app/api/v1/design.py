@@ -1757,8 +1757,9 @@ async def send_invitations_to_all(test_id: str):
                 duration_text = f"{minutes} minute{'s' if minutes > 1 else ''}"
         
         # Check SendGrid configuration
-        sendgrid_api_key = os.getenv("SENDGRID_API_KEY")
-        sendgrid_from_email = os.getenv("SENDGRID_FROM_EMAIL", "noreply@aaptor.com")
+        sendgrid_api_key = settings.SENDGRID_API_KEY
+        sendgrid_from_email = settings.SENDGRID_FROM_EMAIL or "noreply@aaptor.com"
+        sendgrid_from_name = settings.SENDGRID_FROM_NAME or "Aptor Design Assessment"
         
         if not sendgrid_api_key:
             logger.warning("SendGrid API key not configured")
@@ -1856,7 +1857,7 @@ async def send_invitations_to_all(test_id: str):
                 """
                 
                 message = Mail(
-                    from_email=sendgrid_from_email,
+                    from_email=(sendgrid_from_email, sendgrid_from_name),
                     to_emails=candidate_email,
                     subject=f"Invitation: {test_title}",
                     html_content=html_content
