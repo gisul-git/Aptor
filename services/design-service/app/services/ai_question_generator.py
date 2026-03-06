@@ -102,8 +102,26 @@ class AIQuestionGenerator:
 Act as a Design Assessment Question Generator for a professional hiring platform.
 Generate structured design challenges used in automated design interviews.
 
-CRITICAL: The question MUST be specifically about the topic: "{topic_str}"
-DO NOT generate generic questions. Use the exact topic provided.
+CRITICAL REQUIREMENTS:
+1. The question MUST be specifically about the topic: "{topic_str}"
+2. The question MUST be for task type: "{task_str}" (NOT any other type)
+3. DO NOT generate generic questions
+4. Use the exact topic and task type provided
+
+TASK TYPE RULES:
+- If task_type is "landing page" → Generate a LANDING PAGE design challenge
+- If task_type is "mobile app" → Generate a MOBILE APP screen design challenge  
+- If task_type is "dashboard" → Generate a DASHBOARD design challenge (NOT landing page!)
+- If task_type is "component" → Generate a UI COMPONENT design challenge
+
+CURRENT TASK TYPE: {task_str}
+CURRENT TOPIC: {topic_str}
+
+The question MUST match the task type. For example:
+- Dashboard = data visualization, analytics, admin panels, monitoring interfaces
+- Landing Page = marketing pages, product showcases, conversion-focused pages
+- Mobile App = mobile screens, app interfaces, touch interactions
+- Component = buttons, cards, forms, navigation elements
 
 The questions must work for multiple design roles including:
 • UI Designer
@@ -117,6 +135,7 @@ The questions must work for multiple design roles including:
 
 The generated question must be:
 • SPECIFICALLY about the topic "{topic_str}" (NOT generic)
+• SPECIFICALLY for task type "{task_str}" (NOT other types)
 • role-specific
 • difficulty-based
 • measurable for evaluation
@@ -133,11 +152,13 @@ Role: {role_str}
 Difficulty Level: {difficulty_str}
 Experience Level: {experience_str}
 Topic: {topic_str} ← USE THIS EXACT TOPIC IN THE QUESTION
+Task Type: {task_str} ← MUST MATCH THIS TYPE (dashboard/landing_page/mobile_app/component)
 Time Limit: {time_limit} minutes
 
-IMPORTANT: The title and description MUST reference "{topic_str}" specifically.
-Example: If topic is "Shopping", create "Shopping Landing Page" or "Shopping Mobile App"
-NOT just "Landing Page" or "Mobile App"
+IMPORTANT: 
+- The title MUST include both topic and task type: "{topic_str} {task_str.title()}"
+- Example: "Agriculture Dashboard" NOT "Agriculture Landing Page"
+- Example: "Shopping Mobile App" NOT "Shopping Dashboard"
 
 -----------------------------------------------------
 ROLE-SPECIFIC QUESTION LOGIC
@@ -301,15 +322,46 @@ IMPORTANT:
 OUTPUT FORMAT (STRICT)
 
 {{
-    "title": "{topic_str.replace('_', ' ').title()} – {role_str} Challenge",
-    "description": "Provide a concise description including:
-• product or domain context
-• design problem
-• target users
-• expected outcome
+    "title": "{topic_str.replace('_', ' ').title()} {task_str.title()} – {role_str} Challenge",
+    "description": "CRITICAL: Write a SPECIFIC, DETAILED description for a {task_str} that includes:
+• EXACT product/domain context (e.g., 'e-commerce fashion store', 'healthcare patient portal', 'food delivery service')
+• SPECIFIC design problem to solve (e.g., 'improve checkout conversion', 'simplify appointment booking', 'reduce order time')
+• TARGET user persona (e.g., 'busy professionals aged 25-40', 'elderly patients with limited tech experience', 'restaurant owners managing orders')
+• EXPECTED outcome (e.g., 'increase user engagement by 30%', 'reduce booking time by 50%', 'improve order accuracy')
+• KEY features to include (e.g., 'product filtering, wishlist, quick checkout', 'appointment calendar, doctor profiles, prescription refills')
+
+AVOID GENERIC DESCRIPTIONS. Be specific about:
+- What type of {topic_str} {task_str} (e.g., 'Agriculture crop monitoring dashboard' not just 'Agriculture dashboard')
+- What specific screens/sections for {task_str} (e.g., 'data visualization panels, KPI cards, charts' for dashboard; 'hero section, features, CTA' for landing page)
+- What user actions (e.g., 'monitor crop health, view analytics, track yields' for dashboard; 'learn about product, sign up, contact' for landing page)
+
+TASK TYPE SPECIFIC REQUIREMENTS:
+IF task_type = "dashboard":
+- Focus on: data visualization, charts, KPIs, filters, tables, analytics
+- Include: metrics cards, graphs, data tables, filter panels
+- Example: "Design an agriculture crop monitoring dashboard showing real-time field data, weather conditions, soil health metrics, and yield predictions"
+
+IF task_type = "landing_page":
+- Focus on: hero section, value proposition, features, testimonials, CTA
+- Include: headline, benefits, social proof, conversion elements
+- Example: "Design a landing page for an agriculture SaaS platform showcasing smart farming solutions, customer success stories, and pricing plans"
+
+IF task_type = "mobile_app":
+- Focus on: mobile screens, touch interactions, navigation
+- Include: mobile-optimized layouts, bottom navigation, swipe gestures
+- Example: "Design a mobile app screen for farmers to track crop health, receive alerts, and manage irrigation schedules"
+
+IF task_type = "component":
+- Focus on: reusable UI elements, states, variations
+- Include: component anatomy, interaction states, size variants
+- Example: "Design a data card component for displaying crop statistics with multiple states and size options"
 
 Write in neutral professional language. Do NOT use 'you', 'your', 'you should', 'you need to'.
-Use phrases like: 'Design a [product]', 'The interface should', 'The goal is to', 'The layout must'.",
+Use phrases like: 'Design a [specific product]', 'The interface should [specific action]', 'The goal is to [specific outcome]', 'The layout must [specific requirement]'.
+
+GOOD EXAMPLE: 'Design a product listing page for a luxury fashion e-commerce platform. The interface should allow users to browse premium clothing items, filter by category, price range, and brand, and add items to a wishlist. The layout must emphasize high-quality product imagery while maintaining fast load times. Target users are fashion-conscious professionals aged 25-45 with high purchasing power.'
+
+BAD EXAMPLE: 'Design a landing page for a Shopping. The page needs to make a strong first impression and clearly communicate the value proposition to visitors.'",
     "constraints": [
         "CRITICAL: Provide EXACTLY the right number of constraints based on difficulty:",
         "• Beginner: 5-6 constraints ONLY",
@@ -348,22 +400,68 @@ Use phrases like: 'Design a [product]', 'The interface should', 'The goal is to'
         "• Responsive behavior"
     ],
     "deliverables": [
-        "Specify outputs such as:",
-        "• wireframes",
-        "• high fidelity screens",
-        "• design assets",
-        "• component specifications",
-        "• brand guidelines",
-        "• motion states"
+        "CRITICAL: Be SPECIFIC about deliverables based on difficulty and role:",
+        "",
+        "For UI Designer:",
+        "• High-fidelity UI screens (specify exact number based on difficulty)",
+        "• Component specifications with dimensions and spacing",
+        "• Typography scale and color palette documentation",
+        "• Interactive state designs (hover, active, focus, disabled)",
+        "",
+        "For UX Designer:",
+        "• User flow diagrams showing complete journey",
+        "• Wireframes for key screens",
+        "• Information architecture diagram",
+        "• Interaction specifications",
+        "",
+        "For Visual Designer:",
+        "• Visual design mockups with brand identity",
+        "• Icon set or illustration system",
+        "• Style guide with visual elements",
+        "• Asset specifications",
+        "",
+        "For Product Designer:",
+        "• Product strategy document",
+        "• User personas and scenarios",
+        "• Feature prioritization matrix",
+        "• High-fidelity prototypes",
+        "",
+        "BEGINNER: 2-3 deliverables",
+        "INTERMEDIATE: 3-4 deliverables",
+        "ADVANCED: 4-5 deliverables"
     ],
     "evaluation_criteria": [
-        "Include scoring factors such as:",
-        "• layout consistency",
-        "• visual hierarchy",
-        "• usability",
-        "• constraint compliance",
-        "• creativity",
-        "• clarity of design solution"
+        "CRITICAL: Include MEASURABLE evaluation criteria:",
+        "",
+        "ALWAYS include:",
+        "• Constraint compliance (measurable: did they follow canvas width, spacing, colors?)",
+        "• Visual hierarchy clarity (measurable: typography levels, size contrast)",
+        "• Layout consistency (measurable: spacing consistency, alignment precision)",
+        "• Component quality (measurable: number of components, detail level)",
+        "",
+        "For UI Designer, ADD:",
+        "• Pixel-perfect execution and alignment",
+        "• Grid system implementation",
+        "• Typography hierarchy (minimum 3 levels)",
+        "• Color system consistency",
+        "",
+        "For UX Designer, ADD:",
+        "• User flow completeness",
+        "• Navigation clarity",
+        "• Information architecture logic",
+        "• Usability and accessibility",
+        "",
+        "For Visual Designer, ADD:",
+        "• Creative visual execution",
+        "• Brand identity strength",
+        "• Visual aesthetics and appeal",
+        "• Illustration/icon quality",
+        "",
+        "For Product Designer, ADD:",
+        "• Strategic thinking and business alignment",
+        "• User research integration",
+        "• Feature prioritization logic",
+        "• Product vision clarity"
     ],
     "time_limit_minutes": {time_limit}
 }}
