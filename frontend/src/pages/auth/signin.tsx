@@ -7,7 +7,7 @@ import Link from "next/link";
 import axios from "axios";
 import fastApiClient from "../../lib/fastapi";
 import { validateEmailWithCommonTypos } from "../../lib/validation/email";
-import { Eye, EyeOff, Brain, TrendingUp, BookOpen, Users, Code, BarChart3, FileText, Lightbulb, Mail, Lock, Building2, AlertCircle, CheckCircle2, Loader2 } from "lucide-react";
+import { Eye, EyeOff, Brain, TrendingUp, BookOpen, Users, Code, BarChart3, FileText, Lightbulb, Mail, Lock, Building2, AlertCircle, CheckCircle2, Loader2, Shield, Key } from "lucide-react";
 
 interface SignInPageProps {
   providers: Awaited<ReturnType<typeof getProviders>>;
@@ -370,6 +370,24 @@ export default function SignInPage({ providers }: SignInPageProps) {
   const [passwordFocused, setPasswordFocused] = useState(false);
   const [orgIdFocused, setOrgIdFocused] = useState(false);
   const [ssoLoading, setSsoLoading] = useState<string | null>(null);
+  
+  // MFA state
+  const [showMFA, setShowMFA] = useState(false);
+  const [mfaMethod, setMfaMethod] = useState<"totp" | "email" | "backup">("totp");
+  const [mfaCode, setMfaCode] = useState("");
+  const [tempToken, setTempToken] = useState("");
+  const [mfaEmail, setMfaEmail] = useState("");
+  const [emailOtpSent, setEmailOtpSent] = useState(false);
+  
+  // MFA Setup state
+  const [showMFASetup, setShowMFASetup] = useState(false);
+  const [mfaSetupToken, setMfaSetupToken] = useState("");
+  const [mfaSetupStep, setMfaSetupStep] = useState(1); // 1: QR, 2: Verify, 3: Backup codes
+  const [qrCodeUrl, setQrCodeUrl] = useState("");
+  const [totpSecret, setTotpSecret] = useState("");
+  const [backupCodes, setBackupCodes] = useState<string[]>([]);
+  const [encryptedSecret, setEncryptedSecret] = useState("");
+  const [hashedBackupCodes, setHashedBackupCodes] = useState<any[]>([]);
 
   const googleProvider = providers ? providers["google"] : undefined;
   const microsoftProvider = providers ? providers["azure-ad"] ?? providers["azuread"] : undefined;
@@ -518,6 +536,191 @@ export default function SignInPage({ providers }: SignInPageProps) {
     window.location.replace("/dashboard");
   };
 
+  // Handle MFA verification
+  const handleMFAVerify = async () => {
+    if (mfaCode.length < 6) {
+      setError("Please enter a valid verification code");
+      return;
+    }
+
+    console.log("🔐 [SignIn] handleMFAVerify called");
+    console.log("🔐 [SignIn] MFA verification params:", {
+      email: mfaEmail,
+      mfaCode: mfaCode.substring(0, 2) + "****",
+      mfaMethod: mfaMethod,
+      tempToken: tempToken.substring(0, 20) + "...",
+    });
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      console.log("🔐 [SignIn] Calling signIn with credentials...");
+      const result = await signIn("credentials", {
+        redirect: false,
+        email: mfaEmail,
+        mfaCode: mfaCode,
+        mfaMethod: mfaMethod,
+        tempToken: tempToken,
+        callbackUrl,
+      });
+
+      console.log("🔐 [SignIn] signIn result:", result);
+      setLoading(false);
+
+      if (result?.error) {
+        console.error("🔴 [SignIn] MFA verification error:", result.error);
+        setError(result.error);
+        return;
+      }
+
+      console.log("✅ [SignIn] MFA verification successful, redirecting...");
+      // Success - redirect to dashboard
+      window.location.replace("/dashboard");
+    } catch (err: any) {
+      console.error("🔴 [SignIn] MFA verification exception:", err);
+      setLoading(false);
+      setError(err?.message || "MFA verification failed");
+    }
+  };
+
+  // Send email OTP
+  const handleSendEmailOTP = async () => {
+    setLoading(true);
+    setError(null);
+
+    try {
+      await axios.post(
+        `${process.env.NEXT_PUBLIC_API_URL}/api/v1/auth/mfa/send-email-otp`,
+        {
+          email: mfaEmail,
+          temp_token: tempToken,
+        }
+      );
+
+      setEmailOtpSent(true);
+      setMfaMethod("email");
+      setMfaCode("");
+      setLoading(false);
+    } catch (err: any) {
+      setLoading(false);
+      if (err.response?.status === 429) {
+        setError("Too many requests. Please try again later.");
+      } else {
+        setError(err.response?.data?.detail || "Failed to send email code");
+      }
+    }
+  };
+
+  // MFA Setup: Generate QR Code
+  const generateQRCode = async (email: string, setupToken: string) => {
+    setLoading(true);
+    setError(null);
+
+    try {
+      const response = await axios.post(
+        `${process.env.NEXT_PUBLIC_API_URL}/api/v1/auth/mfa/setup`,
+        {},
+        {
+          headers: {
+            Authorization: `Bearer ${setupToken}`,
+          },
+        }
+      );
+
+      const { qrCodeUrl, secret } = response.data.data;
+      setQrCodeUrl(qrCodeUrl);
+      setTotpSecret(secret);
+      setLoading(false);
+    } catch (err: any) {
+      setLoading(false);
+      setError(err.response?.data?.detail || "Failed to generate QR code");
+    }
+  };
+
+  // MFA Setup: Verify TOTP and get backup codes
+  const handleVerifySetupTOTP = async () => {
+    if (mfaCode.length !== 6) {
+      setError("Please enter a 6-digit code");
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      const response = await axios.post(
+        `${process.env.NEXT_PUBLIC_API_URL}/api/v1/auth/mfa/verify-setup`,
+        {
+          code: mfaCode,
+          secret: totpSecret,
+        },
+        {
+          headers: {
+            Authorization: `Bearer ${mfaSetupToken}`,
+          },
+        }
+      );
+
+      const { backupCodes, encryptedSecret, hashedBackupCodes } = response.data.data;
+      setBackupCodes(backupCodes);
+      setEncryptedSecret(encryptedSecret);
+      setHashedBackupCodes(hashedBackupCodes);
+      setMfaSetupStep(3);
+      setMfaCode("");
+      setLoading(false);
+    } catch (err: any) {
+      setLoading(false);
+      setError(err.response?.data?.detail || "Invalid verification code");
+    }
+  };
+
+  // MFA Setup: Complete setup and sign in
+  const handleCompleteSetup = async () => {
+    setLoading(true);
+    setError(null);
+
+    try {
+      // Call NextAuth signIn with setup completion
+      const result = await signIn("credentials", {
+        redirect: false,
+        email: mfaEmail,
+        mfaSetupComplete: "true",
+        mfaSetupToken: mfaSetupToken,
+        encryptedSecret: encryptedSecret,
+        hashedBackupCodes: JSON.stringify(hashedBackupCodes),
+        callbackUrl,
+      });
+
+      setLoading(false);
+
+      if (result?.error) {
+        setError(result.error);
+        return;
+      }
+
+      // Success - redirect to dashboard
+      window.location.replace("/dashboard");
+    } catch (err: any) {
+      setLoading(false);
+      setError(err?.message || "Failed to complete MFA setup");
+    }
+  };
+
+  // Download backup codes
+  const downloadBackupCodes = () => {
+    const content = `Aaptor MFA Backup Codes\n\nEmail: ${mfaEmail}\nGenerated: ${new Date().toLocaleString()}\n\n${backupCodes.join('\n')}\n\nIMPORTANT:\n- Each code can only be used once\n- Store these codes in a safe place\n- Generate new codes if you lose these`;
+    const blob = new Blob([content], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `aaptor-backup-codes-${Date.now()}.txt`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
@@ -530,11 +733,8 @@ export default function SignInPage({ providers }: SignInPageProps) {
     setLoading(true);
     setError(null);
 
-    // Flag to track if MFA was detected to prevent NextAuth fallback
-    let mfaDetected = false;
-    
     try {
-      // First check if MFA is required by calling backend directly
+      // Step 1: Call backend directly to check for MFA/password reset requirements
       const loginPayload: any = {
         email,
         password,
@@ -545,47 +745,67 @@ export default function SignInPage({ providers }: SignInPageProps) {
         loginPayload.org_id = orgId.trim().toUpperCase();
       }
       
-      const loginResponse = await fastApiClient.post("/api/v1/auth/login", loginPayload);
-
-      // Check if MFA is required - check multiple possible response structures
-      const responseData = loginResponse.data;
-      // Check all possible locations for require_mfa flag
-      const requireMfa = responseData?.data?.require_mfa || 
-                        responseData?.require_mfa || 
-                        loginResponse?.data?.data?.require_mfa ||
-                        loginResponse?.data?.require_mfa;
+      console.log("🔐 [SignIn] Calling backend login with payload:", { email, org_id: loginPayload.org_id });
       
-      if (requireMfa === true) {
-        mfaDetected = true;
-        console.log("🔐 [SignIn] MFA required detected, redirecting to MFA page");
+      const loginResponse = await axios.post(
+        `${process.env.NEXT_PUBLIC_API_URL}/api/v1/auth/login`,
+        loginPayload
+      );
+
+      console.log("🔐 [SignIn] Raw backend response:", loginResponse);
+      
+      const responseData = loginResponse.data?.data || loginResponse.data;
+      
+      console.log("🔐 [SignIn] Parsed response data:", responseData);
+
+      // Step 2: Check for password reset required
+      if (responseData.requirePasswordReset === true) {
+        console.log("🔐 [SignIn] Password reset required");
+        const resetToken = responseData.resetToken;
+        setLoading(false);
+        router.push(`/auth/reset-password?token=${encodeURIComponent(resetToken)}`);
+        return;
+      }
+
+      // Step 3: Check for MFA setup required (first time org_admin login)
+      if (responseData.requireMFASetup === true) {
+        console.log("🔐 [SignIn] MFA setup required, showing inline setup");
+        const mfaSetupToken = responseData.mfaSetupToken;
         
-        // Store email for MFA page
+        setMfaEmail(email);
+        setMfaSetupToken(mfaSetupToken);
+        setShowMFASetup(true);
+        setMfaSetupStep(1);
+        setLoading(false);
+        
+        // Generate QR code
+        await generateQRCode(email, mfaSetupToken);
+        return;
+      }
+
+      // Step 4: Check for MFA verification required (org_admin with MFA enabled)
+      if (responseData.requireMFA === true) {
+        const tempToken = responseData.tempToken;
+        
+        setMfaEmail(email);
+        setTempToken(tempToken);
+        setShowMFA(true);
+        setLoading(false);
+        return;
+      }
+
+      // Step 5: Check for super admin MFA (legacy flow)
+      if (responseData.require_mfa === true) {
+        setLoading(false);
         if (typeof window !== "undefined") {
           sessionStorage.setItem("super_admin_email", email);
-          // Use window.location.replace for immediate redirect (doesn't add to history)
           window.location.replace(`/super-admin/mfa?email=${encodeURIComponent(email)}`);
         }
-        setLoading(false);
-        return; // IMPORTANT: Return early to prevent NextAuth call
+        return;
       }
 
-      // Check if password reset is required (temporary password)
-      const requirePasswordReset = responseData?.data?.requirePasswordReset || 
-                                   responseData?.requirePasswordReset;
-      const resetToken = responseData?.data?.resetToken || responseData?.resetToken;
+      // Step 6: No MFA required - proceed with NextAuth to create session
       
-      if (requirePasswordReset === true && resetToken) {
-        console.log("🔐 [SignIn] Password reset required, redirecting to reset password page");
-        
-        // Redirect to reset password page with token
-        if (typeof window !== "undefined") {
-          window.location.replace(`/auth/reset-password?token=${encodeURIComponent(resetToken)}`);
-        }
-        setLoading(false);
-        return; // IMPORTANT: Return early to prevent NextAuth call
-      }
-
-      // If no MFA required, proceed with normal NextAuth signin
       const signInPayload: any = {
         redirect: false,
         email,
@@ -603,17 +823,7 @@ export default function SignInPage({ providers }: SignInPageProps) {
       setLoading(false);
 
       if (result?.error) {
-        // Check if error is MFA_REQUIRED
-        if (result.error === "MFA_REQUIRED" || result.error.includes("MFA_REQUIRED")) {
-          mfaDetected = true;
-          console.log("🔐 [SignIn] MFA required detected from NextAuth, redirecting to MFA page");
-          if (typeof window !== "undefined") {
-            sessionStorage.setItem("super_admin_email", email);
-            window.location.replace(`/super-admin/mfa?email=${encodeURIComponent(email)}`);
-          }
-          return;
-        }
-        
+        // Check for email verification required
         if (result.error.includes("Email not verified") || result.error.includes("email verification")) {
           setShowVerification(true);
           setTimeRemaining(60);
@@ -633,85 +843,18 @@ export default function SignInPage({ providers }: SignInPageProps) {
       
       // Redirect to dashboard after successful login
       window.location.replace("/dashboard");
+      
     } catch (err: any) {
       setLoading(false);
       
-      // If MFA was already detected, don't proceed with any fallback
-      if (mfaDetected) {
-        console.log("🔐 [SignIn] MFA already detected, skipping error handling");
-        return;
-      }
-      
-      // Check if the error response contains require_mfa (in case axios throws an error)
-      const errorData = err?.response?.data;
-      const requireMfaFromError = errorData?.data?.require_mfa || 
-                                  errorData?.require_mfa ||
-                                  err?.response?.data?.data?.require_mfa ||
-                                  err?.response?.data?.require_mfa;
-      
-      if (requireMfaFromError === true) {
-        mfaDetected = true;
-        console.log("🔐 [SignIn] MFA required detected in error response, redirecting to MFA page");
-        
-        if (typeof window !== "undefined") {
-          sessionStorage.setItem("super_admin_email", email);
-          window.location.replace(`/super-admin/mfa?email=${encodeURIComponent(email)}`);
-        }
-        return; // IMPORTANT: Return early to prevent NextAuth call
-      }
-
       // Check for backend connection errors
       if (err?.code === "ECONNREFUSED" || err?.code === "ENOTFOUND" || err?.message?.includes("not found")) {
         setError("Cannot connect to API Gateway. Please ensure the gateway is running on http://localhost:80");
-        return; // Don't try NextAuth if backend is down
+        return;
       }
 
-      // For other errors, try NextAuth as fallback (only if MFA was not detected)
-      if (!mfaDetected) {
-        const result = await signIn("credentials", {
-          redirect: false,
-          email,
-          password,
-          callbackUrl,
-        });
-
-        if (result?.error) {
-          // Check if error is MFA_REQUIRED
-          if (result.error === "MFA_REQUIRED" || result.error.includes("MFA_REQUIRED")) {
-            mfaDetected = true;
-            console.log("🔐 [SignIn] MFA required detected from NextAuth fallback, redirecting to MFA page");
-            if (typeof window !== "undefined") {
-              sessionStorage.setItem("super_admin_email", email);
-              window.location.replace(`/super-admin/mfa?email=${encodeURIComponent(email)}`);
-            }
-            return;
-          }
-          
-          if (result.error.includes("Email not verified") || result.error.includes("email verification")) {
-            setShowVerification(true);
-            setTimeRemaining(60);
-            setCodeExpired(false);
-            await handleSendVerificationCode();
-          } else {
-            const errorMessage = err?.response?.data?.detail || err?.response?.data?.message || err?.message || result.error;
-            setError(errorMessage);
-          }
-          return;
-        }
-
-        // Check if this is a post-signup login
-        const isPostSignup = router.query.fromSignup === 'true' || 
-                            (typeof window !== 'undefined' && sessionStorage.getItem('post_signup_verified') === 'true');
-        
-        // Clear the flag
-        if (typeof window !== 'undefined') {
-          sessionStorage.removeItem('post_signup_verified');
-          sessionStorage.removeItem('verified_email');
-        }
-        
-        // Redirect to dashboard after successful login
-        window.location.replace("/dashboard");
-      }
+      const errorMessage = err?.response?.data?.detail || err?.response?.data?.message || err?.message || "An error occurred during sign in";
+      setError(errorMessage);
     }
   }
 
@@ -774,7 +917,7 @@ export default function SignInPage({ providers }: SignInPageProps) {
               </h1>
             </div>
 
-            {!showVerification ? (
+            {!showVerification && !showMFA && !showMFASetup ? (
               <>
                 {/* OAuth Buttons - Enhanced with Shadows */}
                 {(googleProvider || microsoftProvider) && (
@@ -1179,7 +1322,7 @@ export default function SignInPage({ providers }: SignInPageProps) {
                 </p>
               </div>
               </>
-            ) : (
+            ) : showVerification ? (
               <div>
                 <h2 className="text-2xl font-semibold mb-2" style={{ color: "#1E5A3B" }}>
                   Email Verification Required
@@ -1291,7 +1434,485 @@ export default function SignInPage({ providers }: SignInPageProps) {
                 Back to Sign In
               </button>
               </div>
-            )}
+            ) : showMFA ? (
+              <div>
+                <h2 className="text-2xl font-semibold mb-2" style={{ color: "#1E5A3B" }}>
+                  Two-Factor Authentication
+                </h2>
+                <p className="mb-6" style={{ color: "#2D7A52" }}>
+                  {mfaEmail}
+                </p>
+
+                {error && (
+                  <div
+                    className="p-3 rounded-lg mb-4 flex items-start gap-2"
+                    style={{
+                      backgroundColor: "#fee2e2",
+                      color: "#991b1b",
+                      borderLeft: "4px solid #ef4444",
+                      fontSize: "0.875rem",
+                    }}
+                    role="alert"
+                  >
+                    <AlertCircle size={16} className="flex-shrink-0 mt-0.5" />
+                    <span>{error}</span>
+                  </div>
+                )}
+
+                {/* Method Selection Tabs */}
+                <div className="flex gap-2 mb-6">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMfaMethod("totp");
+                      setMfaCode("");
+                      setError(null);
+                      setEmailOtpSent(false);
+                    }}
+                    className={`flex-1 py-3 px-4 rounded-lg font-medium transition-all ${
+                      mfaMethod === "totp"
+                        ? "bg-mint-200 text-white"
+                        : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                    }`}
+                  >
+                    <Shield className="w-4 h-4 inline mr-2" />
+                    Authenticator
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMfaMethod("email");
+                      setMfaCode("");
+                      setError(null);
+                    }}
+                    className={`flex-1 py-3 px-4 rounded-lg font-medium transition-all ${
+                      mfaMethod === "email"
+                        ? "bg-blue-600 text-white"
+                        : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                    }`}
+                  >
+                    <Mail className="w-4 h-4 inline mr-2" />
+                    Email
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMfaMethod("backup");
+                      setMfaCode("");
+                      setError(null);
+                      setEmailOtpSent(false);
+                    }}
+                    className={`flex-1 py-3 px-4 rounded-lg font-medium transition-all ${
+                      mfaMethod === "backup"
+                        ? "bg-yellow-600 text-white"
+                        : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                    }`}
+                  >
+                    <Key className="w-4 h-4 inline mr-2" />
+                    Backup
+                  </button>
+                </div>
+
+                {/* TOTP Method */}
+                {mfaMethod === "totp" && (
+                  <div className="space-y-4">
+                    <div className="text-center mb-4">
+                      <div className="inline-flex items-center justify-center w-16 h-16 bg-mint-100 rounded-full mb-3">
+                        <Shield className="w-8 h-8 text-mint-200" />
+                      </div>
+                      <p className="text-sm text-text-secondary">
+                        Open your authenticator app and enter the 6-digit code
+                      </p>
+                    </div>
+
+                    <input
+                      type="text"
+                      value={mfaCode}
+                      onChange={(e) => {
+                        const value = e.target.value.replace(/\D/g, "").slice(0, 6);
+                        setMfaCode(value);
+                        setError(null);
+                      }}
+                      onKeyPress={(e) => {
+                        if (e.key === "Enter" && mfaCode.length === 6) {
+                          handleMFAVerify();
+                        }
+                      }}
+                      placeholder="000000"
+                      className="w-full px-4 py-3 text-center text-2xl font-mono tracking-widest border-2 border-gray-200 rounded-lg focus:border-mint-200 focus:outline-none"
+                      maxLength={6}
+                      autoFocus
+                    />
+
+                    <button
+                      onClick={handleMFAVerify}
+                      disabled={loading || mfaCode.length !== 6}
+                      className="w-full py-3 bg-mint-200 text-white rounded-lg font-medium hover:bg-mint-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                    >
+                      {loading ? (
+                        <>
+                          <Loader2 className="w-5 h-5 animate-spin" />
+                          Verifying...
+                        </>
+                      ) : (
+                        "Verify Code"
+                      )}
+                    </button>
+                  </div>
+                )}
+
+                {/* Email OTP Method */}
+                {mfaMethod === "email" && (
+                  <div className="space-y-4">
+                    <div className="text-center mb-4">
+                      <div className="inline-flex items-center justify-center w-16 h-16 bg-blue-100 rounded-full mb-3">
+                        <Mail className="w-8 h-8 text-blue-600" />
+                      </div>
+                      <p className="text-sm text-text-secondary">
+                        {emailOtpSent
+                          ? `We've sent a 6-digit code to ${mfaEmail}`
+                          : "We'll send a verification code to your email"}
+                      </p>
+                    </div>
+
+                    {!emailOtpSent ? (
+                      <button
+                        onClick={handleSendEmailOTP}
+                        disabled={loading}
+                        className="w-full py-3 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                      >
+                        {loading ? (
+                          <>
+                            <Loader2 className="w-5 h-5 animate-spin" />
+                            Sending...
+                          </>
+                        ) : (
+                          "Send Code"
+                        )}
+                      </button>
+                    ) : (
+                      <>
+                        <input
+                          type="text"
+                          value={mfaCode}
+                          onChange={(e) => {
+                            const value = e.target.value.replace(/\D/g, "").slice(0, 6);
+                            setMfaCode(value);
+                            setError(null);
+                          }}
+                          onKeyPress={(e) => {
+                            if (e.key === "Enter" && mfaCode.length === 6) {
+                              handleMFAVerify();
+                            }
+                          }}
+                          placeholder="000000"
+                          className="w-full px-4 py-3 text-center text-2xl font-mono tracking-widest border-2 border-gray-200 rounded-lg focus:border-blue-600 focus:outline-none"
+                          maxLength={6}
+                          autoFocus
+                        />
+                        <p className="text-xs text-text-subtle text-center">
+                          Code expires in 10 minutes
+                        </p>
+
+                        <button
+                          onClick={handleMFAVerify}
+                          disabled={loading || mfaCode.length !== 6}
+                          className="w-full py-3 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                        >
+                          {loading ? (
+                            <>
+                              <Loader2 className="w-5 h-5 animate-spin" />
+                              Verifying...
+                            </>
+                          ) : (
+                            "Verify Code"
+                          )}
+                        </button>
+
+                        <button
+                          onClick={handleSendEmailOTP}
+                          disabled={loading}
+                          className="w-full py-3 text-text-secondary hover:text-text-primary transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          Resend Code
+                        </button>
+                      </>
+                    )}
+                  </div>
+                )}
+
+                {/* Backup Code Method */}
+                {mfaMethod === "backup" && (
+                  <div className="space-y-4">
+                    <div className="text-center mb-4">
+                      <div className="inline-flex items-center justify-center w-16 h-16 bg-yellow-100 rounded-full mb-3">
+                        <Key className="w-8 h-8 text-yellow-600" />
+                      </div>
+                      <p className="text-sm text-text-secondary">
+                        Enter one of your backup codes
+                      </p>
+                    </div>
+
+                    <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-4">
+                      <div className="flex items-start gap-3">
+                        <AlertCircle className="w-5 h-5 text-yellow-600 flex-shrink-0 mt-0.5" />
+                        <p className="text-sm text-yellow-800">
+                          Each backup code can only be used once. After using this code, you'll have one less backup code available.
+                        </p>
+                      </div>
+                    </div>
+
+                    <input
+                      type="text"
+                      value={mfaCode}
+                      onChange={(e) => {
+                        const value = e.target.value.toUpperCase().replace(/[^A-Z0-9-]/g, "");
+                        setMfaCode(value);
+                        setError(null);
+                      }}
+                      onKeyPress={(e) => {
+                        if (e.key === "Enter" && mfaCode.length >= 8) {
+                          handleMFAVerify();
+                        }
+                      }}
+                      placeholder="XXXX-XXXX"
+                      className="w-full px-4 py-3 text-center text-xl font-mono tracking-wider border-2 border-gray-200 rounded-lg focus:border-yellow-600 focus:outline-none"
+                      autoFocus
+                    />
+
+                    <button
+                      onClick={handleMFAVerify}
+                      disabled={loading || mfaCode.length < 8}
+                      className="w-full py-3 bg-yellow-600 text-white rounded-lg font-medium hover:bg-yellow-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                    >
+                      {loading ? (
+                        <>
+                          <Loader2 className="w-5 h-5 animate-spin" />
+                          Verifying...
+                        </>
+                      ) : (
+                        "Verify Code"
+                      )}
+                    </button>
+                  </div>
+                )}
+
+                <button
+                  type="button"
+                  className="w-full mt-4 py-3 rounded-lg font-semibold border-2 transition-all duration-200"
+                  style={{
+                    backgroundColor: "transparent",
+                    color: "#2D7A52",
+                    borderColor: "#B0EFC0",
+                  }}
+                  onClick={() => {
+                    setShowMFA(false);
+                    setMfaCode("");
+                    setMfaMethod("totp");
+                    setEmailOtpSent(false);
+                    setError(null);
+                  }}
+                >
+                  Back to Sign In
+                </button>
+              </div>
+            ) : showMFASetup ? (
+              <div>
+                <h2 className="text-2xl font-semibold mb-2" style={{ color: "#1E5A3B" }}>
+                  Set Up Two-Factor Authentication
+                </h2>
+                <p className="mb-6" style={{ color: "#2D7A52" }}>
+                  {mfaEmail}
+                </p>
+
+                {error && (
+                  <div
+                    className="p-3 rounded-lg mb-4 flex items-start gap-2"
+                    style={{
+                      backgroundColor: "#fee2e2",
+                      color: "#991b1b",
+                      borderLeft: "4px solid #ef4444",
+                      fontSize: "0.875rem",
+                    }}
+                    role="alert"
+                  >
+                    <AlertCircle size={16} className="flex-shrink-0 mt-0.5" />
+                    <span>{error}</span>
+                  </div>
+                )}
+
+                {/* Step 1: Scan QR Code */}
+                {mfaSetupStep === 1 && (
+                  <div className="space-y-6">
+                    <div className="text-center">
+                      <div className="inline-flex items-center justify-center w-16 h-16 bg-mint-100 rounded-full mb-4">
+                        <Shield className="w-8 h-8 text-mint-200" />
+                      </div>
+                      <h3 className="text-lg font-semibold mb-2" style={{ color: "#1E5A3B" }}>
+                        Step 1: Scan QR Code
+                      </h3>
+                      <p className="text-sm text-text-secondary mb-4">
+                        Scan this QR code with your authenticator app (Google Authenticator, Authy, etc.)
+                      </p>
+                    </div>
+
+                    {loading ? (
+                      <div className="flex justify-center py-8">
+                        <Loader2 className="w-8 h-8 animate-spin text-mint-200" />
+                      </div>
+                    ) : qrCodeUrl ? (
+                      <div className="flex justify-center">
+                        <img src={qrCodeUrl} alt="QR Code" className="w-64 h-64" />
+                      </div>
+                    ) : null}
+
+                    {totpSecret && (
+                      <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                        <p className="text-xs text-text-subtle mb-2">
+                          Can't scan? Enter this code manually:
+                        </p>
+                        <p className="text-sm font-mono text-center break-all" style={{ color: "#1E5A3B" }}>
+                          {totpSecret}
+                        </p>
+                      </div>
+                    )}
+
+                    <button
+                      onClick={() => setMfaSetupStep(2)}
+                      disabled={!qrCodeUrl}
+                      className="w-full py-3 bg-mint-200 text-white rounded-lg font-medium hover:bg-mint-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      Next: Verify Code
+                    </button>
+                  </div>
+                )}
+
+                {/* Step 2: Verify TOTP */}
+                {mfaSetupStep === 2 && (
+                  <div className="space-y-6">
+                    <div className="text-center">
+                      <div className="inline-flex items-center justify-center w-16 h-16 bg-mint-100 rounded-full mb-4">
+                        <CheckCircle2 className="w-8 h-8 text-mint-200" />
+                      </div>
+                      <h3 className="text-lg font-semibold mb-2" style={{ color: "#1E5A3B" }}>
+                        Step 2: Verify Code
+                      </h3>
+                      <p className="text-sm text-text-secondary mb-4">
+                        Enter the 6-digit code from your authenticator app
+                      </p>
+                    </div>
+
+                    <input
+                      type="text"
+                      value={mfaCode}
+                      onChange={(e) => {
+                        const value = e.target.value.replace(/\D/g, "").slice(0, 6);
+                        setMfaCode(value);
+                        setError(null);
+                      }}
+                      onKeyPress={(e) => {
+                        if (e.key === "Enter" && mfaCode.length === 6) {
+                          handleVerifySetupTOTP();
+                        }
+                      }}
+                      placeholder="000000"
+                      className="w-full px-4 py-3 text-center text-2xl font-mono tracking-widest border-2 border-gray-200 rounded-lg focus:border-mint-200 focus:outline-none"
+                      maxLength={6}
+                      autoFocus
+                    />
+
+                    <div className="flex gap-3">
+                      <button
+                        onClick={() => {
+                          setMfaSetupStep(1);
+                          setMfaCode("");
+                          setError(null);
+                        }}
+                        className="flex-1 py-3 border-2 border-gray-200 text-gray-600 rounded-lg font-medium hover:bg-gray-50 transition-colors"
+                      >
+                        Back
+                      </button>
+                      <button
+                        onClick={handleVerifySetupTOTP}
+                        disabled={loading || mfaCode.length !== 6}
+                        className="flex-1 py-3 bg-mint-200 text-white rounded-lg font-medium hover:bg-mint-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                      >
+                        {loading ? (
+                          <>
+                            <Loader2 className="w-5 h-5 animate-spin" />
+                            Verifying...
+                          </>
+                        ) : (
+                          "Verify & Continue"
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Step 3: Backup Codes */}
+                {mfaSetupStep === 3 && (
+                  <div className="space-y-6">
+                    <div className="text-center">
+                      <div className="inline-flex items-center justify-center w-16 h-16 bg-yellow-100 rounded-full mb-4">
+                        <Key className="w-8 h-8 text-yellow-600" />
+                      </div>
+                      <h3 className="text-lg font-semibold mb-2" style={{ color: "#1E5A3B" }}>
+                        Step 3: Save Backup Codes
+                      </h3>
+                      <p className="text-sm text-text-secondary mb-4">
+                        Save these backup codes in a safe place. Each code can only be used once.
+                      </p>
+                    </div>
+
+                    <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                      <div className="flex items-start gap-3 mb-4">
+                        <AlertCircle className="w-5 h-5 text-yellow-600 flex-shrink-0 mt-0.5" />
+                        <p className="text-sm text-yellow-800">
+                          Store these codes securely. You'll need them if you lose access to your authenticator app.
+                        </p>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        {backupCodes.map((code, index) => (
+                          <div
+                            key={index}
+                            className="bg-white px-3 py-2 rounded border border-yellow-300 text-center font-mono text-sm"
+                            style={{ color: "#1E5A3B" }}
+                          >
+                            {code}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    <button
+                      onClick={() => {
+                        navigator.clipboard.writeText(backupCodes.join("\n"));
+                        alert("Backup codes copied to clipboard!");
+                      }}
+                      className="w-full py-3 border-2 border-gray-200 text-gray-600 rounded-lg font-medium hover:bg-gray-50 transition-colors"
+                    >
+                      Copy All Codes
+                    </button>
+
+                    <button
+                      onClick={handleCompleteSetup}
+                      disabled={loading}
+                      className="w-full py-3 bg-mint-200 text-white rounded-lg font-medium hover:bg-mint-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                    >
+                      {loading ? (
+                        <>
+                          <Loader2 className="w-5 h-5 animate-spin" />
+                          Completing...
+                        </>
+                      ) : (
+                        "Complete Setup & Sign In"
+                      )}
+                    </button>
+                  </div>
+                )}
+              </div>
+            ) : null}
           </div>
         </div>
       </div>
