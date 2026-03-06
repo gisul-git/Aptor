@@ -55,6 +55,96 @@ from .ai_quality import (
 logger = logging.getLogger(__name__)
 
 
+def _format_dsa_question_for_assessment(dsa_question: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Convert DSA service question format to AI assessment service format.
+    
+    DSA service returns questions with root-level fields.
+    AI assessment service expects sql_data nested structure.
+    """
+    # Extract fields
+    title = dsa_question.get("title", "SQL Query Challenge")
+    description = dsa_question.get("description", "")
+    schemas = dsa_question.get("schemas", {})
+    sample_data = dsa_question.get("sample_data", {})
+    constraints = dsa_question.get("constraints", [])
+    starter_query = dsa_question.get("starter_query", "-- Write your SQL query here\n\nSELECT ")
+    hints = dsa_question.get("hints", [])
+    sql_category = dsa_question.get("sql_category", "select")
+    group_id = dsa_question.get("groupId")
+    seed_sql = dsa_question.get("seedSql")
+    evaluation = dsa_question.get("evaluation", {
+        "engine": "postgres",
+        "comparison": "result_set",
+        "order_sensitive": False
+    })
+    difficulty = dsa_question.get("difficulty", "Medium")
+    
+    # Build formatted question text (same as OpenAI fallback)
+    question_text = f"**{title}**\n\n{description}"
+    
+    # Add schemas
+    if schemas:
+        question_text += "\n\n**Database Schema:**\n"
+        for table_name, table_def in schemas.items():
+            columns = table_def.get("columns", {})
+            question_text += f"\n**Table: `{table_name}`**\n"
+            for col_name, col_type in columns.items():
+                question_text += f"- `{col_name}`: {col_type}\n"
+    
+    # Add sample data
+    if sample_data:
+        question_text += "\n**Sample Data:**\n"
+        for table_name, rows in sample_data.items():
+            if rows and len(rows) > 0:
+                question_text += f"\n**{table_name}:**\n"
+                if table_name in schemas:
+                    columns = list(schemas[table_name].get("columns", {}).keys())
+                    question_text += "| " + " | ".join(columns) + " |\n"
+                    question_text += "|" + "|".join("---" for _ in columns) + "|\n"
+                    for row in rows[:5]:
+                        question_text += "| " + " | ".join(str(val) for val in row) + " |\n"
+                    if len(rows) > 5:
+                        question_text += f"\n*(... and {len(rows) - 5} more rows)*\n"
+    
+    # Add constraints
+    if constraints:
+        question_text += "\n**Requirements:**\n"
+        for constraint in constraints:
+            question_text += f"- {constraint}\n"
+    
+    # Add hints
+    if hints:
+        question_text += "\n**Hints:**\n"
+        for hint in hints:
+            question_text += f"- {hint}\n"
+    
+    # Build sql_data with groupId and seedSql if available
+    sql_data = {
+        "title": title,
+        "description": description,
+        "sql_category": sql_category,
+        "schemas": schemas,
+        "sample_data": sample_data,
+        "constraints": constraints,
+        "starter_query": starter_query,
+        "hints": hints,
+        "evaluation": evaluation
+    }
+    
+    if group_id:
+        sql_data["groupId"] = group_id
+    if seed_sql:
+        sql_data["seedSql"] = seed_sql
+    
+    return {
+        "question": question_text,
+        "type": "SQL",
+        "difficulty": difficulty,
+        "sql_data": sql_data
+    }
+
+
 # ============================================================================
 # SQL CATEGORIES AND CONSTANTS
 # ============================================================================
@@ -128,7 +218,16 @@ async def _generate_sql_questions(
                     experience_mode=experience_mode
                 )
                 if question_data:
-                    questions.append(question_data)
+                    # DSA service already creates seeds and includes groupId/seedSql
+                    # But we need to format it to match AI assessment service structure
+                    # Check if it's already in the right format or needs conversion
+                    if "sql_data" not in question_data and ("schemas" in question_data or "groupId" in question_data):
+                        # DSA service returns root-level fields, convert to sql_data structure
+                        formatted_question = _format_dsa_question_for_assessment(question_data)
+                        questions.append(formatted_question)
+                    else:
+                        # Already in correct format
+                        questions.append(question_data)
             
             if questions:
                 logger.info(f"Successfully generated {len(questions)} SQL questions using DSA module")
@@ -289,7 +388,9 @@ Seniority Level: {seniority}
         "engine": "postgres",
         "comparison": "result_set",
         "order_sensitive": true
-      }}
+      }},
+      
+      "reference_query": "SELECT e.name, e.salary, d.name as department FROM employees e JOIN departments d ON e.department_id = d.id WHERE e.hire_date > '2019-01-01' ORDER BY e.salary DESC;"
     }}
   ]
 }}
@@ -328,12 +429,17 @@ Seniority Level: {seniority}
    - Simple comment and SELECT starter
    - Do NOT provide solution hints in starter
 
-7. DO NOT INCLUDE:
-   - expected_output (will be computed by running reference query)
-   - reference_solution (admin will provide separately)
+7. REFERENCE QUERY (required):
+   - Provide a complete, correct SQL query that solves the problem
+   - This will be used to generate expected_output automatically
+   - Must work with the provided schemas and sample_data
+   - Should follow all constraints and requirements
+
+8. DO NOT INCLUDE:
+   - expected_output (will be computed by running reference_query)
    - stdin/stdout testcases (SQL uses result set comparison)
 
-8. DIFFICULTY GUIDELINES:
+9. DIFFICULTY GUIDELINES:
    - Easy: Single table, basic SELECT, WHERE, ORDER BY
    - Medium: JOINs, GROUP BY, HAVING, basic subqueries
    - Hard: Window functions, complex subqueries, CTEs, multiple JOINs
@@ -412,9 +518,14 @@ IMPORTANT: Return ONLY valid JSON. No markdown code blocks, no explanations."""
             logger.warning("SQL question missing schemas, skipping")
             continue
         
-        # Remove any expected_output or reference_solution (should never be there)
+        # Ensure reference_query exists (required for generating expected_output)
+        reference_query = q.get("reference_query", "").strip()
+        if not reference_query:
+            logger.warning("No reference_query generated by AI, question will need manual reference query")
+        
+        # Remove any expected_output (will be generated from reference_query)
         if "expected_output" in q:
-            logger.warning("Removed unexpected 'expected_output' from AI response")
+            logger.warning("Removed unexpected 'expected_output' from AI response - will be generated from reference_query")
         if "reference_solution" in q:
             logger.warning("Removed unexpected 'reference_solution' from AI response")
         
@@ -475,7 +586,8 @@ IMPORTANT: Return ONLY valid JSON. No markdown code blocks, no explanations."""
                 "constraints": constraints,
                 "starter_query": starter_query,
                 "hints": hints,
-                "evaluation": evaluation
+                "evaluation": evaluation,
+                "reference_query": reference_query if reference_query else None
             }
         }
         
@@ -510,8 +622,111 @@ IMPORTANT: Return ONLY valid JSON. No markdown code blocks, no explanations."""
     if not result:
         raise HTTPException(status_code=500, detail="No valid SQL questions generated")
     
+    # Create seeds for all generated questions
+    for question_obj in result:
+        try:
+            question_obj = await create_seed_for_generated_question(question_obj)
+        except Exception as e:
+            logger.warning(f"Failed to create seed for SQL question: {e}. Question will be saved without seed.")
+    
     logger.info(f"Successfully generated {len(result)} SQL questions with comprehensive structure")
     return result
 
 
+async def create_seed_for_generated_question(question_data: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Create a seed for a generated SQL question and add groupId/seedSql.
+    Also generates expected_output from reference_query if available.
+    
+    This should be called after generating SQL questions to create the seed
+    in the SQL execution engine and generate expected output.
+    
+    Args:
+        question_data: Generated question data with schemas and sample_data
+                      Can be either root-level or in sql_data nested object
+        
+    Returns:
+        Updated question_data with groupId, seedSql, and expected_output added
+    """
+    from .sql_engine_client import get_sql_engine_client
+    from .sql_seed_converter import convert_to_seed_sql
+    import json
+    
+    # Extract schemas and sample_data (can be in sql_data or root level)
+    sql_data = question_data.get("sql_data", {})
+    schemas = sql_data.get("schemas", {}) or question_data.get("schemas", {})
+    sample_data = sql_data.get("sample_data", {}) or question_data.get("sample_data", {})
+    reference_query = sql_data.get("reference_query", "").strip() or question_data.get("reference_query", "").strip()
+    
+    if not schemas:
+        logger.warning("[SQL Generator] No schemas found, skipping seed creation")
+        return question_data
+    
+    try:
+        sql_client = get_sql_engine_client()
+        seed_sql = convert_to_seed_sql(schemas, sample_data)
+        
+        # Call /api/seed to create seeded dataset
+        response = await sql_client.create_seed(seed_sql)
+        group_id = response.get("groupId")
+        
+        if not group_id:
+            logger.warning("[SQL Generator] SQL engine did not return groupId")
+            return question_data
+        
+        # Store groupId and seedSql in question_data
+        # Store in sql_data if it exists, otherwise at root level
+        if "sql_data" in question_data:
+            question_data["sql_data"]["groupId"] = group_id
+            question_data["sql_data"]["seedSql"] = seed_sql
+        else:
+            question_data["groupId"] = group_id
+            question_data["seedSql"] = seed_sql
+        
+        logger.info(f"[SQL Generator] Created seed with groupId: {group_id}")
+        
+        # Generate expected_output from reference_query if available
+        if reference_query:
+            try:
+                # Use a temporary question_id for execution (we don't have a real question_id yet)
+                temp_question_id = "temp_generation"
+                
+                # Execute reference query via SQL engine
+                execute_response = await sql_client.execute_sql(
+                    question_id=temp_question_id,
+                    code=reference_query,
+                    group_id=group_id
+                )
+                
+                if execute_response.get("success"):
+                    expected_output = execute_response.get("output", [])
+                    
+                    # Store expected_output as JSON string for compatibility
+                    if expected_output:
+                        expected_output_str = json.dumps(expected_output, indent=2)
+                        if "sql_data" in question_data:
+                            question_data["sql_data"]["sql_expected_output"] = expected_output_str
+                        else:
+                            question_data["sql_expected_output"] = expected_output_str
+                        logger.info(f"[SQL Generator] Generated expected_output from reference_query ({len(expected_output)} rows)")
+                    else:
+                        logger.warning("[SQL Generator] Reference query executed but returned empty result")
+                else:
+                    error = execute_response.get("error", "Unknown error")
+                    logger.warning(f"[SQL Generator] Reference query execution failed: {error}")
+            except Exception as e:
+                logger.warning(f"[SQL Generator] Failed to generate expected_output from reference_query: {e}")
+                # Don't fail the generation, just log the warning
+        else:
+            logger.info("[SQL Generator] No reference_query provided, skipping expected_output generation")
+            
+    except ValueError as e:
+        # SQL engine URL not configured - this is OK, seed can be created later
+        logger.warning(f"[SQL Generator] SQL engine not configured: {e}")
+    except Exception as e:
+        logger.error(f"[SQL Generator] Failed to create seed: {e}", exc_info=True)
+        # Don't fail the generation, just log the error
+        # The seed can be created later when the question is saved
+    
+    return question_data
 
