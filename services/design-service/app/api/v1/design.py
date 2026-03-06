@@ -196,37 +196,44 @@ async def get_question(question_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.patch("/questions/{question_id}/publish")
-async def toggle_publish_status(
-    question_id: str,
-    is_published: bool = Query(..., description="Publish status to set")
+@router.patch("/questions/{question_id}/publish", response_model=dict)
+async def toggle_publish_question(
+    question_id: str, 
+    is_published: bool = Query(..., description="Set publish status")
 ):
-    """Toggle question publish status"""
+    """
+    Toggle publish status of a question
+    """
     try:
         if design_repository.db is None:
             await design_repository.initialize()
         
-        # Convert to ObjectId
-        try:
-            obj_id = ObjectId(question_id)
-        except Exception as e:
-            logger.error(f"Invalid question ID format: {question_id} - {e}")
-            raise HTTPException(status_code=400, detail=f"Invalid question ID format: {str(e)}")
-        
-        # Update question publish status
         db = design_repository.db
+        
+        # Validate ObjectId
+        if not ObjectId.is_valid(question_id):
+            raise HTTPException(status_code=400, detail="Invalid question ID")
+        
+        # Check if question exists
+        existing_question = await db.design_questions.find_one({"_id": ObjectId(question_id)})
+        if not existing_question:
+            raise HTTPException(status_code=404, detail="Question not found")
+        
+        # Update publish status
         result = await db.design_questions.update_one(
-            {"_id": obj_id},
+            {"_id": ObjectId(question_id)},
             {"$set": {"is_published": is_published, "updated_at": datetime.utcnow()}}
         )
         
         if result.matched_count == 0:
-            logger.error(f"Question not found: {question_id}")
             raise HTTPException(status_code=404, detail="Question not found")
         
         logger.info(f"Question {question_id} publish status updated to {is_published}")
         
-        return {"message": "Publish status updated successfully", "is_published": is_published}
+        return {
+            "message": "Question publish status updated successfully",
+            "is_published": is_published
+        }
         
     except HTTPException:
         raise
