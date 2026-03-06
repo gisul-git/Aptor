@@ -5,6 +5,7 @@ AI Design Question Generator + Penpot Integrated Candidate Workspace + Automated
 
 import logging
 import asyncio
+import ssl
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -14,6 +15,9 @@ from app.db.mongo import connect_to_mongo, close_mongo_connection
 from app.exceptions.handlers import add_exception_handlers
 from app.api import api_router
 from app.repositories.design_repository import design_repository
+
+# Disable SSL verification for Windows compatibility
+ssl._create_default_https_context = ssl._create_unverified_context
 
 # Configure logging
 logging.basicConfig(

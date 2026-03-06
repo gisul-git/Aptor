@@ -1663,11 +1663,6 @@ async def send_invitation(test_id: str, request: SendInvitationRequest):
         
         from sendgrid import SendGridAPIClient
         from sendgrid.helpers.mail import Mail
-        import ssl
-        
-        # Disable SSL verification for Windows compatibility
-        import urllib3
-        urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
         
         message = Mail(
             from_email=(sendgrid_from_email, sendgrid_from_name),
@@ -1676,24 +1671,8 @@ async def send_invitation(test_id: str, request: SendInvitationRequest):
             html_content=html_content
         )
         
-        # Create SendGrid client with SSL verification disabled
         sg = SendGridAPIClient(sendgrid_api_key)
-        # Monkey patch to disable SSL verification
-        import http.client
-        original_https_connection = http.client.HTTPSConnection
-        
-        class NoVerifyHTTPSConnection(http.client.HTTPSConnection):
-            def __init__(self, *args, **kwargs):
-                kwargs['context'] = ssl._create_unverified_context()
-                super().__init__(*args, **kwargs)
-        
-        http.client.HTTPSConnection = NoVerifyHTTPSConnection
-        
-        try:
-            response = sg.send(message)
-        finally:
-            # Restore original connection
-            http.client.HTTPSConnection = original_https_connection
+        response = sg.send(message)
         
         # Update candidate as invited
         await db.design_candidates.update_one(
@@ -1798,25 +1777,8 @@ async def send_invitations_to_all(test_id: str):
         from sendgrid import SendGridAPIClient
         from sendgrid.helpers.mail import Mail
         import urllib.parse
-        import ssl
         
-        # Disable SSL verification for Windows compatibility
-        import urllib3
-        urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-        
-        # Create SendGrid client with SSL verification disabled
         sg = SendGridAPIClient(sendgrid_api_key)
-        
-        # Monkey patch to disable SSL verification
-        import http.client
-        original_https_connection = http.client.HTTPSConnection
-        
-        class NoVerifyHTTPSConnection(http.client.HTTPSConnection):
-            def __init__(self, *args, **kwargs):
-                kwargs['context'] = ssl._create_unverified_context()
-                super().__init__(*args, **kwargs)
-        
-        http.client.HTTPSConnection = NoVerifyHTTPSConnection
         
         success_count = 0
         failed_count = 0
@@ -1916,9 +1878,6 @@ async def send_invitations_to_all(test_id: str):
                 failed_count += 1
                 failed_emails.append(candidate.get("email"))
                 logger.error(f"Failed to send invitation to {candidate.get('email')}: {e}")
-        
-        # Restore original HTTPS connection
-        http.client.HTTPSConnection = original_https_connection
         
         return {
             "message": f"Sent {success_count} invitations successfully",
