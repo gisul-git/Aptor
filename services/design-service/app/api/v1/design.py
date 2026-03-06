@@ -1415,6 +1415,71 @@ async def get_test_candidates(test_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/tests/{test_id}/candidates/{candidate_id}/analytics")
+async def get_candidate_analytics(test_id: str, candidate_id: str):
+    """Get detailed analytics for a specific candidate"""
+    try:
+        if design_repository.db is None:
+            await design_repository.initialize()
+        
+        db = design_repository.db
+        
+        # Get candidate info
+        candidate = await db.design_candidates.find_one({
+            "_id": ObjectId(candidate_id),
+            "test_id": test_id
+        })
+        
+        if not candidate:
+            raise HTTPException(status_code=404, detail="Candidate not found")
+        
+        # Get submission if exists
+        submission = await db.design_submissions.find_one({
+            "test_id": test_id,
+            "user_id": candidate.get("email")  # Using email as user_id
+        })
+        
+        # Get session if exists
+        session = await db.design_sessions.find_one({
+            "test_id": test_id,
+            "user_id": candidate.get("email")
+        })
+        
+        result = {
+            "candidate": {
+                "name": candidate.get("name"),
+                "email": candidate.get("email")
+            },
+            "submission": None
+        }
+        
+        if submission:
+            result["submission"] = {
+                "score": submission.get("final_score", 0),
+                "started_at": session.get("started_at").isoformat() if session and session.get("started_at") else None,
+                "submitted_at": submission.get("created_at").isoformat() if submission.get("created_at") else None,
+                "is_completed": True,
+                "design_url": session.get("workspace_url") if session else None,
+                "screenshots": submission.get("screenshots", []),
+                "feedback": {
+                    "overall_score": submission.get("final_score", 0),
+                    "rule_based_score": submission.get("rule_based_score", 0),
+                    "ai_based_score": submission.get("ai_based_score", 0),
+                    "feedback_summary": submission.get("feedback", "No feedback available")
+                } if submission.get("final_score") is not None else None
+            }
+        
+        logger.info(f"Retrieved analytics for candidate {candidate_id} in test {test_id}")
+        
+        return result
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get candidate analytics: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.delete("/tests/{test_id}/candidates/{candidate_id}")
 async def remove_candidate(test_id: str, candidate_id: str):
     """Remove a candidate from a test"""

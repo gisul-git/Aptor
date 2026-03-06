@@ -8,7 +8,7 @@ import type { ApiResponse } from '../api/types';
  */
 
 // Use direct design service URL
-const DESIGN_API_URL = process.env.NEXT_PUBLIC_DESIGN_SERVICE_URL || 'http://localhost:3006/api/v1/design';
+const DESIGN_API_URL = process.env.NEXT_PUBLIC_DESIGN_SERVICE_URL || 'http://localhost:3007/api/v1/design';
 
 // Types
 export interface DesignTest {
@@ -128,6 +128,30 @@ export const designService = {
       body: JSON.stringify(data),
     });
     const result = await response.json();
+    return { data: result };
+  },
+
+  /**
+   * Publish/unpublish a design question
+   */
+  publishQuestion: async (questionId: string, isPublished: boolean): Promise<ApiResponse<{ message: string; is_published: boolean }>> => {
+    console.log('[Design Service] Publishing question:', { questionId, isPublished, url: `${DESIGN_API_URL}/questions/${questionId}/publish?is_published=${isPublished}` });
+    
+    const response = await fetch(`${DESIGN_API_URL}/questions/${questionId}/publish?is_published=${isPublished}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+    });
+    
+    console.log('[Design Service] Response status:', response.status);
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('[Design Service] Error response:', errorText);
+      throw new Error(`Failed to publish question: ${response.status} ${errorText}`);
+    }
+    
+    const result = await response.json();
+    console.log('[Design Service] Success result:', result);
     return { data: result };
   },
 };

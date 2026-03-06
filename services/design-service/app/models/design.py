@@ -54,6 +54,8 @@ class DesignQuestionModel(BaseModel):
     time_limit_minutes: int = 60
     created_by: str
     created_at: datetime = Field(default_factory=datetime.utcnow)
+    is_published: bool = False
+    updated_at: Optional[datetime] = None
     
     class Config:
         populate_by_name = True

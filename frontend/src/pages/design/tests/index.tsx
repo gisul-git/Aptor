@@ -53,7 +53,7 @@ export default function DesignTestsPage() {
   const [generatedLink, setGeneratedLink] = useState<{testId: string, name: string, email: string} | null>(null)
   const [deletingId, setDeletingId] = useState<string | null>(null)
   
-  const API_URL = process.env.NEXT_PUBLIC_DESIGN_SERVICE_URL || 'http://localhost:3006/api/v1/design'
+  const API_URL = process.env.NEXT_PUBLIC_DESIGN_SERVICE_URL || 'http://localhost:3007/api/v1/design'
 
   useEffect(() => {
     fetchTests()
@@ -83,25 +83,33 @@ export default function DesignTestsPage() {
     try {
       const token = localStorage.getItem('token')
       const newStatus = !currentStatus
-      const response = await fetch(`${API_URL}/tests/${testId}/publish`, {
-        method: 'POST',
+      
+      console.log('[Tests Page] Publishing test:', { testId, currentStatus, newStatus })
+      
+      // Backend expects query parameter, not body
+      const response = await fetch(`${API_URL}/tests/${testId}/publish?is_published=${newStatus}`, {
+        method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({ is_published: newStatus })
+        }
       })
       
+      console.log('[Tests Page] Response status:', response.status)
+      
       if (response.ok) {
+        const result = await response.json()
+        console.log('[Tests Page] Publish success:', result)
         await fetchTests()
         alert(`Test ${newStatus ? 'published' : 'unpublished'} successfully!`)
       } else {
         const error = await response.json()
+        console.error('[Tests Page] Publish error:', error)
         alert(error.detail || 'Failed to update publish status')
       }
     } catch (error: any) {
-      console.error('Publish error:', error)
-      alert('Failed to update publish status')
+      console.error('[Tests Page] Publish exception:', error)
+      alert('Failed to update publish status: ' + (error.message || 'Unknown error'))
     }
   }
 

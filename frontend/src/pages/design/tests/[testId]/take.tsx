@@ -264,30 +264,10 @@ export default function DesignAssessmentTakePage() {
           <p style={{
             fontSize: '18px',
             color: '#6b7280',
-            marginBottom: '32px'
+            marginBottom: '16px'
           }}>
             Your design has been recorded and is being evaluated.
           </p>
-          
-          <button
-            onClick={() => router.push('/dashboard')}
-            style={{
-              width: '100%',
-              padding: '14px 24px',
-              background: '#10b981',
-              color: 'white',
-              border: 'none',
-              borderRadius: '8px',
-              fontSize: '16px',
-              fontWeight: 600,
-              cursor: 'pointer',
-              marginBottom: '16px'
-            }}
-            onMouseOver={(e) => e.currentTarget.style.background = '#059669'}
-            onMouseOut={(e) => e.currentTarget.style.background = '#10b981'}
-          >
-            Return to Dashboard
-          </button>
           
           <p style={{
             fontSize: '14px',

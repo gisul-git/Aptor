@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Publish API</title>
+    <style>
+        body { font-family: Arial; padding: 20px; }
+        button { padding: 10px; margin: 5px; }
+        .log { margin: 10px 0; padding: 10px; background: #f5f5f5; border-radius: 5px; }
+        .error { background: #ffebee; color: #c62828; }
+        .success { background: #e8f5e9; color: #2e7d32; }
+    </style>
+</head>
+<body>
+    <h1>Test Design Question Publish API</h1>
+    <button onclick="testAPI()">Test Publish API</button>
+    <div id="logs"></div>
+    
+    <script>
+        function addLog(message, isError = false) {
+            const logs = document.getElementById('logs');
+            const div = document.createElement('div');
+            div.className = 'log ' + (isError ? 'error' : 'success');
+            div.textContent = message;
+            logs.appendChild(div);
+        }
+        
+        async function testAPI() {
+            document.getElementById('logs').innerHTML = '';
+            
+            const API_URL = 'http://localhost:3007/api/v1/design';
+            
+            try {
+                // Step 1: Get questions
+                addLog('Step 1: Fetching questions...');
+                const questionsRes = await fetch(`${API_URL}/questions`);
+                const questions = await questionsRes.json();
+                addLog(`✅ Found ${questions.length} questions`);
+                
+                if (questions.length === 0) {
+                    addLog('❌ No questions found', true);
+                    return;
+                }
+                
+                const testQuestion = questions[0];
+                const questionId = testQuestion.id || testQuestion._id;
+                addLog(`Using question: ${testQuestion.title} (ID: ${questionId})`);
+                addLog(`Current status: ${testQuestion.is_published ? 'Published' : 'Draft'}`);
+                
+                // Step 2: Toggle publish
+                const newStatus = !testQuestion.is_published;
+                addLog(`\\nStep 2: ${newStatus ? 'Publishing' : 'Unpublishing'} question...`);
+                
+                const publishRes = await fetch(`${API_URL}/questions/${questionId}/publish?is_published=${newStatus}`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                
+                if (!publishRes.ok) {
+                    const errorText = await publishRes.text();
+                    addLog(`❌ HTTP ${publishRes.status}: ${errorText}`, true);
+                    return;
+                }
+                
+                const result = await publishRes.json();
+                addLog(`✅ ${result.message}`);
+                addLog(`New status: ${result.is_published ? 'Published' : 'Draft'}`);
+                
+                // Step 3: Verify
+                addLog('\\nStep 3: Verifying change...');
+                const verifyRes = await fetch(`${API_URL}/questions`);
+                const updatedQuestions = await verifyRes.json();
+                const updatedQuestion = updatedQuestions.find(q => (q.id || q._id) === questionId);
+                
+                if (updatedQuestion.is_published === newStatus) {
+                    addLog(`✅ Verified! Status is now: ${updatedQuestion.is_published ? 'Published' : 'Draft'}`);
+                } else {
+                    addLog(`❌ Verification failed! Expected: ${newStatus}, Got: ${updatedQuestion.is_published}`, true);
+                }
+                
+            } catch (error) {
+                addLog(`❌ Error: ${error.message}`, true);
+                console.error(error);
+            }
+        }
+    </script>
+</body>
+</html>

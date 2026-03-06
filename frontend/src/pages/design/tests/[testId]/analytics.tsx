@@ -77,7 +77,7 @@ export default function DesignAnalyticsPage() {
   const [exportingResults, setExportingResults] = useState(false)
   const [sendingInvitations, setSendingInvitations] = useState(false)
   
-  const API_URL = process.env.NEXT_PUBLIC_DESIGN_SERVICE_URL || 'http://localhost:3006/api/v1/design'
+  const API_URL = process.env.NEXT_PUBLIC_DESIGN_SERVICE_URL || 'http://localhost:3007/api/v1/design'
 
   useEffect(() => {
     if (testId && typeof testId === 'string') {

@@ -57,7 +57,7 @@ export default function DesignAssessmentPage() {
       setLoading(true);
       
       // Fetch question
-      const questionRes = await fetch(`http://localhost:3006/api/v1/design/questions/${assessmentId}`);
+      const questionRes = await fetch(`http://localhost:3007/api/v1/design/questions/${assessmentId}`);
       if (!questionRes.ok) throw new Error('Failed to fetch question');
       const questionData = await questionRes.json();
       setQuestion(questionData);
@@ -66,7 +66,7 @@ export default function DesignAssessmentPage() {
       const userId = 'candidate-' + Date.now();
       
       console.log('🔧 Creating isolated Penpot workspace...');
-      const workspaceRes = await fetch('http://localhost:3006/api/v1/design/workspace/create', {
+      const workspaceRes = await fetch('http://localhost:3007/api/v1/design/workspace/create', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -175,7 +175,7 @@ export default function DesignAssessmentPage() {
             console.log('📸 Screenshot captured from Penpot export');
             
             // Send to backend for evaluation
-            await fetch('http://localhost:3006/api/v1/design/screenshot', {
+            await fetch('http://localhost:3007/api/v1/design/screenshot', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
@@ -263,7 +263,7 @@ export default function DesignAssessmentPage() {
     console.log('📸 Metadata screenshot created');
     
     // Send to backend
-    await fetch('http://localhost:3006/api/v1/design/screenshot', {
+    await fetch('http://localhost:3007/api/v1/design/screenshot', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -375,7 +375,7 @@ export default function DesignAssessmentPage() {
     if (!workspace) return;
     
     try {
-      const response = await fetch('http://localhost:3006/api/v1/design/event', {
+      const response = await fetch('http://localhost:3007/api/v1/design/event', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -422,7 +422,7 @@ export default function DesignAssessmentPage() {
       console.log(`📊 Total events captured: ${events.length}`);
       
       // Submit design with events
-      const submitRes = await fetch('http://localhost:3006/api/v1/design/submit', {
+      const submitRes = await fetch('http://localhost:3007/api/v1/design/submit', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -517,23 +517,21 @@ export default function DesignAssessmentPage() {
     <div className="h-screen flex flex-col bg-gray-50">
       {/* Success Modal */}
       {showSuccessModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div className="fixed inset-0 bg-green-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg p-8 max-w-md w-full mx-4 shadow-xl">
             <div className="text-center">
-              <div className="text-6xl mb-4">✅</div>
-              <h2 className="text-2xl font-bold text-gray-800 mb-2">Test Submitted Successfully!</h2>
-              <p className="text-gray-600 mb-6">
-                Your design has been submitted and is being evaluated. You will be notified of the results soon.
+              <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <svg className="w-10 h-10 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+              </div>
+              <h2 className="text-2xl font-bold text-gray-800 mb-2">Test Submitted!</h2>
+              <p className="text-gray-600">
+                Your design has been recorded and is being evaluated.
               </p>
-              <button
-                onClick={() => {
-                  setShowSuccessModal(false);
-                  router.push('/design');
-                }}
-                className="px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium w-full"
-              >
-                Return to Dashboard
-              </button>
+              <p className="text-sm text-gray-500 mt-4">
+                You may close this window now.
+              </p>
             </div>
           </div>
         </div>

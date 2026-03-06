@@ -1,10 +1,10 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { designService } from '@/services/designService';
-import type { DesignTest, CreateDesignTestDto } from '@/services/design';
+import { designService, type DesignTest, type CreateDesignTestDto } from '@/services/design';
 
 const QUERY_KEYS = {
   tests: ['design', 'tests'] as const,
   test: (id: string) => ['design', 'tests', id] as const,
+  questions: ['design', 'questions'] as const,
 };
 
 export const useDesignTests = () => {
@@ -114,11 +114,19 @@ export const usePublishDesignQuestion = () => {
   const queryClient = useQueryClient();
   
   return useMutation({
-    mutationFn: ({ questionId, isPublished }: { questionId: string; isPublished: boolean }) =>
-      designService.publishQuestion(questionId, isPublished),
-    onSuccess: () => {
+    mutationFn: async ({ questionId, isPublished }: { questionId: string; isPublished: boolean }) => {
+      console.log('[usePublishDesignQuestion] Mutation called:', { questionId, isPublished });
+      const result = await designService.publishQuestion(questionId, isPublished);
+      console.log('[usePublishDesignQuestion] Mutation result:', result);
+      return result;
+    },
+    onSuccess: (data, variables) => {
+      console.log('[usePublishDesignQuestion] Mutation success, invalidating queries');
       // Invalidate queries to refetch questions
-      queryClient.invalidateQueries({ queryKey: ['design', 'questions'] });
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.questions });
+    },
+    onError: (error: any) => {
+      console.error('[usePublishDesignQuestion] Mutation error:', error);
     },
   });
 };

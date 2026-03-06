@@ -80,26 +80,30 @@ export default function DesignQuestionsListPage() {
   const handleTogglePublish = async (questionId: string, currentStatus: boolean) => {
     const newStatus = !currentStatus
     
+    console.log('[Questions Page] Toggle publish:', { questionId, currentStatus, newStatus })
+    
     // Optimistically update local state for immediate UI feedback
     setQuestions(prev => prev.map(q => 
       (q.id || q._id) === questionId ? { ...q, is_published: newStatus } : q
     ))
     
     try {
-      await publishQuestionMutation.mutateAsync({ questionId, isPublished: newStatus })
+      console.log('[Questions Page] Calling mutation...')
+      const result = await publishQuestionMutation.mutateAsync({ questionId, isPublished: newStatus })
+      console.log('[Questions Page] Mutation success:', result)
       // Refetch to ensure consistency with backend
       await fetchQuestions()
+      console.log('[Questions Page] Refetch complete')
     } catch (error: any) {
-      console.error('Publish error:', error)
+      console.error('[Questions Page] Publish error:', error)
+      console.error('[Questions Page] Error details:', {
+        message: error.message,
+        response: error.response,
+        stack: error.stack
+      })
       // Revert optimistic update on error
       await fetchQuestions()
-      alert('Failed to update publish status')
-      }
-    } catch (error) {
-      console.error('Publish error:', error)
-      // Revert optimistic update on error
-      await fetchQuestions()
-      alert('Failed to update publish status')
+      alert(`Failed to update publish status: ${error.message || 'Unknown error'}`)
     }
   }
 
