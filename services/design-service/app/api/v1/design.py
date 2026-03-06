@@ -65,6 +65,7 @@ class SubmitDesignRequest(BaseModel):
     file_id: Optional[str] = None
     time_taken: Optional[int] = None
     events: Optional[List[Dict[str, Any]]] = []
+    test_id: Optional[str] = None
 
 
 class ScreenshotRequest(BaseModel):
@@ -653,10 +654,26 @@ async def submit_design(
             user_id=request.user_id,
             question_id=request.question_id,
             screenshot_url=f"penpot://{session.file_id}",  # Reference to Penpot file
-            design_file_url=f"penpot://{session.file_id}"
+            design_file_url=f"penpot://{session.file_id}",
+            test_id=request.test_id
         )
         
         submission_id = await design_repository.create_submission(submission)
+        
+        # Update candidate record if test_id is provided
+        if request.test_id:
+            try:
+                db = design_repository.db
+                await db.design_candidates.update_one(
+                    {"test_id": request.test_id, "email": request.user_id},
+                    {"$set": {
+                        "has_submitted": True,
+                        "submitted_at": datetime.utcnow()
+                    }}
+                )
+                logger.info(f"Updated candidate {request.user_id} for test {request.test_id}")
+            except Exception as e:
+                logger.warning(f"Could not update candidate: {e}")
         
         # Save events if provided
         if request.events and len(request.events) > 0:

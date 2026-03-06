@@ -97,6 +97,7 @@ class DesignSubmissionModel(BaseModel):
     question_id: str
     screenshot_url: str
     design_file_url: str
+    test_id: Optional[str] = None
     rule_based_score: float = 0.0
     ai_based_score: float = 0.0
     final_score: float = 0.0

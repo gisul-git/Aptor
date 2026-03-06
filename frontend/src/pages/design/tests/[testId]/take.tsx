@@ -11,7 +11,7 @@ import { useRouter } from 'next/router';
 
 export default function DesignAssessmentTakePage() {
   const router = useRouter();
-  const { testId } = router.query;
+  const { testId, email, name } = router.query;
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -61,13 +61,15 @@ export default function DesignAssessmentTakePage() {
         setQuestion(questionData);
 
         // Step 3: Create Penpot workspace
+        const candidateEmail = (email as string) || 'candidate_' + Date.now();
         const wResponse = await fetch(`${API_URL}/workspace/create`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            user_id: 'candidate_123',
+            user_id: candidateEmail,
             assessment_id: testId,
-            question_id: questionData._id || questionData.id
+            question_id: questionData._id || questionData.id,
+            test_id: testId
           })
         });
 
@@ -108,15 +110,17 @@ export default function DesignAssessmentTakePage() {
   // Submit design
   const handleSubmit = async () => {
     try {
+      const candidateEmail = (email as string) || workspace?.user_id || 'candidate-' + Date.now();
       // TODO: Implement actual submission to backend
       const response = await fetch(`${API_URL}/submit`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           session_id: workspace?.session_id,
-          user_id: workspace?.user_id || 'candidate-' + Date.now(),
+          user_id: candidateEmail,
           question_id: question?._id || question?.id,
           file_id: workspace?.file_id,
+          test_id: testId
         })
       });
       
