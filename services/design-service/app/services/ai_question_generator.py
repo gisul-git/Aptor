@@ -85,15 +85,15 @@ class AIQuestionGenerator:
         }
         
         task_type_mapping = {
-            TaskType.LANDING_PAGE: "landing page",
-            TaskType.MOBILE_APP: "mobile app",
+            TaskType.LANDING_PAGE: "landing_page",
+            TaskType.MOBILE_APP: "mobile_app",
             TaskType.DASHBOARD: "dashboard",
             TaskType.COMPONENT: "component"
         }
         
         role_str = role_mapping.get(role, "UI Designer")
         difficulty_str = difficulty_mapping.get(difficulty, "Intermediate")
-        task_str = task_type_mapping.get(task_type, "UI design")
+        task_str = task_type_mapping.get(task_type, "landing_page")
         topic_str = topic if topic else task_str
         experience_str = experience_level if experience_level else "Not specified"
         time_limit = 45 if difficulty == DifficultyLevel.BEGINNER else 60 if difficulty == DifficultyLevel.INTERMEDIATE else 90
@@ -101,64 +101,186 @@ class AIQuestionGenerator:
         base_prompt = f"""SYSTEM ROLE
 Act as a Design Assessment Question Generator for a professional hiring platform.
 Generate structured design challenges used in automated design interviews.
+The challenge must be suitable for timed assessments and must support automated evaluation of layout, spacing, typography hierarchy, and color usage.
+Use professional and neutral language. Avoid conversational phrases such as "you should", "try to", or "think about".
 
-CRITICAL REQUIREMENTS:
-1. The question MUST be specifically about the topic: "{topic_str}"
-2. The question MUST be for task type: "{task_str}" (NOT any other type)
-3. DO NOT generate generic questions
-4. Use the exact topic and task type provided
-
-TASK TYPE RULES:
-- If task_type is "landing page" → Generate a LANDING PAGE design challenge
-- If task_type is "mobile app" → Generate a MOBILE APP screen design challenge  
-- If task_type is "dashboard" → Generate a DASHBOARD design challenge (NOT landing page!)
-- If task_type is "component" → Generate a UI COMPONENT design challenge
-
-CURRENT TASK TYPE: {task_str}
-CURRENT TOPIC: {topic_str}
-
-The question MUST match the task type. For example:
-- Dashboard = data visualization, analytics, admin panels, monitoring interfaces
-- Landing Page = marketing pages, product showcases, conversion-focused pages
-- Mobile App = mobile screens, app interfaces, touch interactions
-- Component = buttons, cards, forms, navigation elements
-
-The questions must work for multiple design roles including:
-• UI Designer
-• UX Designer
-• Product Designer
-• Visual Designer
-• Brand Designer
-• Graphic Designer
-• Interaction Designer
-• Motion Designer
-
-The generated question must be:
-• SPECIFICALLY about the topic "{topic_str}" (NOT generic)
-• SPECIFICALLY for task type "{task_str}" (NOT other types)
-• role-specific
-• difficulty-based
-• measurable for evaluation
-• written in professional language
-• suitable for timed design assessments
-
-Avoid conversational phrases such as:
-"you should", "think about", or "try to".
-Use formal instructional tone.
-
------------------------------------------------------
+--------------------------------------------------
 INPUT PARAMETERS
 Role: {role_str}
 Difficulty Level: {difficulty_str}
 Experience Level: {experience_str}
-Topic: {topic_str} ← USE THIS EXACT TOPIC IN THE QUESTION
-Task Type: {task_str} ← MUST MATCH THIS TYPE (dashboard/landing_page/mobile_app/component)
+Topic: {topic_str}
 Time Limit: {time_limit} minutes
 
-IMPORTANT: 
-- The title MUST include both topic and task type: "{topic_str} {task_str.title()}"
-- Example: "Agriculture Dashboard" NOT "Agriculture Landing Page"
-- Example: "Shopping Mobile App" NOT "Shopping Dashboard"
+--------------------------------------------------
+ROLE-SPECIFIC TASK GENERATION
+
+UI Designer
+Focus on layout design, component design, typography hierarchy, spacing systems, and visual hierarchy.
+
+UX Designer
+Focus on user flows, navigation patterns, information architecture, usability improvements, and interaction logic.
+
+Product Designer
+Focus on product workflows, business goals, user personas, and product strategy.
+
+Visual Designer
+Focus on visual identity, iconography, illustration systems, and visual storytelling.
+
+Brand Designer
+Focus on brand identity, logo systems, typography systems, and brand guidelines.
+
+Graphic Designer
+Focus on posters, marketing assets, social media creatives, and print layouts.
+
+Interaction Designer
+Focus on micro-interactions, transitions, motion states, and interaction feedback.
+
+--------------------------------------------------
+DIFFICULTY SCALING
+
+Beginner
+• Single screen or simple asset
+• Basic layout constraints
+• Simple user goal
+
+Intermediate
+• Multi-section layout or dashboard
+• Component-based design
+• Structured hierarchy
+
+Advanced
+• Multi-screen workflows
+• Interaction states
+• Edge case handling
+
+Expert
+• Product-level thinking
+• Personas and business objectives
+• System-level design
+• Strategic decision making
+
+--------------------------------------------------
+CONSTRAINT RULES
+Constraints must include measurable design rules.
+
+Examples:
+• Canvas width: 375px mobile layout
+• Canvas width: 1440px desktop layout
+• Grid system: 12-column grid
+• Spacing system: 8px baseline grid
+• Maximum 3–4 primary colors
+• Minimum contrast ratio: 4.5:1
+• Typography hierarchy: minimum 3 levels
+• Minimum button height: 44px
+• Component width constraints
+
+These rules must enable automated evaluation.
+
+--------------------------------------------------
+OUTPUT FORMAT
+
+Title:
+{{Domain or Product}} – {{Role}} Challenge
+
+Role:
+{{Role}}
+
+Level:
+{{Difficulty Level}}
+
+Experience:
+{{Experience Level}}
+
+Topic:
+{{Topic}}
+
+Time:
+{{Time Limit}}
+
+Design Challenge
+Provide a concise description including:
+• product or domain context
+• design problem
+• target users
+• expected outcome
+
+Constraints
+List 6–8 measurable constraints.
+
+Deliverables
+Specify required outputs such as:
+• wireframes
+• high fidelity screens
+• design assets
+• component specifications
+• design tokens or style guide
+
+Evaluation Criteria
+Define scoring factors such as:
+• layout consistency
+• visual hierarchy
+• usability
+• constraint compliance
+• clarity of design solution
+
+--------------------------------------------------
+Return ONLY valid JSON in this exact structure:
+
+{{
+    "title": "{{topic_str}} – {{role_str}} Challenge",
+    "description": "Provide a concise description including product or domain context, design problem, target users, and expected outcome. Write in neutral professional language. Do NOT use 'you', 'your', 'you should'. Use phrases like: 'Design a [product]', 'The interface should', 'The goal is to', 'The layout must'.",
+    "constraints": [
+        "List 6-8 measurable constraints based on difficulty level.",
+        "Examples:",
+        "• Canvas width: 375px mobile layout OR 1440px desktop layout",
+        "• Grid system: 12-column grid",
+        "• Spacing system: 8px baseline grid",
+        "• Maximum 3-4 primary colors",
+        "• Minimum contrast ratio: 4.5:1",
+        "• Typography hierarchy: minimum 3 levels",
+        "• Minimum button height: 44px",
+        "• Component width constraints"
+    ],
+    "deliverables": [
+        "Specify required outputs based on role and difficulty:",
+        "For UI Designer: High-fidelity UI screens, Component specifications, Typography and color style guide",
+        "For UX Designer: User flow diagrams, Wireframes, Information architecture",
+        "For Visual Designer: Visual design mockups, Icon set or illustrations, Style guide",
+        "Beginner: 2-3 deliverables",
+        "Intermediate: 3-4 deliverables",
+        "Advanced: 4-5 deliverables"
+    ],
+    "evaluation_criteria": [
+        "Define scoring factors such as:",
+        "• Layout consistency",
+        "• Visual hierarchy",
+        "• Usability",
+        "• Constraint compliance",
+        "• Clarity of design solution",
+        "Role-specific criteria:",
+        "• UI Designer: Pixel-perfect execution, grid implementation",
+        "• UX Designer: User flow completeness, navigation clarity",
+        "• Visual Designer: Creative execution, visual aesthetics",
+        "• Product Designer: Strategic thinking, business alignment"
+    ],
+    "time_limit_minutes": {time_limit}
+}}
+
+--------------------------------------------------
+CRITICAL REMINDERS
+
+1. Do NOT use "you", "your", "you should", "you need to"
+2. Use neutral professional language
+3. Include measurable constraints for automated evaluation
+4. Vary complexity based on difficulty level
+5. Ensure role-specific focus
+6. Make the challenge specific to the topic "{topic_str}"
+7. Return ONLY valid JSON
+
+Now generate ONE design challenge following all rules above. Return ONLY the JSON object."""
+        
+        return base_prompt.strip()
 
 -----------------------------------------------------
 ROLE-SPECIFIC QUESTION LOGIC
