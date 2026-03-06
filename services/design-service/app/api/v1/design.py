@@ -205,14 +205,22 @@ async def toggle_publish_status(question_id: str, request: PublishStatusRequest)
         
         is_published = request.is_published
         
+        # Convert to ObjectId
+        try:
+            obj_id = ObjectId(question_id)
+        except Exception as e:
+            logger.error(f"Invalid question ID format: {question_id} - {e}")
+            raise HTTPException(status_code=400, detail=f"Invalid question ID format: {str(e)}")
+        
         # Update question publish status
         db = design_repository.db
         result = await db.design_questions.update_one(
-            {"_id": ObjectId(question_id)},
+            {"_id": obj_id},
             {"$set": {"is_published": is_published, "updated_at": datetime.utcnow()}}
         )
         
         if result.matched_count == 0:
+            logger.error(f"Question not found: {question_id}")
             raise HTTPException(status_code=404, detail="Question not found")
         
         logger.info(f"Question {question_id} publish status updated to {is_published}")
@@ -223,6 +231,7 @@ async def toggle_publish_status(question_id: str, request: PublishStatusRequest)
         raise
     except Exception as e:
         logger.error(f"Failed to update publish status: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
         raise HTTPException(status_code=500, detail=str(e))
 
 

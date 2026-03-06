@@ -97,8 +97,10 @@ export default function CreateDesignCompetencyPage() {
       const response = await fetch(`${API_URL}/questions`);
       if (response.ok) {
         const data = await response.json();
+        // Filter only published questions
+        const publishedQuestions = data.filter((q: any) => q.is_published === true);
         // Sort by created_at DESC (newest first)
-        const sortedData = data.sort((a: any, b: any) => {
+        const sortedData = publishedQuestions.sort((a: any, b: any) => {
           const dateA = new Date(a.created_at || 0).getTime();
           const dateB = new Date(b.created_at || 0).getTime();
           return dateB - dateA;
@@ -520,10 +522,24 @@ export default function CreateDesignCompetencyPage() {
                   + Create Question
                 </button>
               </div>
+              
+              <div style={{ padding: "0.75rem", backgroundColor: "#F0FDF4", border: "1px solid #86EFAC", borderRadius: "0.375rem", marginBottom: "0.75rem" }}>
+                <p style={{ margin: 0, fontSize: "0.875rem", color: "#166534" }}>
+                  ℹ️ Only published questions are shown here. Go to Design Questions page to publish/unpublish questions.
+                </p>
+              </div>
 
               {questions.length === 0 ? (
                 <div style={{ padding: "2rem", border: "1px solid #E8B4FA", borderRadius: "0.375rem", textAlign: "center", color: "#9333EA" }}>
-                  <p>No questions available. Create a question using the button above.</p>
+                  <p>No published questions available. Create and publish a question to add it to your test.</p>
+                  <button
+                    type="button"
+                    className="btn-primary"
+                    onClick={() => router.push("/design/questions")}
+                    style={{ marginTop: "1rem", padding: "0.5rem 1rem", fontSize: "0.875rem" }}
+                  >
+                    Go to Questions
+                  </button>
                 </div>
               ) : (
                 <div style={{ border: "1px solid #E8B4FA", borderRadius: "0.375rem", padding: "1rem", maxHeight: "400px", overflowY: "auto" }}>
