@@ -609,6 +609,22 @@ export const useGenerateQuestionsFromConfig = () => {
 };
 
 /**
+ * Generate all questions mutation
+ */
+export const useGenerateAllQuestions = () => {
+  const queryClient = useQueryClient();
+  
+  return useMutation({
+    mutationFn: (data: { assessmentId: string; topics: any[] }) =>
+      assessmentService.generateAllQuestions(data),
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.assessment(variables.assessmentId) });
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.questions(variables.assessmentId) });
+    },
+  });
+};
+
+/**
  * AI topic suggestion mutation
  */
 export const useAITopicSuggestion = () => {
