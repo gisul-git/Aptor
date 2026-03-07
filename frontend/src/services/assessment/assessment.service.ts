@@ -573,6 +573,17 @@ export const assessmentService = {
   },
 
   /**
+   * Generate all questions for all topics at once
+   */
+  generateAllQuestions: async (data: {
+    assessmentId: string;
+    topics: any[];
+  }): Promise<ApiResponse<any>> => {
+    const response = await apiClient.post<ApiResponse<any>>('/api/v1/assessments/generate-all-questions', data);
+    return response.data;
+  },
+
+  /**
    * AI topic suggestion (different from suggestTopics)
    */
   aiTopicSuggestion: async (data: {
