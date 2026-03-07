@@ -308,7 +308,14 @@ Now generate ONE design challenge following all rules above. Return ONLY the JSO
     async def _generate_with_openai(self, prompt: str) -> str:
         """Generate using OpenAI"""
         from openai import AsyncOpenAI
-        client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
+        
+        # Debug: Log API key info
+        api_key = settings.OPENAI_API_KEY
+        logger.info(f"OpenAI API Key length: {len(api_key)}")
+        logger.info(f"OpenAI API Key first 20 chars: {api_key[:20]}")
+        logger.info(f"OpenAI API Key last 10 chars: {api_key[-10:]}")
+        
+        client = AsyncOpenAI(api_key=api_key)
         
         response = await client.chat.completions.create(
             model=settings.AI_MODEL,
