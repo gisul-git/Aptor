@@ -67,12 +67,18 @@ function getDisplayTitle(type: AssessmentType, title: string | undefined): strin
   const t = (title || '').trim();
   const lower = t.toLowerCase();
   const label = TYPE_BADGES[type].label;
+  
+  // If no title provided, use default
+  if (!t) return `${label} Assessment`;
+  
+  // Only convert very generic/placeholder titles
   if (lower === 'dsa') return 'DSA Competency Assessment';
   if (lower === 'aiml' || lower === 'ai/ml') return `${label} Assessment`;
-  if (t.length <= 4 || lower === type.replace('_', '') || lower === label.toLowerCase()) return `${label} Assessment`;
-  if (lower.includes('new') && t.length < 15) return `${label} Assessment`;
-  if (lower === 'dsa new' || (lower.startsWith('dsa') && t.length < 12)) return 'DSA Assessment';
-  return t || `${label} Assessment`;
+  if (lower === 'new' || lower === 'untitled' || lower === 'test') return `${label} Assessment`;
+  if (lower === type.replace('_', ' ') || lower === label.toLowerCase()) return `${label} Assessment`;
+  
+  // Preserve all other user-provided titles
+  return t;
 }
 
 function formatDuration(minutes: number | undefined): string {

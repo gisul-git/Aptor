@@ -260,6 +260,7 @@ async def list_tests(
                 "is_published": test.get("is_published", False),
                 "question_ids": [str(qid) for qid in test.get("question_ids", [])],
                 "created_at": test.get("created_at").isoformat() if test.get("created_at") else None,
+                "created_by": str(test.get("created_by", "")),  # CRITICAL: Include for client-side verification
             })
         
         return result
@@ -478,7 +479,11 @@ async def add_candidate(
             user_id = str(existing_user["_id"])
         else:
             # Create new user account
+            # First, generate the ObjectId so we can use it as user_id
+            new_user_id = ObjectId()
             user_dict = {
+                "_id": new_user_id,
+                "user_id": str(new_user_id),  # Add user_id field to avoid unique constraint violation
                 "username": name.lower().replace(" ", "_"),
                 "email": email,
                 "hashed_password": "",  # No password - candidates use shared link
@@ -486,8 +491,8 @@ async def add_candidate(
                 "total_score": 0,
                 "questions_solved": 0,
             }
-            result = await db.users.insert_one(user_dict)
-            user_id = str(result.inserted_id)
+            await db.users.insert_one(user_dict)
+            user_id = str(new_user_id)
         
         # Store candidate record
         candidate_record = {
@@ -657,7 +662,11 @@ async def bulk_add_candidates(
                 user_id = str(existing_user["_id"])
             else:
                 # Create new user account
+                # First, generate the ObjectId so we can use it as user_id
+                new_user_id = ObjectId()
                 user_dict = {
+                    "_id": new_user_id,
+                    "user_id": str(new_user_id),  # Add user_id field to avoid unique constraint violation
                     "username": name.lower().replace(" ", "_"),
                     "email": email,
                     "hashed_password": "",
@@ -665,8 +674,8 @@ async def bulk_add_candidates(
                     "total_score": 0,
                     "questions_solved": 0,
                 }
-                result = await db.users.insert_one(user_dict)
-                user_id = str(result.inserted_id)
+                await db.users.insert_one(user_dict)
+                user_id = str(new_user_id)
             
             # Store candidate record
             candidate_record = {

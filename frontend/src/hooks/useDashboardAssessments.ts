@@ -345,15 +345,38 @@ export function useDashboardAssessments(): UseDashboardAssessmentsReturn {
       allAssessments.push(...designTests);
     }
     
-    // Process Data Engineering tests
+    // Process Data Engineering tests (only published tests)
     if (dataEngineeringTestsData && currentUserId) {
+      console.log('[useDashboardAssessments] Processing data-engineering tests:', {
+        totalTests: dataEngineeringTestsData.length,
+        currentUserId,
+        sampleTest: dataEngineeringTestsData[0]
+      });
+      
       const dataEngineeringTests = dataEngineeringTestsData
         .filter((test: any) => {
           const testCreatedBy = test.created_by;
-          if (!testCreatedBy) return false;
+          if (!testCreatedBy) {
+            console.log('[useDashboardAssessments] Test missing created_by:', test.id);
+            return false;
+          }
           const testCreatedByStr = String(testCreatedBy).trim();
           const currentUserIdStr = String(currentUserId).trim();
-          return testCreatedByStr === currentUserIdStr;
+          const isOwner = testCreatedByStr === currentUserIdStr;
+          const isPublished = test.is_published === true;
+          
+          console.log('[useDashboardAssessments] Test filter check:', {
+            testId: test.id,
+            testTitle: test.title,
+            testCreatedBy: testCreatedByStr,
+            currentUserId: currentUserIdStr,
+            isOwner,
+            isPublished,
+            willInclude: isOwner && isPublished
+          });
+          
+          // Only show published tests in unified assessments page
+          return isOwner && isPublished;
         })
         .map((test: any) => {
           let status = 'draft';
@@ -385,6 +408,8 @@ export function useDashboardAssessments(): UseDashboardAssessmentsReturn {
             pausedAt: test.pausedAt
           };
         });
+      
+      console.log('[useDashboardAssessments] Filtered data-engineering tests:', dataEngineeringTests.length);
       allAssessments.push(...dataEngineeringTests);
     }
     

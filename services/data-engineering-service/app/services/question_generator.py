@@ -758,14 +758,23 @@ class QuestionGeneratorService:
         except Exception as e:
             self.logger.warning("Failed to update user preference cache", error=str(e))
     
-    async def generate_question(self, user_id: str, experience_level: int, topic: Optional[str] = None) -> Question:
+    async def generate_question(
+        self, 
+        user_id: str, 
+        experience_level: int, 
+        topic: Optional[str] = None,
+        job_role: Optional[str] = None,
+        custom_requirements: Optional[str] = None
+    ) -> Question:
         """
-        Generate a PySpark question based on experience level and topic with enhanced validation.
+        Generate a PySpark question based on experience level, topic, job role, and custom requirements.
         
         Args:
             user_id: User identifier for rate limiting
             experience_level: User's years of experience
             topic: Optional topic to focus on
+            job_role: Optional target job role (e.g., Data Engineer, ML Engineer)
+            custom_requirements: Optional custom requirements or scenario for the question
             
         Returns:
             Generated Question instance
@@ -778,15 +787,23 @@ class QuestionGeneratorService:
             "Generating question with AI",
             user_id=user_id,
             experience_level=experience_level,
-            topic=topic
+            topic=topic,
+            job_role=job_role,
+            has_custom_requirements=bool(custom_requirements)
         )
         
         ai_data = None
         
         try:
-            # Generate question using AI service
+            # Generate question using AI service with new parameters
             self.logger.info("Calling AI service to generate question", user_id=user_id)
-            ai_data = await ai_service.generate_question(user_id, experience_level, topic)
+            ai_data = await ai_service.generate_question(
+                user_id, 
+                experience_level, 
+                topic,
+                job_role=job_role,
+                custom_requirements=custom_requirements
+            )
             self.logger.info("AI service returned data", user_id=user_id, has_data=ai_data is not None)
             
             # Validate AI response structure

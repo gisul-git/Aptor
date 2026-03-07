@@ -14,10 +14,25 @@ export interface DataEngineeringTest {
   title: string;
   description?: string;
   duration?: number;
+  duration_minutes?: number;
   questions: DataEngineeringQuestion[];
+  question_ids?: string[];
   createdBy: string;
+  created_by?: string;
   createdAt: string;
+  created_at?: string;
   updatedAt: string;
+  updated_at?: string;
+  start_time?: string;
+  end_time?: string;
+  is_active?: boolean;
+  is_published?: boolean;
+  test_token?: string;
+  timer_mode?: string;
+  question_timings?: any[];
+  examMode?: string;
+  schedule?: any;
+  proctoringSettings?: any;
 }
 
 export interface DataEngineeringQuestion {
@@ -40,8 +55,13 @@ export const dataEngineeringService = {
    * List all Data Engineering tests
    */
   listTests: async (): Promise<ApiResponse<DataEngineeringTest[]>> => {
-    const response = await apiClient.get<ApiResponse<DataEngineeringTest[]>>('/api/v1/data-engineering/tests');
-    return response.data;
+    const response = await apiClient.get<any>('/api/v1/data-engineering/tests');
+    // Backend returns array directly, not wrapped in ApiResponse
+    return {
+      success: true,
+      data: response.data,
+      message: 'Tests fetched successfully'
+    };
   },
 
   /**
@@ -174,7 +194,8 @@ export const dataEngineeringService = {
   generateQuestion: async (params: {
     experience_level: number;
     topic?: string;
-    difficulty?: string;
+    job_role?: string;
+    custom_requirements?: string;
   }): Promise<ApiResponse<any>> => {
     const queryParams = new URLSearchParams({
       experience_level: params.experience_level.toString(),
@@ -184,8 +205,12 @@ export const dataEngineeringService = {
       queryParams.append('topic', params.topic);
     }
     
-    if (params.difficulty) {
-      queryParams.append('difficulty', params.difficulty);
+    if (params.job_role) {
+      queryParams.append('job_role', params.job_role);
+    }
+    
+    if (params.custom_requirements) {
+      queryParams.append('custom_requirements', params.custom_requirements);
     }
     
     const response = await apiClient.get<any>(
@@ -197,6 +222,18 @@ export const dataEngineeringService = {
       success: true,
       data: response.data,
       message: 'Question generated successfully'
+    };
+  },
+
+  /**
+   * Get available job roles with suggested topics
+   */
+  getJobRoles: async (): Promise<ApiResponse<any>> => {
+    const response = await apiClient.get<any>('/api/v1/data-engineering/questions/job-roles');
+    return {
+      success: true,
+      data: response.data,
+      message: 'Job roles fetched successfully'
     };
   },
 };

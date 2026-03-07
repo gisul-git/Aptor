@@ -80,7 +80,7 @@ export default function DataEngineeringMainPage() {
             letterSpacing: "-0.03em",
             lineHeight: "1.2"
           }}>
-            Build Powerful Assessments
+            Build Data Engineering Assessments
           </h1>
           <p style={{ 
             margin: "0 auto", 
@@ -96,8 +96,8 @@ export default function DataEngineeringMainPage() {
         {/* Action Grid */}
         <div style={{ 
           display: "grid", 
-          gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", 
-          gap: "2rem",
+          gridTemplateColumns: "repeat(4, 1fr)", 
+          gap: "1.5rem",
           marginBottom: "2rem"
         }}>
           

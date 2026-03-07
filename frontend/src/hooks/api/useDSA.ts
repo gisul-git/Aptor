@@ -485,7 +485,11 @@ export const useSubmitDSASQL = () => {
 export const useRunDSACodePublic = () => {
   return useMutation({
     mutationFn: (data: { question_id: string; source_code: string; language_id: string }) =>
-      dsaService.runCodePublic(data),
+      dsaService.runCodePublic({
+        question_id: data.question_id,
+        source_code: data.source_code,
+        language: data.language_id, // Map language_id to language
+      }),
   });
 };
 
@@ -501,7 +505,14 @@ export const useSubmitDSACodeFull = () => {
       started_at: string;
       submitted_at: string;
       time_spent_seconds: number;
-    }) => dsaService.submitCodeFull(data),
+    }) => dsaService.submitCodeFull({
+      question_id: data.question_id,
+      source_code: data.source_code,
+      language: data.language_id, // Map language_id to language
+      started_at: data.started_at,
+      submitted_at: data.submitted_at,
+      time_spent_seconds: data.time_spent_seconds,
+    }),
   });
 };
 

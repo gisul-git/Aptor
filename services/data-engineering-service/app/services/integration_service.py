@@ -79,17 +79,21 @@ class IntegrationService:
         self, 
         user_id: str, 
         experience_level: int,
-        topic: Optional[str] = None
+        topic: Optional[str] = None,
+        job_role: Optional[str] = None,
+        custom_requirements: Optional[str] = None
     ) -> Question:
         """
-        Generate a personalized question based on user progress and preferences.
+        Generate a personalized question based on user progress, job role, and custom requirements.
         Integrates AI generation with user analytics and caching.
         """
         logger.info(
             "Generating personalized question",
             user_id=user_id,
             experience_level=experience_level,
-            topic=topic
+            topic=topic,
+            job_role=job_role,
+            has_custom_requirements=bool(custom_requirements)
         )
         
         try:
@@ -130,11 +134,13 @@ class IntegrationService:
             #     except Exception as e:
             #         logger.warning("Failed to check cache", error=str(e))
             
-            # Generate new question
+            # Generate new question with job role and custom requirements
             question = await self.question_generator.generate_question(
                 user_id=user_id,
                 experience_level=experience_level,
-                topic=topic
+                topic=topic,
+                job_role=job_role,
+                custom_requirements=custom_requirements
             )
             
             # Store in database

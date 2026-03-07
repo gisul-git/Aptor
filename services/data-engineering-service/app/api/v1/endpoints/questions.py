@@ -113,11 +113,13 @@ async def generate_question(
     experience_level: int = Query(..., ge=0, le=20, description="Years of experience (0-20)"),
     topic: Optional[str] = Query(None, description="Specific topic to focus on"),
     difficulty: Optional[QuestionDifficulty] = Query(None, description="Question difficulty level"),
+    job_role: Optional[str] = Query(None, description="Target job role (e.g., Data Engineer, ML Engineer)"),
+    custom_requirements: Optional[str] = Query(None, description="Custom requirements or scenario for question generation"),
     current_user: Optional[Dict[str, Any]] = Depends(get_current_user),
     _rate_limit: None = Depends(check_rate_limit("ai_questions", settings.AI_REQUESTS_PER_HOUR)),
     integration_service: IntegrationService = Depends(get_integration_service)
 ) -> Question:
-    """Generate a new PySpark question based on experience level and optional topic."""
+    """Generate a new PySpark question based on experience level, job role, and custom requirements."""
     try:
         # Use user's experience level if authenticated
         if current_user and not experience_level:
@@ -133,11 +135,13 @@ async def generate_question(
         # Generate user ID for rate limiting (use actual user ID or IP-based ID)
         user_id = current_user.get("user_id") if current_user else "anonymous"
         
-        # Use integration service for complete workflow
+        # Use integration service for complete workflow with new parameters
         question = await integration_service.generate_personalized_question(
             user_id=user_id,
             experience_level=experience_level,
-            topic=topic
+            topic=topic,
+            job_role=job_role,
+            custom_requirements=custom_requirements
         )
         
         logger.info(
@@ -145,6 +149,8 @@ async def generate_question(
             question_id=question.id,
             experience_level=experience_level,
             topic=topic,
+            job_role=job_role,
+            has_custom_requirements=bool(custom_requirements),
             difficulty=difficulty,
             user_id=user_id
         )
@@ -157,6 +163,7 @@ async def generate_question(
             error=str(e),
             experience_level=experience_level,
             topic=topic,
+            job_role=job_role,
             user_id=current_user.get("user_id") if current_user else "anonymous"
         )
         raise HTTPException(status_code=500, detail="Failed to generate question")
@@ -178,6 +185,48 @@ async def get_available_topics(
     except Exception as e:
         logger.error("Failed to get available topics", error=str(e))
         raise HTTPException(status_code=500, detail="Failed to retrieve topics")
+
+
+@router.get("/job-roles")
+async def get_job_roles() -> Dict[str, Any]:
+    """Get list of data engineering job roles with their suggested topics."""
+    try:
+        job_roles = {
+            "Data Engineer": {
+                "description": "Builds and maintains data pipelines and ETL processes",
+                "suggested_topics": ["transformations", "aggregations", "joins", "window_functions", "partitioning", "performance_optimization"]
+            },
+            "Senior Data Engineer": {
+                "description": "Designs scalable data architectures and optimizes performance",
+                "suggested_topics": ["performance_optimization", "partitioning", "distributed_computing", "joins", "window_functions", "data_quality"]
+            },
+            "ETL Developer": {
+                "description": "Specializes in Extract, Transform, Load processes",
+                "suggested_topics": ["transformations", "data_ingestion", "data_quality", "joins", "aggregations"]
+            },
+            "Big Data Engineer": {
+                "description": "Works with large-scale distributed data processing systems",
+                "suggested_topics": ["partitioning", "performance_optimization", "distributed_computing", "streaming", "joins", "aggregations"]
+            },
+            "Data Pipeline Engineer": {
+                "description": "Develops and maintains automated data pipelines",
+                "suggested_topics": ["transformations", "data_quality", "performance_optimization", "aggregations", "joins"]
+            },
+            "Analytics Engineer": {
+                "description": "Transforms raw data into analytics-ready datasets",
+                "suggested_topics": ["aggregations", "joins", "window_functions", "transformations", "data_quality"]
+            }
+        }
+        
+        logger.info("Job roles retrieved", count=len(job_roles))
+        return {
+            "job_roles": job_roles,
+            "total": len(job_roles)
+        }
+        
+    except Exception as e:
+        logger.error("Failed to get job roles", error=str(e))
+        raise HTTPException(status_code=500, detail="Failed to retrieve job roles")
 
 
 @router.get("/stats")

@@ -63,7 +63,7 @@ export default function CreateDataEngineeringTestPage() {
     description: "",
     question_ids: [] as string[],
     duration_minutes: 60,
-    start_time: "",
+    start_time: new Date(Date.now() + 60 * 60 * 1000).toISOString().slice(0, 16), // Default to 1 hour from now
     end_time: "",
   });
 
@@ -337,7 +337,7 @@ export default function CreateDataEngineeringTestPage() {
             
             <div style={{ marginBottom: "1.5rem" }}>
               <label style={{ display: "block", marginBottom: "0.5rem", fontWeight: 600, color: "#374151", fontSize: "0.875rem" }}>
-                Test Title <span style={{ color: "#DC2626" }}>*</span>
+                Test Title <span style={{ color: "#d61d1dff" }}>*</span>
               </label>
               <input
                 type="text"

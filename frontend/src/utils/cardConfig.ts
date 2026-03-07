@@ -162,16 +162,16 @@ export function getNavigationPaths(type: AssessmentType, status: DisplayStatus, 
 }
 
 /**
- * Assign path (candidates / assign flow) - same as edit for competency tests; assessments use configure or edit
+ * Assign path (candidates / assign flow) - routes to candidates page for competency tests
  */
 export function getAssignPath(type: AssessmentType, id: string): string {
-  if (type === 'dsa') return `/dsa/tests/${id}/edit`;
-  if (type === 'aiml') return `/aiml/tests/${id}/edit`;
+  if (type === 'dsa') return `/dsa/tests/${id}/candidates`;
+  if (type === 'aiml') return `/aiml/tests/${id}/candidates`;
   if (type === 'custom_mcq') return `/custom-mcq/create?id=${id}`;
-  if (type === 'design') return `/design/tests/${id}/edit`;
-  if (type === 'data_engineering') return `/data-engineering/tests/${id}/edit`;
-  if (type === 'cloud') return `/cloud/tests/${id}/edit`;
-  if (type === 'devops') return `/devops/tests/${id}/edit`;
+  if (type === 'design') return `/design/tests/${id}/candidates`;
+  if (type === 'data_engineering') return `/data-engineering/tests/${id}/candidates`;
+  if (type === 'cloud') return `/cloud/tests/${id}/candidates`;
+  if (type === 'devops') return `/devops/tests/${id}/candidates`;
   return `/assessments/${id}/configure`;
 }
 

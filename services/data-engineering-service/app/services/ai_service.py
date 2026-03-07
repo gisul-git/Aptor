@@ -136,13 +136,21 @@ class AIService:
         else:
             return ExperienceLevel.ADVANCED
     
-    def _get_question_prompt(self, experience_level: ExperienceLevel, topic: Optional[str] = None) -> str:
+    def _get_question_prompt(
+        self, 
+        experience_level: ExperienceLevel, 
+        topic: Optional[str] = None,
+        job_role: Optional[str] = None,
+        custom_requirements: Optional[str] = None
+    ) -> str:
         """
-        Generate prompt template for question generation based on experience level.
+        Generate prompt template for question generation based on experience level, job role, and custom requirements.
         
         Args:
             experience_level: User's experience level
             topic: Optional specific topic to focus on
+            job_role: Optional target job role
+            custom_requirements: Optional custom requirements or scenario
             
         Returns:
             Formatted prompt string for AI question generation
@@ -154,15 +162,92 @@ class AIService:
         base_prompt = f"""You are an expert data engineer creating PySpark coding questions for technical assessments.
 Generate a unique, practical PySpark problem that tests real-world data engineering skills.
 
+CRITICAL REQUIREMENTS FOR EXECUTABLE PYSPARK CODE:
+- The question MUST be solvable using ONLY PySpark DataFrame API operations
+- Code must be executable on a PySpark platform with standard DataFrame operations
+- Use ONLY these PySpark operations: select, filter, withColumn, groupBy, agg, join, orderBy, window functions, etc.
+- DO NOT require external libraries beyond standard PySpark (no pandas, numpy, sklearn, etc.)
+- DO NOT require file I/O operations (no read/write to files)
+- DO NOT require Spark SQL CREATE TABLE or database operations
+- Focus on DataFrame transformations that can be executed in-memory
+- Ensure the solution can be written as a function that takes a DataFrame and returns a DataFrame
+
+DATA ENGINEERING FOCUS:
+- Create problems that data engineers encounter in production ETL pipelines
+- Focus on data transformation, cleaning, aggregation, and joining operations
+- Use realistic business scenarios (e-commerce, finance, logistics, healthcare, etc.)
+- Include practical data quality and processing challenges
+- Emphasize scalable and efficient PySpark patterns
+
 IMPORTANT REQUIREMENTS:
 - Create an original problem scenario with realistic business context
 - Use clear, descriptive column names that reflect the business domain
 - Include realistic sample data with appropriate data types (minimum 3-5 rows)
 - Ensure the expected output is deterministic and verifiable
 - Make the problem solvable using PySpark DataFrame operations
-- Focus on practical scenarios that data engineers encounter in production
+- The sample_input and expected_output must use the exact same data structure format
 
 Generation timestamp: {timestamp}
+
+"""
+        
+        # Job role-specific context
+        job_role_prompt = ""
+        if job_role and job_role.strip():
+            job_role_prompt = f"""
+TARGET JOB ROLE: {job_role}
+
+Tailor the question to PySpark skills and data engineering scenarios relevant to a {job_role} position.
+Focus on executable PySpark DataFrame operations that this role would use in production.
+"""
+            job_role_lower = job_role.lower()
+            
+            if "data engineer" in job_role_lower:
+                job_role_prompt += """- Focus on ETL pipeline operations: data transformation, cleaning, and aggregation
+- Include scenarios involving data ingestion processing and quality checks
+- Emphasize PySpark DataFrame operations for scalable data processing
+- Use cases: joining datasets, handling duplicates, data type conversions, filtering
+"""
+            elif "senior data engineer" in job_role_lower:
+                job_role_prompt += """- Focus on advanced PySpark optimization and complex transformations
+- Include performance tuning scenarios (partitioning, caching, broadcast joins)
+- Emphasize scalable solutions for large datasets
+- Use cases: complex window functions, multi-table joins, performance optimization
+"""
+            elif "etl developer" in job_role_lower:
+                job_role_prompt += """- Focus on Extract, Transform, Load operations using PySpark
+- Include data integration and transformation scenarios
+- Emphasize data quality validation and cleansing
+- Use cases: data type conversions, null handling, deduplication, data validation
+"""
+            elif "big data" in job_role_lower:
+                job_role_prompt += """- Focus on large-scale distributed data processing with PySpark
+- Include performance optimization and partitioning strategies
+- Emphasize scalability and efficiency in DataFrame operations
+- Use cases: partitioning, caching, broadcast joins, aggregations on large datasets
+"""
+            elif "pipeline engineer" in job_role_lower:
+                job_role_prompt += """- Focus on automated data pipeline operations using PySpark
+- Include data transformation and quality check scenarios
+- Emphasize reliable and maintainable DataFrame operations
+- Use cases: data validation, transformation chains, error handling
+"""
+            elif "analytics engineer" in job_role_lower:
+                job_role_prompt += """- Focus on transforming raw data into analytics-ready datasets
+- Include aggregation, grouping, and analytical query scenarios
+- Emphasize deriving metrics and KPIs using PySpark
+- Use cases: complex aggregations, window functions, pivot operations
+"""
+        
+        # Custom requirements
+        custom_prompt = ""
+        if custom_requirements and custom_requirements.strip():
+            custom_prompt = f"""
+CUSTOM REQUIREMENTS:
+{custom_requirements}
+
+IMPORTANT: Incorporate these specific requirements into the question design.
+The question should address these custom requirements while maintaining technical rigor.
 
 """
         
@@ -282,7 +367,7 @@ OUTPUT FORMAT (Valid JSON only):
 CRITICAL: Return ONLY valid JSON. No markdown, no code blocks, no explanations - just the JSON object.
 """
         
-        return base_prompt + experience_prompt + topic_prompt + format_prompt
+        return base_prompt + job_role_prompt + custom_prompt + experience_prompt + topic_prompt + format_prompt
     
     def _get_code_review_prompt(self, code: str, question_title: str, execution_result: Dict[str, Any]) -> str:
         """
@@ -500,15 +585,19 @@ Return ONLY the JSON object, no additional text before or after.
         self,
         user_id: str,
         experience_years: int,
-        topic: Optional[str] = None
+        topic: Optional[str] = None,
+        job_role: Optional[str] = None,
+        custom_requirements: Optional[str] = None
     ) -> Dict[str, Any]:
         """
-        Generate a PySpark question using AI.
+        Generate a PySpark question using AI with job role and custom requirements.
         
         Args:
             user_id: User identifier for rate limiting
             experience_years: User's years of experience
             topic: Optional specific topic to focus on
+            job_role: Optional target job role (e.g., Data Engineer, ML Engineer)
+            custom_requirements: Optional custom requirements or scenario
             
         Returns:
             Generated question data as dictionary
@@ -521,7 +610,9 @@ Return ONLY the JSON object, no additional text before or after.
             "Generating question",
             user_id=user_id,
             experience_years=experience_years,
-            topic=topic
+            topic=topic,
+            job_role=job_role,
+            has_custom_requirements=bool(custom_requirements)
         )
         
         # Check rate limits
@@ -530,8 +621,13 @@ Return ONLY the JSON object, no additional text before or after.
         # Determine experience level
         experience_level = self._get_experience_level(experience_years)
         
-        # Generate prompt
-        prompt = self._get_question_prompt(experience_level, topic)
+        # Generate prompt with job role and custom requirements
+        prompt = self._get_question_prompt(
+            experience_level, 
+            topic, 
+            job_role=job_role,
+            custom_requirements=custom_requirements
+        )
         
         # Make API call
         response = await self._make_api_call(prompt)

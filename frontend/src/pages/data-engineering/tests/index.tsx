@@ -77,27 +77,31 @@ export default function DataEngineeringTestsListPage() {
       const response = await apiClient.get('/api/v1/data-engineering/tests')
       
       const now = new Date()
+      console.log('[Data Engineering Tests] Current time:', now.toISOString())
+      
       const mappedTests: Test[] = (response.data || []).map((t: any) => {
         const examMode = t.examMode || t.exam_mode || 'strict'
         const startTimeStr = t.start_time || t.schedule?.startTime || ''
         const endTimeStr = t.end_time || t.schedule?.endTime || ''
         const duration = t.duration_minutes || t.duration || 60
-        
+
+        // Calculate if test is expired based on exam mode
         let isExpired = false
-        if (startTimeStr) {
-          const start = new Date(startTimeStr)
-          if (!isNaN(start.getTime())) {
-            if (examMode === 'flexible' && endTimeStr) {
-              const end = new Date(endTimeStr)
-              if (!isNaN(end.getTime()) && now > end) {
-                isExpired = true
-              }
-            } else if (examMode === 'strict') {
-              const end = new Date(start.getTime() + (duration * 60000))
-              if (now > end) {
-                isExpired = true
-              }
-            }
+        
+        if (examMode === 'strict') {
+          // Fixed Window: Test expires after start_time + duration
+          if (startTimeStr) {
+            const startTime = new Date(startTimeStr)
+            const expiryTime = new Date(startTime.getTime() + duration * 60 * 1000)
+            isExpired = now > expiryTime
+            console.log(`[Test ${t.id}] Strict mode - Start: ${startTime.toISOString()}, Expiry: ${expiryTime.toISOString()}, IsExpired: ${isExpired}`)
+          }
+        } else if (examMode === 'flexible') {
+          // Flexible Window: Test expires after end_time
+          if (endTimeStr) {
+            const endTime = new Date(endTimeStr)
+            isExpired = now > endTime
+            console.log(`[Test ${t.id}] Flexible mode - End: ${endTime.toISOString()}, IsExpired: ${isExpired}`)
           }
         }
 
@@ -116,7 +120,7 @@ export default function DataEngineeringTestsListPage() {
           pausedAt: t.pausedAt || null,
           examMode: examMode,
           schedule: t.schedule || null,
-          isExpired,
+          isExpired: isExpired,
         }
       })
       setTests(mappedTests)

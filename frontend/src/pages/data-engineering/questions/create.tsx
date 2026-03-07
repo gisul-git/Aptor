@@ -23,12 +23,17 @@ export default function CreateDataEngineeringQuestionPage() {
   const [isAiGenerated, setIsAiGenerated] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [loadingTopics, setLoadingTopics] = useState(true);
+  const [loadingJobRoles, setLoadingJobRoles] = useState(true);
   
   // AI Generation fields
   const [topics, setTopics] = useState<string[]>([]);
   const [topic, setTopic] = useState("");
   const [difficulty, setDifficulty] = useState("medium");
   const [experienceLevel, setExperienceLevel] = useState(5);
+  const [jobRoles, setJobRoles] = useState<Record<string, any>>({});
+  const [jobRole, setJobRole] = useState("");
+  const [customRequirements, setCustomRequirements] = useState("");
+  const [suggestedTopics, setSuggestedTopics] = useState<string[]>([]);
   
   // Fetch available topics from backend
   useEffect(() => {
@@ -54,6 +59,35 @@ export default function CreateDataEngineeringQuestionPage() {
     
     fetchTopics();
   }, []);
+
+  // Fetch job roles from backend
+  useEffect(() => {
+    const fetchJobRoles = async () => {
+      try {
+        const result = await dataEngineeringService.getJobRoles();
+        setJobRoles(result.data.job_roles);
+        // Set first job role as default
+        const roleNames = Object.keys(result.data.job_roles);
+        if (roleNames.length > 0) {
+          setJobRole(roleNames[0]);
+          setSuggestedTopics(result.data.job_roles[roleNames[0]].suggested_topics || []);
+        }
+      } catch (error) {
+        console.error('Error fetching job roles:', error);
+      } finally {
+        setLoadingJobRoles(false);
+      }
+    };
+    
+    fetchJobRoles();
+  }, []);
+
+  // Update suggested topics when job role changes
+  useEffect(() => {
+    if (jobRole && jobRoles[jobRole]) {
+      setSuggestedTopics(jobRoles[jobRole].suggested_topics || []);
+    }
+  }, [jobRole, jobRoles]);
   
   // Manual fields
   const [title, setTitle] = useState("");
@@ -92,13 +126,15 @@ export default function CreateDataEngineeringQuestionPage() {
       console.log('Generating question with params:', {
         experience_level: experienceLevelForDifficulty,
         topic: topic,
-        difficulty: difficulty
+        job_role: jobRole,
+        custom_requirements: customRequirements
       });
 
       const result = await dataEngineeringService.generateQuestion({
         experience_level: experienceLevelForDifficulty,
         topic: topic.trim() || undefined,
-        difficulty: difficulty
+        job_role: jobRole.trim() || undefined,
+        custom_requirements: customRequirements.trim() || undefined
       });
 
       console.log('Question generated:', result.data);
@@ -300,6 +336,96 @@ export default function CreateDataEngineeringQuestionPage() {
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1.5rem", marginBottom: "2rem" }}>
                 <div>
                   <label style={{ display: "block", marginBottom: "0.5rem", fontWeight: 600, color: "#374151", fontSize: "0.875rem" }}>
+                    Job Role <span style={{ color: "#DC2626" }}>*</span>
+                  </label>
+                  <select
+                    value={jobRole}
+                    onChange={(e) => setJobRole(e.target.value)}
+                    disabled={loadingJobRoles}
+                    style={{
+                      width: "100%", padding: "0.75rem 1rem", border: "1px solid #D1D5DB",
+                      borderRadius: "0.5rem", fontSize: "0.95rem", backgroundColor: "#ffffff",
+                      cursor: loadingJobRoles ? "wait" : "pointer", transition: "all 0.2s ease", outline: "none"
+                    }}
+                    onFocus={(e) => e.currentTarget.style.borderColor = "#00684A"}
+                    onBlur={(e) => e.currentTarget.style.borderColor = "#D1D5DB"}
+                  >
+                    {Object.keys(jobRoles).map(role => (
+                      <option key={role} value={role}>{role}</option>
+                    ))}
+                  </select>
+                  {jobRole && jobRoles[jobRole] && (
+                    <p style={{ fontSize: "0.75rem", color: "#6B7280", marginTop: "0.375rem", marginBottom: 0 }}>
+                      {jobRoles[jobRole].description}
+                    </p>
+                  )}
+                </div>
+
+                <div>
+                  <label style={{ display: "block", marginBottom: "0.5rem", fontWeight: 600, color: "#374151", fontSize: "0.875rem" }}>
+                    Difficulty <span style={{ color: "#DC2626" }}>*</span>
+                  </label>
+                  <select
+                    value={difficulty}
+                    onChange={(e) => setDifficulty(e.target.value)}
+                    style={{
+                      width: "100%", padding: "0.75rem 1rem", border: "1px solid #D1D5DB",
+                      borderRadius: "0.5rem", fontSize: "0.95rem", backgroundColor: "#ffffff",
+                      cursor: "pointer", transition: "all 0.2s ease", outline: "none"
+                    }}
+                    onFocus={(e) => e.currentTarget.style.borderColor = "#00684A"}
+                    onBlur={(e) => e.currentTarget.style.borderColor = "#D1D5DB"}
+                  >
+                    <option value="easy">Easy (Beginner)</option>
+                    <option value="medium">Medium (Intermediate)</option>
+                    <option value="hard">Hard (Advanced)</option>
+                  </select>
+                </div>
+
+                {suggestedTopics.length > 0 && (
+                  <div style={{ gridColumn: "1 / -1" }}>
+                    <label style={{ display: "block", marginBottom: "0.5rem", fontWeight: 600, color: "#374151", fontSize: "0.875rem" }}>
+                      Suggested Topics for {jobRole}
+                    </label>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem" }}>
+                      {suggestedTopics.map(t => (
+                        <button
+                          key={t}
+                          type="button"
+                          onClick={() => setTopic(t)}
+                          style={{
+                            padding: "0.5rem 1rem",
+                            borderRadius: "0.5rem",
+                            border: topic === t ? "2px solid #00684A" : "1px solid #D1D5DB",
+                            backgroundColor: topic === t ? "#F0FDF4" : "#ffffff",
+                            color: topic === t ? "#00684A" : "#6B7280",
+                            fontSize: "0.875rem",
+                            fontWeight: topic === t ? 600 : 400,
+                            cursor: "pointer",
+                            transition: "all 0.2s ease"
+                          }}
+                          onMouseOver={(e) => {
+                            if (topic !== t) {
+                              e.currentTarget.style.borderColor = "#00684A";
+                              e.currentTarget.style.color = "#00684A";
+                            }
+                          }}
+                          onMouseOut={(e) => {
+                            if (topic !== t) {
+                              e.currentTarget.style.borderColor = "#D1D5DB";
+                              e.currentTarget.style.color = "#6B7280";
+                            }
+                          }}
+                        >
+                          {TOPIC_DISPLAY_NAMES[t] || t}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <div>
+                  <label style={{ display: "block", marginBottom: "0.5rem", fontWeight: 600, color: "#374151", fontSize: "0.875rem" }}>
                     Topic <span style={{ color: "#DC2626" }}>*</span>
                   </label>
                   <div style={{ position: "relative" }}>
@@ -334,29 +460,8 @@ export default function CreateDataEngineeringQuestionPage() {
                     </datalist>
                   </div>
                   <p style={{ fontSize: "0.75rem", color: "#6B7280", marginTop: "0.375rem", marginBottom: 0 }}>
-                    Select from dropdown or type your own topic
+                    Select from suggestions or type your own
                   </p>
-                </div>
-
-                <div>
-                  <label style={{ display: "block", marginBottom: "0.5rem", fontWeight: 600, color: "#374151", fontSize: "0.875rem" }}>
-                    Difficulty <span style={{ color: "#DC2626" }}>*</span>
-                  </label>
-                  <select
-                    value={difficulty}
-                    onChange={(e) => setDifficulty(e.target.value)}
-                    style={{
-                      width: "100%", padding: "0.75rem 1rem", border: "1px solid #D1D5DB",
-                      borderRadius: "0.5rem", fontSize: "0.95rem", backgroundColor: "#ffffff",
-                      cursor: "pointer", transition: "all 0.2s ease", outline: "none"
-                    }}
-                    onFocus={(e) => e.currentTarget.style.borderColor = "#00684A"}
-                    onBlur={(e) => e.currentTarget.style.borderColor = "#D1D5DB"}
-                  >
-                    <option value="easy">Easy (Beginner)</option>
-                    <option value="medium">Medium (Intermediate)</option>
-                    <option value="hard">Hard (Advanced)</option>
-                  </select>
                 </div>
 
                 <div style={{ gridColumn: "1 / -1" }}>
@@ -378,6 +483,39 @@ export default function CreateDataEngineeringQuestionPage() {
                     <span>1 year</span>
                     <span>15 years</span>
                   </div>
+                </div>
+
+                <div style={{ gridColumn: "1 / -1" }}>
+                  <label style={{ display: "block", marginBottom: "0.5rem", fontWeight: 600, color: "#374151", fontSize: "0.875rem" }}>
+                    Custom Requirements
+                    <span style={{ color: "#6B7280", fontWeight: 400, marginLeft: "0.5rem", fontSize: "0.8rem" }}>
+                      (Optional)
+                    </span>
+                  </label>
+                  <textarea
+                    value={customRequirements}
+                    onChange={(e) => setCustomRequirements(e.target.value)}
+                    placeholder="Describe specific scenarios, requirements, or context for the question. E.g., 'Focus on e-commerce data with customer orders and products' or 'Include data quality validation for null values'"
+                    style={{
+                      width: "100%", 
+                      padding: "0.75rem 1rem", 
+                      border: "1px solid #D1D5DB",
+                      borderRadius: "0.5rem", 
+                      fontSize: "0.95rem", 
+                      backgroundColor: "#ffffff",
+                      minHeight: "100px",
+                      fontFamily: "inherit",
+                      resize: "vertical",
+                      transition: "all 0.2s ease", 
+                      outline: "none",
+                      boxSizing: "border-box"
+                    }}
+                    onFocus={(e) => e.currentTarget.style.borderColor = "#00684A"}
+                    onBlur={(e) => e.currentTarget.style.borderColor = "#D1D5DB"}
+                  />
+                  <p style={{ fontSize: "0.75rem", color: "#6B7280", marginTop: "0.375rem", marginBottom: 0 }}>
+                    Provide specific requirements or scenarios to guide question generation
+                  </p>
                 </div>
               </div>
 
