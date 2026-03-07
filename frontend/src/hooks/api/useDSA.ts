@@ -484,7 +484,7 @@ export const useSubmitDSASQL = () => {
  */
 export const useRunDSACodePublic = () => {
   return useMutation({
-    mutationFn: (data: { question_id: string; source_code: string; language_id: string }) =>
+    mutationFn: (data: { question_id: string; source_code: string; language: string }) =>
       dsaService.runCodePublic(data),
   });
 };
@@ -497,7 +497,7 @@ export const useSubmitDSACodeFull = () => {
     mutationFn: (data: {
       question_id: string;
       source_code: string;
-      language_id: string;
+      language: string;
       started_at: string;
       submitted_at: string;
       time_spent_seconds: number;
