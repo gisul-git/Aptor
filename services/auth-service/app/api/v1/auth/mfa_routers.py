@@ -299,7 +299,7 @@ async def verify_totp(
         if not verify_totp_code(secret, request.code):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid verification code"
+                detail="Invalid authenticator code. Please check your authenticator app and try again."
             )
         
         # Update last used timestamp
@@ -494,7 +494,7 @@ async def verify_email_otp(
             logger.error(f"🔴 [MFA] Verification code expired for user: {request.email}")
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Verification code has expired. Please request a new code."
+                detail="Email verification code has expired. Please request a new code."
             )
         
         # Verify code
@@ -506,7 +506,7 @@ async def verify_email_otp(
             logger.error(f"🔴 [MFA] Invalid verification code for user: {request.email}")
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid verification code"
+                detail="Invalid email verification code. Please check your email and try again."
             )
         
         logger.info(f"✅ [MFA] OTP verified successfully")
