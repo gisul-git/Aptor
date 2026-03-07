@@ -39,16 +39,21 @@ export const authOptions: NextAuthOptions = {
         email: { label: "Email", type: "email" },
         password: { label: "Password", type: "password" },
         org_id: { label: "Organization ID", type: "text" }, // For org_admin login
-        mfaToken: { label: "MFA Token", type: "text" }, // For post-MFA login
+        mfaCode: { label: "MFA Code", type: "text" }, // For MFA verification
+        mfaMethod: { label: "MFA Method", type: "text" }, // totp, email, backup
+        tempToken: { label: "Temp Token", type: "text" }, // Temporary token from initial login
+        mfaSetupComplete: { label: "MFA Setup Complete", type: "text" }, // For MFA setup completion
+        mfaSetupToken: { label: "MFA Setup Token", type: "text" }, // For MFA setup completion
+        encryptedSecret: { label: "Encrypted Secret", type: "text" }, // For MFA setup completion
+        hashedBackupCodes: { label: "Hashed Backup Codes", type: "text" }, // For MFA setup completion
+        mfaToken: { label: "MFA Token", type: "text" }, // For post-MFA login (super admin)
         refreshToken: { label: "Refresh Token", type: "text" }, // For post-MFA login
       },
       async authorize(credentials) {
-        // If mfaToken is provided, this is a post-MFA login
+        // CASE 1: Post-MFA login for super admin (existing flow)
         if (credentials?.mfaToken) {
           console.log("🔐 [Credentials] MFA token provided, verifying token");
           try {
-            // Verify the token is valid by getting user info from super-admin service
-            // Use super-admin service's /me endpoint instead of users service
             const userResponse = await fastApiClient.get("/api/v1/super-admin/me", {
               headers: {
                 Authorization: `Bearer ${credentials.mfaToken}`,
@@ -58,15 +63,11 @@ export const authOptions: NextAuthOptions = {
             console.log("🔐 [Credentials] MFA token verification response:", {
               status: userResponse?.status,
               data: userResponse?.data,
-              baseURL: fastApiClient.defaults.baseURL,
             });
             
             const userData = userResponse.data?.data ?? userResponse.data;
             if (!userData || userData.role !== "super_admin") {
-              console.error("🔴 [Credentials] MFA token verification failed: Invalid user data or role", {
-                hasUserData: !!userData,
-                role: userData?.role,
-              });
+              console.error("🔴 [Credentials] MFA token verification failed");
               return null;
             }
 
@@ -82,22 +83,139 @@ export const authOptions: NextAuthOptions = {
               refreshToken: (credentials as any).refreshToken || "",
             } as BackendUser;
             
-            console.log("🔐 [Credentials] MFA token verified successfully, returning user");
+            console.log("🔐 [Credentials] MFA token verified successfully");
             return backendUser;
           } catch (err: any) {
-            console.error("🔴 [Credentials] MFA token verification failed:", {
-              error: err,
+            console.error("🔴 [Credentials] MFA token verification failed:", err?.message);
+            return null;
+          }
+        }
+
+        // CASE 2: MFA Setup Completion
+        if (credentials?.mfaSetupComplete === "true" && credentials?.mfaSetupToken) {
+          console.log("🔐 [Credentials] MFA setup completion");
+          try {
+            const response = await fastApiClient.post(
+              "/api/v1/auth/mfa/complete-setup",
+              {
+                email: credentials.email,
+                encrypted_secret: credentials.encryptedSecret,
+                hashed_backup_codes: JSON.parse(credentials.hashedBackupCodes || "[]"),
+              },
+              {
+                headers: {
+                  Authorization: `Bearer ${credentials.mfaSetupToken}`,
+                },
+              }
+            );
+
+            const data = response.data?.data;
+
+            if (!data?.accessToken || !data?.user) {
+              console.error("🔴 [Credentials] Invalid MFA setup completion response");
+              return null;
+            }
+
+            const backendUser: BackendUser = {
+              id: data.user.id,
+              name: data.user.name,
+              email: data.user.email,
+              role: data.user.role,
+              organization: data.user.organization,
+              phone: data.user.phone || undefined,
+              country: data.user.country || undefined,
+              token: data.accessToken,
+              refreshToken: data.refreshToken,
+            } as BackendUser;
+
+            console.log("✅ [Credentials] MFA setup completed successfully");
+            return backendUser;
+          } catch (err: any) {
+            console.error("🔴 [Credentials] MFA setup completion failed:", err?.response?.data?.detail || err?.message);
+            throw new Error(err?.response?.data?.detail || "Failed to complete MFA setup");
+          }
+        }
+
+        // CASE 3: MFA verification (TOTP, Email OTP, or Backup Code)
+        if (credentials?.mfaCode && credentials?.tempToken && credentials?.mfaMethod) {
+          console.log("🔐 [Credentials] MFA verification attempt:", credentials.mfaMethod);
+          console.log("🔐 [Credentials] MFA credentials:", {
+            email: credentials.email,
+            mfaCode: credentials.mfaCode?.substring(0, 2) + "****",
+            tempToken: credentials.tempToken?.substring(0, 20) + "...",
+            mfaMethod: credentials.mfaMethod,
+          });
+          try {
+            let endpoint = "";
+            const payload: any = {
+              email: credentials.email,
+              code: credentials.mfaCode,
+              temp_token: credentials.tempToken,
+            };
+
+            // Determine endpoint based on method
+            if (credentials.mfaMethod === "totp") {
+              endpoint = "/api/v1/auth/mfa/verify-totp";
+            } else if (credentials.mfaMethod === "email") {
+              endpoint = "/api/v1/auth/mfa/verify-email-otp";
+            } else if (credentials.mfaMethod === "backup") {
+              endpoint = "/api/v1/auth/mfa/verify-backup-code";
+            } else {
+              console.error("🔴 [Credentials] Invalid MFA method:", credentials.mfaMethod);
+              throw new Error("Invalid MFA method");
+            }
+
+            console.log("🔐 [Credentials] Calling MFA endpoint:", endpoint);
+            console.log("🔐 [Credentials] Payload:", {
+              email: payload.email,
+              code: payload.code?.substring(0, 2) + "****",
+              temp_token: payload.temp_token?.substring(0, 20) + "...",
+            });
+
+            const response = await fastApiClient.post(endpoint, payload);
+            
+            console.log("🔐 [Credentials] MFA verification response:", {
+              status: response.status,
+              data: response.data,
+            });
+            
+            const data = response.data?.data;
+
+            if (!data?.accessToken || !data?.user) {
+              console.error("🔴 [Credentials] Invalid MFA verification response");
+              console.error("🔴 [Credentials] Response data:", data);
+              return null;
+            }
+
+            const backendUser: BackendUser = {
+              id: data.user.id,
+              name: data.user.name,
+              email: data.user.email,
+              role: data.user.role,
+              organization: data.user.organization,
+              phone: data.user.phone || undefined,
+              country: data.user.country || undefined,
+              token: data.accessToken,
+              refreshToken: data.refreshToken,
+            } as BackendUser;
+
+            console.log("✅ [Credentials] MFA verification successful");
+            return backendUser;
+          } catch (err: any) {
+            console.error("🔴 [Credentials] MFA verification failed:", err?.response?.data?.detail || err?.message);
+            console.error("🔴 [Credentials] Full error:", {
               message: err?.message,
               response: err?.response?.data,
               status: err?.response?.status,
               code: err?.code,
-              baseURL: fastApiClient.defaults.baseURL,
             });
-            return null;
+            throw new Error(err?.response?.data?.detail || "Invalid MFA code");
           }
         }
+
+        // CASE 4: Initial login (email + password)
         if (!credentials?.email || !credentials?.password) {
-          return null; // Return null instead of throwing for invalid credentials
+          return null;
         }
 
         try {
@@ -113,57 +231,64 @@ export const authOptions: NextAuthOptions = {
           
           const response = await fastApiClient.post("/api/v1/auth/login", loginPayload);
 
-          // Debug: log the raw response to help diagnose 401 issues
           console.log("🔐 [Credentials] /api/v1/auth/login response:", {
             status: response?.status,
-            statusText: response?.statusText,
             data: response?.data,
-            config: { baseURL: fastApiClient.defaults.baseURL },
           });
 
-          // Support multiple possible response shapes (ApiResponse<T> or direct payload)
           const respData = response?.data;
           const data = respData?.data ?? respData;
 
-          // Debug parsed payload
-          console.log("🔐 [Credentials] Parsed login payload:", JSON.stringify(data, null, 2));
+          // Check if MFA setup is required (org_admin first login)
+          const requireMFASetup = data?.requireMFASetup || respData?.requireMFASetup;
+          if (requireMFASetup === true) {
+            console.log("🔐 [Credentials] MFA setup required");
+            const mfaSetupToken = data?.mfaSetupToken || respData?.mfaSetupToken;
+            const email = data?.email || respData?.email || credentials.email;
+            throw new Error(`MFA_SETUP_REQUIRED:${email}:${mfaSetupToken}`);
+          }
 
-          // Check if MFA is required for super_admin (support nested or top-level flags)
+          // Check if MFA verification is required (org_admin with MFA enabled)
+          const requireMFA = data?.requireMFA || respData?.requireMFA;
+          if (requireMFA === true) {
+            console.log("🔐 [Credentials] MFA verification required");
+            const tempToken = data?.tempToken || respData?.tempToken;
+            const email = data?.email || respData?.email || credentials.email;
+            throw new Error(`MFA_REQUIRED:${email}:${tempToken}`);
+          }
+
+          // Check if MFA is required for super_admin
           const requireMfa = data?.require_mfa ?? respData?.require_mfa;
           if (requireMfa === true) {
-            // Throw a specific error that the frontend can catch and handle
-            // This prevents NextAuth from showing a generic "CredentialsSignin" error
-            console.log("🔐 [Credentials] MFA required for user, throwing MFARequired error");
+            console.log("🔐 [Credentials] MFA required for super admin");
             throw new Error("MFA_REQUIRED");
           }
+
+          // Check if password reset is required
+          const requirePasswordReset = data?.requirePasswordReset || respData?.requirePasswordReset;
+          if (requirePasswordReset === true) {
+            const resetToken = data?.resetToken || respData?.resetToken;
+            throw new Error(`PASSWORD_RESET_REQUIRED:${resetToken}`);
+          }
           
-          // Accept token either as `token` or `accessToken` and user either as `user` or top-level fields
+          // Normal login success
           const token = data?.token ?? data?.accessToken ?? respData?.token ?? respData?.accessToken;
           const userObj = data?.user ?? respData?.user ?? (data?.userId ? { id: data.userId, email: data.email, name: data.name } : null);
 
           if (!token || !userObj) {
-            console.error("🔴 [Credentials] Invalid response from authentication service. Missing token or user:", {
-              responseData: respData,
-              parsedData: data,
-            });
-            return null; // Return null for invalid response so NextAuth returns 401
+            console.error("🔴 [Credentials] Invalid response from authentication service");
+            return null;
           }
 
-          // CRITICAL: Ensure user object has an 'id' field (required by NextAuth)
-          // Handle both '_id' (MongoDB) and 'id' (serialized) formats
           const userId = userObj.id ?? userObj._id ?? userObj.userId;
           
           if (!userId) {
-            console.error("🔴 [Credentials] User object missing 'id' field. Cannot create session:", {
-              userObj,
-              responseData: respData,
-              parsedData: data,
-            });
-            return null; // Return null if no user ID - NextAuth requires this
+            console.error("🔴 [Credentials] User object missing 'id' field");
+            return null;
           }
 
           const backendUser: BackendUser = {
-            id: String(userId), // Ensure id is always a string
+            id: String(userId),
             name: userObj.name,
             email: userObj.email,
             role: userObj.role,
@@ -171,53 +296,37 @@ export const authOptions: NextAuthOptions = {
             phone: userObj.phone || undefined,
             country: userObj.country || undefined,
             token: token,
-            refreshToken: data?.refreshToken ?? respData?.refreshToken ?? data?.refresh_token ?? respData?.refresh_token, // Store refresh token
+            refreshToken: data?.refreshToken ?? respData?.refreshToken ?? data?.refresh_token ?? respData?.refresh_token,
           } as BackendUser;
 
-          // Debug the final user object returned by authorize
-          console.log("🔐 [Credentials] Returning backend user:", JSON.stringify(backendUser, null, 2));
-
+          console.log("✅ [Credentials] Login successful");
           return backendUser;
         } catch (error: any) {
-          // Check if MFA is required - if so, throw specific error
-          const requireMfaFromError = error?.response?.data?.data?.require_mfa || 
-                                     error?.response?.data?.require_mfa ||
-                                     error?.message === "MFA_REQUIRED";
-          if (requireMfaFromError === true || error?.message === "MFA_REQUIRED") {
-            console.log("🔐 [Credentials] Error response indicates MFA required, throwing MFARequired error");
-            throw new Error("MFA_REQUIRED");
+          // Pass through our custom errors
+          if (error?.message?.startsWith("MFA_SETUP_REQUIRED:") ||
+              error?.message?.startsWith("MFA_REQUIRED:") ||
+              error?.message?.startsWith("PASSWORD_RESET_REQUIRED:") ||
+              error?.message === "MFA_REQUIRED") {
+            throw error;
           }
 
-          // Check for connection errors (backend not running)
+          // Check for connection errors
           if (error?.code === "ECONNREFUSED" || error?.code === "ENOTFOUND" || error?.message?.includes("not found")) {
-            console.error("Backend server connection error. Is the backend running?", {
-              baseURL: fastApiClient.defaults.baseURL,
-              message: error?.message,
-              code: error?.code,
-              response: error?.response?.data,
-            });
-            // Return null to prevent NextAuth error - frontend will handle it
+            console.error("Backend server connection error");
             return null;
           }
 
-          // Log the error for debugging
           console.error("Credentials authentication error:", {
             message: error?.message,
             response: error?.response?.data,
-            status: error?.response?.status,
-            code: error?.code,
-            baseURL: fastApiClient.defaults.baseURL,
           });
 
-          // Extract error message from backend response
           const errorMessage = 
             error?.response?.data?.detail || 
             error?.response?.data?.message || 
             error?.message || 
             "Invalid email or password";
 
-          // Throw error with message - NextAuth will catch this and pass it to the frontend
-          // The error message will be available in result.error in the signIn callback
           throw new Error(errorMessage);
         }
       },

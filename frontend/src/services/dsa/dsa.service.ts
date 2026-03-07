@@ -450,7 +450,7 @@ export const dsaService = {
   runCodePublic: async (data: {
     question_id: string;
     source_code: string;
-    language_id: string;
+    language: string;
   }): Promise<ApiResponse<any>> => {
     const response = await apiClient.post<ApiResponse<any>>('/api/v1/dsa/assessment/run', data);
     return response.data;
@@ -462,7 +462,7 @@ export const dsaService = {
   submitCodeFull: async (data: {
     question_id: string;
     source_code: string;
-    language_id: string;
+    language: string;
     started_at: string;
     submitted_at: string;
     time_spent_seconds: number;

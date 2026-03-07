@@ -40,6 +40,9 @@ interface SQLQuestion {
   hints?: string[]
   // Optional expected result snapshot for the reference query
   sql_expected_output?: string
+  // SQL Execution Engine fields
+  groupId?: string // UUID from SQL engine
+  seedSql?: string // DDL/INSERT SQL for seeding
 }
 
 export interface SQLSubmissionResult {
@@ -125,6 +128,31 @@ function SchemaDisplay({ schemas }: { schemas: Record<string, TableSchema> }) {
 function formatSQLOutput(output: string): { isTable: boolean; data: any[][] | null; rawText: string } {
   if (!output || !output.trim()) {
     return { isTable: false, data: null, rawText: output || '' }
+  }
+
+  // Try to parse as JSON first (expected output from SQL engine is JSON array of objects)
+  try {
+    const parsed = JSON.parse(output.trim())
+    if (Array.isArray(parsed) && parsed.length > 0) {
+      // Convert array of objects to table format
+      if (typeof parsed[0] === 'object' && parsed[0] !== null) {
+        // Get column names from first object
+        const columns = Object.keys(parsed[0])
+        const rows: any[][] = [columns] // Header row
+        
+        // Convert each object to array of values
+        parsed.forEach((obj: any) => {
+          rows.push(columns.map(col => obj[col] ?? null))
+        })
+        
+        return { isTable: true, data: rows, rawText: output }
+      } else if (Array.isArray(parsed[0])) {
+        // Already in array format
+        return { isTable: true, data: parsed, rawText: output }
+      }
+    }
+  } catch (e) {
+    // Not JSON, continue with text parsing
   }
 
   const lines = output.trim().split('\n').filter(line => line.trim())
@@ -320,6 +348,9 @@ export function SQLEditorContainer({
   const editorContainerRef = useRef<HTMLDivElement>(null)
   const [editorHeight, setEditorHeight] = useState(400)
   const [activeTab, setActiveTab] = useState('code')
+  const [fetchedSchema, setFetchedSchema] = useState<Record<string, TableSchema> | null>(null)
+  const [fetchedSampleData, setFetchedSampleData] = useState<Record<string, any[][]> | null>(null)
+  const [loadingSchema, setLoadingSchema] = useState(false)
 
   useEffect(() => {
     const updateHeight = () => {
@@ -353,8 +384,58 @@ export function SQLEditorContainer({
     }
   }, [output])
 
-  const hasSchemas = question.schemas && Object.keys(question.schemas).length > 0
-  const hasSampleData = question.sample_data && Object.keys(question.sample_data).length > 0
+  // Fetch schema from SQL engine if groupId is available
+  useEffect(() => {
+    const fetchSchemaFromEngine = async () => {
+      if (!question.groupId) return;
+      
+      setLoadingSchema(true);
+      try {
+        const { fetchSQLSchema } = await import('@/lib/sql-engine-api');
+        const schemaData = await fetchSQLSchema(question.id, question.groupId);
+        
+        // Convert engine schema format to component format
+        const convertedSchemas: Record<string, TableSchema> = {};
+        const convertedSampleData: Record<string, any[][]> = {};
+        
+        schemaData.schema.forEach((table) => {
+          // Convert columns array to Record<string, string>
+          const columns: Record<string, string> = {};
+          table.columns.forEach((col) => {
+            columns[col.name] = col.type;
+          });
+          convertedSchemas[table.table] = { columns };
+          
+          // Convert data array of objects to array of arrays
+          if (table.data && table.data.length > 0) {
+            const columnNames = table.columns.map((col) => col.name);
+            convertedSampleData[table.table] = table.data.map((row) => {
+              return columnNames.map((colName) => row[colName]);
+            });
+          }
+        });
+        
+        setFetchedSchema(convertedSchemas);
+        setFetchedSampleData(convertedSampleData);
+      } catch (error) {
+        console.error('Failed to fetch schema from SQL engine:', error);
+        // Don't show error to user, just fall back to stored schemas
+      } finally {
+        setLoadingSchema(false);
+      }
+    };
+    
+    if (question.groupId) {
+      fetchSchemaFromEngine();
+    }
+  }, [question.id, question.groupId]);
+
+  // Use fetched schema/data if available, otherwise fall back to question data
+  const displaySchemas = fetchedSchema || question.schemas || {}
+  const displaySampleData = fetchedSampleData || question.sample_data || {}
+  
+  const hasSchemas = displaySchemas && Object.keys(displaySchemas).length > 0
+  const hasSampleData = displaySampleData && Object.keys(displaySampleData).length > 0
   const hasExpectedOutput = typeof question.sql_expected_output === 'string' && question.sql_expected_output.trim().length > 0
 
   return (
@@ -365,26 +446,38 @@ export function SQLEditorContainer({
           {/* Sidebar Content - Schema, Data and Expected Output stacked vertically */}
           <div className="flex-1 overflow-y-auto p-4 space-y-6">
             {/* Schema Section */}
-            {hasSchemas && question.schemas && (
+            {hasSchemas && displaySchemas && (
               <div>
                 <div className="flex items-center gap-2 mb-3 px-2">
                   <Table2 className="w-4 h-4 text-blue-400" />
                   <h3 className="text-sm font-semibold text-blue-400">Schema</h3>
+                  {loadingSchema && (
+                    <span className="text-xs text-slate-500">Loading...</span>
+                  )}
+                  {question.groupId && !loadingSchema && (
+                    <span className="text-xs text-green-500" title="Schema from SQL engine">●</span>
+                  )}
                 </div>
-                <SchemaDisplay schemas={question.schemas} />
+                <SchemaDisplay schemas={displaySchemas} />
               </div>
             )}
             
             {/* Data Section */}
-            {hasSampleData && question.sample_data && (
+            {hasSampleData && displaySampleData && (
               <div>
                 <div className="flex items-center gap-2 mb-3 px-2">
                   <Database className="w-4 h-4 text-purple-400" />
                   <h3 className="text-sm font-semibold text-purple-400">Data</h3>
+                  {loadingSchema && (
+                    <span className="text-xs text-slate-500">Loading...</span>
+                  )}
+                  {question.groupId && !loadingSchema && (
+                    <span className="text-xs text-green-500" title="Data from SQL engine">●</span>
+                  )}
                 </div>
                 <SampleDataDisplay 
-                  sampleData={question.sample_data} 
-                  schemas={question.schemas}
+                  sampleData={displaySampleData} 
+                  schemas={displaySchemas}
                 />
               </div>
             )}

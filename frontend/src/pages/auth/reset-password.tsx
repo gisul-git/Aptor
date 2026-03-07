@@ -111,7 +111,7 @@ export default function ResetPasswordPage() {
     setError(null);
 
     try {
-      await fastApiClient.post("/api/v1/auth/reset-password", {
+      const response = await fastApiClient.post("/api/v1/auth/reset-password", {
         token,
         newPassword,
       });
@@ -119,10 +119,11 @@ export default function ResetPasswordPage() {
       setSuccess(true);
       setLoading(false);
 
-      // Redirect to sign in after 3 seconds
+      // Always redirect to sign in after password reset
+      // The login flow will handle MFA setup enforcement
       setTimeout(() => {
         router.push("/auth/signin");
-      }, 3000);
+      }, 2000);
     } catch (err: any) {
       setLoading(false);
       const errorMessage =

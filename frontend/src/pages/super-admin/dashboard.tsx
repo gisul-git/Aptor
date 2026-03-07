@@ -114,17 +114,6 @@ export default function SuperAdminDashboardPage({ session: serverSession }: Dash
               Dashboard
             </Link>
             <Link
-              href="/dashboard?from=super-admin"
-              style={{
-                padding: "0.75rem",
-                borderRadius: "0.375rem",
-                textDecoration: "none",
-                color: "#1f2937",
-              }}
-            >
-              Create Assessment
-            </Link>
-            <Link
               href="/super-admin/logs"
               style={{
                 padding: "0.75rem",

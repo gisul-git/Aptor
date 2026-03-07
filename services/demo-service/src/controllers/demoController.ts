@@ -1,4 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
+import mongoose from 'mongoose';
 import { DemoRequest, IDemoRequest } from '../models/DemoRequest';
 import {
   sendDemoRequestNotification,
@@ -30,6 +31,31 @@ export const createDemoRequest = asyncHandler(
       company: body.company,
       competencies: body.competencies,
     });
+
+    // Check if user already exists in auth_db
+    const normalizedEmail = body.email.trim().toLowerCase();
+    
+    try {
+      // Connect to auth_db to check for existing user
+      const authDb = mongoose.connection.useDb('auth_db');
+      const usersCollection = authDb.collection('users');
+      
+      const existingUser = await usersCollection.findOne({
+        email: { $regex: new RegExp(`^${normalizedEmail}$`, 'i') }
+      });
+      
+      if (existingUser) {
+        console.log('[DemoController] ⚠️ User already exists with email:', normalizedEmail);
+        return res.status(400).json({
+          success: false,
+          message: 'An account with this email already exists. Please sign in instead.',
+        });
+      }
+    } catch (error) {
+      console.error('[DemoController] ❌ Error checking for existing user:', error);
+      // Continue with demo request creation even if check fails
+      // This prevents blocking legitimate requests due to database issues
+    }
 
     // Create demo request document
     const demoRequest = new DemoRequest({

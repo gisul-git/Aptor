@@ -36,7 +36,7 @@ class RunCodeRequest(BaseModel):
 
 class RunCodeRequestV2(BaseModel):
     source_code: str
-    language_id: int
+    language: str  # e.g. "python", "java", "cpp"
     input_data: str = ""
 
 

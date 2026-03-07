@@ -61,6 +61,21 @@ export interface RunCodeResult {
 }
 
 // ============================================================================
+// Helpers
+// ============================================================================
+
+/** Format API output for display (handles array/object from DSA execution) */
+function formatOutputForDisplay(v: unknown): string {
+  if (v == null) return ''
+  if (typeof v === 'string') return v
+  try {
+    return JSON.stringify(v, null, 2)
+  } catch {
+    return String(v)
+  }
+}
+
+// ============================================================================
 // Helper Components
 // ============================================================================
 
@@ -174,7 +189,7 @@ function PublicTestCard({ result, index }: { result: PublicTestResult; index: nu
             <div>
               <label className="block text-xs font-medium text-slate-400 mb-1">Expected Output</label>
               <pre className="bg-slate-900/80 rounded p-2 text-sm text-green-300 font-mono overflow-x-auto max-h-32 overflow-y-auto">
-                {result.expected_output || '(empty)'}
+                {formatOutputForDisplay(result.expected_output) || '(empty)'}
               </pre>
             </div>
           </div>
@@ -185,7 +200,7 @@ function PublicTestCard({ result, index }: { result: PublicTestResult; index: nu
             <pre className={`bg-slate-900/80 rounded p-2 text-sm font-mono overflow-x-auto max-h-32 overflow-y-auto ${
               result.passed ? 'text-green-300' : 'text-red-300'
             }`}>
-              {result.user_output || '(no output)'}
+              {formatOutputForDisplay(result.user_output) || '(no output)'}
             </pre>
           </div>
 
