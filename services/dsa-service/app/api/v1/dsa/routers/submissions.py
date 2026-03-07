@@ -9,7 +9,10 @@ from ..database import get_dsa_database as get_database
 from ..models.submission import SubmissionCreate, Submission
 from ..models.question import FunctionSignature, FunctionParameter
 from ..utils.evaluator import evaluate_submission
-from ..utils.judge0 import get_language_id, submit_to_judge0, run_all_test_cases
+from ..services.dsa_execution_service import (
+    is_dsa_language,
+    run_all_test_cases_dsa,
+)
 from ..routers.assessment import prepare_code_for_execution
 
 router = APIRouter(prefix="/api/v1/dsa", tags=["dsa"])
@@ -18,7 +21,7 @@ router = APIRouter(prefix="/api/v1/dsa", tags=["dsa"])
 class EvaluationRequest(BaseModel):
     problem_id: str
     source_code: str
-    language_id: int
+    language: str  # e.g. "python", "java", "cpp"
 
 @router.post("/", response_model=dict)
 async def submit_code(submission: SubmissionCreate, user_id: str = Query(..., description="User ID from link token")):
@@ -35,15 +38,17 @@ async def submit_code(submission: SubmissionCreate, user_id: str = Query(..., de
     if not question:
         raise HTTPException(status_code=404, detail="Question not found")
     
-    # Get language ID
-    language_id = get_language_id(submission.language)
-    if not language_id:
-        raise HTTPException(status_code=400, detail=f"Unsupported language: {submission.language}")
+    # Only the 10 DSA languages are supported
+    if not is_dsa_language(submission.language):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported language: {submission.language}. Use one of: python, c, cpp, java, go, rust, javascript, typescript, kotlin, csharp.",
+        )
     
-    # Prepare code for execution (handles wrapping for Judge0, returns raw for custom engine)
+    # Prepare code for execution (returns raw for DSA execution API)
     prepared_code, prep_error, _ = await prepare_code_for_execution(
         source_code=submission.code,
-        language_id=language_id,
+        language=submission.language,
         question=question
     )
     
@@ -65,29 +70,19 @@ async def submit_code(submission: SubmissionCreate, user_id: str = Query(..., de
     if not test_cases:
         raise HTTPException(status_code=400, detail="Question has no test cases")
     
-    # Get function signature for custom engine
-    function_signature = None
+    # Get function name for DSA execution API
     func_sig_data = question.get("function_signature")
-    if func_sig_data:
-        function_signature = FunctionSignature(
-            name=func_sig_data.get("name"),
-            parameters=[
-                FunctionParameter(name=p.get("name"), type=p.get("type"))
-                for p in func_sig_data.get("parameters", [])
-            ],
-            return_type=func_sig_data.get("return_type")
-        )
-    
-    # Run all test cases using batch execution (for Java/Python) or sequential (for others)
+    function_name = (func_sig_data.get("name") or "").strip() if func_sig_data else ""
+    if not function_name:
+        raise HTTPException(status_code=400, detail="Question must have function_signature.name for DSA execution")
+
+    # Run all test cases via DSA execution API (10 DSA languages only; SQL uses submit-sql)
     try:
-        results = await run_all_test_cases(
+        results = await run_all_test_cases_dsa(
             source_code=prepared_code,
-            language_id=language_id,
             test_cases=test_cases,
-            cpu_time_limit=2.0,
-            memory_limit=128000,
-            stop_on_compilation_error=True,
-            function_signature=function_signature,
+            function_name=function_name,
+            language=submission.language,
         )
         
         # Transform results to match expected format
@@ -121,7 +116,7 @@ async def submit_code(submission: SubmissionCreate, user_id: str = Query(..., de
                 "compile_output": result.get("compile_output", ""),
                 "time": result.get("time", 0),
                 "memory": result.get("memory", 0),
-                "judge0_status_id": result.get("status_id", 0),
+                "status_id": result.get("status_id", 0),
             }
             test_results.append(test_result)
             
@@ -277,11 +272,17 @@ async def evaluate_code(payload: EvaluationRequest):
     if not testcases:
         raise HTTPException(status_code=400, detail="No testcases configured for this problem")
 
+    function_name = ""
+    func_sig = question.get("function_signature")
+    if func_sig and isinstance(func_sig, dict):
+        function_name = (func_sig.get("name") or "").strip()
+
     try:
         evaluation = await evaluate_submission(
             source_code=payload.source_code,
-            language_id=payload.language_id,
+            language=payload.language,
             testcases=testcases,
+            function_name=function_name or None,
         )
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=500, detail=str(exc)) from exc

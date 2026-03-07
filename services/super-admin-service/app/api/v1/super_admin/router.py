@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
-from . import auth, dashboard, logs, list as list_module, org_admin_logs, demo_requests, org_admin_management
+from . import auth, dashboard, logs, list as list_module, org_admin_logs, demo_requests, org_admin_management, mfa_management
 
 router = APIRouter(prefix="/api/v1/super-admin", tags=["super-admin"])
 
@@ -15,4 +15,5 @@ router.include_router(list_module.router)
 router.include_router(org_admin_logs.router)
 router.include_router(demo_requests.router)
 router.include_router(org_admin_management.router)
+router.include_router(mfa_management.router)
 

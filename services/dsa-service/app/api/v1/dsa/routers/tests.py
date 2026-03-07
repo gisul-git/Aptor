@@ -14,7 +14,7 @@ from pydantic import BaseModel
 from ..database import get_dsa_database as get_database
 from ..models.test import TestCreate, Test, TestSubmission, TestInviteRequest, AddCandidateRequest, CandidateLinkResponse
 from ..services.ai_feedback import generate_code_feedback, is_starter_code_only
-from ..utils.judge0 import run_all_test_cases, LANGUAGE_IDS
+from ..services.dsa_execution_service import is_dsa_language, run_all_test_cases_dsa
 from ..routers.assessment import (
     prepare_code_for_execution,
     format_public_result,
@@ -2486,133 +2486,75 @@ async def process_question_evaluation_background(
         is_sql_question = question_type == "SQL"
         
         if is_sql_question:
-            from ..routers.assessment import (
-                build_sql_script,
-                execute_sql_with_judge0,
-                compare_sql_results
-            )
-            
-            # Get schemas and sample data
-            schemas = question.get("schemas", {})
-            sample_data = question.get("sample_data", {})
+            from ..services.sql_question_service import get_sql_question_service
+
+            sql_service = get_sql_question_service()
+            question_id_str = str(question.get("_id"))
             reference_query = question.get("reference_query")
-            evaluation = question.get("evaluation", {})
-            order_sensitive = evaluation.get("order_sensitive", False)
-            
-            if not schemas:
-                await db.submissions.update_one(
-                    {"_id": ObjectId(submission_id)},
-                    {"$set": {
-                        "status": "error",
-                        "test_results": [],
-                        "passed_testcases": 0,
-                        "total_testcases": 0,
-                        "ai_feedback": {"error": "Question has no table schemas defined"},
-                        "score": 0
-                    }}
-                )
-                return
-            
-            # Execute user's SQL query
-            user_sql_script = build_sql_script(
-                schemas=schemas,
-                sample_data=sample_data,
-                user_query=source_code
-            )
-            
-            user_result = await execute_sql_with_judge0(user_sql_script)
-            
-            if not user_result["success"]:
-                status = "syntax_error" if user_result.get("status_id") == 6 else "error"
-                message = user_result.get("stderr") or user_result.get("compile_output") or "SQL execution failed"
-                
-                # SQL-specific error test result (no input field, no public/hidden)
+            group_id = question.get("groupId") or await sql_service.ensure_question_has_seed(question, db)
+
+            if not group_id:
                 all_test_results = [{
                     "test_number": 1,
                     "expected_output": "",
                     "user_output": "",
-                    "status": status,
-                    "status_id": user_result.get("status_id", 0),
+                    "status": "error",
+                    "status_id": 0,
                     "passed": False,
-                    "error": message,  # SQL-specific: use 'error' instead of 'stderr'
-                    "time": user_result.get("time"),
-                    "memory": user_result.get("memory"),
+                    "error": "SQL engine unavailable. Ensure SQL_ENGINE_URL is set and question has schemas.",
+                    "time": None,
+                    "memory": None,
                 }]
-                
-                # SQL-specific: Update without public/hidden fields
                 await db.submissions.update_one(
                     {"_id": ObjectId(submission_id)},
-                    {"$set": {
-                        "status": status,
-                        "test_results": all_test_results,
-                        "passed_testcases": 0,
-                        "total_testcases": 1,
-                        "execution_time": user_result.get("time"),
-                        "memory_used": user_result.get("memory"),
-                    }}
+                    {"$set": {"status": "error", "test_results": all_test_results, "passed_testcases": 0, "total_testcases": 1}}
                 )
-                
-                # Schedule AI feedback in background (non-blocking)
                 asyncio.create_task(process_ai_feedback_background(
-                    submission_id=submission_id,
-                    test_id=test_id,
-                    user_id=user_id,
-                    question_id=question_id,
-                    source_code=source_code,
-                    language="sql",
-                    question_title=question.get("title", ""),
-                    question_description=question.get("description", ""),
-                    all_test_results=all_test_results,
-                    total_passed=0,
-                    total_tests=1,
-                    public_passed=0,
-                    public_total=0,
-                    hidden_passed=0,
-                    hidden_total=1,
+                    submission_id=submission_id, test_id=test_id, user_id=user_id, question_id=question_id,
+                    source_code=source_code, language="sql", question_title=question.get("title", ""),
+                    question_description=question.get("description", ""), all_test_results=all_test_results,
+                    total_passed=0, total_tests=1, public_passed=0, public_total=0, hidden_passed=0, hidden_total=1,
                     starter_code=question.get("starter_query")
                 ))
                 return
-            
-            user_output = user_result.get("stdout", "").strip()
-            
-            # Execute reference query and compare
-            passed = False
-            expected_output = None
-            if reference_query:
-                ref_sql_script = build_sql_script(
-                    schemas=schemas,
-                    sample_data=sample_data,
-                    user_query=reference_query
-                )
-                
-                ref_result = await execute_sql_with_judge0(ref_sql_script)
-                
-                if not ref_result["success"]:
-                    status = "error"
-                    message = "Reference query execution failed"
+
+            try:
+                import json
+                expected_list = None
+                if reference_query:
+                    expected_list = await sql_service.generate_expected_output(question_id_str, reference_query, group_id)
+                    result = await sql_service.submit_query(question_id_str, source_code, expected_list, group_id)
                 else:
-                    expected_output = ref_result.get("stdout", "").strip()
-                    passed = compare_sql_results(user_output, expected_output, order_sensitive)
-                    status = "accepted" if passed else "wrong_answer"
-                    message = "Query produces correct results!" if passed else "Query output does not match expected results"
-            else:
-                passed = user_result["success"]
-                status = "accepted" if passed else "error"
-                message = "Query executed successfully" if passed else "Query execution failed"
-            
-            # Format SQL test results (cleaner structure - no input, no public/hidden)
+                    user_result = await sql_service.execute_query(question_id_str, source_code, group_id)
+                    passed = user_result.get("success", False)
+                    result = {"passed": passed, "output": user_result.get("output", []), "error": user_result.get("error", "")}
+
+                passed = result.get("passed", False)
+                status = "accepted" if passed else "wrong_answer"
+                user_output = result.get("output", [])
+                if isinstance(user_output, list) and user_output and isinstance(user_output[0], dict):
+                    user_output = json.dumps(user_output, indent=2)
+                else:
+                    user_output = str(user_output)
+                expected_output = json.dumps(expected_list, indent=2) if expected_list else (str(result.get("expected_output", "")) if result.get("expected_output") else "")
+            except Exception as e:
+                passed = False
+                status = "error"
+                user_output = ""
+                expected_output = ""
+                logger.exception("SQL grading failed: %s", e)
+
             all_test_results = [{
                 "test_number": 1,
-                "expected_output": expected_output or "",  # CRITICAL: Save expected output
+                "expected_output": expected_output or "",
                 "user_output": user_output,
                 "status": status,
-                "status_id": user_result.get("status_id", 3 if passed else 0),
+                "status_id": 3 if passed else 0,
                 "passed": passed,
-                "time": user_result.get("time"),
-                "memory": user_result.get("memory"),
+                "time": None,
+                "memory": None,
             }]
             
-            # SQL-specific: Update without public/hidden fields
             await db.submissions.update_one(
                 {"_id": ObjectId(submission_id)},
                 {"$set": {
@@ -2620,12 +2562,8 @@ async def process_question_evaluation_background(
                     "test_results": all_test_results,
                     "passed_testcases": 1 if passed else 0,
                     "total_testcases": 1,
-                    "execution_time": user_result.get("time"),
-                    "memory_used": user_result.get("memory"),
                 }}
             )
-            
-            # Schedule AI feedback in background (non-blocking)
             asyncio.create_task(process_ai_feedback_background(
                 submission_id=submission_id,
                 test_id=test_id,
@@ -2647,8 +2585,7 @@ async def process_question_evaluation_background(
             return
         
         # Handle DSA coding questions
-        language_id = LANGUAGE_IDS.get(language.lower(), None)
-        if not language_id:
+        if not is_dsa_language(language):
             await db.submissions.update_one(
                 {"_id": ObjectId(submission_id)},
                 {"$set": {
@@ -2665,7 +2602,7 @@ async def process_question_evaluation_background(
         # Prepare code for execution
         prepared_code, prep_error, code_warnings = await prepare_code_for_execution(
             source_code=source_code,
-            language_id=language_id,
+            language=language,
             question=question
         )
         
@@ -2724,43 +2661,39 @@ async def process_question_evaluation_background(
             )
             return
         
-        # Run test cases
-        cpu_time_limit = 2.0
-        memory_limit = 128000
-        
-        # Get function signature for custom engine
-        function_signature = None
+        # DSA execution requires function name
         func_sig_data = question.get("function_signature")
-        if func_sig_data:
-            from ..models.question import FunctionSignature, FunctionParameter
-            function_signature = FunctionSignature(
-                name=func_sig_data.get("name"),
-                parameters=[
-                    FunctionParameter(name=p.get("name"), type=p.get("type"))
-                    for p in func_sig_data.get("parameters", [])
-                ],
-                return_type=func_sig_data.get("return_type")
+        function_name = (func_sig_data.get("name") or "").strip() if func_sig_data else ""
+        if not function_name:
+            await db.submissions.update_one(
+                {"_id": ObjectId(submission_id)},
+                {"$set": {
+                    "status": "error",
+                    "test_results": [],
+                    "passed_testcases": 0,
+                    "total_testcases": 0,
+                    "ai_feedback": {"error": "Question missing function_signature.name"},
+                    "score": 0
+                }}
             )
-        
-        results = await run_all_test_cases(
+            return
+
+        results = await run_all_test_cases_dsa(
             source_code=prepared_code,
-            language_id=language_id,
             test_cases=all_test_cases,
-            cpu_time_limit=cpu_time_limit,
-            memory_limit=memory_limit,
-            stop_on_compilation_error=True,
-            function_signature=function_signature,
+            function_name=function_name,
+            language=language,
         )
-        
+
         # Process results
         all_results = results.get("results", [])
         public_count = len(public_test_cases)
-        
+
         public_results = []
         for i in range(public_count):
             if i < len(all_results):
                 public_results.append(format_public_result(all_results[i], i + 1))
-        
+
         full_hidden_results = []
         hidden_passed = 0
         for i in range(public_count, len(all_results)):
@@ -3135,22 +3068,13 @@ async def final_submit_test(
         
         # Handle SQL questions differently
         if is_sql_question:
-            from ..routers.assessment import (
-                build_sql_script,
-                execute_sql_with_judge0,
-                compare_sql_results
-            )
-            
-            # Get schemas and sample data
-            schemas = question.get("schemas", {})
-            sample_data = question.get("sample_data", {})
+            from ..services.sql_question_service import get_sql_question_service
+
+            sql_service = get_sql_question_service()
             reference_query = question.get("reference_query")
-            evaluation = question.get("evaluation", {})
-            order_sensitive = evaluation.get("order_sensitive", False)
-            
-            if not schemas:
-                logger.warning(f"SQL question {question_id} has no table schemas defined")
-                # SQL-specific error submission (no schemas)
+            group_id = question.get("groupId") or await sql_service.ensure_question_has_seed(question, db)
+
+            if not group_id:
                 submission_data = {
                     "user_id": user_id,
                     "question_id": question_id,
@@ -3158,166 +3082,54 @@ async def final_submit_test(
                     "language": "sql",
                     "code": q_sub.code,
                     "status": "error",
-                    "test_results": [{
-                        "test_number": 1,
-                        "expected_output": "",
-                        "user_output": "",
-                        "status": "error",
-                        "status_id": 0,
-                        "passed": False,
-                        "error": "Question has no table schemas defined",
-                    }],
+                    "test_results": [{"test_number": 1, "expected_output": "", "user_output": "", "status": "error", "status_id": 0, "passed": False, "error": "SQL engine unavailable."}],
                     "passed_testcases": 0,
                     "total_testcases": 1,
-                    "execution_time": None,
-                    "memory_used": None,
-                    "ai_feedback": {"error": "Question has no table schemas defined"},
+                    "ai_feedback": {"error": "SQL engine unavailable."},
                     "score": 0,
                     "created_at": datetime.utcnow(),
                     "is_final_submission": True,
                 }
                 submission_result = await db.submissions.insert_one(submission_data)
                 return str(submission_result.inserted_id)
-            
-            # Execute user's SQL query
-            user_sql_script = build_sql_script(
-                schemas=schemas,
-                sample_data=sample_data,
-                user_query=q_sub.code
-            )
-            
-            logger.info(f"Executing user SQL script for question {question_id}...")
-            user_result = await execute_sql_with_judge0(user_sql_script)
-            
-            # Check for execution errors
-            if not user_result["success"]:
-                status = "syntax_error" if user_result.get("status_id") == 6 else "error"
-                message = user_result.get("stderr") or user_result.get("compile_output") or "SQL execution failed"
-                
-                # SQL-specific error submission structure
-                submission_data = {
-                    "user_id": user_id,
-                    "question_id": question_id,
-                    "test_id": test_id,
-                    "language": "sql",
-                    "code": q_sub.code,
-                    "status": status,
-                    "test_results": [{
-                        "test_number": 1,
-                        "expected_output": "",  # No expected output for errors
-                        "user_output": "",
-                        "status": status,
-                        "status_id": user_result.get("status_id", 0),
-                        "passed": False,
-                        "error": message,  # SQL-specific: use 'error' instead of 'stderr'
-                        "time": user_result.get("time"),
-                        "memory": user_result.get("memory"),
-                    }],
-                    "passed_testcases": 0,
-                    "total_testcases": 1,
-                    "execution_time": user_result.get("time"),
-                    "memory_used": user_result.get("memory"),
-                    "ai_feedback": None,
-                    "score": 0,
-                    "created_at": datetime.utcnow(),
-                    "is_final_submission": True,
-                }
-                submission_result = await db.submissions.insert_one(submission_data)
-                submission_id = str(submission_result.inserted_id)
-                
-                # Schedule AI feedback for SQL error
-                all_test_results = submission_data["test_results"]
-                background_tasks.add_task(
-                    process_ai_feedback_background,
-                    submission_id=submission_id,
-                    test_id=test_id,
-                    user_id=user_id,
-                    question_id=question_id,
-                    source_code=q_sub.code,
-                    language="sql",
-                    question_title=question.get("title", ""),
-                    question_description=question.get("description", ""),
-                    all_test_results=all_test_results,
-                    total_passed=0,
-                    total_tests=1,
-                    public_passed=0,
-                    public_total=0,
-                    hidden_passed=0,
-                    hidden_total=1,
-                    starter_code=question.get("starter_query")
-                )
-                return submission_id
-            
-            user_output = user_result.get("stdout", "").strip()
-            
-            # Execute reference query and compare
-            passed = False
-            expected_output = None
-            if reference_query:
-                ref_sql_script = build_sql_script(
-                    schemas=schemas,
-                    sample_data=sample_data,
-                    user_query=reference_query
-                )
-                
-                logger.info(f"Executing reference SQL script for question {question_id}...")
-                ref_result = await execute_sql_with_judge0(ref_sql_script)
-                
-                if not ref_result["success"]:
-                    logger.error(f"Reference query execution failed: {ref_result.get('stderr')}")
-                    # Still proceed with user's result, but mark as error
-                    status = "error"
-                    message = "Reference query execution failed"
+
+            try:
+                if reference_query:
+                    expected_list = await sql_service.generate_expected_output(question_id, reference_query, group_id)
+                    result = await sql_service.submit_query(question_id, q_sub.code, expected_list, group_id)
                 else:
-                    expected_output = ref_result.get("stdout", "").strip()
-                    passed = compare_sql_results(user_output, expected_output, order_sensitive)
-                    
-                    # CRITICAL: Double-check the result with safety checks
-                    if passed:
-                        # Parse headers to verify they actually match
-                        from ..routers.assessment import parse_sql_table_output
-                        user_h, user_r = parse_sql_table_output(user_output)
-                        exp_h, exp_r = parse_sql_table_output(expected_output)
-                        
-                        # If headers don't match, force False
-                        if user_h != exp_h:
-                            logger.error(
-                                f"⚠️⚠️⚠️ CRITICAL: Comparison returned True but headers don't match in final-submit! "
-                                f"User headers ({len(user_h)}): {user_h}\n"
-                                f"Expected headers ({len(exp_h)}): {exp_h}\n"
-                                f"FORCING passed=False"
-                            )
-                            passed = False
-                        elif len(user_r) != len(exp_r):
-                            logger.error(
-                                f"⚠️ Comparison returned True but row counts don't match in final-submit! "
-                                f"User: {len(user_r)} rows, Expected: {len(exp_r)} rows. "
-                                f"Forcing passed=False"
-                            )
-                            passed = False
-                    
-                    status = "accepted" if passed else "wrong_answer"
-                    message = "Query produces correct results!" if passed else "Query output does not match expected results"
-            else:
-                # No reference query - just check if query executed successfully
-                passed = user_result["success"]
-                status = "accepted" if passed else "error"
-                message = "Query executed successfully" if passed else "Query execution failed"
-            
-            # Format test results for SQL (cleaner structure - no unnecessary fields)
-            # SQL only has one test case, no input, no public/hidden distinction
+                    user_result = await sql_service.execute_query(question_id, q_sub.code, group_id)
+                    result = {"passed": user_result.get("success", False), "output": user_result.get("output", []), "expected_output": "", "error": user_result.get("error", "")}
+
+                passed = result.get("passed", False)
+                status = "accepted" if passed else "wrong_answer"
+                user_output = result.get("output", [])
+                if isinstance(user_output, list) and user_output and isinstance(user_output[0], dict):
+                    import json
+                    user_output = json.dumps(user_output, indent=2)
+                else:
+                    user_output = str(user_output)
+                expected_output = result.get("expected_output", "")
+                if isinstance(expected_output, list):
+                    import json
+                    expected_output = json.dumps(expected_output, indent=2) if expected_output else ""
+            except Exception as e:
+                passed = False
+                status = "error"
+                user_output = ""
+                expected_output = ""
+                logger.exception("SQL grading failed: %s", e)
+
             sql_test_result = {
                 "test_number": 1,
-                "expected_output": expected_output or "",  # CRITICAL: Save expected output
+                "expected_output": expected_output or "",
                 "user_output": user_output,
                 "status": status,
-                "status_id": user_result.get("status_id", 3 if passed else 0),
+                "status_id": 3 if passed else 0,
                 "passed": passed,
-                "time": user_result.get("time"),
-                "memory": user_result.get("memory"),
+                "time": None,
+                "memory": None,
             }
-            
-            # Create SQL-specific submission record (cleaner structure - NO public/hidden fields)
             submission_data = {
                 "user_id": user_id,
                 "question_id": question_id,
@@ -3325,60 +3137,36 @@ async def final_submit_test(
                 "language": "sql",
                 "code": q_sub.code,
                 "status": status,
-                # SQL-specific: single test result (no public/hidden distinction)
                 "test_results": [sql_test_result],
-                # SQL-specific: simple pass/fail counts (NO public/hidden fields)
                 "passed_testcases": 1 if passed else 0,
                 "total_testcases": 1,
-                # Execution metrics
-                "execution_time": user_result.get("time"),
-                "memory_used": user_result.get("memory"),
-                # AI feedback and score (will be generated in background)
                 "ai_feedback": None,
                 "score": 0,
                 "created_at": datetime.utcnow(),
                 "is_final_submission": True,
             }
-            
-            # Save submission immediately
             submission_result = await db.submissions.insert_one(submission_data)
             submission_id = str(submission_result.inserted_id)
-            
-            # Schedule AI feedback generation in background for SQL
-            # Use sql_test_result as all_test_results (SQL only has one test case)
             background_tasks.add_task(
                 process_ai_feedback_background,
-                submission_id=submission_id,
-                test_id=test_id,
-                user_id=user_id,
-                question_id=question_id,
-                source_code=q_sub.code,
-                language="sql",
-                question_title=question.get("title", ""),
-                question_description=question.get("description", ""),
-                all_test_results=[sql_test_result],  # Use sql_test_result, not all_test_results
-                total_passed=1 if passed else 0,
-                total_tests=1,
-                public_passed=0,  # SQL doesn't have public/hidden - set to 0
-                public_total=0,   # SQL doesn't have public/hidden - set to 0
-                hidden_passed=0,  # SQL doesn't have public/hidden - set to 0
-                hidden_total=0,   # SQL doesn't have public/hidden - set to 0
+                submission_id=submission_id, test_id=test_id, user_id=user_id, question_id=question_id,
+                source_code=q_sub.code, language="sql", question_title=question.get("title", ""),
+                question_description=question.get("description", ""), all_test_results=[sql_test_result],
+                total_passed=1 if passed else 0, total_tests=1, public_passed=0, public_total=0, hidden_passed=0, hidden_total=0,
                 starter_code=question.get("starter_query")
             )
-            logger.info(f"Saved SQL submission {submission_id} and scheduled AI feedback generation in background")
+            logger.info(f"Saved SQL submission {submission_id}")
             return submission_id
-        
+
         # Handle DSA coding questions (original logic)
-        # Get language ID from language name
-        language_id = LANGUAGE_IDS.get(q_sub.language.lower(), None)
-        if not language_id:
-            logger.warning(f"Unknown language: {q_sub.language}, skipping question {question_id}")
+        if not is_dsa_language(q_sub.language):
+            logger.warning(f"Unknown or unsupported language: {q_sub.language}, skipping question {question_id}")
             return None
         
         # Prepare code for execution (validate + wrap if needed)
         prepared_code, prep_error, code_warnings = await prepare_code_for_execution(
             source_code=q_sub.code,
-            language_id=language_id,
+            language=q_sub.language,
             question=question
         )
         
@@ -3436,35 +3224,20 @@ async def final_submit_test(
             logger.warning(f"No test cases for question {question_id}")
             return None
         
-        # Get execution constraints
-        cpu_time_limit = 2.0
-        memory_limit = 128000
-        
-        # Get function signature for custom engine
-        function_signature = None
+        # DSA execution requires function name
         func_sig_data = question.get("function_signature")
-        if func_sig_data:
-            from ..models.question import FunctionSignature, FunctionParameter
-            function_signature = FunctionSignature(
-                name=func_sig_data.get("name"),
-                parameters=[
-                    FunctionParameter(name=p.get("name"), type=p.get("type"))
-                    for p in func_sig_data.get("parameters", [])
-                ],
-                return_type=func_sig_data.get("return_type")
-            )
-        
-        # Run ALL test cases with prepared code
-        results = await run_all_test_cases(
+        function_name = (func_sig_data.get("name") or "").strip() if func_sig_data else ""
+        if not function_name:
+            logger.warning(f"Question {question_id} missing function_signature.name, skipping")
+            return None
+
+        results = await run_all_test_cases_dsa(
             source_code=prepared_code,
-            language_id=language_id,
             test_cases=all_test_cases,
-            cpu_time_limit=cpu_time_limit,
-            memory_limit=memory_limit,
-            stop_on_compilation_error=True,
-            function_signature=function_signature,
+            function_name=function_name,
+            language=q_sub.language,
         )
-        
+
         # Process test case results
         all_results = results.get("results", [])
         public_count = len(public_test_cases)

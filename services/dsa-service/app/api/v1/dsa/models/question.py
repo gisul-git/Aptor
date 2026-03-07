@@ -148,6 +148,9 @@ class QuestionCreate(BaseModel):
     sql_expected_output: Optional[str] = None
     hints: Optional[List[str]] = None  # Optional hints for SQL questions
     evaluation: Optional[Dict[str, Any]] = None  # SQL evaluation config
+    # SQL Execution Engine fields
+    groupId: Optional[str] = None  # UUID from SQL engine /api/seed endpoint
+    seedSql: Optional[str] = None  # DDL/INSERT SQL used to seed the database
 
 class QuestionUpdate(BaseModel):
     title: Optional[str] = None
@@ -177,5 +180,8 @@ class QuestionUpdate(BaseModel):
     sql_expected_output: Optional[str] = None
     hints: Optional[List[str]] = None
     evaluation: Optional[Dict[str, Any]] = None
+    # SQL Execution Engine fields
+    groupId: Optional[str] = None  # UUID from SQL engine /api/seed endpoint
+    seedSql: Optional[str] = None  # DDL/INSERT SQL used to seed the database
 
 

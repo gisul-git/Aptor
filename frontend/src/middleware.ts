@@ -61,6 +61,14 @@ export default withAuth(
         const publicRoutes = [
           "/auth/signin",
           "/auth/signup",
+          "/auth/forgot-password",  // Forgot password page
+          "/auth/reset-password",  // Reset password page
+          "/auth/set-password",  // Employee set password page
+          "/auth/employee-login",  // Employee login page
+          "/auth/mfa",  // MFA routes - user is in the middle of login flow (setup, verify)
+          "/super-admin/mfa",  // Super admin MFA page - user is in the middle of login flow
+          "/schedule-demo",  // Schedule demo page - public landing page
+          "/thank-you",  // Thank you page after demo submission
           "/auth/forgot-password",
           "/auth/reset-password",
           "/auth/set-password",

@@ -11,12 +11,13 @@ Secure Mode:
 - System handles all input parsing and output formatting
 
 SQL Support:
-- SQL questions use Judge0 SQLite (language_id 82)
+- SQL questions use the SQL execution engine (SQL_ENGINE_URL)
 - run-sql: Execute query and show results
 - submit-sql: Compare results with reference query
 """
 import logging
 import re
+import json
 import httpx
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
@@ -26,10 +27,16 @@ from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
 from ..database import get_dsa_database as get_database
-from ..utils.judge0 import run_all_test_cases, run_test_case, LANGUAGE_IDS
+from ..services.dsa_execution_service import (
+    run_all_test_cases_dsa,
+    is_dsa_language,
+    get_supported_languages,
+    execute_dsa_single,
+)
 from ..services.ai_feedback import generate_code_feedback
 from ...assessments.services.unified_ai_evaluation import evaluate_sql_answer
 from ..config import SQL_ENGINE_URL, get_dsa_settings, DSASettings
+from ..services.sql_question_service import get_sql_question_service
 
 # Stub functions for deprecated code_wrapper functionality
 # TODO: Update to use universal_code_wrapper_v2.py for new JSON-based system
@@ -82,14 +89,14 @@ class RunCodeRequest(BaseModel):
     """Request for running code (public test cases only)"""
     question_id: str
     source_code: str
-    language_id: int
+    language: str  # e.g. "python", "java", "cpp"
 
 
 class SubmitCodeRequest(BaseModel):
     """Request for submitting code (all test cases)"""
     question_id: str
     source_code: str
-    language_id: int
+    language: str  # e.g. "python", "java", "cpp"
     # Time tracking fields
     started_at: Optional[str] = None  # ISO timestamp when user started the question
     submitted_at: Optional[str] = None  # ISO timestamp when user submitted
@@ -98,9 +105,10 @@ class SubmitCodeRequest(BaseModel):
 
 class RunSingleTestRequest(BaseModel):
     source_code: str
-    language_id: int
+    language: str  # e.g. "python", "java", "cpp"
     stdin: str
     expected_output: str = ""
+    function_name: str = ""
     cpu_time_limit: float = 2.0
     memory_limit: int = 128000
 
@@ -179,68 +187,37 @@ class SubmitCodeResponse(BaseModel):
 # Helper Functions
 # ============================================================================
 
-# Language name to ID mapping - use the same as app.utils.judge0
-# This ensures consistency across the application
-def get_language_name(language_id: int) -> Optional[str]:
-    """Get language name from Judge0 language ID."""
-    # Use LANGUAGE_IDS from app.utils.judge0 which has all 10 DSA languages
-    for name, lid in LANGUAGE_IDS.items():
-        if lid == language_id:
-            return name
-    return None
-
-
 async def prepare_code_for_execution(
     source_code: str,
-    language_id: int,
+    language: str,
     question: Dict[str, Any]
 ) -> Tuple[str, Optional[str], List[str]]:
     """
     Prepare user code for execution.
-    
-    For Java/Python with custom engine: Returns raw code (no wrapping needed).
-    For other languages with Judge0: Wraps code as before.
-    
-    Hybrid approach:
-    1. If custom engine (Java/Python) → return raw code
-    2. If secure_mode=False → pass code as-is (legacy mode)
-    3. If secure_mode=True:
-       a. Validate code for forbidden I/O patterns
-       b. Check for hardcoding
-       c. Use wrapper_template if defined by admin
-       d. Otherwise, auto-wrap for known languages
-    
-    Returns:
-        (prepared_code, error_message, warnings_list)
+    For DSA languages: returns raw code (execution API). Otherwise wraps as before.
+    language: name e.g. "python", "java", "cpp".
+    Returns: (prepared_code, error_message, warnings_list)
     """
-    from ..config import USE_CUSTOM_ENGINE
-    
     warnings = []
     secure_mode = question.get("secure_mode", False)
-    
-    language = get_language_name(language_id)
-    if not language:
-        language = str(language_id)
-    
-    # Get function name from question for validation
+    language = (language or "").strip()
+
     func_name = None
     func_sig = question.get("function_signature")
     if func_sig:
         func_name = func_sig.get("name")
-    
-    # Check for forbidden boilerplate modifications (always check, even in non-secure mode)
+
     is_valid_boilerplate, boilerplate_warnings = validate_boilerplate_not_modified(
         source_code, language, func_name
     )
     if not is_valid_boilerplate:
         warnings.extend(boilerplate_warnings)
-    
-    # For custom engine (Java/Python), return raw code - no wrapping needed
-    if USE_CUSTOM_ENGINE and language in ["java", "python"]:
-        logger.info(f"Using custom engine for {language} - returning raw code (no wrapping)")
+
+    if is_dsa_language(language):
+        logger.info(f"DSA language {language} - returning raw code for execution API")
         return source_code, None, warnings
-    
-    # For Judge0 (other languages or when custom engine is disabled)
+
+    # Other languages (e.g. legacy)
     if not secure_mode:
         # Legacy mode - still try auto-wrap for common languages
         # This ensures Java function-only code works even without secure_mode
@@ -340,22 +317,33 @@ def format_hidden_result_for_admin(result: Dict[str, Any], test_number: int,
 async def run_single_test(request: RunSingleTestRequest):
     """
     Run a single test case without saving to database.
-    Useful for quick testing during development.
+    Uses DSA execution API; function_name is required.
     """
-    logger.info(f"Running single test case with language_id={request.language_id}")
-    
-    result = await run_test_case(
+    logger.info("Running single test case with language=%s", request.language)
+    if not is_dsa_language(request.language):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported language for DSA: {request.language}",
+        )
+    if not (request.function_name or "").strip():
+        raise HTTPException(status_code=400, detail="function_name is required")
+    result = await execute_dsa_single(
         source_code=request.source_code,
-        language_id=request.language_id,
-        stdin=request.stdin,
-        expected_output=request.expected_output,
-        cpu_time_limit=request.cpu_time_limit,
-        memory_limit=request.memory_limit,
+        language=request.language,
+        function_name=request.function_name.strip(),
+        input_data=request.stdin,
+        expected_output=request.expected_output or None,
     )
-    
+    passed = (result.get("verdict") or "").strip().lower() == "accepted"
     return {
-        "success": result["passed"],
-        "result": result,
+        "success": passed,
+        "result": {
+            "passed": passed,
+            "status": result.get("verdict", ""),
+            "stdout": result.get("stdout", ""),
+            "stderr": result.get("stderr", ""),
+            "compile_output": result.get("error_message", ""),
+        },
     }
 
 
@@ -385,12 +373,15 @@ async def run_code(request: RunCodeRequest):
     # Prepare code (validate + wrap if secure_mode)
     prepared_code, prep_error, code_warnings = await prepare_code_for_execution(
         source_code=request.source_code,
-        language_id=request.language_id,
+        language=request.language,
         question=question
     )
     
     if prep_error:
         raise HTTPException(status_code=400, detail=prep_error)
+    
+    if not is_dsa_language(request.language):
+        raise HTTPException(status_code=400, detail=f"Unsupported language: {request.language}")
     
     # Build test cases array - PUBLIC ONLY
     test_cases = []
@@ -415,31 +406,23 @@ async def run_code(request: RunCodeRequest):
     cpu_time_limit = 2.0
     memory_limit = 128000
     
-    # Get function signature for custom engine
-    function_signature = None
+    # DSA execution requires function name from question
     func_sig_data = question.get("function_signature")
-    if func_sig_data:
-        from ..models.question import FunctionSignature, FunctionParameter
-        function_signature = FunctionSignature(
-            name=func_sig_data.get("name"),
-            parameters=[
-                FunctionParameter(name=p.get("name"), type=p.get("type"))
-                for p in func_sig_data.get("parameters", [])
-            ],
-            return_type=func_sig_data.get("return_type")
+    function_name = (func_sig_data.get("name") or "").strip() if func_sig_data else ""
+    if not function_name:
+        raise HTTPException(
+            status_code=400,
+            detail="Question must have function_signature.name for DSA execution",
         )
-    
-    # Run public test cases only with prepared code
-    results = await run_all_test_cases(
+
+    # Run public test cases via DSA execution API
+    results = await run_all_test_cases_dsa(
         source_code=prepared_code,
-        language_id=request.language_id,
         test_cases=test_cases,
-        cpu_time_limit=cpu_time_limit,
-        memory_limit=memory_limit,
-        stop_on_compilation_error=True,
-        function_signature=function_signature,
+        function_name=function_name,
+        language=request.language,
     )
-    
+
     # Format public results with full details
     public_results = []
     for i, result in enumerate(results.get("results", [])):
@@ -504,14 +487,16 @@ async def submit_code(
     # Prepare code (validate + wrap if secure_mode)
     prepared_code, prep_error, code_warnings = await prepare_code_for_execution(
         source_code=request.source_code,
-        language_id=request.language_id,
+        language=request.language,
         question=question
     )
     
     if prep_error:
         raise HTTPException(status_code=400, detail=prep_error)
     
-    # Store warnings to include in response
+    if not is_dsa_language(request.language):
+        raise HTTPException(status_code=400, detail=f"Unsupported language: {request.language}")
+    
     submit_warnings = code_warnings if code_warnings else []
     
     # Build test cases array - PUBLIC + HIDDEN
@@ -546,36 +531,22 @@ async def submit_code(
     if not all_test_cases:
         raise HTTPException(status_code=400, detail="Question has no test cases")
     
-    # Get execution constraints (default values)
-    # Note: question.constraints is a list of constraint strings, not a dict
-    cpu_time_limit = 2.0
-    memory_limit = 128000
-    
-    # Get function signature for custom engine
-    function_signature = None
     func_sig_data = question.get("function_signature")
-    if func_sig_data:
-        from ..models.question import FunctionSignature, FunctionParameter
-        function_signature = FunctionSignature(
-            name=func_sig_data.get("name"),
-            parameters=[
-                FunctionParameter(name=p.get("name"), type=p.get("type"))
-                for p in func_sig_data.get("parameters", [])
-            ],
-            return_type=func_sig_data.get("return_type")
+    function_name = (func_sig_data.get("name") or "").strip() if func_sig_data else ""
+    if not function_name:
+        raise HTTPException(
+            status_code=400,
+            detail="Question must have function_signature.name for DSA execution",
         )
-    
-    # Run ALL test cases with prepared code
-    results = await run_all_test_cases(
+
+    # Run ALL test cases via DSA execution API
+    results = await run_all_test_cases_dsa(
         source_code=prepared_code,
-        language_id=request.language_id,
         test_cases=all_test_cases,
-        cpu_time_limit=cpu_time_limit,
-        memory_limit=memory_limit,
-        stop_on_compilation_error=True,
-        function_signature=function_signature,
+        function_name=function_name,
+        language=request.language,
     )
-    
+
     # Separate results into public and hidden
     public_results = []
     hidden_results = []
@@ -628,17 +599,11 @@ async def submit_code(
                 result, hidden_index + 1, tc["stdin"], tc["expected_output"]
             ))
         
-        # Get language name from ID
-        language_name = next(
-            (name for name, lid in LANGUAGE_IDS.items() if lid == request.language_id),
-            "unknown"
-        )
-        
-        # Get starter code for the language
+        language_name = request.language or "unknown"
         starter_code = None
         starter_code_dict = question.get("starter_code", {})
         if isinstance(starter_code_dict, dict):
-            starter_code = starter_code_dict.get(language_name) or starter_code_dict.get(language_name.lower())
+            starter_code = starter_code_dict.get(language_name) or starter_code_dict.get((language_name or "").lower())
         
         # Generate AI feedback (async in background ideally, but sync for now)
         try:
@@ -675,7 +640,7 @@ async def submit_code(
             "user_id": user_id,
             "question_id": request.question_id,
             "source_code": request.source_code,
-            "language_id": request.language_id,
+            "language": request.language,
             "language_name": language_name,
             "public_results": public_results,
             "hidden_results_full": full_hidden_results,  # Full details for admin
@@ -757,7 +722,7 @@ async def get_submission_admin(
         "user_id": submission.get("user_id"),
         "question_id": submission.get("question_id"),
         "source_code": submission.get("source_code"),
-        "language_id": submission.get("language_id"),
+        "language": submission.get("language"),
         "language_name": submission.get("language_name", "unknown"),
         "public_results": submission.get("public_results", []),
         "hidden_results": submission.get("hidden_results_full", []),  # FULL details for admin
@@ -863,15 +828,8 @@ async def regenerate_ai_feedback(
         if not question:
             question = await db.questions.find_one({"_id": submission["question_id"]})
     
-    # Get language name
-    language_name = submission.get("language_name", "unknown")
-    if language_name == "unknown":
-        lang_id = submission.get("language_id")
-        language_name = next(
-            (name for name, lid in LANGUAGE_IDS.items() if lid == lang_id),
-            "unknown"
-        )
-    
+    language_name = submission.get("language") or submission.get("language_name", "unknown")
+
     # Combine all test results
     all_results = submission.get("public_results", []) + submission.get("hidden_results_full", [])
     
@@ -955,15 +913,8 @@ async def regenerate_all_feedback(
                 if not question:
                     question = await db.questions.find_one({"_id": submission["question_id"]})
             
-            # Get language name
-            language_name = submission.get("language_name", "unknown")
-            if language_name == "unknown":
-                lang_id = submission.get("language_id")
-                language_name = next(
-                    (name for name, lid in LANGUAGE_IDS.items() if lid == lang_id),
-                    "unknown"
-                )
-            
+            language_name = submission.get("language") or submission.get("language_name", "unknown")
+
             # Combine all test results
             all_results = submission.get("public_results", []) + submission.get("hidden_results_full", [])
             
@@ -1064,21 +1015,14 @@ async def get_question_submissions(
 
 
 @router.get("/languages")
-async def get_supported_languages():
-    """
-    Get list of supported programming languages with their Judge0 IDs.
-    """
-    return {
-        "languages": [
-            {"id": lid, "name": name}
-            for name, lid in LANGUAGE_IDS.items()
-        ]
-    }
+async def get_languages_list():
+    """Get list of supported DSA languages (10 only)."""
+    return {"languages": get_supported_languages()}
 
 
 class ValidateCodeRequest(BaseModel):
     source_code: str
-    language_id: int
+    language: str  # e.g. "python", "java", "cpp"
     question_id: Optional[str] = None
 
 
@@ -1093,9 +1037,9 @@ async def validate_code_endpoint(request: ValidateCodeRequest):
     
     Returns validation result with specific error messages.
     """
-    language = get_language_name(request.language_id)
-    if not language:
-        raise HTTPException(status_code=400, detail=f"Unsupported language ID: {request.language_id}")
+    if not is_dsa_language(request.language):
+        raise HTTPException(status_code=400, detail=f"Unsupported language: {request.language}")
+    language = request.language
     
     # Validate for forbidden patterns
     is_valid, error = validate_user_code(request.source_code, language)
@@ -1134,7 +1078,7 @@ async def validate_code_endpoint(request: ValidateCodeRequest):
 
 
 # ============================================================================
-# SQL Execution Endpoints (Judge0 SQLite)
+# SQL Execution Endpoints (SQL engine only)
 # ============================================================================
 
 class RunSQLRequest(BaseModel):
@@ -1155,141 +1099,6 @@ class SubmitSQLRequest(BaseModel):
     execution_engine_output: Optional[str] = None
     execution_engine_time: Optional[float] = None
     execution_engine_memory: Optional[float] = None
-
-
-def build_sql_script(
-    schemas: Dict[str, Any],
-    sample_data: Dict[str, Any],
-    user_query: str,
-    reference_query: Optional[str] = None
-) -> str:
-    """
-    Build a complete SQL script for Judge0 SQLite execution.
-    
-    The script:
-    1. Creates all tables from schemas
-    2. Inserts sample data
-    3. Runs the user's query
-    4. Optionally runs reference query for comparison
-    """
-    script_parts = []
-    
-    # 1. Create tables
-    for table_name, table_def in schemas.items():
-        columns = table_def.get("columns", {})
-        if not columns:
-            continue
-        
-        column_defs = []
-        for col_name, col_type in columns.items():
-            # Convert common data types to SQLite compatible types
-            sqlite_type = col_type.upper()
-            # SQLite type mappings
-            if "VARCHAR" in sqlite_type or "CHAR" in sqlite_type:
-                sqlite_type = "TEXT"
-            elif "INT" in sqlite_type:
-                sqlite_type = "INTEGER"
-            elif "DECIMAL" in sqlite_type or "FLOAT" in sqlite_type or "DOUBLE" in sqlite_type:
-                sqlite_type = "REAL"
-            elif "BOOL" in sqlite_type:
-                sqlite_type = "INTEGER"  # SQLite uses 0/1 for boolean
-            elif "DATE" in sqlite_type or "TIME" in sqlite_type:
-                sqlite_type = "TEXT"  # SQLite stores dates as text
-            
-            # Keep PRIMARY KEY if present
-            if "PRIMARY KEY" in col_type.upper():
-                sqlite_type = sqlite_type.replace("PRIMARY KEY", "").strip() + " PRIMARY KEY"
-            
-            column_defs.append(f"    {col_name} {sqlite_type}")
-        
-        create_stmt = f"CREATE TABLE {table_name} (\n{','.join(column_defs)}\n);"
-        script_parts.append(create_stmt)
-    
-    # 2. Insert sample data
-    for table_name, rows in sample_data.items():
-        if not rows or table_name not in schemas:
-            continue
-        
-        # Get column names from schema
-        columns = list(schemas[table_name].get("columns", {}).keys())
-        if not columns:
-            continue
-        
-        for row in rows:
-            if not isinstance(row, list):
-                continue
-            
-            # Format values for SQL
-            formatted_values = []
-            for val in row:
-                if val is None:
-                    formatted_values.append("NULL")
-                elif isinstance(val, str):
-                    # Escape single quotes
-                    escaped = val.replace("'", "''")
-                    formatted_values.append(f"'{escaped}'")
-                elif isinstance(val, bool):
-                    formatted_values.append("1" if val else "0")
-                else:
-                    formatted_values.append(str(val))
-            
-            insert_stmt = f"INSERT INTO {table_name} ({', '.join(columns)}) VALUES ({', '.join(formatted_values)});"
-            script_parts.append(insert_stmt)
-    
-    # 3. Add user query
-    # Clean up the user query (remove trailing semicolons, add one at end)
-    clean_query = user_query.strip()
-    if clean_query.endswith(';'):
-        clean_query = clean_query[:-1].strip()
-    
-    script_parts.append(f"\n-- User Query\n{clean_query};")
-    
-    return "\n".join(script_parts)
-
-
-async def execute_sql_with_judge0(sql_script: str) -> Dict[str, Any]:
-    """
-    Execute SQL script using Judge0 SQLite (language_id 82).
-    Returns the execution result.
-    """
-    from ..utils.judge0 import submit_to_judge0
-    
-    SQLITE_LANGUAGE_ID = 82
-    
-    try:
-        result = await submit_to_judge0(
-            source_code=sql_script,
-            language_id=SQLITE_LANGUAGE_ID,
-            stdin="",  # SQLite doesn't use stdin
-            timeout=30.0,
-        )
-        
-        status = result.get("status", {})
-        status_id = status.get("id", 0)
-        
-        return {
-            "success": status_id == 3,  # 3 = Accepted
-            "status_id": status_id,
-            "status": status.get("description", "Unknown"),
-            "stdout": result.get("stdout", ""),
-            "stderr": result.get("stderr", ""),
-            "compile_output": result.get("compile_output", ""),
-            "time": result.get("time"),
-            "memory": result.get("memory"),
-        }
-        
-    except Exception as e:
-        logger.error(f"SQL execution error: {e}")
-        return {
-            "success": False,
-            "status_id": 13,
-            "status": "Execution Error",
-            "stdout": "",
-            "stderr": str(e),
-            "compile_output": "",
-            "time": None,
-            "memory": None,
-        }
 
 
 def parse_sql_table_output(output: str) -> Tuple[List[str], List[List[str]]]:
@@ -1445,7 +1254,7 @@ def compare_sql_results(user_output: str, expected_output: str, order_sensitive:
 @router.post("/assessment/run-sql")
 async def run_sql(request: RunSQLRequest):
     """
-    RUN SQL - Execute SQL query against sample data.
+    RUN SQL - Execute SQL query against sample data using SQL Execution Engine.
     Returns the query results for preview.
     Used when user clicks "Run" button on SQL questions.
     """
@@ -1466,45 +1275,64 @@ async def run_sql(request: RunSQLRequest):
     if question_type != "SQL":
         raise HTTPException(status_code=400, detail="This endpoint is for SQL questions only")
     
-    # Get schemas and sample data
-    schemas = question.get("schemas", {})
-    sample_data = question.get("sample_data", {})
-    
-    if not schemas:
-        raise HTTPException(status_code=400, detail="Question has no table schemas defined")
-    
-    # Build and execute SQL script
-    sql_script = build_sql_script(
-        schemas=schemas,
-        sample_data=sample_data,
-        user_query=request.sql_query
-    )
-    
-    logger.info(f"Executing SQL script:\n{sql_script[:500]}...")
-    
-    result = await execute_sql_with_judge0(sql_script)
-    
-    # Format response
-    if result["success"]:
-        status = "executed"
-        message = "Query executed successfully"
-    elif result["status_id"] == 6:
-        status = "syntax_error"
-        message = "SQL syntax error"
-    else:
-        status = "error"
-        message = result.get("stderr") or result.get("compile_output") or "Execution failed"
-    
-    return {
-        "question_id": request.question_id,
-        "status": status,
-        "message": message,
-        "output": result.get("stdout", ""),
-        "error": result.get("stderr", "") or result.get("compile_output", ""),
-        "time": result.get("time"),
-        "memory": result.get("memory"),
-        "sql_script_preview": sql_script[:1000] + "..." if len(sql_script) > 1000 else sql_script,
-    }
+    # Get groupId from question (or ensure it exists)
+    group_id = question.get("groupId")
+    sql_service = get_sql_question_service()
+
+    if not group_id:
+        logger.info(f"Question {request.question_id} has no groupId, attempting to create seed")
+        group_id = await sql_service.ensure_question_has_seed(question, db)
+        if not group_id:
+            raise HTTPException(
+                status_code=503,
+                detail="SQL engine unavailable. Ensure SQL_ENGINE_URL is set and question has schemas/sample_data.",
+            )
+
+    # Use SQL Execution Engine
+    try:
+        question_id_str = str(question.get("_id"))
+        result = await sql_service.execute_query(
+            question_id=question_id_str,
+            sql_code=request.sql_query,
+            group_id=group_id
+        )
+        
+        # Format response to match expected format
+        if result.get("success"):
+            status = "executed"
+            message = "Query executed successfully"
+            output = result.get("output", [])
+            # Convert output to string format if needed
+            if isinstance(output, list):
+                # Format as table if it's a list of dicts
+                if output and isinstance(output[0], dict):
+                    # Convert to string representation
+                    import json
+                    output = json.dumps(output, indent=2)
+                else:
+                    output = str(output)
+            else:
+                output = str(output)
+        else:
+            status = "error"
+            message = result.get("error", "SQL execution failed")
+            output = ""
+        
+        return {
+            "question_id": request.question_id,
+            "status": status,
+            "message": message,
+            "output": output,
+            "error": result.get("error", ""),
+            "outputs": result.get("outputs", []),
+        }
+        
+    except Exception as e:
+        logger.error(f"Error executing SQL via engine: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to execute SQL query: {str(e)}"
+        )
 
 
 @router.post("/assessment/submit-sql")
@@ -1513,7 +1341,7 @@ async def submit_sql(
     user_id: str = Query(None, description="User ID for tracking submission"),
 ):
     """
-    SUBMIT SQL - Execute SQL query and compare with expected result.
+    SUBMIT SQL - Execute SQL query and compare with expected result using SQL Execution Engine.
     Used when user clicks "Submit" button on SQL questions.
     
     The question should have a reference_query that produces the expected output.
@@ -1535,201 +1363,98 @@ async def submit_sql(
     if question_type != "SQL":
         raise HTTPException(status_code=400, detail="This endpoint is for SQL questions only")
     
-    # Get schemas and sample data
+    # Get reference query and other question data
+    reference_query = question.get("reference_query")
     schemas = question.get("schemas", {})
     sample_data = question.get("sample_data", {})
-    reference_query = question.get("reference_query")
     evaluation = question.get("evaluation", {})
     order_sensitive = evaluation.get("order_sensitive", False)
     
-    if not schemas:
-        raise HTTPException(status_code=400, detail="Question has no table schemas defined")
+    if not reference_query:
+        raise HTTPException(status_code=400, detail="Question has no reference_query defined")
     
-    # Check if execution engine results are provided - if so, use them directly
-    use_execution_engine_result = (
-        request.execution_engine_passed is not None and 
-        request.execution_engine_output is not None
-    )
+    # Get groupId from question (or ensure it exists)
+    group_id = question.get("groupId")
+    sql_service = get_sql_question_service()
+    question_id_str = str(question.get("_id"))
     
-    if use_execution_engine_result:
-        logger.info(
-            f"Using execution engine result: passed={request.execution_engine_passed}, "
-            f"output_length={len(request.execution_engine_output)}"
-        )
-        # Use execution engine's result directly
-        passed = bool(request.execution_engine_passed)
-        user_output = request.execution_engine_output
-        user_result = {
-            "success": True,
-            "stdout": user_output,
-            "time": request.execution_engine_time,
-            "memory": request.execution_engine_memory,
-            "status_id": 3 if passed else 4,
-        }
-        # Still need expected output for display, so execute reference query if available
-        expected_output = None
-        if reference_query:
-            ref_sql_script = build_sql_script(
-                schemas=schemas,
-                sample_data=sample_data,
-                user_query=reference_query
-            )
-            logger.info(f"Executing reference SQL script for expected output...")
-            ref_result = await execute_sql_with_judge0(ref_sql_script)
-            if ref_result["success"]:
-                expected_output = ref_result.get("stdout", "").strip()
-    else:
-        # Execute user's query (fallback if execution engine result not provided)
-        user_sql_script = build_sql_script(
-            schemas=schemas,
-            sample_data=sample_data,
-            user_query=request.sql_query
-        )
+    # If no groupId, try to create one
+    if not group_id:
+        logger.info(f"Question {request.question_id} has no groupId, attempting to create seed")
+        if not schemas:
+            raise HTTPException(status_code=400, detail="Question has no table schemas defined")
+        group_id = await sql_service.ensure_question_has_seed(question, db)
         
-        logger.info(f"Executing user SQL script...")
-        user_result = await execute_sql_with_judge0(user_sql_script)
-    
-    # Check for execution errors (only if we executed the query ourselves)
-    if not use_execution_engine_result and not user_result["success"] and user_result["status_id"] != 3:
-        error_msg = user_result.get("stderr") or user_result.get("compile_output") or "Query execution failed"
-        
-        response = {
-            "question_id": request.question_id,
-            "status": "error",
-            "passed": False,
-            "message": f"Query execution failed: {error_msg}",
-            "user_output": "",
-            "error": error_msg,
-            "time": user_result.get("time"),
-            "memory": user_result.get("memory"),
-        }
-        
-        # Save submission if user_id provided
-        if user_id:
-            submission_record = {
-                "user_id": user_id,
-                "question_id": request.question_id,
-                "question_type": "SQL",
-                "sql_query": request.sql_query,
-                "user_output": "",
-                "error": error_msg,
-                "passed": False,
-                "status": "error",
-                "started_at": request.started_at,
-                "submitted_at": request.submitted_at or datetime.utcnow().isoformat(),
-                "time_spent_seconds": request.time_spent_seconds,
-                "execution_time": user_result.get("time"),
-                "memory_used": user_result.get("memory"),
-                "created_at": datetime.utcnow(),
-            }
-            await db.sql_submissions.insert_one(submission_record)
-        
-        return response
-    
-    # Get user output (either from execution engine or from our execution)
-    if not use_execution_engine_result:
-        user_output = (user_result.get("stdout") or "").strip()
-    
-    # If execution engine result was not provided, execute and compare
-    if not use_execution_engine_result and reference_query:
-        ref_sql_script = build_sql_script(
-            schemas=schemas,
-            sample_data=sample_data,
-            user_query=reference_query
-        )
-        
-        logger.info(f"Executing reference SQL script...")
-        ref_result = await execute_sql_with_judge0(ref_sql_script)
-        
-        if not ref_result["success"]:
-            # Reference query failed - this is a problem with the question setup
-            logger.error(f"Reference query execution failed: {ref_result.get('stderr')}")
+        if not group_id:
+            logger.warning("Failed to create seed for SQL question")
             raise HTTPException(
-                status_code=500, 
-                detail="Reference query execution failed. Please contact administrator."
+                status_code=500,
+                detail="Failed to create seed for question. Please ensure question has schemas and sample_data."
             )
-        
-        expected_output = ref_result.get("stdout", "").strip()
-        
-        # Log outputs before comparison for debugging
-        logger.info(
-            f"SQL comparison for question {request.question_id}:\n"
-            f"  User output (length {len(user_output)}):\n{repr(user_output)}\n"
-            f"  Expected output (length {len(expected_output)}):\n{repr(expected_output)}"
+    
+    # Generate expected output from reference query
+    try:
+        expected_output = await sql_service.generate_expected_output(
+            question_id=question_id_str,
+            reference_query=reference_query,
+            group_id=group_id
+        )
+    except Exception as e:
+        logger.error(f"Failed to generate expected output: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to generate expected output from reference query: {str(e)}"
+        )
+    
+    # Submit query via SQL engine
+    try:
+        result = await sql_service.submit_query(
+            question_id=question_id_str,
+            sql_code=request.sql_query,
+            expected_output=expected_output,
+            group_id=group_id
         )
         
-        # CRITICAL: Validate that we have both outputs before comparing
-        if not expected_output or not expected_output.strip():
-            logger.error(
-                f"❌ Expected output is empty for question {request.question_id}. "
-                f"Cannot perform comparison. Test case FAILED."
-            )
-            passed = False
-        elif not user_output or not user_output.strip():
-            logger.error(
-                f"❌ User output is empty for question {request.question_id}. "
-                f"Test case FAILED."
-            )
-            passed = False
-        else:
-            # STRICT matching: test case only passes if outputs match exactly
-            # This is the authoritative comparison
-            passed = compare_sql_results(user_output, expected_output, order_sensitive)
-            
-            # CRITICAL: Double-check the result - if outputs are different lengths or formats, force False
-            # This is a safety check to prevent false positives
-            if passed:
-                # Parse headers to verify they actually match
-                user_h, user_r = parse_sql_table_output(user_output)
-                exp_h, exp_r = parse_sql_table_output(expected_output)
-                
-                # If headers don't match, force False
-                if user_h != exp_h:
-                    logger.error(
-                        f"⚠️⚠️⚠️ CRITICAL: Comparison returned True but headers don't match! "
-                        f"User headers ({len(user_h)}): {user_h}\n"
-                        f"Expected headers ({len(exp_h)}): {exp_h}\n"
-                        f"Missing: {set(exp_h) - set(user_h)}, Extra: {set(user_h) - set(exp_h)}\n"
-                        f"FORCING passed=False"
-                    )
-                    passed = False
-                elif len(user_r) != len(exp_r):
-                    logger.error(
-                        f"⚠️ Comparison returned True but row counts don't match! "
-                        f"User: {len(user_r)} rows, Expected: {len(exp_r)} rows. "
-                        f"Forcing passed=False"
-                    )
-                    passed = False
+        passed = result.get("passed", False)
+        actual_output = result.get("actualOutput", [])
+        error = result.get("error")
+        reason = result.get("reason")
         
-        # Log comparison result for debugging
-        if not passed:
-            logger.error(
-                f"❌ SQL output mismatch for question {request.question_id}. "
-                f"Comparison returned False. Test case FAILED.\n"
-                f"User output:\n{user_output[:500]}\n\nExpected output:\n{expected_output[:500]}"
-            )
-            # Ensure passed is explicitly False
-            passed = False
+        # Convert actual_output to string for display
+        if isinstance(actual_output, list):
+            if actual_output and isinstance(actual_output[0], dict):
+                actual_output_str = json.dumps(actual_output, indent=2)
+            else:
+                actual_output_str = str(actual_output)
         else:
-            logger.warning(
-                f"⚠️ SQL output comparison returned TRUE for question {request.question_id}. "
-                f"Verify this is correct - outputs should match exactly."
-            )
-            # Ensure passed is explicitly True
-            passed = True
+            actual_output_str = str(actual_output) if actual_output else ""
         
-    elif not use_execution_engine_result:
-        # No reference query - just check if query executed successfully
-        # But this should rarely happen - SQL questions should have reference queries
-        passed = user_result["success"]
-        expected_output = None
-        logger.warning(f"SQL question {request.question_id} has no reference query for comparison")
-    
-    # If using execution engine result, passed is already set above
-    if use_execution_engine_result:
-        logger.info(
-            f"Using execution engine result for question {request.question_id}: "
-            f"passed={passed}, test_case_count={'1/1' if passed else '0/1'}"
+        # Convert expected_output to string for display
+        if isinstance(expected_output, list):
+            if expected_output and isinstance(expected_output[0], dict):
+                expected_output_str = json.dumps(expected_output, indent=2)
+            else:
+                expected_output_str = str(expected_output)
+        else:
+            expected_output_str = str(expected_output) if expected_output else ""
+        
+        # Handle SQL errors
+        if error:
+            status = "error"
+            message = f"SQL execution error: {error}"
+            passed = False
+        elif passed:
+            status = "accepted"
+            message = "Query produces correct results!"
+        else:
+            status = "wrong_answer"
+            message = reason or "Query output does not match expected results"
+        
+    except Exception as e:
+        logger.error(f"Error submitting SQL via engine: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to submit SQL query: {str(e)}"
         )
     
     # AI Evaluation
@@ -1741,11 +1466,11 @@ async def submit_sql(
         # Prepare test result with expected output for AI evaluation
         test_result_data = {
             "passed": passed,
-            "user_result": user_result,
-            "reference_result": ref_result if reference_query else None,
-            "error": user_result.get("stderr") if not user_result.get("success") else None,
-            "expected_output": expected_output if expected_output else None,  # Include expected output
-            "user_output": user_output if user_output else None,  # Include user output
+            "user_result": {"success": not bool(error), "stdout": actual_output_str},
+            "reference_result": None,
+            "error": error,
+            "expected_output": expected_output_str if expected_output_str else None,
+            "user_output": actual_output_str if actual_output_str else None,
         }
         
         ai_evaluation = await evaluate_sql_answer(
@@ -1772,31 +1497,20 @@ async def submit_sql(
         # Fallback to binary scoring if AI evaluation fails
         ai_score = 100 if passed else 0
     
-    # Determine status
-    if passed:
-        status = "accepted"
-        message = "Query produces correct results!"
-    else:
-        status = "wrong_answer"
-        message = "Query output does not match expected results"
-    
     # Create test case result structure for consistency with coding questions
-    # CRITICAL: passed status must reflect strict comparison result
     test_case_result = {
         "id": "sql_test_1",
         "test_number": 1,
         "input": "",  # SQL doesn't have input test cases
-        "expected_output": expected_output if expected_output else "",
-        "user_output": user_output,
+        "expected_output": expected_output_str if expected_output_str else "",
+        "user_output": actual_output_str if actual_output_str else "",
         "status": status,
-        "status_id": 3 if passed else 4,  # 3 = accepted, 4 = wrong answer
-        "time": user_result.get("time"),
-        "memory": user_result.get("memory"),
-        "passed": bool(passed),  # Ensure boolean, explicitly use comparison result
+        "status_id": 3 if passed else (4 if not error else 6),  # 3 = accepted, 4 = wrong answer, 6 = error
+        "time": None,  # Engine doesn't return time
+        "memory": None,  # Engine doesn't return memory
+        "passed": bool(passed),
     }
     
-    # CRITICAL: public_summary must reflect the actual comparison result
-    # If headers don't match or data doesn't match, passed should be 0
     public_summary_passed = 1 if passed else 0
     
     logger.info(
@@ -1807,21 +1521,19 @@ async def submit_sql(
     response = {
         "question_id": request.question_id,
         "status": status,
-        "passed": bool(passed),  # Ensure boolean
+        "passed": bool(passed),
         "message": message,
-        "user_output": user_output,
-        "expected_output": expected_output if not passed else None,  # Only show expected on failure
-        "time": user_result.get("time"),
-        "memory": user_result.get("memory"),
-        "score": ai_score,  # Use AI score instead of binary
-        "max_score": ai_max_marks,  # Use AI max marks
-        "ai_evaluation": ai_evaluation,  # Include full AI evaluation
-        # Add test case results for frontend display
+        "user_output": actual_output_str if actual_output_str else "",
+        "expected_output": expected_output_str if not passed and expected_output_str else None,
+        "error": error if error else "",
+        "score": ai_score,
+        "max_score": ai_max_marks,
+        "ai_evaluation": ai_evaluation,
         "test_case_result": test_case_result,
-        "public_results": [test_case_result],  # Single test case for SQL
+        "public_results": [test_case_result],
         "public_summary": {
             "total": 1,
-            "passed": public_summary_passed  # Use explicit variable to ensure correctness
+            "passed": public_summary_passed
         },
     }
     
@@ -1916,109 +1628,50 @@ async def proxy_sql_execute(request: SQLExecuteRequest):
     """
     Proxy endpoint for SQL execution engine /api/execute
     This avoids CORS issues by routing requests through the backend
+    
+    Now uses groupId from question instead of schemas/sample_data
     """
     logger.info(f"Proxying SQL execute request for question {request.questionId}")
     
-    settings = get_dsa_settings()
-    sql_engine_url = getattr(settings, "sql_engine_url", None) or SQL_ENGINE_URL
+    db = get_database()
     
-    if not sql_engine_url:
-        raise HTTPException(
-            status_code=500,
-            detail="SQL_ENGINE_URL is not configured. Please set it in the .env file."
-        )
+    # Get question to retrieve groupId
+    if not ObjectId.is_valid(request.questionId):
+        raise HTTPException(status_code=400, detail="Invalid question ID")
     
-    logger.info(f"Using SQL engine URL from environment: {sql_engine_url}")
+    question = await db.questions.find_one({"_id": ObjectId(request.questionId)})
+    if not question:
+        raise HTTPException(status_code=404, detail="Question not found")
     
-    # Remove /api suffix if present (we'll add it back)
-    base_url = sql_engine_url.rstrip('/')
-    if base_url.endswith('/api'):
-        base_url = base_url[:-4]
+    # Get groupId from question (or ensure it exists)
+    group_id = question.get("groupId")
+    sql_service = get_sql_question_service()
     
-    # Try /api/execute first
-    url = f"{base_url}/api/execute"
-    logger.info(f"Proxying to SQL engine: {url}")
-    
-    timeout = httpx.Timeout(connect=10.0, read=30.0, write=10.0, pool=10.0)
-    
-    try:
-        async with httpx.AsyncClient(timeout=timeout) as client:
-            response = await client.post(
-                url,
-                json={
-                    "questionId": request.questionId,
-                    "code": request.code,
-                    "schemas": request.schemas,
-                    "sample_data": request.sample_data,
-                },
-                headers={"Content-Type": "application/json"},
-            )
-            response.raise_for_status()
-            
-            # Check if response is HTML (error page)
-            response_text = response.text
-            if response_text.strip().startswith('<!DOCTYPE') or 'text/html' in response.headers.get('content-type', ''):
-                logger.warning(f"SQL engine returned HTML for {url}, trying alternative endpoint /execute")
-                # Try without /api prefix
-                alt_url = f"{base_url}/execute"
-                alt_response = await client.post(
-                    alt_url,
-                    json={
-                        "questionId": request.questionId,
-                        "code": request.code,
-                        "schemas": request.schemas,
-                        "sample_data": request.sample_data,
-                    },
-                    headers={"Content-Type": "application/json"},
-                )
-                alt_response.raise_for_status()
-                return alt_response.json()
-            
-            return response.json()
-    except httpx.HTTPStatusError as e:
-        # Check if response is HTML error page
-        response_text = e.response.text if hasattr(e.response, 'text') else str(e.response.content)
-        if response_text.strip().startswith('<!DOCTYPE') or 'text/html' in e.response.headers.get('content-type', ''):
-            logger.warning(f"SQL engine returned HTML error page for {url}, trying alternative endpoint /execute")
-            # Try without /api prefix
-            try:
-                alt_url = f"{base_url}/execute"
-                async with httpx.AsyncClient(timeout=timeout) as client:
-                    alt_response = await client.post(
-                        alt_url,
-                        json={
-                            "questionId": request.questionId,
-                            "code": request.code,
-                            "schemas": request.schemas,
-                            "sample_data": request.sample_data,
-                        },
-                        headers={"Content-Type": "application/json"},
-                    )
-                    alt_response.raise_for_status()
-                    return alt_response.json()
-            except Exception as alt_e:
-                logger.error(f"Alternative endpoint also failed: {alt_e}")
-                raise HTTPException(
-                    status_code=503,
-                    detail=f"SQL execution engine is unavailable. Tried both {url} and {alt_url}. The service may be down or the endpoint path is incorrect."
-                )
+    # If no groupId, try to create one
+    if not group_id:
+        logger.info(f"Question {request.questionId} has no groupId, attempting to create seed")
+        group_id = await sql_service.ensure_question_has_seed(question, db)
         
-        logger.error(f"SQL engine HTTP error: {e.response.status_code} - {response_text[:500]}")
-        raise HTTPException(
-            status_code=e.response.status_code,
-            detail=f"SQL execution engine error: {response_text[:200]}"
+        if not group_id:
+            raise HTTPException(
+                status_code=400,
+                detail="Question has no groupId and seed creation failed. Please ensure question has schemas and sample_data."
+            )
+    
+    # Use SQL engine client directly
+    try:
+        question_id_str = str(question.get("_id"))
+        result = await sql_service.execute_query(
+            question_id=question_id_str,
+            sql_code=request.code,
+            group_id=group_id
         )
-    except httpx.RequestError as e:
-        logger.error(f"SQL engine connection error: {e}")
-        raise HTTPException(
-            status_code=503,
-            detail=f"Failed to connect to SQL execution engine at {url}. Error: {str(e)}"
-        )
+        return result
     except Exception as e:
-        logger.error(f"Unexpected error proxying to SQL engine: {e}", exc_info=True)
+        logger.error(f"Error proxying SQL execute: {e}", exc_info=True)
         raise HTTPException(
             status_code=500,
-            detail=f"Unexpected error: {str(e)}"
+            detail=f"Failed to execute SQL query: {str(e)}"
         )
 
 
@@ -2027,111 +1680,130 @@ async def proxy_sql_submit(request: SQLSubmitRequest):
     """
     Proxy endpoint for SQL execution engine /api/submit
     This avoids CORS issues by routing requests through the backend
+    
+    Now uses groupId from question instead of schemas/sample_data
     """
     logger.info(f"Proxying SQL submit request for question {request.questionId}")
     
-    # Always get fresh settings (not cached) to pick up .env changes
-    settings = DSASettings()
-    sql_engine_url = settings.sql_engine_url
+    db = get_database()
     
-    if not sql_engine_url:
-        raise HTTPException(
-            status_code=500,
-            detail="SQL_ENGINE_URL is not configured. Please set it in the .env file."
-        )
+    # Get question to retrieve groupId and reference_query
+    if not ObjectId.is_valid(request.questionId):
+        raise HTTPException(status_code=400, detail="Invalid question ID")
     
-    logger.info(f"Using SQL engine URL from environment: {sql_engine_url}")
+    question = await db.questions.find_one({"_id": ObjectId(request.questionId)})
+    if not question:
+        raise HTTPException(status_code=404, detail="Question not found")
     
-    # Remove /api suffix if present (we'll add it back)
-    base_url = sql_engine_url.rstrip('/')
-    if base_url.endswith('/api'):
-        base_url = base_url[:-4]
+    # Get groupId from question (or ensure it exists)
+    group_id = question.get("groupId")
+    sql_service = get_sql_question_service()
+    question_id_str = str(question.get("_id"))
     
-    # Try /api/submit first
-    url = f"{base_url}/api/submit"
-    logger.info(f"Proxying to SQL engine: {url}")
-    
-    timeout = httpx.Timeout(connect=10.0, read=30.0, write=10.0, pool=10.0)
-    
-    try:
-        async with httpx.AsyncClient(timeout=timeout) as client:
-            response = await client.post(
-                url,
-                json={
-                    "questionId": request.questionId,
-                    "code": request.code,
-                    "expectedOutput": request.expectedOutput,
-                    "schemas": request.schemas,
-                    "sample_data": request.sample_data,
-                },
-                headers={"Content-Type": "application/json"},
-            )
-            response.raise_for_status()
-            
-            # Check if response is HTML (error page)
-            response_text = response.text
-            if response_text.strip().startswith('<!DOCTYPE') or 'text/html' in response.headers.get('content-type', ''):
-                logger.warning(f"SQL engine returned HTML for {url}, trying alternative endpoint /submit")
-                # Try without /api prefix
-                alt_url = f"{base_url}/submit"
-                alt_response = await client.post(
-                    alt_url,
-                    json={
-                        "questionId": request.questionId,
-                        "code": request.code,
-                        "expectedOutput": request.expectedOutput,
-                        "schemas": request.schemas,
-                        "sample_data": request.sample_data,
-                    },
-                    headers={"Content-Type": "application/json"},
-                )
-                alt_response.raise_for_status()
-                return alt_response.json()
-            
-            return response.json()
-    except httpx.HTTPStatusError as e:
-        # Check if response is HTML error page
-        response_text = e.response.text if hasattr(e.response, 'text') else str(e.response.content)
-        if response_text.strip().startswith('<!DOCTYPE') or 'text/html' in e.response.headers.get('content-type', ''):
-            logger.warning(f"SQL engine returned HTML error page for {url}, trying alternative endpoint /submit")
-            # Try without /api prefix
-            try:
-                alt_url = f"{base_url}/submit"
-                async with httpx.AsyncClient(timeout=timeout) as client:
-                    alt_response = await client.post(
-                        alt_url,
-                        json={
-                            "questionId": request.questionId,
-                            "code": request.code,
-                            "expectedOutput": request.expectedOutput,
-                            "schemas": request.schemas,
-                            "sample_data": request.sample_data,
-                        },
-                        headers={"Content-Type": "application/json"},
-                    )
-                    alt_response.raise_for_status()
-                    return alt_response.json()
-            except Exception as alt_e:
-                logger.error(f"Alternative endpoint also failed: {alt_e}")
-                raise HTTPException(
-                    status_code=503,
-                    detail=f"SQL execution engine is unavailable. Tried both {url} and {alt_url}. The service may be down or the endpoint path is incorrect."
-                )
+    # If no groupId, try to create one
+    if not group_id:
+        logger.info(f"Question {request.questionId} has no groupId, attempting to create seed")
+        group_id = await sql_service.ensure_question_has_seed(question, db)
         
-        logger.error(f"SQL engine HTTP error: {e.response.status_code} - {response_text[:500]}")
-        raise HTTPException(
-            status_code=e.response.status_code,
-            detail=f"SQL execution engine error: {response_text[:200]}"
+        if not group_id:
+            raise HTTPException(
+                status_code=400,
+                detail="Question has no groupId and seed creation failed. Please ensure question has schemas and sample_data."
+            )
+    
+    # Get expected output (from request or generate from reference_query)
+    expected_output = request.expectedOutput
+    if not expected_output:
+        reference_query = question.get("reference_query")
+        if reference_query:
+            try:
+                expected_output = await sql_service.generate_expected_output(
+                    question_id=question_id_str,
+                    reference_query=reference_query,
+                    group_id=group_id
+                )
+            except Exception as e:
+                logger.error(f"Failed to generate expected output: {e}", exc_info=True)
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Failed to generate expected output from reference query: {str(e)}"
+                )
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail="Question has no reference_query and expectedOutput was not provided"
+            )
+    
+    # Use SQL engine client directly
+    try:
+        result = await sql_service.submit_query(
+            question_id=question_id_str,
+            sql_code=request.code,
+            expected_output=expected_output,
+            group_id=group_id
         )
-    except httpx.RequestError as e:
-        logger.error(f"SQL engine connection error: {e}")
-        raise HTTPException(
-            status_code=503,
-            detail=f"Failed to connect to SQL execution engine at {url}. Error: {str(e)}"
-        )
+        return result
     except Exception as e:
-        logger.error(f"Unexpected error proxying to SQL engine: {e}", exc_info=True)
+        logger.error(f"Error proxying SQL submit: {e}", exc_info=True)
         raise HTTPException(
             status_code=500,
-            detail=f"Unexpected error: {str(e)}"
+            detail=f"Failed to submit SQL query: {str(e)}"
+        )
+
+
+class SQLSchemaRequest(BaseModel):
+    """Request model for SQL schema proxy endpoint"""
+    questionId: str
+    groupId: Optional[str] = None
+
+
+@router.post("/assessment/sql-engine/schema")
+async def proxy_sql_schema(request: SQLSchemaRequest):
+    """
+    Proxy endpoint for SQL execution engine /api/schema
+    This avoids CORS issues by routing requests through the backend
+    
+    Returns the database schema (table structure with column types and all data)
+    for the given questionId and optional groupId.
+    """
+    logger.info(f"Proxying SQL schema request for question {request.questionId}")
+    
+    db = get_database()
+    
+    # Get question to retrieve groupId if not provided
+    if not ObjectId.is_valid(request.questionId):
+        raise HTTPException(status_code=400, detail="Invalid question ID")
+    
+    question = await db.questions.find_one({"_id": ObjectId(request.questionId)})
+    if not question:
+        raise HTTPException(status_code=404, detail="Question not found")
+    
+    # Use groupId from request, or fall back to question's groupId
+    group_id = request.groupId or question.get("groupId")
+    sql_service = get_sql_question_service()
+    question_id_str = str(question.get("_id"))
+    
+    # If no groupId, try to create one
+    if not group_id:
+        logger.info(f"Question {request.questionId} has no groupId, attempting to create seed")
+        group_id = await sql_service.ensure_question_has_seed(question, db)
+        
+        if not group_id:
+            raise HTTPException(
+                status_code=400,
+                detail="Question has no groupId and seed creation failed. Please ensure question has schemas and sample_data."
+            )
+    
+    # Use SQL engine client directly
+    try:
+        result = await sql_service.get_schema_for_question(
+            question_id=question_id_str,
+            group_id=group_id
+        )
+        return result
+    except Exception as e:
+        logger.error(f"Error proxying SQL schema: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to fetch SQL schema: {str(e)}"
         )

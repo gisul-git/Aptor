@@ -120,6 +120,9 @@ interface Question {
   sample_data?: Record<string, any[][]>;
   hints?: string[];
   constraints?: string[];
+  groupId?: string; // UUID from SQL engine
+  seedSql?: string; // DDL/INSERT SQL for seeding
+  sql_expected_output?: string; // Expected output from reference query (JSON string)
   // AIML-specific fields
   library?: string;
   tasks?: Array<string | { id: string; title: string; description: string }>;
@@ -3144,6 +3147,9 @@ export default function CandidateAssessmentPage() {
                           constraints: currentQuestion.constraints || sqlData.constraints || [],
                           starter_query: currentQuestion.starter_query || sqlData.starter_query || '-- Write your SQL query here\n\nSELECT ',
                           hints: currentQuestion.hints || sqlData.hints || [],
+                          groupId: currentQuestion.groupId || sqlData.groupId,
+                          seedSql: currentQuestion.seedSql || sqlData.seedSql,
+                          sql_expected_output: currentQuestion.sql_expected_output || sqlData.sql_expected_output,
                         };
 
                         return (
