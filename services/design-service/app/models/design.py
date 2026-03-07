@@ -14,6 +14,7 @@ class DesignRole(str, Enum):
     UX_DESIGNER = "ux_designer"
     PRODUCT_DESIGNER = "product_designer"
     VISUAL_DESIGNER = "visual_designer"
+    INTERACTION_DESIGNER = "interaction_designer"
 
 
 class DifficultyLevel(str, Enum):

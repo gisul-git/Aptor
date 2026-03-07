@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/router'
 import { GetServerSideProps } from 'next'
 import { requireAuth } from '../../../lib/auth'
@@ -55,6 +55,7 @@ export default function DesignQuestionCreatePage() {
   const [aiTaskType, setAiTaskType] = useState('')
   const [taskTypeSuggestions, setTaskTypeSuggestions] = useState<string[]>([])
   const [selectedTaskType, setSelectedTaskType] = useState<string | null>(null)
+  const [manualTaskType, setManualTaskType] = useState('')
   
   // Manual question fields
   const [title, setTitle] = useState('')
@@ -69,6 +70,13 @@ export default function DesignQuestionCreatePage() {
   const [timeLimitMinutes, setTimeLimitMinutes] = useState(60)
 
   const API_URL = process.env.NEXT_PUBLIC_DESIGN_SERVICE_URL || 'http://localhost:3007/api/v1/design'
+
+  // Auto-load suggestions when role, difficulty, and experience are all set
+  useEffect(() => {
+    if (aiRole && aiDifficulty && isAiGenerated) {
+      loadTaskTypeSuggestions()
+    }
+  }, [aiRole, aiDifficulty, aiExperienceYears, isAiGenerated])
 
   // Load task type suggestions when role, difficulty, and experience are selected
   const loadTaskTypeSuggestions = async () => {
@@ -85,14 +93,15 @@ export default function DesignQuestionCreatePage() {
         'ux': 'ux_designer',
         'product': 'product_designer',
         'visual': 'visual_designer',
+        'interaction': 'interaction_designer',
         'ui designer': 'ui_designer',
         'ux designer': 'ux_designer',
         'product designer': 'product_designer',
         'visual designer': 'visual_designer',
+        'interaction designer': 'interaction_designer',
       }
       
       const normalizedRole = roleMap[aiRole.toLowerCase()] || 'ui_designer'
-      const experienceLevel = getExperienceLevelFromYears(aiExperienceYears)
       
       const response = await fetch(`${API_URL}/questions/suggestions`, {
         method: 'POST',
@@ -100,7 +109,7 @@ export default function DesignQuestionCreatePage() {
         body: JSON.stringify({
           role: normalizedRole,
           difficulty: aiDifficulty,
-          experience_level: experienceLevel,
+          experience_years: aiExperienceYears,
           task_type: 'dashboard', // Default, will be replaced by suggestions
         }),
       })
@@ -134,13 +143,6 @@ export default function DesignQuestionCreatePage() {
         setAiExperienceYears(value as number)
         break
     }
-
-    // Check if required fields are filled after state update
-    setTimeout(() => {
-      if (aiRole && aiDifficulty) {
-        loadTaskTypeSuggestions()
-      }
-    }, 100)
   }
 
   const selectTaskType = (taskType: string) => {
@@ -190,39 +192,41 @@ export default function DesignQuestionCreatePage() {
         'ux': 'ux_designer',
         'product': 'product_designer',
         'visual': 'visual_designer',
+        'interaction': 'interaction_designer',
         'ui designer': 'ui_designer',
         'ux designer': 'ux_designer',
         'product designer': 'product_designer',
         'visual designer': 'visual_designer',
-        'graphic designer': 'visual_designer',
-        'brand designer': 'visual_designer',
-        'interaction designer': 'ui_designer',
-        'brand design': 'visual_designer',
-        'graphic design': 'visual_designer',
+        'interaction designer': 'interaction_designer',
       }
       
-      const taskTypeMap: Record<string, string> = {
-        'landing page': 'landing_page',
-        'mobile app': 'mobile_app',
-        'dashboard': 'dashboard',
-        'component': 'component',
-        'website': 'landing_page',
-        'web app': 'mobile_app',
-        'e-commerce': 'landing_page',
-        'ecommerce': 'landing_page',
-        'onboarding flow': 'mobile_app',
-        'user flow': 'mobile_app',
-        'landing': 'landing_page',
+      // Extract task type from topic name
+      // Topics like "Fitness tracking dashboard" -> "dashboard"
+      // Topics like "Recipe discovery mobile app" -> "mobile_app"
+      const extractTaskType = (topic: string): string => {
+        const topicLower = topic.toLowerCase()
+        
+        // Check for keywords in the topic
+        if (topicLower.includes('dashboard') || topicLower.includes('analytics')) {
+          return 'dashboard'
+        } else if (topicLower.includes('mobile app') || topicLower.includes('app') || topicLower.includes('onboarding')) {
+          return 'mobile_app'
+        } else if (topicLower.includes('landing') || topicLower.includes('website') || topicLower.includes('page')) {
+          return 'landing_page'
+        } else if (topicLower.includes('component') || topicLower.includes('library') || topicLower.includes('system')) {
+          return 'component'
+        } else if (topicLower.includes('brand') || topicLower.includes('logo') || topicLower.includes('identity')) {
+          return 'component' // Brand work is component-based
+        } else if (topicLower.includes('wireframe') || topicLower.includes('flow') || topicLower.includes('research')) {
+          return 'mobile_app' // UX work typically mobile/flow based
+        }
+        
+        // Default to dashboard
+        return 'dashboard'
       }
       
       const normalizedRole = roleMap[aiRole.toLowerCase()] || 'ui_designer'
-      const taskTypeMap: Record<string, string> = {
-        'landing page': 'landing_page',
-        'mobile app': 'mobile_app',
-        'dashboard': 'dashboard',
-        'component': 'component',
-      }
-      const normalizedTaskType = taskTypeMap[aiTaskType.toLowerCase()] || aiTaskType.toLowerCase().replace(/\s+/g, '_')
+      const normalizedTaskType = extractTaskType(aiTaskType)
       const experienceLevel = getExperienceLevelFromYears(aiExperienceYears)
       
       const response = await fetch(`${API_URL}/questions/generate`, {
@@ -350,7 +354,7 @@ export default function DesignQuestionCreatePage() {
         <div className="card" style={{ boxShadow: "0 4px 16px rgba(232, 180, 250, 0.15)" }}>
           <div style={{ marginBottom: "2.5rem", paddingBottom: "1.5rem", borderBottom: "2px solid #F3E8FF" }}>
             <h1 style={{ 
-              marginBottom: "0.5rem", 
+              marginBottom: 0, 
               color: "#7C3AED",
               fontSize: "2rem",
               fontWeight: 700,
@@ -358,13 +362,6 @@ export default function DesignQuestionCreatePage() {
             }}>
               Create Design Question
             </h1>
-            <p style={{ 
-              color: "#9333EA", 
-              fontSize: "0.9375rem",
-              margin: 0
-            }}>
-              Generate questions using AI or create them manually
-            </p>
           </div>
 
           {/* Question Type Toggle */}
@@ -457,20 +454,13 @@ export default function DesignQuestionCreatePage() {
                 borderBottom: "1px solid #F3E8FF"
               }}>
                 <h2 style={{ 
-                  marginBottom: "0.5rem", 
+                  marginBottom: 0, 
                   color: "#7C3AED",
                   fontSize: "1.5rem",
                   fontWeight: 600
                 }}>
                   AI Question Generation
                 </h2>
-                <p style={{ 
-                  color: "#9333EA", 
-                  fontSize: "0.875rem",
-                  margin: 0
-                }}>
-                  Let AI generate a comprehensive design question based on your requirements
-                </p>
               </div>
               
               {/* Step 1: Design Role */}
@@ -505,6 +495,7 @@ export default function DesignQuestionCreatePage() {
                   <option value="UX Designer" />
                   <option value="Product Designer" />
                   <option value="Visual Designer" />
+                  <option value="Interaction Designer" />
                 </datalist>
               </div>
 
@@ -543,7 +534,7 @@ export default function DesignQuestionCreatePage() {
               <div style={{ marginBottom: "2rem" }}>
                 <label style={{ 
                   display: "block", 
-                  marginBottom: "0.625rem", 
+                  marginBottom: "0.75rem", 
                   fontWeight: 600,
                   color: "#7C3AED",
                   fontSize: "0.9375rem"
@@ -551,33 +542,35 @@ export default function DesignQuestionCreatePage() {
                   Experience Level <span style={{ color: "#DC2626" }}>*</span>
                 </label>
                 <div style={{
-                  padding: "1.5rem",
-                  backgroundColor: "#F3E8FF",
-                  borderRadius: "0.75rem",
-                  border: "1px solid #E8B4FA"
+                  padding: "1.25rem 1.5rem",
+                  backgroundColor: "#FFFFFF",
+                  borderRadius: "0.5rem",
+                  border: "1px solid #E5E7EB"
                 }}>
                   <div style={{ 
                     display: "flex", 
                     justifyContent: "space-between", 
                     alignItems: "center",
-                    marginBottom: "1rem"
+                    marginBottom: "0.875rem"
                   }}>
                     <span style={{ 
-                      fontSize: "0.875rem", 
-                      color: "#6B7280" 
+                      fontSize: "0.8125rem", 
+                      color: "#9CA3AF",
+                      fontWeight: 500
                     }}>
                       0 years
                     </span>
                     <span style={{ 
-                      fontSize: "1.25rem", 
-                      fontWeight: 700,
-                      color: "#9333EA"
+                      fontSize: "1.125rem", 
+                      fontWeight: 600,
+                      color: "#7C3AED"
                     }}>
                       {aiExperienceYears} {aiExperienceYears === 1 ? 'year' : 'years'}
                     </span>
                     <span style={{ 
-                      fontSize: "0.875rem", 
-                      color: "#6B7280" 
+                      fontSize: "0.8125rem", 
+                      color: "#9CA3AF",
+                      fontWeight: 500
                     }}>
                       15 years
                     </span>
@@ -588,43 +581,67 @@ export default function DesignQuestionCreatePage() {
                     max="15"
                     value={aiExperienceYears}
                     onChange={(e) => handleFieldChange('experience', parseInt(e.target.value))}
+                    className="custom-range-slider"
                     style={{
                       width: "100%",
-                      height: "8px",
-                      borderRadius: "4px",
-                      background: `linear-gradient(to right, #9333EA 0%, #9333EA ${(aiExperienceYears / 15) * 100}%, #E8B4FA ${(aiExperienceYears / 15) * 100}%, #E8B4FA 100%)`,
                       outline: "none",
                       cursor: "pointer",
-                      WebkitAppearance: "none",
                     }}
                   />
                   <style jsx>{`
-                    input[type="range"]::-webkit-slider-thumb {
+                    .custom-range-slider {
                       -webkit-appearance: none;
                       appearance: none;
-                      width: 24px;
-                      height: 24px;
-                      border-radius: 50%;
-                      background: #9333EA;
-                      cursor: pointer;
-                      border: 3px solid #ffffff;
-                      box-shadow: 0 2px 8px rgba(147, 51, 234, 0.3);
+                      height: 2px !important;
+                      border-radius: 1px;
+                      background: linear-gradient(to right, #7C3AED 0%, #7C3AED ${(aiExperienceYears / 15) * 100}%, #E5E7EB ${(aiExperienceYears / 15) * 100}%, #E5E7EB 100%);
                     }
-                    input[type="range"]::-moz-range-thumb {
-                      width: 24px;
-                      height: 24px;
+                    .custom-range-slider::-webkit-slider-track {
+                      height: 2px;
+                      background: transparent;
+                    }
+                    .custom-range-slider::-moz-range-track {
+                      height: 2px;
+                      background: transparent;
+                    }
+                    .custom-range-slider::-webkit-slider-thumb {
+                      -webkit-appearance: none;
+                      appearance: none;
+                      width: 16px;
+                      height: 16px;
                       border-radius: 50%;
-                      background: #9333EA;
+                      background: #7C3AED;
                       cursor: pointer;
-                      border: 3px solid #ffffff;
-                      box-shadow: 0 2px 8px rgba(147, 51, 234, 0.3);
+                      border: 2px solid #ffffff;
+                      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+                      transition: all 0.15s ease;
+                      margin-top: -7px;
+                    }
+                    .custom-range-slider::-webkit-slider-thumb:hover {
+                      transform: scale(1.1);
+                      box-shadow: 0 2px 6px rgba(124, 58, 237, 0.3);
+                    }
+                    .custom-range-slider::-moz-range-thumb {
+                      width: 16px;
+                      height: 16px;
+                      border-radius: 50%;
+                      background: #7C3AED;
+                      cursor: pointer;
+                      border: 2px solid #ffffff;
+                      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+                      transition: all 0.15s ease;
+                    }
+                    .custom-range-slider::-moz-range-thumb:hover {
+                      transform: scale(1.1);
+                      box-shadow: 0 2px 6px rgba(124, 58, 237, 0.3);
                     }
                   `}</style>
                   <div style={{ 
                     marginTop: "0.75rem",
-                    fontSize: "0.875rem",
+                    fontSize: "0.8125rem",
                     color: "#6B7280",
-                    textAlign: "center"
+                    textAlign: "center",
+                    fontWeight: 500
                   }}>
                     {aiExperienceYears === 0 && "Fresher / Entry Level"}
                     {aiExperienceYears > 0 && aiExperienceYears <= 3 && "Junior Designer"}
@@ -635,122 +652,164 @@ export default function DesignQuestionCreatePage() {
                 </div>
               </div>
 
-              {/* Step 4: Task Type Suggestions */}
-              {taskTypeSuggestions.length > 0 && (
-                <div style={{ 
-                  marginBottom: "1.5rem",
-                }}>
-                  <label style={{ 
-                    display: "block", 
-                    marginBottom: "1rem", 
-                    fontWeight: 600,
-                    color: "#7C3AED",
-                    fontSize: "1rem"
-                  }}>
-                    💡 AI Suggested Task Types <span style={{ color: "#DC2626" }}>*</span>
-                  </label>
-                  <p style={{ 
-                    fontSize: "0.875rem", 
-                    color: "#6B7280", 
-                    marginBottom: "1rem" 
-                  }}>
-                    Based on your role, experience, and difficulty level
-                  </p>
-                  <div style={{ 
-                    display: "grid", 
-                    gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
-                    gap: "0.75rem",
-                    marginBottom: "1rem"
-                  }}>
-                    {taskTypeSuggestions.map((suggestion, idx) => (
-                      <div
-                        key={idx}
-                        onClick={() => selectTaskType(suggestion)}
-                        style={{
-                          padding: "1rem",
-                          backgroundColor: selectedTaskType === suggestion ? "#9333EA" : "#ffffff",
-                          color: selectedTaskType === suggestion ? "#ffffff" : "#7C3AED",
-                          border: selectedTaskType === suggestion ? "2px solid #9333EA" : "2px solid #E8B4FA",
-                          borderRadius: "0.75rem",
-                          cursor: "pointer",
-                          transition: "all 0.2s ease",
-                          textAlign: "center",
-                          fontWeight: selectedTaskType === suggestion ? 600 : 500,
-                          fontSize: "0.9375rem",
-                          boxShadow: selectedTaskType === suggestion ? "0 4px 12px rgba(147, 51, 234, 0.3)" : "none",
-                          transform: selectedTaskType === suggestion ? "translateY(-2px)" : "none",
-                        }}
-                        onMouseEnter={(e) => {
-                          if (selectedTaskType !== suggestion) {
-                            e.currentTarget.style.backgroundColor = "#F3E8FF"
-                            e.currentTarget.style.transform = "translateY(-2px)"
-                          }
-                        }}
-                        onMouseLeave={(e) => {
-                          if (selectedTaskType !== suggestion) {
-                            e.currentTarget.style.backgroundColor = "#ffffff"
-                            e.currentTarget.style.transform = "none"
-                          }
-                        }}
-                      >
-                        {suggestion}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {loadingSuggestions && (
-                <div style={{
-                  padding: "1rem",
-                  backgroundColor: "#F3E8FF",
-                  color: "#7C3AED",
-                  borderRadius: "0.5rem",
-                  marginBottom: "1.5rem",
-                  textAlign: "center",
-                  fontWeight: 500
-                }}>
-                  🔄 Loading AI suggestions...
-                </div>
-              )}
-
-              {/* Manual Task Type Input */}
-              {taskTypeSuggestions.length > 0 && (
-                <div style={{ marginBottom: "1.5rem" }}>
-                  <label style={{ 
-                    display: "block", 
-                    marginBottom: "0.625rem", 
-                    fontWeight: 600,
-                    color: "#7C3AED",
-                    fontSize: "0.9375rem"
-                  }}>
-                    Or type your own task type
-                  </label>
-                  <input
-                    type="text"
-                    value={manualTaskType}
-                    onChange={(e) => handleManualTaskType(e.target.value)}
-                    placeholder="e.g., Music streaming dashboard, Recipe discovery app"
-                    style={{
-                      width: "100%",
-                      padding: "0.875rem 1rem",
-                      border: manualTaskType ? "2px solid #9333EA" : "1px solid #E8B4FA",
+              {/* Step 4: Topic Suggestions (appears after role, difficulty, experience are selected) */}
+              {aiRole && aiDifficulty && (
+                <div style={{ marginBottom: "2rem" }}>
+                  {loadingSuggestions ? (
+                    <div style={{
+                      padding: "2rem",
+                      backgroundColor: "#F9FAFB",
                       borderRadius: "0.5rem",
-                      fontSize: "0.9375rem",
-                      transition: "all 0.2s ease",
-                      backgroundColor: manualTaskType ? "#F3E8FF" : "#ffffff",
-                    }}
-                  />
-                  {manualTaskType && (
-                    <p style={{ 
-                      fontSize: "0.75rem", 
-                      color: "#9333EA", 
-                      marginTop: "0.5rem",
-                      fontWeight: 500
+                      border: "1px solid #E5E7EB",
+                      textAlign: "center"
                     }}>
-                      ✓ Using custom task type: "{manualTaskType}"
-                    </p>
-                  )}
+                      <div style={{
+                        display: "inline-block",
+                        width: "24px",
+                        height: "24px",
+                        border: "3px solid #E5E7EB",
+                        borderTop: "3px solid #7C3AED",
+                        borderRadius: "50%",
+                        animation: "spin 0.8s linear infinite"
+                      }}></div>
+                      <style jsx>{`
+                        @keyframes spin {
+                          0% { transform: rotate(0deg); }
+                          100% { transform: rotate(360deg); }
+                        }
+                      `}</style>
+                      <p style={{ 
+                        marginTop: "0.75rem",
+                        color: "#6B7280",
+                        fontSize: "0.875rem",
+                        fontWeight: 500
+                      }}>
+                        Loading AI topic suggestions...
+                      </p>
+                    </div>
+                  ) : taskTypeSuggestions.length > 0 ? (
+                    <>
+                      <label style={{ 
+                        display: "block", 
+                        marginBottom: "0.75rem", 
+                        fontWeight: 600,
+                        color: "#7C3AED",
+                        fontSize: "0.9375rem"
+                      }}>
+                        Topic <span style={{ color: "#DC2626" }}>*</span>
+                      </label>
+                      <p style={{ 
+                        fontSize: "0.8125rem", 
+                        color: "#6B7280", 
+                        marginBottom: "1rem",
+                        fontWeight: 500
+                      }}>
+                        Select a suggested topic or type your own
+                      </p>
+                      
+                      {/* Topic Suggestions - Compact Pills */}
+                      <div style={{ 
+                        display: "flex",
+                        flexWrap: "wrap",
+                        gap: "0.5rem",
+                        marginBottom: "1rem"
+                      }}>
+                        {taskTypeSuggestions.map((suggestion, idx) => (
+                          <button
+                            key={idx}
+                            type="button"
+                            onClick={() => selectTaskType(suggestion)}
+                            style={{
+                              padding: selectedTaskType === suggestion ? "0.625rem 1.25rem" : "0.5rem 1rem",
+                              backgroundColor: selectedTaskType === suggestion ? "#7C3AED" : "#F3F4F6",
+                              color: selectedTaskType === suggestion ? "#FFFFFF" : "#374151",
+                              border: selectedTaskType === suggestion ? "2px solid #7C3AED" : "1px solid #E5E7EB",
+                              borderRadius: "9999px",
+                              cursor: "pointer",
+                              transition: "all 0.2s ease",
+                              fontWeight: selectedTaskType === suggestion ? 700 : 500,
+                              fontSize: selectedTaskType === suggestion ? "0.875rem" : "0.8125rem",
+                              whiteSpace: "nowrap",
+                              boxShadow: selectedTaskType === suggestion ? "0 4px 12px rgba(124, 58, 237, 0.35)" : "none",
+                              transform: selectedTaskType === suggestion ? "scale(1.05)" : "scale(1)",
+                            }}
+                            onMouseEnter={(e) => {
+                              if (selectedTaskType !== suggestion) {
+                                e.currentTarget.style.borderColor = "#7C3AED"
+                                e.currentTarget.style.backgroundColor = "#EDE9FE"
+                                e.currentTarget.style.color = "#7C3AED"
+                                e.currentTarget.style.transform = "scale(1.02)"
+                              }
+                            }}
+                            onMouseLeave={(e) => {
+                              if (selectedTaskType !== suggestion) {
+                                e.currentTarget.style.borderColor = "#E5E7EB"
+                                e.currentTarget.style.backgroundColor = "#F3F4F6"
+                                e.currentTarget.style.color = "#374151"
+                                e.currentTarget.style.transform = "scale(1)"
+                              }
+                            }}
+                          >
+                            {suggestion}
+                          </button>
+                        ))}
+                      </div>
+
+                      {/* Custom Topic Input */}
+                      <div style={{ 
+                        padding: "1rem",
+                        backgroundColor: "#F9FAFB",
+                        borderRadius: "0.5rem",
+                        border: "1px solid #E5E7EB"
+                      }}>
+                        <label style={{ 
+                          display: "block", 
+                          marginBottom: "0.5rem", 
+                          fontWeight: 500,
+                          color: "#6B7280",
+                          fontSize: "0.8125rem"
+                        }}>
+                          Or enter your own topic
+                        </label>
+                        <input
+                          type="text"
+                          value={manualTaskType}
+                          onChange={(e) => handleManualTaskType(e.target.value)}
+                          placeholder="e.g., Music streaming dashboard, Recipe discovery app"
+                          style={{
+                            width: "100%",
+                            padding: "0.75rem 1rem",
+                            border: manualTaskType ? "2px solid #7C3AED" : "1px solid #D1D5DB",
+                            borderRadius: "0.5rem",
+                            fontSize: "0.875rem",
+                            transition: "all 0.2s ease",
+                            backgroundColor: "#FFFFFF",
+                            outline: "none"
+                          }}
+                          onFocus={(e) => {
+                            if (!manualTaskType) {
+                              e.currentTarget.style.borderColor = "#7C3AED"
+                            }
+                          }}
+                          onBlur={(e) => {
+                            if (!manualTaskType) {
+                              e.currentTarget.style.borderColor = "#D1D5DB"
+                            }
+                          }}
+                        />
+                        {manualTaskType && (
+                          <p style={{ 
+                            fontSize: "0.75rem", 
+                            color: "#7C3AED", 
+                            marginTop: "0.5rem",
+                            fontWeight: 500
+                          }}>
+                            ✓ Using custom topic: "{manualTaskType}"
+                          </p>
+                        )}
+                      </div>
+                    </>
+                  ) : null}
                 </div>
               )}
 

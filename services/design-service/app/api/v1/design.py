@@ -109,10 +109,13 @@ class EvaluationResponse(BaseModel):
 async def get_topic_suggestions(request: TopicSuggestionsRequest):
     """Get AI-generated topic suggestions based on role, difficulty, experience, and task type"""
     try:
+        # Convert experience_years to experience_level string
+        experience_level = getExperienceLevelFromYears(request.experience_years)
+        
         suggestions = await ai_question_generator.generate_topic_suggestions(
             role=request.role,
             difficulty=request.difficulty,
-            experience_level=request.experience_level,
+            experience_level=experience_level,
             task_type=request.task_type
         )
         
@@ -121,6 +124,17 @@ async def get_topic_suggestions(request: TopicSuggestionsRequest):
     except Exception as e:
         logger.error(f"Topic suggestion generation failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# Helper function to convert years to experience level
+def getExperienceLevelFromYears(years: int) -> str:
+    if years == 0:
+        return 'fresher'
+    if years <= 3:
+        return '1-3 years'
+    if years <= 5:
+        return '3-5 years'
+    return 'senior'
 
 
 @router.post("/questions/generate", response_model=DesignQuestionModel)
@@ -1603,7 +1617,7 @@ async def send_invitation(test_id: str, request: SendInvitationRequest):
         
         # Build test URL
         import os
-        frontend_url = os.getenv("FRONTEND_URL", "http://localhost:3002")
+        frontend_url = os.getenv("FRONTEND_URL", "http://localhost:3000")
         test_link = f"{frontend_url}/design/tests/{test_id}/take?token={test_token}"
         
         # Get candidate details
@@ -1784,7 +1798,7 @@ async def send_invitations_to_all(test_id: str):
         
         # Build test URL
         import os
-        frontend_url = os.getenv("FRONTEND_URL", "http://localhost:3002")
+        frontend_url = os.getenv("FRONTEND_URL", "http://localhost:3000")
         test_link = f"{frontend_url}/design/tests/{test_id}/take?token={test_token}"
         
         # Get test details
