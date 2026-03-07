@@ -35,9 +35,19 @@ interface EngineLikeResponse {
 }
 
 const EXECUTION_API_BASE =
-  process.env.DEVOPS_EXECUTION_API_URL || "http://127.0.0.1:8000";
+  process.env.DEVOPS_EXECUTION_API_URL || "http://127.0.0.1:8010";
 const LINT_API_BASE = process.env.DEVOPS_LINT_API_URL || "http://127.0.0.1:8002";
-const EXECUTION_BASE = EXECUTION_API_BASE.replace(/\/+$/, "").replace(/\/api$/, "");
+const EXECUTION_BASES = Array.from(
+  new Set(
+    [
+      EXECUTION_API_BASE,
+      "http://127.0.0.1:8010",
+      "http://localhost:8010",
+      "http://127.0.0.1:8000",
+      "http://localhost:8000",
+    ].map((v) => v.replace(/\/+$/, "").replace(/\/api$/, ""))
+  )
+);
 
 function lintGithubActionsFallback(content: string): {
   status: "passed" | "failed";
@@ -129,31 +139,51 @@ export default async function handler(
         });
       }
 
-      let response = await fetch(`${EXECUTION_BASE}/api/execute`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ command: body.command }),
-      });
-      if (response.status === 404) {
-        response = await fetch(`${EXECUTION_BASE}/execute`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ command: body.command }),
-        });
+      let response: Response | null = null;
+      let data: Record<string, unknown> = {};
+      let lastError = "";
+
+      for (const base of EXECUTION_BASES) {
+        try {
+          response = await fetch(`${base}/api/execute`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ command: body.command }),
+          });
+          if (response.status === 404) {
+            response = await fetch(`${base}/execute`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ command: body.command }),
+            });
+          }
+          data = await safeJsonParse(response);
+          if (response.ok || response.status !== 422) break;
+
+          response = await fetch(`${base}/execute`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              session_id: `devops-${Date.now()}`,
+              mode: "aws",
+              command: body.command,
+            }),
+          });
+          data = await safeJsonParse(response);
+          if (response.ok) break;
+        } catch (err: any) {
+          lastError = err?.message || String(err);
+          response = null;
+        }
       }
-      let data = await safeJsonParse(response);
-      // Compatibility fallback for services/cloud engine payload schema
-      if (!response.ok && response.status === 422) {
-        response = await fetch(`${EXECUTION_BASE}/execute`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            session_id: `devops-${Date.now()}`,
-            mode: "aws",
-            command: body.command,
-          }),
+
+      if (!response) {
+        return res.status(503).json({
+          ok: false,
+          status: "error",
+          engine: "execution",
+          message: `Execution engine unreachable. Tried: ${EXECUTION_BASES.join(", ")}. Last error: ${lastError}`,
         });
-        data = await safeJsonParse(response);
       }
 
       if (!response.ok) {
@@ -183,40 +213,60 @@ export default async function handler(
           ? body.terraformFiles
           : { "main.tf": "" };
 
-      let response = await fetch(`${EXECUTION_BASE}/api/terraform/execute`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: terraformAction,
-          terraform_files: terraformFiles,
-          auto_approve: Boolean(body.autoApprove),
-        }),
-      });
-      if (response.status === 404) {
-        response = await fetch(`${EXECUTION_BASE}/terraform/execute`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            action: terraformAction,
-            terraform_files: terraformFiles,
-            auto_approve: Boolean(body.autoApprove),
-          }),
-        });
+      let response: Response | null = null;
+      let data: Record<string, unknown> = {};
+      let lastError = "";
+      for (const base of EXECUTION_BASES) {
+        try {
+          response = await fetch(`${base}/api/terraform/execute`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              action: terraformAction,
+              terraform_files: terraformFiles,
+              auto_approve: Boolean(body.autoApprove),
+            }),
+          });
+          if (response.status === 404) {
+            response = await fetch(`${base}/terraform/execute`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                action: terraformAction,
+                terraform_files: terraformFiles,
+                auto_approve: Boolean(body.autoApprove),
+              }),
+            });
+          }
+          data = await safeJsonParse(response);
+          if (response.ok) break;
+          if (response.status === 404 || response.status === 422) {
+            response = await fetch(`${base}/execute`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                session_id: `devops-tf-${Date.now()}`,
+                mode: "terraform",
+                terraform_code: terraformFiles["main.tf"] || "",
+                terraform_action: terraformAction,
+              }),
+            });
+            data = await safeJsonParse(response);
+            if (response.ok) break;
+          }
+        } catch (err: any) {
+          lastError = err?.message || String(err);
+          response = null;
+        }
       }
-      let data = await safeJsonParse(response);
-      // Compatibility fallback for services/cloud engine route/payload
-      if (!response.ok && (response.status === 404 || response.status === 422)) {
-        response = await fetch(`${EXECUTION_BASE}/execute`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            session_id: `devops-tf-${Date.now()}`,
-            mode: "terraform",
-            terraform_code: terraformFiles["main.tf"] || "",
-            terraform_action: terraformAction,
-          }),
+
+      if (!response) {
+        return res.status(503).json({
+          ok: false,
+          status: "error",
+          engine: "terraform",
+          message: `Terraform engine unreachable. Tried: ${EXECUTION_BASES.join(", ")}. Last error: ${lastError}`,
         });
-        data = await safeJsonParse(response);
       }
 
       if (!response.ok) {

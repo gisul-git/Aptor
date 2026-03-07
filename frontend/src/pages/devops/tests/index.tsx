@@ -6,6 +6,7 @@ import {
   AlertCircle,
   Calendar,
   Clock,
+  Copy,
   Eye,
   EyeOff,
   List,
@@ -26,6 +27,7 @@ interface DevOpsTestCard {
   is_published?: boolean;
   invited_users?: string[];
   question_ids?: string[];
+  test_token?: string;
   created_at?: string;
 }
 
@@ -40,6 +42,7 @@ export default function DevOpsTestsListPage() {
   const router = useRouter();
   const { data: testsData, isLoading: loading, refetch } = useDevOpsTests();
   const [tests, setTests] = useState<DevOpsTestCard[]>([]);
+  const [loadingById, setLoadingById] = useState(false);
 
   useEffect(() => {
     const apiTests = Array.isArray(testsData) ? (testsData as any[]) : [];
@@ -54,25 +57,57 @@ export default function DevOpsTestsListPage() {
       is_published: t.is_published || false,
       invited_users: t.invited_users || [],
       question_ids: t.question_ids || t.questions?.map((q: any) => q.id || q) || [],
+      test_token: t.test_token || "",
       created_at: t.created_at || t.createdAt,
     }));
-
-    let localTests: DevOpsTestCard[] = [];
-    try {
-      const localRaw = sessionStorage.getItem("devopsLocalTests");
-      localTests = localRaw ? (JSON.parse(localRaw) as DevOpsTestCard[]) : [];
-    } catch {
-      localTests = [];
-    }
-
-    const merged = [...mappedApi];
-    localTests.forEach((lt) => {
-      if (!merged.some((m) => String(m.id) === String(lt.id))) {
-        merged.unshift(lt);
-      }
-    });
-    setTests(merged);
+    setTests(mappedApi);
   }, [testsData]);
+
+  useEffect(() => {
+    const q = router.query.testId;
+    const testId = typeof q === "string" ? q : Array.isArray(q) ? q[0] : undefined;
+    if (!testId) return;
+    if (tests.some((t) => String(t.id) === String(testId))) return;
+
+    let active = true;
+    const fetchById = async () => {
+      setLoadingById(true);
+      try {
+        const response = await fetch(`/api/devops/get-test?id=${encodeURIComponent(testId)}`);
+        const json = await response.json().catch(() => ({}));
+        if (!response.ok) return;
+        const t = json?.data || json;
+        if (!t || !t.id) return;
+        const mapped: DevOpsTestCard = {
+          id: String(t.id || t._id || ""),
+          title: t.title || "Untitled DevOps Test",
+          description: t.description || "",
+          duration_minutes: t.duration_minutes || t.duration || 60,
+          start_time: t.start_time || t.schedule?.startTime,
+          end_time: t.end_time || t.schedule?.endTime,
+          is_active: t.is_active !== undefined ? t.is_active : true,
+          is_published: t.is_published || false,
+          invited_users: t.invited_users || [],
+          question_ids: t.question_ids || t.questions?.map((q: any) => q.id || q) || [],
+          test_token: t.test_token || "",
+          created_at: t.created_at || t.createdAt,
+        };
+        if (active) {
+          setTests((prev) => {
+            if (prev.some((x) => String(x.id) === String(mapped.id))) return prev;
+            return [mapped, ...prev];
+          });
+        }
+      } finally {
+        if (active) setLoadingById(false);
+      }
+    };
+
+    fetchById();
+    return () => {
+      active = false;
+    };
+  }, [router.query.testId, tests]);
 
   const filteredTests = useMemo(() => {
     const q = router.query.testId;
@@ -83,14 +118,6 @@ export default function DevOpsTestsListPage() {
 
   const updateLocalTest = (id: string, patch: Partial<DevOpsTestCard>) => {
     setTests((prev) => prev.map((t) => (String(t.id) === String(id) ? { ...t, ...patch } : t)));
-    try {
-      const localRaw = sessionStorage.getItem("devopsLocalTests");
-      const localTests = localRaw ? (JSON.parse(localRaw) as DevOpsTestCard[]) : [];
-      const next = localTests.map((t) => (String(t.id) === String(id) ? { ...t, ...patch } : t));
-      sessionStorage.setItem("devopsLocalTests", JSON.stringify(next));
-    } catch {
-      // ignore
-    }
   };
 
   const handlePublish = async (testId: string, currentStatus: boolean) => {
@@ -104,11 +131,12 @@ export default function DevOpsTestsListPage() {
       }
       await refetch();
     } catch {
-      // Keep optimistic local status if backend endpoint is unavailable.
+      // Revert optimistic update if backend failed.
+      updateLocalTest(testId, { is_published: currentStatus });
     }
   };
 
-  if (loading) {
+  if (loading || loadingById) {
     return (
       <div style={{ backgroundColor: "#FAFCFB", minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center" }}>
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "1rem", color: "#00684A" }}>
@@ -137,7 +165,10 @@ export default function DevOpsTestsListPage() {
               border: "none",
               fontWeight: 600,
               cursor: "pointer",
+              transition: "color 0.2s ease",
             }}
+            onMouseOver={(e) => (e.currentTarget.style.color = "#00684A")}
+            onMouseOut={(e) => (e.currentTarget.style.color = "#6B7280")}
           >
             <ArrowLeft size={16} strokeWidth={2.5} /> Back
           </button>
@@ -149,7 +180,7 @@ export default function DevOpsTestsListPage() {
               Test Management
             </h1>
             <p style={{ color: "#6B7280", fontSize: "1rem", margin: 0 }}>
-              Manage your DevOps assessments and publish them for candidates.
+              Manage your DevOps assessments, publish tests, and review configurations.
             </p>
           </div>
           <button
@@ -163,7 +194,11 @@ export default function DevOpsTestsListPage() {
               border: "none",
               borderRadius: "9999px",
               cursor: "pointer",
+              boxShadow: "0 4px 6px -1px rgba(0, 104, 74, 0.2)",
+              transition: "all 0.2s ease",
             }}
+            onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#084A2A")}
+            onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "#00684A")}
           >
             Save & Exit
           </button>
@@ -188,23 +223,33 @@ export default function DevOpsTestsListPage() {
                   border: "1px solid #E5E7EB",
                   boxShadow: "0 1px 3px rgba(0,0,0,0.05)",
                   padding: "2rem",
+                  transition: "all 0.2s ease",
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.borderColor = "#00684A";
+                  e.currentTarget.style.boxShadow = "0 8px 16px rgba(0, 104, 74, 0.08)";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.borderColor = "#E5E7EB";
+                  e.currentTarget.style.boxShadow = "0 1px 3px rgba(0,0,0,0.05)";
                 }}
               >
                 <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "2rem", flexWrap: "wrap" }}>
-                  <div style={{ flex: 1, minWidth: "300px" }}>
+                  <div style={{ flex: 1, minWidth: "350px" }}>
                     <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginBottom: "0.5rem", flexWrap: "wrap" }}>
                       <h3 style={{ margin: 0, color: "#111827", fontSize: "1.25rem", fontWeight: 700 }}>{test.title}</h3>
-                      <span style={{ padding: "0.25rem 0.625rem", borderRadius: "2rem", fontSize: "0.75rem", fontWeight: 600, color: test.is_active ? "#059669" : "#4B5563", backgroundColor: test.is_active ? "#D1FAE5" : "#F3F4F6" }}>
+                      <span style={{ display: "inline-flex", alignItems: "center", gap: "0.375rem", padding: "0.25rem 0.625rem", borderRadius: "2rem", fontSize: "0.75rem", fontWeight: 600, color: test.is_active ? "#059669" : "#4B5563", backgroundColor: test.is_active ? "#D1FAE5" : "#F3F4F6", border: `1px solid ${test.is_active ? "#A7F3D0" : "#E5E7EB"}` }}>
+                        <span style={{ width: "6px", height: "6px", borderRadius: "50%", backgroundColor: test.is_active ? "#059669" : "#6B7280" }} />
                         {test.is_active ? "Active" : "Inactive"}
                       </span>
-                      <span style={{ padding: "0.25rem 0.625rem", borderRadius: "2rem", fontSize: "0.75rem", fontWeight: 600, color: test.is_published ? "#00684A" : "#6B7280", backgroundColor: test.is_published ? "#E8FAF0" : "#F3F4F6" }}>
+                      <span style={{ display: "inline-flex", alignItems: "center", gap: "0.375rem", padding: "0.25rem 0.625rem", borderRadius: "2rem", fontSize: "0.75rem", fontWeight: 600, color: test.is_published ? "#00684A" : "#6B7280", backgroundColor: test.is_published ? "#E8FAF0" : "#F3F4F6", border: `1px solid ${test.is_published ? "#A8E8BC" : "#E5E7EB"}` }}>
                         {test.is_published ? "Published" : "Draft"}
                       </span>
                     </div>
 
                     <p style={{ margin: "0 0 1rem 0", color: "#4B5563", fontSize: "0.95rem", lineHeight: "1.5" }}>{test.description || "No description"}</p>
 
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: "0.75rem" }}>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: "0.75rem", marginBottom: "1.25rem" }}>
                       <span style={{ display: "flex", alignItems: "center", gap: "0.375rem", fontSize: "0.8rem", color: "#6B7280", backgroundColor: "#F9FAFB", padding: "0.375rem 0.75rem", borderRadius: "0.5rem", border: "1px solid #E5E7EB", fontWeight: 500 }}>
                         <Clock size={14} /> {test.duration_minutes || 60} mins
                       </span>
@@ -218,9 +263,44 @@ export default function DevOpsTestsListPage() {
                         <List size={14} /> {test.question_ids?.length || 0} Questions
                       </span>
                     </div>
+
+                    {test.is_published && test.test_token && (
+                      <div style={{ padding: "1rem", backgroundColor: "#F0F9F4", border: "1px solid #A8E8BC", borderRadius: "0.5rem", marginTop: "1rem" }}>
+                        <label style={{ display: "block", fontSize: "0.75rem", fontWeight: 700, color: "#00684A", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "0.5rem" }}>
+                          Assessment Link
+                        </label>
+                        <div style={{ display: "flex", gap: "0.5rem" }}>
+                          <input
+                            type="text"
+                            value={`${typeof window !== "undefined" ? window.location.origin : ""}/devops/tests/${test.id}/take?token=${encodeURIComponent(test.test_token)}`}
+                            readOnly
+                            style={{ flex: 1, padding: "0.5rem 0.75rem", border: "1px solid #D1D5DB", borderRadius: "0.375rem", backgroundColor: "#ffffff", fontSize: "0.875rem", fontFamily: "monospace", color: "#374151", outline: "none" }}
+                          />
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              const link = `${window.location.origin}/devops/tests/${test.id}/take?token=${encodeURIComponent(test.test_token || "")}`;
+                              try {
+                                await navigator.clipboard.writeText(link);
+                              } catch {
+                                const input = document.createElement("input");
+                                input.value = link;
+                                document.body.appendChild(input);
+                                input.select();
+                                document.execCommand("copy");
+                                document.body.removeChild(input);
+                              }
+                            }}
+                            style={{ display: "flex", alignItems: "center", gap: "0.375rem", padding: "0.5rem 1rem", backgroundColor: "#00684A", border: "1px solid #00684A", borderRadius: "0.375rem", color: "#ffffff", fontSize: "0.875rem", fontWeight: 600, cursor: "pointer" }}
+                          >
+                            <Copy size={14} /> Copy
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </div>
 
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem", alignItems: "flex-start", justifyContent: "flex-end", minWidth: "220px" }}>
+                  <div style={{ width: "260px", display: "flex", flexDirection: "column", gap: "0.5rem" }}>
                     <button
                       onClick={() => handlePublish(test.id, !!test.is_published)}
                       style={{
@@ -243,7 +323,7 @@ export default function DevOpsTestsListPage() {
                       {test.is_published ? "Unpublish" : "Publish"}
                     </button>
 
-                    <Link href={`/devops/tests/${test.id}/take`} style={{ textDecoration: "none", flex: 1 }}>
+                    <Link href={`/devops/tests/${test.id}/take`} style={{ textDecoration: "none" }}>
                       <button
                         style={{
                           display: "flex",

@@ -9,7 +9,6 @@ import {
   Server,
   Bot,
 } from "lucide-react";
-import { useCreateDevOpsTest } from "@/hooks/api/useDevOps";
 import apiClient from "@/services/api/client";
 
 type Difficulty = "easy" | "medium" | "hard";
@@ -40,7 +39,6 @@ function normalizeKind(value: string): QuestionKind {
 
 export default function DevOpsCreateAssessmentPage() {
   const router = useRouter();
-  const createTestMutation = useCreateDevOpsTest();
   const [loading, setLoading] = useState(false);
 
   const [aiProctoringEnabled, setAiProctoringEnabled] = useState(true);
@@ -116,54 +114,40 @@ export default function DevOpsCreateAssessmentPage() {
 
     setLoading(true);
     try {
-      const localId = `devops-local-${Date.now()}`;
-      let createdTestId = localId;
       const payload = {
         title: formData.title,
         description: formData.description,
         duration: formData.duration_minutes,
+        start_time: formData.start_time || null,
+        end_time: formData.end_time || null,
         question_ids: selectedQuestions.map((q) => q.id),
-        questions: selectedQuestions.map((q) => ({
-          title: q.title,
-          description: q.description,
-          difficulty: q.difficulty,
-          points: q.points,
-        })),
+        schedule: {
+          startTime: formData.start_time || null,
+          endTime: formData.end_time || null,
+          duration: formData.duration_minutes,
+        },
+        proctoringSettings: {
+          aiProctoringEnabled,
+          faceMismatchEnabled: aiProctoringEnabled ? faceMismatchEnabled : false,
+          liveProctoringEnabled,
+        },
       };
 
-      try {
-        const createResponse: any = await createTestMutation.mutateAsync(payload);
-        const responseData = createResponse?.data || createResponse;
-        const testData = responseData?.data || responseData;
-        const apiId = testData?.id || testData?._id;
-        if (apiId) {
-          createdTestId = String(apiId);
-        }
-      } catch {
-        // Backend may be unavailable in local dev; continue with local flow.
+      const createResponse = await fetch("/api/devops/create-test", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const responseData = await createResponse.json().catch(() => ({}));
+      if (!createResponse.ok) {
+        throw new Error(responseData?.error || "Failed to create assessment.");
       }
-
-      try {
-        const localRaw = sessionStorage.getItem("devopsLocalTests");
-        const localTests = localRaw ? (JSON.parse(localRaw) as any[]) : [];
-        const newLocal = {
-          id: createdTestId,
-          title: formData.title,
-          description: formData.description,
-          duration_minutes: formData.duration_minutes,
-          start_time: formData.start_time,
-          end_time: formData.end_time,
-          is_active: true,
-          is_published: false,
-          invited_users: [],
-          question_ids: selectedQuestions.map((q) => q.id),
-          created_at: new Date().toISOString(),
-        };
-        const nextLocal = [newLocal, ...localTests.filter((t) => String(t?.id) !== String(createdTestId))];
-        sessionStorage.setItem("devopsLocalTests", JSON.stringify(nextLocal));
-      } catch {
-        // Ignore session storage failures.
+      const testData = responseData?.data || responseData;
+      const apiId = testData?.id || testData?._id;
+      if (!apiId) {
+        throw new Error("Failed to create assessment in DB.");
       }
+      const createdTestId = String(apiId);
 
       const localGeneratedPayload = {
         generatedAt: new Date().toISOString(),
@@ -203,6 +187,8 @@ export default function DevOpsCreateAssessmentPage() {
       );
 
       router.push(`/devops/tests?testId=${encodeURIComponent(createdTestId)}`);
+    } catch (err: any) {
+      alert(err?.message || "Failed to create assessment in DB.");
     } finally {
       setLoading(false);
     }

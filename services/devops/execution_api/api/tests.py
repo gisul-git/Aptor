@@ -1,4 +1,5 @@
 from datetime import datetime
+import secrets
 from typing import Any, Dict, List, Optional
 
 from bson import ObjectId
@@ -23,6 +24,35 @@ def _normalize_doc(doc: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
 
 def _get_actor_id(request: Request) -> str:
     return request.headers.get("x-user-id") or request.headers.get("x-actor-id") or "local-dev-user"
+
+
+def _assessment_collections(db: Any) -> List[Any]:
+    # New primary collection + backward-compatible legacy collection
+    return [db.devops_assessments, db.devops_tests]
+
+
+async def _find_test_doc(db: Any, query: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    for col in _assessment_collections(db):
+        doc = await col.find_one(query)
+        if doc:
+            return doc
+    return None
+
+
+async def _update_test_doc(db: Any, query: Dict[str, Any], updates: Dict[str, Any]) -> int:
+    for col in _assessment_collections(db):
+        result = await col.update_one(query, {"$set": updates})
+        if result.matched_count:
+            return result.matched_count
+    return 0
+
+
+async def _delete_test_doc(db: Any, query: Dict[str, Any]) -> int:
+    for col in _assessment_collections(db):
+        result = await col.delete_one(query)
+        if result.deleted_count:
+            return result.deleted_count
+    return 0
 
 
 async def _materialize_inline_questions(
@@ -64,11 +94,25 @@ async def list_tests(
     limit: int = Query(100, ge=1, le=200),
 ) -> Dict[str, Any]:
     db = get_database()
-    actor_id = _get_actor_id(request)
     skip = (page - 1) * limit
-    query: Dict[str, Any] = {"created_by": actor_id}
-    docs = await db.devops_tests.find(query).sort("created_at", -1).skip(skip).limit(limit).to_list(length=limit)
-    return {"success": True, "data": [_normalize_doc(d) for d in docs]}
+    query: Dict[str, Any] = {}
+    primary_docs = (
+        await db.devops_assessments.find(query).sort("created_at", -1).skip(skip).limit(limit).to_list(length=limit)
+    )
+    legacy_docs = (
+        await db.devops_tests.find(query).sort("created_at", -1).skip(skip).limit(limit).to_list(length=limit)
+    )
+
+    seen: set[str] = set()
+    merged: List[Dict[str, Any]] = []
+    for doc in [*primary_docs, *legacy_docs]:
+        sid = str(doc.get("_id"))
+        if sid in seen:
+            continue
+        seen.add(sid)
+        merged.append(doc)
+    merged.sort(key=lambda d: d.get("created_at") or datetime.min, reverse=True)
+    return {"success": True, "data": [_normalize_doc(d) for d in merged[:limit]]}
 
 
 @router.post("/", response_model=Dict[str, Any])
@@ -92,8 +136,8 @@ async def create_test(payload: DevOpsTestCreate, request: Request) -> Dict[str, 
     test_data["test_type"] = "devops"
     test_data["created_at"] = now
     test_data["updated_at"] = now
-    result = await db.devops_tests.insert_one(test_data)
-    created = await db.devops_tests.find_one({"_id": result.inserted_id})
+    result = await db.devops_assessments.insert_one(test_data)
+    created = await db.devops_assessments.find_one({"_id": result.inserted_id})
     return {"success": True, "data": _normalize_doc(created)}
 
 
@@ -102,11 +146,49 @@ async def get_test(test_id: str, request: Request) -> Dict[str, Any]:
     if not ObjectId.is_valid(test_id):
         raise HTTPException(status_code=400, detail="Invalid test ID")
     db = get_database()
-    actor_id = _get_actor_id(request)
-    doc = await db.devops_tests.find_one({"_id": ObjectId(test_id), "created_by": actor_id})
+    doc = await _find_test_doc(db, {"_id": ObjectId(test_id)})
     if not doc:
         raise HTTPException(status_code=404, detail="Test not found")
-    return {"success": True, "data": _normalize_doc(doc)}
+
+    normalized = _normalize_doc(doc) or {}
+    raw_question_ids = normalized.get("question_ids") if isinstance(normalized.get("question_ids"), list) else []
+    object_ids: List[ObjectId] = [ObjectId(qid) for qid in raw_question_ids if ObjectId.is_valid(str(qid))]
+    questions: List[Dict[str, Any]] = []
+    if object_ids:
+        qdocs = await db.devops_questions.find(
+            {"_id": {"$in": object_ids}}
+        ).to_list(length=len(object_ids))
+        by_id = {str(q.get("_id")): q for q in qdocs}
+        for qid in raw_question_ids:
+            qdoc = by_id.get(str(qid))
+            if not qdoc:
+                continue
+            qnorm = serialize_document(qdoc) or {}
+            starter_code_raw = qnorm.get("starter_code")
+            starter_code = ""
+            if isinstance(starter_code_raw, dict):
+                starter_code = str(starter_code_raw.get("bash") or "")
+            elif isinstance(starter_code_raw, str):
+                starter_code = starter_code_raw
+
+            questions.append(
+                {
+                    "id": qnorm.get("id"),
+                    "title": qnorm.get("title", ""),
+                    "description": qnorm.get("description", ""),
+                    "difficulty": qnorm.get("difficulty", "medium"),
+                    "points": qnorm.get("points", 10),
+                    "kind": qnorm.get("kind", "command"),
+                    "instructions": qnorm.get("instructions", []),
+                    "constraints": qnorm.get("constraints", []),
+                    "hints": qnorm.get("hints", []),
+                    "starterCode": starter_code,
+                    "ai_generated": qnorm.get("ai_generated", False),
+                }
+            )
+
+    normalized["questions"] = questions
+    return {"success": True, "data": normalized}
 
 
 @router.put("/{test_id}", response_model=Dict[str, Any])
@@ -114,19 +196,15 @@ async def update_test(test_id: str, payload: DevOpsTestUpdate, request: Request)
     if not ObjectId.is_valid(test_id):
         raise HTTPException(status_code=400, detail="Invalid test ID")
     db = get_database()
-    actor_id = _get_actor_id(request)
     updates = {k: v for k, v in payload.model_dump().items() if v is not None}
     if "question_ids" in updates and isinstance(updates["question_ids"], list):
         updates["question_ids"] = [str(qid) for qid in updates["question_ids"]]
     if updates:
         updates["updated_at"] = datetime.utcnow()
-    result = await db.devops_tests.update_one(
-        {"_id": ObjectId(test_id), "created_by": actor_id},
-        {"$set": updates},
-    )
-    if result.matched_count == 0:
+    matched = await _update_test_doc(db, {"_id": ObjectId(test_id)}, updates)
+    if matched == 0:
         raise HTTPException(status_code=404, detail="Test not found")
-    updated = await db.devops_tests.find_one({"_id": ObjectId(test_id)})
+    updated = await _find_test_doc(db, {"_id": ObjectId(test_id)})
     return {"success": True, "data": _normalize_doc(updated)}
 
 
@@ -135,9 +213,8 @@ async def delete_test(test_id: str, request: Request) -> Dict[str, Any]:
     if not ObjectId.is_valid(test_id):
         raise HTTPException(status_code=400, detail="Invalid test ID")
     db = get_database()
-    actor_id = _get_actor_id(request)
-    result = await db.devops_tests.delete_one({"_id": ObjectId(test_id), "created_by": actor_id})
-    if result.deleted_count == 0:
+    deleted = await _delete_test_doc(db, {"_id": ObjectId(test_id)})
+    if deleted == 0:
         raise HTTPException(status_code=404, detail="Test not found")
     return {"success": True, "message": "Test deleted successfully"}
 
@@ -152,7 +229,6 @@ async def publish_test(
     if not ObjectId.is_valid(test_id):
         raise HTTPException(status_code=400, detail="Invalid test ID")
     db = get_database()
-    actor_id = _get_actor_id(request)
     published = is_published
     if published is None and body:
         value = body.get("is_published")
@@ -160,13 +236,18 @@ async def publish_test(
             published = value
     if published is None:
         raise HTTPException(status_code=400, detail="is_published is required")
-    result = await db.devops_tests.update_one(
-        {"_id": ObjectId(test_id), "created_by": actor_id},
-        {"$set": {"is_published": published, "updated_at": datetime.utcnow()}},
-    )
-    if result.matched_count == 0:
+    update_doc: Dict[str, Any] = {"is_published": published, "updated_at": datetime.utcnow()}
+    if published:
+        existing = await _find_test_doc(db, {"_id": ObjectId(test_id)})
+        if not existing:
+            raise HTTPException(status_code=404, detail="Test not found")
+        if not existing.get("test_token"):
+            update_doc["test_token"] = secrets.token_urlsafe(24)
+
+    matched = await _update_test_doc(db, {"_id": ObjectId(test_id)}, update_doc)
+    if matched == 0:
         raise HTTPException(status_code=404, detail="Test not found")
-    updated = await db.devops_tests.find_one({"_id": ObjectId(test_id)})
+    updated = await _find_test_doc(db, {"_id": ObjectId(test_id)})
     return {"success": True, "data": _normalize_doc(updated)}
 
 
@@ -175,12 +256,12 @@ async def pause_test(test_id: str, request: Request) -> Dict[str, Any]:
     if not ObjectId.is_valid(test_id):
         raise HTTPException(status_code=400, detail="Invalid test ID")
     db = get_database()
-    actor_id = _get_actor_id(request)
-    result = await db.devops_tests.update_one(
-        {"_id": ObjectId(test_id), "created_by": actor_id},
-        {"$set": {"is_active": False, "pausedAt": datetime.utcnow(), "updated_at": datetime.utcnow()}},
+    matched = await _update_test_doc(
+        db,
+        {"_id": ObjectId(test_id)},
+        {"is_active": False, "pausedAt": datetime.utcnow(), "updated_at": datetime.utcnow()},
     )
-    if result.matched_count == 0:
+    if matched == 0:
         raise HTTPException(status_code=404, detail="Test not found")
     return {"success": True, "message": "Test paused"}
 
@@ -190,12 +271,12 @@ async def resume_test(test_id: str, request: Request) -> Dict[str, Any]:
     if not ObjectId.is_valid(test_id):
         raise HTTPException(status_code=400, detail="Invalid test ID")
     db = get_database()
-    actor_id = _get_actor_id(request)
-    result = await db.devops_tests.update_one(
-        {"_id": ObjectId(test_id), "created_by": actor_id},
-        {"$set": {"is_active": True, "pausedAt": None, "updated_at": datetime.utcnow()}},
+    matched = await _update_test_doc(
+        db,
+        {"_id": ObjectId(test_id)},
+        {"is_active": True, "pausedAt": None, "updated_at": datetime.utcnow()},
     )
-    if result.matched_count == 0:
+    if matched == 0:
         raise HTTPException(status_code=404, detail="Test not found")
     return {"success": True, "message": "Test resumed"}
 
@@ -209,8 +290,7 @@ async def clone_test(
     if not ObjectId.is_valid(test_id):
         raise HTTPException(status_code=400, detail="Invalid test ID")
     db = get_database()
-    actor_id = _get_actor_id(request)
-    existing = await db.devops_tests.find_one({"_id": ObjectId(test_id), "created_by": actor_id})
+    existing = await _find_test_doc(db, {"_id": ObjectId(test_id)})
     if not existing:
         raise HTTPException(status_code=404, detail="Test not found")
 
@@ -237,6 +317,6 @@ async def clone_test(
     if not keep_candidates:
         clone_payload["invited_users"] = []
 
-    result = await db.devops_tests.insert_one(clone_payload)
-    created = await db.devops_tests.find_one({"_id": result.inserted_id})
+    result = await db.devops_assessments.insert_one(clone_payload)
+    created = await db.devops_assessments.find_one({"_id": result.inserted_id})
     return {"success": True, "data": _normalize_doc(created)}
