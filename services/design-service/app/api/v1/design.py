@@ -36,7 +36,19 @@ class GenerateQuestionRequest(BaseModel):
     difficulty: DifficultyLevel
     task_type: TaskType
     topic: Optional[str] = None
+    experience_level: Optional[str] = None
     created_by: str = "system"
+
+
+class TopicSuggestionsRequest(BaseModel):
+    role: DesignRole
+    difficulty: DifficultyLevel
+    experience_years: int
+    task_type: TaskType
+
+
+class TopicSuggestionsResponse(BaseModel):
+    suggestions: List[str]
 
 
 class PublishStatusRequest(BaseModel):
@@ -93,6 +105,24 @@ class EvaluationResponse(BaseModel):
 
 
 # AI Question Generation Endpoints
+@router.post("/questions/suggestions", response_model=TopicSuggestionsResponse)
+async def get_topic_suggestions(request: TopicSuggestionsRequest):
+    """Get AI-generated topic suggestions based on role, difficulty, experience, and task type"""
+    try:
+        suggestions = await ai_question_generator.generate_topic_suggestions(
+            role=request.role,
+            difficulty=request.difficulty,
+            experience_level=request.experience_level,
+            task_type=request.task_type
+        )
+        
+        return TopicSuggestionsResponse(suggestions=suggestions)
+        
+    except Exception as e:
+        logger.error(f"Topic suggestion generation failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.post("/questions/generate", response_model=DesignQuestionModel)
 async def generate_question(request: GenerateQuestionRequest):
     """Generate AI-powered design question"""
@@ -110,6 +140,7 @@ async def generate_question(request: GenerateQuestionRequest):
             difficulty=request.difficulty,
             task_type=request.task_type,
             topic=request.topic,
+            experience_level=request.experience_level,
             created_by=request.created_by
         )
         

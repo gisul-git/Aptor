@@ -30,10 +30,19 @@ const EXPERIENCE_LEVELS = [
   { value: 'senior', label: 'Senior' },
 ]
 
+// Helper function to convert years to experience level string
+const getExperienceLevelFromYears = (years: number): string => {
+  if (years === 0) return 'fresher'
+  if (years <= 3) return '1-3 years'
+  if (years <= 5) return '3-5 years'
+  return 'senior'
+}
+
 export default function DesignQuestionCreatePage() {
   const router = useRouter()
   const [saving, setSaving] = useState(false)
   const [generating, setGenerating] = useState(false)
+  const [loadingSuggestions, setLoadingSuggestions] = useState(false)
   const [error, setError] = useState<string | null>(null)
   
   // Question type toggle
@@ -42,9 +51,10 @@ export default function DesignQuestionCreatePage() {
   // AI Generation fields
   const [aiRole, setAiRole] = useState('')
   const [aiDifficulty, setAiDifficulty] = useState('intermediate')
-  const [aiExperienceLevel, setAiExperienceLevel] = useState('')
+  const [aiExperienceYears, setAiExperienceYears] = useState(3)
   const [aiTaskType, setAiTaskType] = useState('')
-  const [aiTopic, setAiTopic] = useState('')
+  const [taskTypeSuggestions, setTaskTypeSuggestions] = useState<string[]>([])
+  const [selectedTaskType, setSelectedTaskType] = useState<string | null>(null)
   
   // Manual question fields
   const [title, setTitle] = useState('')
@@ -58,7 +68,92 @@ export default function DesignQuestionCreatePage() {
   const [evaluationCriteria, setEvaluationCriteria] = useState<string[]>([''])
   const [timeLimitMinutes, setTimeLimitMinutes] = useState(60)
 
-  const API_URL = process.env.NEXT_PUBLIC_DESIGN_SERVICE_URL || 'http://localhost:3006/api/v1/design'
+  const API_URL = process.env.NEXT_PUBLIC_DESIGN_SERVICE_URL || 'http://localhost:3007/api/v1/design'
+
+  // Load task type suggestions when role, difficulty, and experience are selected
+  const loadTaskTypeSuggestions = async () => {
+    if (!aiRole || !aiDifficulty) {
+      return
+    }
+
+    setLoadingSuggestions(true)
+    setError(null)
+
+    try {
+      const roleMap: Record<string, string> = {
+        'ui': 'ui_designer',
+        'ux': 'ux_designer',
+        'product': 'product_designer',
+        'visual': 'visual_designer',
+        'ui designer': 'ui_designer',
+        'ux designer': 'ux_designer',
+        'product designer': 'product_designer',
+        'visual designer': 'visual_designer',
+      }
+      
+      const normalizedRole = roleMap[aiRole.toLowerCase()] || 'ui_designer'
+      const experienceLevel = getExperienceLevelFromYears(aiExperienceYears)
+      
+      const response = await fetch(`${API_URL}/questions/suggestions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          role: normalizedRole,
+          difficulty: aiDifficulty,
+          experience_level: experienceLevel,
+          task_type: 'dashboard', // Default, will be replaced by suggestions
+        }),
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to load task type suggestions')
+      }
+
+      const data = await response.json()
+      setTaskTypeSuggestions(data.suggestions || [])
+      setSelectedTaskType(null)
+      setAiTaskType('')
+    } catch (err: any) {
+      console.error(err)
+      setError(err.message || 'Failed to load task type suggestions')
+    } finally {
+      setLoadingSuggestions(false)
+    }
+  }
+
+  // Auto-load suggestions when role, difficulty, and experience are set
+  const handleFieldChange = (field: string, value: string | number) => {
+    switch (field) {
+      case 'role':
+        setAiRole(value as string)
+        break
+      case 'difficulty':
+        setAiDifficulty(value as string)
+        break
+      case 'experience':
+        setAiExperienceYears(value as number)
+        break
+    }
+
+    // Check if required fields are filled after state update
+    setTimeout(() => {
+      if (aiRole && aiDifficulty) {
+        loadTaskTypeSuggestions()
+      }
+    }, 100)
+  }
+
+  const selectTaskType = (taskType: string) => {
+    setSelectedTaskType(taskType)
+    setAiTaskType(taskType)
+    setManualTaskType('') // Clear manual input when selecting suggestion
+  }
+
+  const handleManualTaskType = (value: string) => {
+    setManualTaskType(value)
+    setAiTaskType(value)
+    setSelectedTaskType(null) // Clear selection when typing manually
+  }
 
   const addConstraint = () => setConstraints([...constraints, ''])
   const removeConstraint = (idx: number) => setConstraints(constraints.filter((_, i) => i !== idx))
@@ -121,7 +216,14 @@ export default function DesignQuestionCreatePage() {
       }
       
       const normalizedRole = roleMap[aiRole.toLowerCase()] || 'ui_designer'
-      const normalizedTaskType = taskTypeMap[aiTaskType.toLowerCase()] || 'landing_page'
+      const taskTypeMap: Record<string, string> = {
+        'landing page': 'landing_page',
+        'mobile app': 'mobile_app',
+        'dashboard': 'dashboard',
+        'component': 'component',
+      }
+      const normalizedTaskType = taskTypeMap[aiTaskType.toLowerCase()] || aiTaskType.toLowerCase().replace(/\s+/g, '_')
+      const experienceLevel = getExperienceLevelFromYears(aiExperienceYears)
       
       const response = await fetch(`${API_URL}/questions/generate`, {
         method: 'POST',
@@ -129,9 +231,9 @@ export default function DesignQuestionCreatePage() {
         body: JSON.stringify({
           role: normalizedRole,
           difficulty: aiDifficulty,
-          experience_level: aiExperienceLevel || undefined,
+          experience_level: experienceLevel,
           task_type: normalizedTaskType,
-          topic: aiTopic.trim() || undefined,
+          topic: aiTaskType.trim() || undefined,
           created_by: 'system',
         }),
       })
@@ -371,81 +473,42 @@ export default function DesignQuestionCreatePage() {
                 </p>
               </div>
               
-              <div style={{ 
-                display: "grid", 
-                gridTemplateColumns: "1fr 1fr", 
-                gap: "1.5rem",
-                marginBottom: "1.5rem"
-              }}>
-                <div>
-                  <label style={{ 
-                    display: "block", 
-                    marginBottom: "0.625rem", 
-                    fontWeight: 600,
-                    color: "#7C3AED",
-                    fontSize: "0.9375rem"
-                  }}>
-                    Design Role <span style={{ color: "#DC2626" }}>*</span>
-                  </label>
-                  <input
-                    type="text"
-                    list="ai-role-options"
-                    value={aiRole}
-                    onChange={(e) => setAiRole(e.target.value)}
-                    placeholder="Select or type: UI Designer, UX Designer, etc."
-                    style={{
-                      width: "100%",
-                      padding: "0.875rem 1rem",
-                      border: "1px solid #E8B4FA",
-                      borderRadius: "0.5rem",
-                      fontSize: "0.9375rem",
-                      backgroundColor: "#ffffff",
-                      transition: "all 0.2s ease",
-                    }}
-                  />
-                  <datalist id="ai-role-options">
-                    <option value="UI Designer" />
-                    <option value="UX Designer" />
-                    <option value="Product Designer" />
-                    <option value="Visual Designer" />
-                  </datalist>
-                </div>
-
-                <div>
-                  <label style={{ 
-                    display: "block", 
-                    marginBottom: "0.625rem", 
-                    fontWeight: 600,
-                    color: "#7C3AED",
-                    fontSize: "0.9375rem"
-                  }}>
-                    Task Type <span style={{ color: "#DC2626" }}>*</span>
-                  </label>
-                  <input
-                    type="text"
-                    list="ai-task-type-options"
-                    value={aiTaskType}
-                    onChange={(e) => setAiTaskType(e.target.value)}
-                    placeholder="Select or type: Landing Page, Mobile App, etc."
-                    style={{
-                      width: "100%",
-                      padding: "0.875rem 1rem",
-                      border: "1px solid #E8B4FA",
-                      borderRadius: "0.5rem",
-                      fontSize: "0.9375rem",
-                      backgroundColor: "#ffffff",
-                      transition: "all 0.2s ease",
-                    }}
-                  />
-                  <datalist id="ai-task-type-options">
-                    <option value="Landing Page" />
-                    <option value="Mobile App" />
-                    <option value="Dashboard" />
-                    <option value="Component" />
-                  </datalist>
-                </div>
+              {/* Step 1: Design Role */}
+              <div style={{ marginBottom: "1.5rem" }}>
+                <label style={{ 
+                  display: "block", 
+                  marginBottom: "0.625rem", 
+                  fontWeight: 600,
+                  color: "#7C3AED",
+                  fontSize: "0.9375rem"
+                }}>
+                  Design Role <span style={{ color: "#DC2626" }}>*</span>
+                </label>
+                <input
+                  type="text"
+                  list="ai-role-options"
+                  value={aiRole}
+                  onChange={(e) => handleFieldChange('role', e.target.value)}
+                  placeholder="Select or type: UI Designer, UX Designer, etc."
+                  style={{
+                    width: "100%",
+                    padding: "0.875rem 1rem",
+                    border: "1px solid #E8B4FA",
+                    borderRadius: "0.5rem",
+                    fontSize: "0.9375rem",
+                    backgroundColor: "#ffffff",
+                    transition: "all 0.2s ease",
+                  }}
+                />
+                <datalist id="ai-role-options">
+                  <option value="UI Designer" />
+                  <option value="UX Designer" />
+                  <option value="Product Designer" />
+                  <option value="Visual Designer" />
+                </datalist>
               </div>
 
+              {/* Step 2: Difficulty */}
               <div style={{ marginBottom: "1.5rem" }}>
                 <label style={{ 
                   display: "block", 
@@ -458,7 +521,7 @@ export default function DesignQuestionCreatePage() {
                 </label>
                 <select
                   value={aiDifficulty}
-                  onChange={(e) => setAiDifficulty(e.target.value)}
+                  onChange={(e) => handleFieldChange('difficulty', e.target.value)}
                   style={{
                     width: "100%",
                     padding: "0.875rem 1rem",
@@ -476,7 +539,8 @@ export default function DesignQuestionCreatePage() {
                 </select>
               </div>
 
-              <div style={{ marginBottom: "1.5rem" }}>
+              {/* Step 3: Experience Level (Slider) */}
+              <div style={{ marginBottom: "2rem" }}>
                 <label style={{ 
                   display: "block", 
                   marginBottom: "0.625rem", 
@@ -484,54 +548,211 @@ export default function DesignQuestionCreatePage() {
                   color: "#7C3AED",
                   fontSize: "0.9375rem"
                 }}>
-                  Experience Level (Optional)
+                  Experience Level <span style={{ color: "#DC2626" }}>*</span>
                 </label>
-                <select
-                  value={aiExperienceLevel}
-                  onChange={(e) => setAiExperienceLevel(e.target.value)}
-                  style={{
-                    width: "100%",
-                    padding: "0.875rem 1rem",
-                    border: "1px solid #E8B4FA",
-                    borderRadius: "0.5rem",
-                    fontSize: "0.9375rem",
-                    backgroundColor: "#ffffff",
-                    cursor: "pointer",
-                    transition: "all 0.2s ease",
-                  }}
-                >
-                  <option value="">Select Experience Level</option>
-                  {EXPERIENCE_LEVELS.map(e => (
-                    <option key={e.value} value={e.value}>{e.label}</option>
-                  ))}
-                </select>
+                <div style={{
+                  padding: "1.5rem",
+                  backgroundColor: "#F3E8FF",
+                  borderRadius: "0.75rem",
+                  border: "1px solid #E8B4FA"
+                }}>
+                  <div style={{ 
+                    display: "flex", 
+                    justifyContent: "space-between", 
+                    alignItems: "center",
+                    marginBottom: "1rem"
+                  }}>
+                    <span style={{ 
+                      fontSize: "0.875rem", 
+                      color: "#6B7280" 
+                    }}>
+                      0 years
+                    </span>
+                    <span style={{ 
+                      fontSize: "1.25rem", 
+                      fontWeight: 700,
+                      color: "#9333EA"
+                    }}>
+                      {aiExperienceYears} {aiExperienceYears === 1 ? 'year' : 'years'}
+                    </span>
+                    <span style={{ 
+                      fontSize: "0.875rem", 
+                      color: "#6B7280" 
+                    }}>
+                      15 years
+                    </span>
+                  </div>
+                  <input
+                    type="range"
+                    min="0"
+                    max="15"
+                    value={aiExperienceYears}
+                    onChange={(e) => handleFieldChange('experience', parseInt(e.target.value))}
+                    style={{
+                      width: "100%",
+                      height: "8px",
+                      borderRadius: "4px",
+                      background: `linear-gradient(to right, #9333EA 0%, #9333EA ${(aiExperienceYears / 15) * 100}%, #E8B4FA ${(aiExperienceYears / 15) * 100}%, #E8B4FA 100%)`,
+                      outline: "none",
+                      cursor: "pointer",
+                      WebkitAppearance: "none",
+                    }}
+                  />
+                  <style jsx>{`
+                    input[type="range"]::-webkit-slider-thumb {
+                      -webkit-appearance: none;
+                      appearance: none;
+                      width: 24px;
+                      height: 24px;
+                      border-radius: 50%;
+                      background: #9333EA;
+                      cursor: pointer;
+                      border: 3px solid #ffffff;
+                      box-shadow: 0 2px 8px rgba(147, 51, 234, 0.3);
+                    }
+                    input[type="range"]::-moz-range-thumb {
+                      width: 24px;
+                      height: 24px;
+                      border-radius: 50%;
+                      background: #9333EA;
+                      cursor: pointer;
+                      border: 3px solid #ffffff;
+                      box-shadow: 0 2px 8px rgba(147, 51, 234, 0.3);
+                    }
+                  `}</style>
+                  <div style={{ 
+                    marginTop: "0.75rem",
+                    fontSize: "0.875rem",
+                    color: "#6B7280",
+                    textAlign: "center"
+                  }}>
+                    {aiExperienceYears === 0 && "Fresher / Entry Level"}
+                    {aiExperienceYears > 0 && aiExperienceYears <= 3 && "Junior Designer"}
+                    {aiExperienceYears > 3 && aiExperienceYears <= 5 && "Mid-Level Designer"}
+                    {aiExperienceYears > 5 && aiExperienceYears <= 10 && "Senior Designer"}
+                    {aiExperienceYears > 10 && "Expert / Lead Designer"}
+                  </div>
+                </div>
               </div>
 
-              <div style={{ marginBottom: "1.5rem" }}>
-                <label style={{ 
-                  display: "block", 
-                  marginBottom: "0.625rem", 
-                  fontWeight: 600,
-                  color: "#7C3AED",
-                  fontSize: "0.9375rem"
+              {/* Step 4: Task Type Suggestions */}
+              {taskTypeSuggestions.length > 0 && (
+                <div style={{ 
+                  marginBottom: "1.5rem",
                 }}>
-                  Topic (Optional)
-                </label>
-                <input
-                  type="text"
-                  value={aiTopic}
-                  onChange={(e) => setAiTopic(e.target.value)}
-                  placeholder="e.g., E-commerce, Healthcare, Finance"
-                  style={{
-                    width: "100%",
-                    padding: "0.875rem 1rem",
-                    border: "1px solid #E8B4FA",
-                    borderRadius: "0.5rem",
-                    fontSize: "0.9375rem",
-                    transition: "all 0.2s ease",
-                  }}
-                />
-              </div>
+                  <label style={{ 
+                    display: "block", 
+                    marginBottom: "1rem", 
+                    fontWeight: 600,
+                    color: "#7C3AED",
+                    fontSize: "1rem"
+                  }}>
+                    💡 AI Suggested Task Types <span style={{ color: "#DC2626" }}>*</span>
+                  </label>
+                  <p style={{ 
+                    fontSize: "0.875rem", 
+                    color: "#6B7280", 
+                    marginBottom: "1rem" 
+                  }}>
+                    Based on your role, experience, and difficulty level
+                  </p>
+                  <div style={{ 
+                    display: "grid", 
+                    gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
+                    gap: "0.75rem",
+                    marginBottom: "1rem"
+                  }}>
+                    {taskTypeSuggestions.map((suggestion, idx) => (
+                      <div
+                        key={idx}
+                        onClick={() => selectTaskType(suggestion)}
+                        style={{
+                          padding: "1rem",
+                          backgroundColor: selectedTaskType === suggestion ? "#9333EA" : "#ffffff",
+                          color: selectedTaskType === suggestion ? "#ffffff" : "#7C3AED",
+                          border: selectedTaskType === suggestion ? "2px solid #9333EA" : "2px solid #E8B4FA",
+                          borderRadius: "0.75rem",
+                          cursor: "pointer",
+                          transition: "all 0.2s ease",
+                          textAlign: "center",
+                          fontWeight: selectedTaskType === suggestion ? 600 : 500,
+                          fontSize: "0.9375rem",
+                          boxShadow: selectedTaskType === suggestion ? "0 4px 12px rgba(147, 51, 234, 0.3)" : "none",
+                          transform: selectedTaskType === suggestion ? "translateY(-2px)" : "none",
+                        }}
+                        onMouseEnter={(e) => {
+                          if (selectedTaskType !== suggestion) {
+                            e.currentTarget.style.backgroundColor = "#F3E8FF"
+                            e.currentTarget.style.transform = "translateY(-2px)"
+                          }
+                        }}
+                        onMouseLeave={(e) => {
+                          if (selectedTaskType !== suggestion) {
+                            e.currentTarget.style.backgroundColor = "#ffffff"
+                            e.currentTarget.style.transform = "none"
+                          }
+                        }}
+                      >
+                        {suggestion}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {loadingSuggestions && (
+                <div style={{
+                  padding: "1rem",
+                  backgroundColor: "#F3E8FF",
+                  color: "#7C3AED",
+                  borderRadius: "0.5rem",
+                  marginBottom: "1.5rem",
+                  textAlign: "center",
+                  fontWeight: 500
+                }}>
+                  🔄 Loading AI suggestions...
+                </div>
+              )}
+
+              {/* Manual Task Type Input */}
+              {taskTypeSuggestions.length > 0 && (
+                <div style={{ marginBottom: "1.5rem" }}>
+                  <label style={{ 
+                    display: "block", 
+                    marginBottom: "0.625rem", 
+                    fontWeight: 600,
+                    color: "#7C3AED",
+                    fontSize: "0.9375rem"
+                  }}>
+                    Or type your own task type
+                  </label>
+                  <input
+                    type="text"
+                    value={manualTaskType}
+                    onChange={(e) => handleManualTaskType(e.target.value)}
+                    placeholder="e.g., Music streaming dashboard, Recipe discovery app"
+                    style={{
+                      width: "100%",
+                      padding: "0.875rem 1rem",
+                      border: manualTaskType ? "2px solid #9333EA" : "1px solid #E8B4FA",
+                      borderRadius: "0.5rem",
+                      fontSize: "0.9375rem",
+                      transition: "all 0.2s ease",
+                      backgroundColor: manualTaskType ? "#F3E8FF" : "#ffffff",
+                    }}
+                  />
+                  {manualTaskType && (
+                    <p style={{ 
+                      fontSize: "0.75rem", 
+                      color: "#9333EA", 
+                      marginTop: "0.5rem",
+                      fontWeight: 500
+                    }}>
+                      ✓ Using custom task type: "{manualTaskType}"
+                    </p>
+                  )}
+                </div>
+              )}
 
               <button
                 onClick={handleAiGenerate}

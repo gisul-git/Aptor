@@ -30,6 +30,157 @@ class AIQuestionGenerator:
         elif self.provider == "claude":
             self.anthropic_client = Anthropic(api_key=settings.CLAUDE_API_KEY)
     
+    async def generate_topic_suggestions(
+        self,
+        role: DesignRole,
+        difficulty: DifficultyLevel,
+        experience_level: str,
+        task_type: TaskType
+    ) -> List[str]:
+        """Generate 5 relevant topic suggestions based on role, difficulty, experience, and task type"""
+        
+        # Map enums to readable strings
+        role_mapping = {
+            DesignRole.UI_DESIGNER: "UI Designer",
+            DesignRole.UX_DESIGNER: "UX Designer",
+            DesignRole.PRODUCT_DESIGNER: "Product Designer",
+            DesignRole.VISUAL_DESIGNER: "Visual Designer"
+        }
+        
+        difficulty_mapping = {
+            DifficultyLevel.BEGINNER: "Beginner",
+            DifficultyLevel.INTERMEDIATE: "Intermediate",
+            DifficultyLevel.ADVANCED: "Advanced"
+        }
+        
+        task_type_mapping = {
+            TaskType.LANDING_PAGE: "Landing Page",
+            TaskType.MOBILE_APP: "Mobile App",
+            TaskType.DASHBOARD: "Dashboard",
+            TaskType.COMPONENT: "Component"
+        }
+        
+        role_str = role_mapping.get(role, "UI Designer")
+        difficulty_str = difficulty_mapping.get(difficulty, "Intermediate")
+        task_str = task_type_mapping.get(task_type, "Dashboard")
+        
+        prompt = f"""You are an AI system that generates professional design challenge topics for hiring assessments.
+
+Generate 5 relevant and realistic design challenge topics based on:
+
+Role: {role_str}
+Experience Level: {experience_level}
+Difficulty: {difficulty_str}
+Task Type: {task_str}
+
+RULES:
+• Topics must be realistic hiring tasks used in professional design interviews
+• Keep topics short and specific (3-6 words maximum)
+• Focus on real product scenarios and business domains
+• Avoid generic names like "Modern Dashboard" or "Beautiful App"
+• Use specific domains: fintech, healthcare, e-commerce, fitness, education, travel, food delivery, project management, analytics, social media, etc.
+• Make topics appropriate for the difficulty level and experience
+
+EXAMPLES OF GOOD TOPICS:
+For Dashboard:
+- Fitness tracking dashboard
+- Crypto portfolio dashboard
+- E-commerce sales analytics
+- Project management dashboard
+- Healthcare patient monitoring
+
+For Landing Page:
+- SaaS product landing page
+- Fintech app landing page
+- Online course platform landing
+- Travel booking landing page
+- Food delivery service landing
+
+For Mobile App:
+- Meditation and wellness app
+- Expense tracking app
+- Recipe discovery app
+- Workout planning app
+- Language learning app
+
+For Component:
+- Data visualization chart library
+- Navigation menu system
+- Form input components
+- Card layout system
+- Modal dialog system
+
+Return ONLY a JSON array of 5 topic strings. No explanations, no markdown, just the JSON array.
+
+Example format:
+["Fitness tracking dashboard", "Crypto portfolio dashboard", "E-commerce analytics dashboard", "Healthcare patient dashboard", "Project management dashboard"]
+
+Generate 5 topics now:"""
+        
+        try:
+            if self.provider == "openai":
+                response = await self._generate_with_openai(prompt)
+            elif self.provider == "gemini":
+                response = await self._generate_with_gemini(prompt)
+            elif self.provider == "claude":
+                response = await self._generate_with_claude(prompt)
+            else:
+                raise ValueError(f"Unsupported AI provider: {self.provider}")
+            
+            # Parse JSON response
+            import json
+            response = response.strip()
+            if response.startswith("```json"):
+                response = response[7:]
+            if response.endswith("```"):
+                response = response[:-3]
+            
+            topics = json.loads(response)
+            
+            # Validate we got a list of strings
+            if not isinstance(topics, list) or len(topics) != 5:
+                raise ValueError("AI did not return exactly 5 topics")
+            
+            return topics
+            
+        except Exception as e:
+            error_msg = str(e)
+            logger.error(f"Topic suggestion generation failed: {error_msg}")
+            
+            # Return fallback topics based on task type
+            fallback_topics = {
+                TaskType.DASHBOARD: [
+                    "Fitness tracking dashboard",
+                    "E-commerce analytics dashboard",
+                    "Project management dashboard",
+                    "Healthcare patient dashboard",
+                    "Financial portfolio dashboard"
+                ],
+                TaskType.LANDING_PAGE: [
+                    "SaaS product landing page",
+                    "Fintech app landing page",
+                    "Online course platform landing",
+                    "Travel booking landing page",
+                    "Food delivery service landing"
+                ],
+                TaskType.MOBILE_APP: [
+                    "Meditation and wellness app",
+                    "Expense tracking app",
+                    "Recipe discovery app",
+                    "Workout planning app",
+                    "Language learning app"
+                ],
+                TaskType.COMPONENT: [
+                    "Data visualization chart library",
+                    "Navigation menu system",
+                    "Form input components",
+                    "Card layout system",
+                    "Modal dialog system"
+                ]
+            }
+            
+            return fallback_topics.get(task_type, fallback_topics[TaskType.DASHBOARD])
+    
     async def generate_question(
         self,
         role: DesignRole,
@@ -108,200 +259,172 @@ class AIQuestionGenerator:
         }
         
         task_type_mapping = {
-            TaskType.LANDING_PAGE: "landing_page",
-            TaskType.MOBILE_APP: "mobile_app",
-            TaskType.DASHBOARD: "dashboard",
-            TaskType.COMPONENT: "component"
+            TaskType.LANDING_PAGE: "Landing Page",
+            TaskType.MOBILE_APP: "Mobile App",
+            TaskType.DASHBOARD: "Dashboard",
+            TaskType.COMPONENT: "Component"
         }
         
         role_str = role_mapping.get(role, "UI Designer")
         difficulty_str = difficulty_mapping.get(difficulty, "Intermediate")
-        task_str = task_type_mapping.get(task_type, "landing_page")
+        task_str = task_type_mapping.get(task_type, "Dashboard")
         topic_str = topic if topic else task_str
-        experience_str = experience_level if experience_level else "Not specified"
+        experience_str = experience_level if experience_level else "1-3 years"
         time_limit = 45 if difficulty == DifficultyLevel.BEGINNER else 60 if difficulty == DifficultyLevel.INTERMEDIATE else 90
         
         base_prompt = f"""SYSTEM ROLE
-Act as a Design Assessment Question Generator for a professional hiring platform.
-Generate structured design challenges used in automated design interviews.
-The challenge must be suitable for timed assessments and must support automated evaluation of layout, spacing, typography hierarchy, and color usage.
-Use professional and neutral language. Avoid conversational phrases such as "you should", "try to", or "think about".
+Act as a professional Design Assessment Generator used in hiring platforms.
+
+Generate structured UI/UX design challenges used in timed interviews.
+
+The challenge must:
+• Simulate real hiring assessments
+• Include measurable design constraints
+• Allow objective evaluation
+• Scale difficulty based on experience and difficulty level
+
+Use neutral professional language.
+
+Avoid using: "You" "Your" "You should"
+
+Use phrasing like: "The task is to design" "The interface should" "The layout must"
 
 --------------------------------------------------
+
 INPUT PARAMETERS
+
 Role: {role_str}
-Difficulty Level: {difficulty_str}
+Difficulty: {difficulty_str}
 Experience Level: {experience_str}
+Task Type: {task_str}
 Topic: {topic_str}
-Time Limit: {time_limit} minutes
 
 --------------------------------------------------
-ROLE-SPECIFIC TASK GENERATION
 
-UI Designer
-Focus on layout design, component design, typography hierarchy, spacing systems, and visual hierarchy.
-
-UX Designer
-Focus on user flows, navigation patterns, information architecture, usability improvements, and interaction logic.
-
-Product Designer
-Focus on product workflows, business goals, user personas, and product strategy.
-
-Visual Designer
-Focus on visual identity, iconography, illustration systems, and visual storytelling.
-
-Brand Designer
-Focus on brand identity, logo systems, typography systems, and brand guidelines.
-
-Graphic Designer
-Focus on posters, marketing assets, social media creatives, and print layouts.
-
-Interaction Designer
-Focus on micro-interactions, transitions, motion states, and interaction feedback.
-
---------------------------------------------------
-DIFFICULTY SCALING
+DIFFICULTY STRUCTURE
 
 Beginner
-- Single screen or simple asset
-- Basic layout constraints
-- Simple user goal
+• Single screen layout
+• Basic components
 
 Intermediate
-- Multi-section layout or dashboard
-- Component-based design
-- Structured hierarchy
+• Multi-section layout
+• Dashboard or landing page
+• Component hierarchy
 
 Advanced
-- Multi-screen workflows
-- Interaction states
-- Edge case handling
-
-Expert
-- Product-level thinking
-- Personas and business objectives
-- System-level design
-- Strategic decision making
+• Multiple screens
+• Interaction states
+• Complex flows
 
 --------------------------------------------------
+
+EXPERIENCE EXPECTATIONS
+
+0-1 years
+Focus on visual layout and hierarchy.
+
+1-3 years
+Focus on component design, data presentation, and UI clarity.
+
+3-5 years
+Focus on usability decisions and interaction design.
+
+5+ years
+Focus on product thinking and scalable design systems.
+
+--------------------------------------------------
+
 CONSTRAINT RULES
-Constraints must include measurable design rules.
+
+Constraints MUST be measurable.
 
 Examples:
-- Canvas width: 375px mobile layout
-- Canvas width: 1440px desktop layout
-- Grid system: 12-column grid
-- Spacing system: 8px baseline grid
-- Maximum 3-4 primary colors
-- Minimum contrast ratio: 4.5:1
-- Typography hierarchy: minimum 3 levels
-- Minimum button height: 44px
-- Component width constraints
 
-These rules must enable automated evaluation.
+Canvas width: 1440px desktop layout
+Grid system: 12 column grid
+Spacing system: 8px baseline grid
+Maximum colors: 4 primary colors
+Minimum contrast ratio: 4.5:1
+Minimum button height: 44px
+Minimum card width: 200px
+
+Avoid vague rules.
 
 --------------------------------------------------
+
+DELIVERABLE RULES
+
+Deliverables must be concrete outputs.
+
+Examples:
+
+Visual Designer
+• High fidelity mockups
+• Icon set
+• Color palette
+• Typography scale
+
+UI Designer
+• UI screens
+• Component states
+• Style guide
+
+UX Designer
+• User flow
+• Wireframes
+• Interaction states
+
+--------------------------------------------------
+
+EVALUATION RULES
+
+Each evaluation must include scoring weight.
+
+Example:
+
+Layout consistency — 20%
+Visual hierarchy — 20%
+Usability — 20%
+Constraint compliance — 20%
+Visual quality — 20%
+
+--------------------------------------------------
+
 OUTPUT FORMAT
 
-Title:
-Domain or Product - Role Challenge
-
-Role:
-Role name
-
-Level:
-Difficulty Level
-
-Experience:
-Experience Level
-
-Topic:
-Topic name
-
-Time:
-Time Limit
-
-Design Challenge
-Provide a concise description including:
-- product or domain context
-- design problem
-- target users
-- expected outcome
-
-Constraints
-List 6-8 measurable constraints.
-
-Deliverables
-Specify required outputs such as:
-- wireframes
-- high fidelity screens
-- design assets
-- component specifications
-- design tokens or style guide
-
-Evaluation Criteria
-Define scoring factors such as:
-- layout consistency
-- visual hierarchy
-- usability
-- constraint compliance
-- clarity of design solution
-
---------------------------------------------------
-Return ONLY valid JSON in this exact structure:
+Return ONLY JSON.
 
 {{
-    "title": "{topic_str} - {role_str} Challenge",
-    "description": "Provide a concise description including product or domain context, design problem, target users, and expected outcome. Write in neutral professional language. Do NOT use 'you', 'your', 'you should'. Use phrases like: 'Design a [product]', 'The interface should', 'The goal is to', 'The layout must'.",
-    "constraints": [
-        "List 6-8 measurable constraints based on difficulty level.",
-        "Examples:",
-        "- Canvas width: 375px mobile layout OR 1440px desktop layout",
-        "- Grid system: 12-column grid",
-        "- Spacing system: 8px baseline grid",
-        "- Maximum 3-4 primary colors",
-        "- Minimum contrast ratio: 4.5:1",
-        "- Typography hierarchy: minimum 3 levels",
-        "- Minimum button height: 44px",
-        "- Component width constraints"
-    ],
-    "deliverables": [
-        "Specify required outputs based on role and difficulty:",
-        "For UI Designer: High-fidelity UI screens, Component specifications, Typography and color style guide",
-        "For UX Designer: User flow diagrams, Wireframes, Information architecture",
-        "For Visual Designer: Visual design mockups, Icon set or illustrations, Style guide",
-        "Beginner: 2-3 deliverables",
-        "Intermediate: 3-4 deliverables",
-        "Advanced: 4-5 deliverables"
-    ],
+    "title": "",
+    "description": "",
+    "constraints": [],
+    "deliverables": [],
     "evaluation_criteria": [
-        "Define scoring factors such as:",
-        "- Layout consistency",
-        "- Visual hierarchy",
-        "- Usability",
-        "- Constraint compliance",
-        "- Clarity of design solution",
-        "Role-specific criteria:",
-        "- UI Designer: Pixel-perfect execution, grid implementation",
-        "- UX Designer: User flow completeness, navigation clarity",
-        "- Visual Designer: Creative execution, visual aesthetics",
-        "- Product Designer: Strategic thinking, business alignment"
+        {{
+            "criteria": "",
+            "weight": ""
+        }}
     ],
     "time_limit_minutes": {time_limit}
 }}
 
 --------------------------------------------------
-CRITICAL REMINDERS
 
-1. Do NOT use "you", "your", "you should", "you need to"
-2. Use neutral professional language
-3. Include measurable constraints for automated evaluation
-4. Vary complexity based on difficulty level
-5. Ensure role-specific focus
-6. Make the challenge specific to the topic "{topic_str}"
-7. Return ONLY valid JSON
+CRITICAL INSTRUCTIONS:
 
-Now generate ONE design challenge following all rules above. Return ONLY the JSON object."""
+1. The topic "{topic_str}" MUST be used as the main subject of the design challenge
+2. The task type "{task_str}" MUST match the design output (dashboard generates dashboard, not landing page)
+3. Use EXACT topic provided - do NOT change it to something generic
+4. Description must reference the specific topic "{topic_str}"
+5. Title format: "{topic_str} - {role_str} Challenge"
+6. Do NOT use "you", "your", "you should"
+7. Use neutral professional language
+8. Include 6-8 measurable constraints
+9. Constraints must enable automated evaluation
+10. Return ONLY valid JSON
+
+Generate ONE design challenge following all rules above. Return ONLY the JSON object."""
         
         return base_prompt.strip()
     
