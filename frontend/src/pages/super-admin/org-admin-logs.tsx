@@ -18,6 +18,7 @@ interface OrgAdmin {
   email: string;
   assessmentCount: number;
   assessments: Assessment[];
+  mfaEnabled?: boolean;
 }
 
 interface ConfirmationModalProps {
@@ -123,6 +124,10 @@ export default function OrgAdminLogsPage() {
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [adminToDelete, setAdminToDelete] = useState<OrgAdmin | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [mfaDisableModalOpen, setMfaDisableModalOpen] = useState(false);
+  const [adminToDisableMFA, setAdminToDisableMFA] = useState<OrgAdmin | null>(null);
+  const [mfaDisableReason, setMfaDisableReason] = useState("");
+  const [disablingMFA, setDisablingMFA] = useState(false);
 
   useEffect(() => {
     if (session && (session as any).user?.role !== "super_admin") {
@@ -195,6 +200,64 @@ export default function OrgAdminLogsPage() {
     setAdminToDelete(null);
   };
 
+  const handleDisableMFAClick = (admin: OrgAdmin) => {
+    setAdminToDisableMFA(admin);
+    setMfaDisableModalOpen(true);
+  };
+
+  const handleDisableMFAConfirm = async () => {
+    if (!adminToDisableMFA) return;
+
+    if (!mfaDisableReason || mfaDisableReason.trim().length < 10) {
+      alert("Please provide a reason (at least 10 characters)");
+      return;
+    }
+
+    setDisablingMFA(true);
+    try {
+      const token = (session as any)?.backendToken;
+      if (!token) {
+        alert("Not authenticated");
+        return;
+      }
+
+      await fastApiClient.post(
+        `/api/v1/super-admin/mfa/disable/${adminToDisableMFA.id}`,
+        null,
+        {
+          params: { reason: mfaDisableReason.trim() },
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+
+      // Update the admin in the list
+      setOrgAdmins((prev) =>
+        prev.map((admin) =>
+          admin.id === adminToDisableMFA.id
+            ? { ...admin, mfaEnabled: false }
+            : admin
+        )
+      );
+
+      setMfaDisableModalOpen(false);
+      setAdminToDisableMFA(null);
+      setMfaDisableReason("");
+      alert(`MFA disabled successfully for '${adminToDisableMFA.name}'`);
+    } catch (err: any) {
+      alert(err?.response?.data?.detail || err?.response?.data?.message || err?.message || "Failed to disable MFA");
+    } finally {
+      setDisablingMFA(false);
+    }
+  };
+
+  const handleDisableMFACancel = () => {
+    setMfaDisableModalOpen(false);
+    setAdminToDisableMFA(null);
+    setMfaDisableReason("");
+  };
+
   if (!session || (session as any).user?.role !== "super_admin") {
     return null;
   }
@@ -208,6 +271,109 @@ export default function OrgAdminLogsPage() {
         adminName={adminToDelete?.name || ""}
         adminEmail={adminToDelete?.email || ""}
       />
+
+      {/* MFA Disable Modal */}
+      {mfaDisableModalOpen && (
+        <div
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: "rgba(0, 0, 0, 0.5)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 1000,
+          }}
+          onClick={handleDisableMFACancel}
+        >
+          <div
+            style={{
+              backgroundColor: "#fff",
+              padding: "2rem",
+              borderRadius: "0.5rem",
+              maxWidth: "500px",
+              width: "90%",
+              boxShadow: "0 4px 6px rgba(0, 0, 0, 0.1)",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 style={{ margin: "0 0 1rem 0", fontSize: "1.25rem", fontWeight: 600 }}>
+              Disable MFA for Organization Admin
+            </h3>
+            <p style={{ margin: "0 0 1.5rem 0", color: "#6b7280" }}>
+              This will disable two-factor authentication for:
+            </p>
+            <div
+              style={{
+                backgroundColor: "#fef2f2",
+                border: "1px solid #fecaca",
+                padding: "1rem",
+                borderRadius: "0.375rem",
+                marginBottom: "1.5rem",
+              }}
+            >
+              <p style={{ margin: "0 0 0.5rem 0", fontWeight: 600 }}>{adminToDisableMFA?.name}</p>
+              <p style={{ margin: 0, color: "#6b7280", fontSize: "0.875rem" }}>{adminToDisableMFA?.email}</p>
+            </div>
+            <div style={{ marginBottom: "1.5rem" }}>
+              <label style={{ display: "block", marginBottom: "0.5rem", fontWeight: 500 }}>
+                Reason for disabling MFA (required, min 10 characters):
+              </label>
+              <textarea
+                value={mfaDisableReason}
+                onChange={(e) => setMfaDisableReason(e.target.value)}
+                placeholder="e.g., User lost phone and backup codes"
+                style={{
+                  width: "100%",
+                  padding: "0.5rem",
+                  border: "1px solid #d1d5db",
+                  borderRadius: "0.375rem",
+                  minHeight: "80px",
+                  fontSize: "0.875rem",
+                }}
+              />
+            </div>
+            <p style={{ margin: "0 0 1.5rem 0", color: "#ef4444", fontSize: "0.875rem", fontWeight: 500 }}>
+              ⚠️ This action will be logged in the audit trail.
+            </p>
+            <div style={{ display: "flex", gap: "1rem", justifyContent: "flex-end" }}>
+              <button
+                onClick={handleDisableMFACancel}
+                style={{
+                  padding: "0.5rem 1rem",
+                  backgroundColor: "#f3f4f6",
+                  color: "#1f2937",
+                  border: "none",
+                  borderRadius: "0.375rem",
+                  cursor: "pointer",
+                  fontWeight: 500,
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDisableMFAConfirm}
+                disabled={disablingMFA || mfaDisableReason.trim().length < 10}
+                style={{
+                  padding: "0.5rem 1rem",
+                  backgroundColor: "#ef4444",
+                  color: "#fff",
+                  border: "none",
+                  borderRadius: "0.375rem",
+                  cursor: disablingMFA || mfaDisableReason.trim().length < 10 ? "not-allowed" : "pointer",
+                  fontWeight: 500,
+                  opacity: disablingMFA || mfaDisableReason.trim().length < 10 ? 0.5 : 1,
+                }}
+              >
+                {disablingMFA ? "Disabling..." : "Disable MFA"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       
       <header
         style={{
@@ -286,24 +452,50 @@ export default function OrgAdminLogsPage() {
                           <p style={{ margin: "0.5rem 0 0 0", color: "#6b7280", fontSize: "0.875rem" }}>
                             Assessment Count: <strong>{admin.assessmentCount}</strong>
                           </p>
+                          {admin.mfaEnabled && (
+                            <p style={{ margin: "0.5rem 0 0 0", color: "#10b981", fontSize: "0.875rem" }}>
+                              🔒 MFA Enabled
+                            </p>
+                          )}
                         </div>
-                        <button
-                          onClick={() => handleDeleteClick(admin)}
-                          disabled={deleting}
-                          style={{
-                            padding: "0.5rem 1rem",
-                            backgroundColor: "#ef4444",
-                            color: "#fff",
-                            border: "none",
-                            borderRadius: "0.375rem",
-                            cursor: deleting ? "not-allowed" : "pointer",
-                            fontWeight: 500,
-                            fontSize: "0.875rem",
-                            opacity: deleting ? 0.6 : 1,
-                          }}
-                        >
-                          Delete Admin
-                        </button>
+                        <div style={{ display: "flex", gap: "0.5rem" }}>
+                          {admin.mfaEnabled && (
+                            <button
+                              onClick={() => handleDisableMFAClick(admin)}
+                              disabled={disablingMFA}
+                              style={{
+                                padding: "0.5rem 1rem",
+                                backgroundColor: "#f59e0b",
+                                color: "#fff",
+                                border: "none",
+                                borderRadius: "0.375rem",
+                                cursor: disablingMFA ? "not-allowed" : "pointer",
+                                fontWeight: 500,
+                                fontSize: "0.875rem",
+                                opacity: disablingMFA ? 0.6 : 1,
+                              }}
+                            >
+                              Disable MFA
+                            </button>
+                          )}
+                          <button
+                            onClick={() => handleDeleteClick(admin)}
+                            disabled={deleting}
+                            style={{
+                              padding: "0.5rem 1rem",
+                              backgroundColor: "#ef4444",
+                              color: "#fff",
+                              border: "none",
+                              borderRadius: "0.375rem",
+                              cursor: deleting ? "not-allowed" : "pointer",
+                              fontWeight: 500,
+                              fontSize: "0.875rem",
+                              opacity: deleting ? 0.6 : 1,
+                            }}
+                          >
+                            Delete Admin
+                          </button>
+                        </div>
                       </div>
                       {admin.assessments.length > 0 && (
                         <div>

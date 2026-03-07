@@ -81,7 +81,15 @@ async function verifyToken(req, res, next) {
     '/api/v1/auth/reset-password',
     '/api/v1/auth/verify-reset-token',
     '/api/v1/super-admin/login', 
-    '/api/v1/super-admin/verify-mfa', 
+    '/api/v1/super-admin/verify-mfa',
+    '/api/v1/auth/mfa/setup', // MFA setup endpoints (protected by MFA setup token)
+    '/api/v1/auth/mfa/generate-qr',
+    '/api/v1/auth/mfa/verify-setup',
+    '/api/v1/auth/mfa/complete-setup',
+    '/api/v1/auth/mfa/verify-totp', // MFA verification endpoints (protected by temp token)
+    '/api/v1/auth/mfa/send-email-otp',
+    '/api/v1/auth/mfa/verify-email-otp',
+    '/api/v1/auth/mfa/verify-backup-code',
     '/api/v1/candidate', 
     '/api/v1/custom-mcq/candidate', 
     '/api/v1/dsa/candidate', 

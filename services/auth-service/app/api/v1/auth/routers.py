@@ -913,6 +913,79 @@ async def email_login(
                 "email": email,
             },
         )
+    
+    # Check if org_admin needs to set up MFA (mandatory for org admins)
+    logger.info(f"🔍 [MFA Check] User: {email}, Role: {user.get('role')}, MFA Enabled: {user.get('mfaEnabled')}")
+    
+    if user.get("role") == "org_admin" and not user.get("mfaEnabled"):
+        logger.info(f"✅ [MFA Setup Required] User {email} (org_admin) needs to set up MFA")
+        # Clear failed attempts
+        await _clear_failed_attempts(db, email)
+        
+        # Generate temporary token for MFA setup (valid for 15 minutes)
+        # We'll use a special approach: encode user_id and email in the token
+        # and add a custom claim to identify this as MFA setup token
+        import jwt
+        
+        settings = get_settings()
+        expires_delta = timedelta(minutes=15)
+        expire = datetime.now(timezone.utc) + expires_delta
+        
+        # Create custom token with mfa_setup flag
+        to_encode = {
+            "sub": str(user["_id"]),
+            "email": email,
+            "role": user.get("role"),
+            "mfa_setup": True,  # Special flag for MFA setup
+            "exp": expire,
+            "iat": datetime.now(timezone.utc),
+        }
+        
+        mfa_setup_token = jwt.encode(to_encode, settings.jwt_secret, algorithm=settings.jwt_algorithm)
+        
+        response_data = {
+            "requireMFASetup": True,
+            "email": email,
+            "mfaSetupToken": mfa_setup_token,  # Temporary token for MFA setup
+        }
+        logger.info(f"📤 [Response] Returning requireMFASetup with temporary token")
+        
+        return success_response(
+            "MFA setup required for organization administrators",
+            response_data
+        )
+    
+    # Check if MFA is enabled for org_admin users
+    if user.get("role") == "org_admin" and user.get("mfaEnabled"):
+        logger.info("User %s requires MFA verification", email)
+        # Clear failed attempts
+        await _clear_failed_attempts(db, email)
+        # Generate temporary token for MFA verification
+        import jwt
+        
+        settings = get_settings()
+        expires_delta = timedelta(minutes=10)
+        expire = datetime.now(timezone.utc) + expires_delta
+        
+        # Create custom token with temp flag
+        to_encode = {
+            "sub": str(user["_id"]),
+            "role": user.get("role"),
+            "temp": True,  # Temporary token for MFA verification
+            "exp": expire,
+            "iat": datetime.now(timezone.utc),
+        }
+        
+        temp_token = jwt.encode(to_encode, settings.jwt_secret, algorithm=settings.jwt_algorithm)
+        
+        return success_response(
+            "MFA verification required",
+            {
+                "requireMFA": True,
+                "tempToken": temp_token,
+                "email": email,
+            },
+        )
 
     # Clear failed attempts on successful login
     await _clear_failed_attempts(db, email)
@@ -1213,4 +1286,15 @@ async def reset_password(
     
     logger.info("Password reset successful for user: %s", email)
     
-    return success_response("Password reset successful. You can now sign in with your new password.", {})
+    # Return user info for MFA setup redirect
+    user_data = serialize_document(user)
+    return success_response(
+        "Password reset successful. You can now sign in with your new password.",
+        {
+            "email": email,
+            "user": {
+                "role": user_data.get("role"),
+                "mfaEnabled": user_data.get("mfaEnabled", False),
+            }
+        }
+    )
