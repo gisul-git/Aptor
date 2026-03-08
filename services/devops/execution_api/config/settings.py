@@ -10,6 +10,7 @@ class Settings(BaseSettings):
     app_name: str = "Execution API"
     mongo_uri: str = "mongodb://localhost:27017"
     mongo_db: str = "execution_db"
+    cloud_mongo_db: str = "cloud_db"
     openai_api_key: str = ""
     openai_model: str = "gpt-4o-mini"
 

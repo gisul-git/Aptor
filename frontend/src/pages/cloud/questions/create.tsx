@@ -1,35 +1,137 @@
 import { useState } from "react";
 import { useRouter } from "next/router";
 import { ArrowLeft, BookOpen, Bot, PenTool, Server, Sparkles } from "lucide-react";
-import { type DevopsDifficulty } from "@/lib/devops/ai-question-generator";
+import { type DevopsDifficulty } from "@/lib/cloud/ai-question-generator";
 
 type QuestionMode = "ai" | "manual";
 
 type QuestionLike = Record<string, any>;
 
-const SUGGESTED_TOPICS_BY_DIFFICULTY: Record<DevopsDifficulty, string[]> = {
+type CloudRole =
+  | "Cloud Engineer"
+  | "Cloud DevOps Engineer"
+  | "Cloud Architect"
+  | "Site Reliability Engineer (Cloud)"
+  | "Platform Engineer"
+  | "Cloud Security Engineer"
+  | "Cloud Network Engineer"
+  | "Cloud Systems Administrator"
+  | "Cloud Operations Engineer"
+  | "Cloud Migration Engineer"
+  | "Kubernetes Platform Engineer"
+  | "Cloud Data Engineer"
+  | "MLOps Engineer"
+  | "FinOps Analyst"
+  | "Solutions Architect (Cloud)"
+  | "Cloud Automation Engineer"
+  | "Other";
+
+const DEFAULT_CLOUD_TOPICS_BY_DIFFICULTY: Record<DevopsDifficulty, string[]> = {
   beginner: [
-    "Linux filesystem and permissions",
-    "Basic shell scripting",
-    "Repository initialization and branching",
-    "Simple CI pipeline structure",
+    "Cloud IAM basics and access boundaries",
+    "Basic object storage and lifecycle policies",
+    "Compute instance setup and tagging standards",
+    "Cloud monitoring and alerting fundamentals",
   ],
   intermediate: [
-    "CI/CD pipelines",
-    "Container build optimization",
-    "Deployment manifest organization",
-    "Infrastructure configuration validation",
+    "Multi-environment infrastructure configuration",
+    "Container orchestration deployment strategies",
+    "Cloud networking segmentation and routing",
+    "Infrastructure policy validation workflows",
   ],
   advanced: [
-    "Incident recovery automation",
-    "Multi-environment release governance",
-    "Policy-as-code validation gates",
-    "Scalable platform reliability workflows",
+    "Disaster recovery and regional failover design",
+    "Zero-trust cloud security hardening",
+    "Cloud cost optimization and governance automation",
+    "Large-scale reliability incident response",
   ],
 };
 
+const ROLE_TOPIC_MAP: Record<Exclude<CloudRole, "Other">, Record<DevopsDifficulty, string[]>> = {
+  "Cloud Engineer": {
+    beginner: ["IAM users and roles", "Object storage versioning", "Basic virtual network setup"],
+    intermediate: ["Autoscaling policies", "Managed database backup strategies", "Infrastructure drift detection"],
+    advanced: ["Cross-region resilience", "High-availability architecture", "Cloud governance guardrails"],
+  },
+  "Cloud DevOps Engineer": {
+    beginner: ["Build pipeline fundamentals", "Artifact registry workflows", "Environment variable management"],
+    intermediate: ["Progressive delivery patterns", "Pipeline security scanning", "Infrastructure CI validation"],
+    advanced: ["Multi-account release orchestration", "Policy-as-code enforcement", "Automated rollback strategies"],
+  },
+  "Cloud Architect": {
+    beginner: ["Reference architecture baselines", "Service boundary definitions", "Resource naming standards"],
+    intermediate: ["Multi-tier network architecture", "Data durability design", "Identity federation patterns"],
+    advanced: ["Landing zone architecture", "Cross-region active-active design", "Platform governance models"],
+  },
+  "Site Reliability Engineer (Cloud)": {
+    beginner: ["SLI and SLO basics", "Service health dashboards", "Alert threshold tuning"],
+    intermediate: ["Incident playbook automation", "Capacity forecasting", "Reliability error budget tracking"],
+    advanced: ["Chaos engineering in cloud systems", "Multi-region failure recovery", "Reliability architecture audits"],
+  },
+  "Platform Engineer": {
+    beginner: ["Internal platform environment setup", "Golden template management", "Developer self-service basics"],
+    intermediate: ["Reusable platform modules", "Cluster tenancy and isolation", "Platform observability standards"],
+    advanced: ["Organization-wide platform governance", "Scalable self-service infrastructure", "Platform API lifecycle control"],
+  },
+  "Cloud Security Engineer": {
+    beginner: ["Least privilege role setup", "Storage encryption defaults", "Basic security monitoring"],
+    intermediate: ["Secret rotation workflows", "Identity threat detection rules", "Network policy hardening"],
+    advanced: ["Zero-trust cloud controls", "Security policy automation", "Cross-account incident containment"],
+  },
+  "Cloud Network Engineer": {
+    beginner: ["Subnet and route table basics", "Security groups and ACLs", "Private/public network patterns"],
+    intermediate: ["Transit routing architecture", "Hybrid connectivity design", "DNS and load balancing strategy"],
+    advanced: ["Global network failover design", "Advanced traffic segmentation", "Network observability at scale"],
+  },
+  "Cloud Systems Administrator": {
+    beginner: ["Instance patching workflows", "User access lifecycle management", "Storage and snapshot basics"],
+    intermediate: ["Configuration baseline enforcement", "OS hardening automation", "Operational runbook creation"],
+    advanced: ["Fleet-level remediation automation", "Business continuity procedures", "Operational risk controls"],
+  },
+  "Cloud Operations Engineer": {
+    beginner: ["Operational health checks", "Standard incident triage", "Cloud service inventory management"],
+    intermediate: ["Runbook-driven operations", "Automated maintenance workflows", "Service ownership tracking"],
+    advanced: ["Cross-team incident command", "Operational maturity frameworks", "Enterprise operations governance"],
+  },
+  "Cloud Migration Engineer": {
+    beginner: ["Discovery and dependency mapping", "Migration wave planning", "Initial target environment prep"],
+    intermediate: ["Data migration validation", "Cutover and rollback planning", "Hybrid migration orchestration"],
+    advanced: ["Large-scale migration governance", "Post-migration optimization", "Risk-led migration program design"],
+  },
+  "Kubernetes Platform Engineer": {
+    beginner: ["Cluster namespace standards", "Workload deployment basics", "Service exposure patterns"],
+    intermediate: ["Ingress and traffic policies", "Workload autoscaling", "Cluster security baselines"],
+    advanced: ["Multi-cluster operations", "Cluster policy governance", "Platform reliability optimization"],
+  },
+  "Cloud Data Engineer": {
+    beginner: ["Storage tiering and retention", "Managed data service basics", "Data access control setup"],
+    intermediate: ["Data pipeline orchestration", "Schema evolution strategy", "Data quality validation"],
+    advanced: ["Lakehouse reliability architecture", "Cross-region data replication", "Data platform governance"],
+  },
+  "MLOps Engineer": {
+    beginner: ["Model artifact management", "ML environment configuration", "Experiment tracking setup"],
+    intermediate: ["Model deployment pipelines", "Feature store operations", "Inference monitoring setup"],
+    advanced: ["Multi-model production governance", "Automated model rollback", "ML reliability and compliance controls"],
+  },
+  "FinOps Analyst": {
+    beginner: ["Cloud cost allocation tagging", "Basic budget alerts", "Resource usage reporting"],
+    intermediate: ["Cost anomaly detection", "Commitment planning strategies", "Chargeback model configuration"],
+    advanced: ["Enterprise cloud cost governance", "Unit economics optimization", "Multi-account spend controls"],
+  },
+  "Solutions Architect (Cloud)": {
+    beginner: ["Workload requirement mapping", "Service selection rationale", "High-level architecture documentation"],
+    intermediate: ["Non-functional requirement design", "Security and compliance architecture", "Scalable reference solutions"],
+    advanced: ["Enterprise architecture governance", "Cross-domain solution optimization", "Strategic modernization roadmaps"],
+  },
+  "Cloud Automation Engineer": {
+    beginner: ["Basic automation scripts", "Template parameterization", "Task scheduling fundamentals"],
+    intermediate: ["Workflow automation pipelines", "Configuration compliance automation", "Automated environment provisioning"],
+    advanced: ["Autonomous operations workflows", "Enterprise automation standards", "Self-healing cloud systems"],
+  },
+};
+
 async function persistQuestions(questions: QuestionLike[]): Promise<QuestionLike[]> {
-  const response = await fetch("/api/devops/save-questions", {
+  const response = await fetch("/api/cloud/save-questions", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ questions }),
@@ -44,7 +146,7 @@ async function persistQuestions(questions: QuestionLike[]): Promise<QuestionLike
   return data.savedQuestions as QuestionLike[];
 }
 
-export default function DevOpsQuestionCreatePage() {
+export default function CloudQuestionCreatePage() {
   const router = useRouter();
   const [mode, setMode] = useState<QuestionMode>("ai");
   const [loading, setLoading] = useState(false);
@@ -53,8 +155,9 @@ export default function DevOpsQuestionCreatePage() {
 
   const [experienceYears, setExperienceYears] = useState(3);
   const [difficulty, setDifficulty] = useState<DevopsDifficulty>("intermediate");
-  const [topicsRequired, setTopicsRequired] = useState("CI/CD pipelines");
-  const [jobRole, setJobRole] = useState("DevOps Engineer");
+  const [topicsRequired, setTopicsRequired] = useState("Cloud IAM basics and access boundaries");
+  const [jobRole, setJobRole] = useState<CloudRole>("Cloud Engineer");
+  const [customJobRole, setCustomJobRole] = useState("");
 
   const [manualTitle, setManualTitle] = useState("Create a resilient CI/CD workflow");
   const [manualDescription, setManualDescription] = useState(
@@ -64,8 +167,13 @@ export default function DevOpsQuestionCreatePage() {
   const [manualStarterCode, setManualStarterCode] = useState("# Write your solution here");
 
   const effectiveYearsOfExperience = `${experienceYears} ${experienceYears === 1 ? "year" : "years"}`;
-  const effectiveTopicsRequired = topicsRequired.trim() || "CI/CD pipelines";
-  const suggestedTopics = SUGGESTED_TOPICS_BY_DIFFICULTY[difficulty];
+  const effectiveTopicsRequired = topicsRequired.trim() || "Cloud IAM basics and access boundaries";
+  const effectiveJobRole = jobRole === "Other" ? (customJobRole.trim() || "Cloud Engineer") : jobRole;
+  const roleTopics =
+    jobRole === "Other" ? [] : ROLE_TOPIC_MAP[jobRole as Exclude<CloudRole, "Other">][difficulty];
+  const suggestedTopics = Array.from(
+    new Set([...DEFAULT_CLOUD_TOPICS_BY_DIFFICULTY[difficulty], ...roleTopics])
+  );
 
   const handleGenerateAI = async () => {
     setLoading(true);
@@ -75,7 +183,7 @@ export default function DevOpsQuestionCreatePage() {
       let questions: QuestionLike[] = [];
 
       try {
-        const response = await fetch("/api/devops/generate-questions", {
+        const response = await fetch("/api/cloud/generate-questions", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -83,11 +191,11 @@ export default function DevOpsQuestionCreatePage() {
             difficulty,
             topicsRequired: effectiveTopicsRequired,
             questionCount: 1,
-            jobRole,
+            jobRole: effectiveJobRole,
             timeLimit: 60,
             focusArea: "balanced",
-            title: "DevOps AI Assessment",
-            description: "Auto-generated DevOps assessment",
+            title: "Cloud AI Assessment",
+            description: "Auto-generated Cloud assessment",
           }),
         });
         const json = await response.json().catch(() => ({}));
@@ -111,29 +219,29 @@ export default function DevOpsQuestionCreatePage() {
           difficulty,
           topicsRequired: effectiveTopicsRequired,
           questionCount: 1,
-          jobRole,
+          jobRole: effectiveJobRole,
           timeLimit: 60,
           focusArea: "balanced",
         },
         questions: savedQuestions,
       };
 
-      sessionStorage.setItem("devopsAIGeneratedPayload", JSON.stringify(payload));
+      sessionStorage.setItem("cloudAIGeneratedPayload", JSON.stringify(payload));
       sessionStorage.setItem(
-        "devopsAIGenerationMeta",
+        "cloudAIGenerationMeta",
         JSON.stringify({
           source: "create-page",
           yearsOfExperience: effectiveYearsOfExperience,
           difficulty,
           topicsRequired: effectiveTopicsRequired,
           questionCount: 1,
-          jobRole,
+          jobRole: effectiveJobRole,
           timeLimit: 60,
           focusArea: "balanced",
           generatedAt: new Date().toISOString(),
         })
       );
-      router.push("/devops/questions");
+      router.push("/cloud/questions");
     } catch (err: any) {
       setError(err?.message || "Failed to generate and store questions in DB.");
     } finally {
@@ -147,7 +255,7 @@ export default function DevOpsQuestionCreatePage() {
     setWarning(null);
     try {
       const manualQuestion: QuestionLike = {
-        id: "manual-devops-1",
+        id: "manual-cloud-1",
         title: manualTitle,
         description: manualDescription,
         difficulty: manualDifficulty,
@@ -169,19 +277,19 @@ export default function DevOpsQuestionCreatePage() {
           difficulty: manualDifficulty,
           topicsRequired: "manual",
           questionCount: 1,
-          jobRole: "DevOps Engineer",
+          jobRole: "Cloud Engineer",
           timeLimit: 45,
           focusArea: "practical",
         },
         questions: savedQuestions,
       };
 
-      sessionStorage.setItem("devopsAIGeneratedPayload", JSON.stringify(payload));
+      sessionStorage.setItem("cloudAIGeneratedPayload", JSON.stringify(payload));
       sessionStorage.setItem(
-        "devopsAIGenerationMeta",
+        "cloudAIGenerationMeta",
         JSON.stringify({ source: "manual-form", generatedAt: new Date().toISOString() })
       );
-      router.push("/devops/questions");
+      router.push("/cloud/questions");
     } catch (err: any) {
       setError(err?.message || "Failed to create and store question in DB.");
     } finally {
@@ -194,7 +302,7 @@ export default function DevOpsQuestionCreatePage() {
       <div style={{ maxWidth: "1100px", margin: "0 auto", padding: "3rem 2rem" }}>
         <button
           type="button"
-          onClick={() => router.push("/devops/questions")}
+          onClick={() => router.push("/cloud/questions")}
           style={{
             display: "flex",
             alignItems: "center",
@@ -209,14 +317,14 @@ export default function DevOpsQuestionCreatePage() {
             marginBottom: "1rem",
           }}
         >
-          <ArrowLeft size={16} strokeWidth={2.5} /> DevOps Questions
+          <ArrowLeft size={16} strokeWidth={2.5} /> Cloud Questions
         </button>
 
         <h1 style={{ margin: "0 0 0.5rem 0", color: "#111827", fontSize: "2rem", fontWeight: 800 }}>
-          Create DevOps Question
+          Create Cloud Question
         </h1>
         <p style={{ margin: "0 0 2rem 0", color: "#6B7280" }}>
-          Create production-focused DevOps questions using AI generation or manual authoring.
+          Create production-focused Cloud questions using AI generation or manual authoring.
         </p>
 
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem", marginBottom: "1.5rem" }}>
@@ -252,7 +360,7 @@ export default function DevOpsQuestionCreatePage() {
             <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.25rem", color: "#00684A", fontWeight: 700 }}>
               <PenTool size={18} /> Manual Creation
             </div>
-            <div style={{ color: "#6B7280", fontSize: "0.875rem" }}>Author your own custom DevOps question.</div>
+            <div style={{ color: "#6B7280", fontSize: "0.875rem" }}>Author your own custom Cloud question.</div>
           </button>
         </div>
 
@@ -286,21 +394,54 @@ export default function DevOpsQuestionCreatePage() {
               </label>
               <label>
                 <div style={{ fontSize: "0.875rem", fontWeight: 600, marginBottom: "0.4rem" }}>Job Role</div>
-                <input value={jobRole} onChange={(e) => setJobRole(e.target.value)} style={{ width: "100%", padding: "0.7rem", border: "1px solid #D1D5DB", borderRadius: "0.5rem" }} />
+                <select
+                  value={jobRole}
+                  onChange={(e) => setJobRole(e.target.value as CloudRole)}
+                  style={{ width: "100%", padding: "0.7rem", border: "1px solid #D1D5DB", borderRadius: "0.5rem" }}
+                >
+                  <option>Cloud Engineer</option>
+                  <option>Cloud DevOps Engineer</option>
+                  <option>Cloud Architect</option>
+                  <option>Site Reliability Engineer (Cloud)</option>
+                  <option>Platform Engineer</option>
+                  <option>Cloud Security Engineer</option>
+                  <option>Cloud Network Engineer</option>
+                  <option>Cloud Systems Administrator</option>
+                  <option>Cloud Operations Engineer</option>
+                  <option>Cloud Migration Engineer</option>
+                  <option>Kubernetes Platform Engineer</option>
+                  <option>Cloud Data Engineer</option>
+                  <option>MLOps Engineer</option>
+                  <option>FinOps Analyst</option>
+                  <option>Solutions Architect (Cloud)</option>
+                  <option>Cloud Automation Engineer</option>
+                  <option>Other</option>
+                </select>
               </label>
             </div>
+            {jobRole === "Other" && (
+              <label style={{ display: "block", marginTop: "1rem" }}>
+                <div style={{ fontSize: "0.875rem", fontWeight: 600, marginBottom: "0.4rem" }}>Custom Job Role</div>
+                <input
+                  value={customJobRole}
+                  onChange={(e) => setCustomJobRole(e.target.value)}
+                  placeholder="Enter cloud role"
+                  style={{ width: "100%", padding: "0.7rem", border: "1px solid #D1D5DB", borderRadius: "0.5rem" }}
+                />
+              </label>
+            )}
             <label style={{ display: "block", marginTop: "1rem" }}>
               <div style={{ fontSize: "0.875rem", fontWeight: 600, marginBottom: "0.4rem" }}>Topics Required</div>
               <input
                 value={topicsRequired}
                 onChange={(e) => setTopicsRequired(e.target.value)}
-                placeholder="Enter topic or pick a suggestion below"
+                placeholder="Enter cloud topic or pick a suggestion below"
                 style={{ width: "100%", padding: "0.7rem", border: "1px solid #D1D5DB", borderRadius: "0.5rem" }}
               />
             </label>
             <div style={{ marginTop: "0.8rem" }}>
               <div style={{ fontSize: "0.8rem", color: "#6B7280", fontWeight: 600, marginBottom: "0.45rem" }}>
-                Suggested topics for {difficulty}
+                Suggested topics for {effectiveJobRole} ({difficulty})
               </div>
               <div style={{ display: "flex", flexWrap: "wrap", gap: "0.45rem" }}>
                 {suggestedTopics.map((topic) => (
@@ -408,3 +549,4 @@ export default function DevOpsQuestionCreatePage() {
     </div>
   );
 }
+

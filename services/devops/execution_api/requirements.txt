@@ -4,3 +4,4 @@ gunicorn
 motor
 pymongo
 pydantic-settings
+python-multipart

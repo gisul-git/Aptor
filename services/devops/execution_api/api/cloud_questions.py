@@ -8,11 +8,11 @@ from bson import ObjectId
 from fastapi import APIRouter, Body, HTTPException, Query, Request
 
 from config.settings import get_settings
-from db.mongodb import get_database
+from db.mongodb import get_cloud_database
 from schemas.question import DevOpsAIGenerationRequest, DevOpsQuestionCreate, DevOpsQuestionUpdate
 from utils.mongo import serialize_document
 
-router = APIRouter(prefix="/api/v1/devops/questions", tags=["devops-questions"])
+router = APIRouter(prefix="/api/v1/cloud/questions", tags=["cloud-questions"])
 
 
 def _normalize_doc(doc: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
@@ -52,9 +52,9 @@ def _sanitize_generated_questions(raw: Any, count: int) -> List[Dict[str, Any]]:
             and isinstance(q.get("task_steps"), list)
         ):
             q = {
-                "id": q.get("id") or f"ai-devops-{idx + 1}",
-                "title": q.get("title") or f"DevOps Question {idx + 1}",
-                "description": q.get("context") or "Solve this DevOps task.",
+                "id": q.get("id") or f"ai-cloud-{idx + 1}",
+                "title": q.get("title") or f"Cloud Question {idx + 1}",
+                "description": q.get("context") or "Solve this Cloud task.",
                 "difficulty": q.get("difficulty") or "medium",
                 "kind": "command",
                 "points": q.get("points") or 10,
@@ -88,9 +88,9 @@ def _sanitize_generated_questions(raw: Any, count: int) -> List[Dict[str, Any]]:
 
         out.append(
             {
-                "id": str(q.get("id") or f"ai-devops-{idx + 1}"),
-                "title": str(q.get("title") or f"DevOps Question {idx + 1}"),
-                "description": str(q.get("description") or "Solve this DevOps task."),
+                "id": str(q.get("id") or f"ai-cloud-{idx + 1}"),
+                "title": str(q.get("title") or f"Cloud Question {idx + 1}"),
+                "description": str(q.get("description") or "Solve this Cloud task."),
                 "difficulty": difficulty,
                 "points": int(q.get("points") or 10),
                 "kind": kind,
@@ -135,12 +135,12 @@ async def list_questions(
     limit: int = 100,
     published_only: Optional[bool] = Query(None),
 ) -> Dict[str, Any]:
-    db = get_database()
+    db = get_cloud_database()
     actor_id = _get_actor_id(request)
     query: Dict[str, Any] = {"created_by": actor_id}
     if published_only is not None:
         query["is_published"] = published_only
-    docs = await db.devops_questions.find(query).sort("created_at", -1).skip(skip).limit(limit).to_list(length=limit)
+    docs = await db.cloud_questions.find(query).sort("created_at", -1).skip(skip).limit(limit).to_list(length=limit)
     return {"success": True, "data": [_normalize_doc(d) for d in docs]}
 
 
@@ -150,11 +150,11 @@ async def list_published_questions(
     skip: int = 0,
     limit: int = 100,
 ) -> Dict[str, Any]:
-    db = get_database()
+    db = get_cloud_database()
     actor_id = _get_actor_id(request)
     query: Dict[str, Any] = {"created_by": actor_id}
     docs = (
-        await db.devops_published_questions.find(query)
+        await db.cloud_published_questions.find(query)
         .sort("published_at", -1)
         .skip(skip)
         .limit(limit)
@@ -165,16 +165,16 @@ async def list_published_questions(
 
 @router.post("/", response_model=Dict[str, Any])
 async def create_question(payload: DevOpsQuestionCreate, request: Request) -> Dict[str, Any]:
-    db = get_database()
+    db = get_cloud_database()
     actor_id = _get_actor_id(request)
     now = datetime.utcnow()
     data = payload.model_dump()
     data["created_by"] = actor_id
     data["created_at"] = now
     data["updated_at"] = now
-    data["module_type"] = "devops"
-    result = await db.devops_questions.insert_one(data)
-    created = await db.devops_questions.find_one({"_id": result.inserted_id})
+    data["module_type"] = "cloud"
+    result = await db.cloud_questions.insert_one(data)
+    created = await db.cloud_questions.find_one({"_id": result.inserted_id})
     return {"success": True, "data": _normalize_doc(created)}
 
 
@@ -182,10 +182,10 @@ async def create_question(payload: DevOpsQuestionCreate, request: Request) -> Di
 async def generate_ai_questions(payload: DevOpsAIGenerationRequest) -> Dict[str, Any]:
     settings = get_settings()
     if not settings.openai_api_key:
-        raise HTTPException(status_code=500, detail="Missing OPENAI_API_KEY in DevOps backend environment.")
+        raise HTTPException(status_code=500, detail="Missing OPENAI_API_KEY in Cloud backend environment.")
     safe_count = 1
     system_prompt = """
-You generate DevOps hands-on assessment tasks designed for controlled sandbox environments.
+You generate DevOps hands-on assessment tasks designed for controlled sandbox execution environments.
  
 Output MUST be strictly valid JSON.
 
@@ -199,182 +199,106 @@ Hard Rules:
 
 - Do not include commands.
 
-- Do not include solution code.
+- Do not include code snippets.
 
-- Do not include configuration solutions.
+- Do not include configuration examples.
+
+- Do not include command syntax.
 
 - Only generate task descriptions and step instructions.
  
-All tasks must simulate realistic DevOps engineering work and must be compatible with sandbox validation systems.
+All tasks must simulate realistic Cloud engineering work and must be compatible with sandbox execution and static validation systems.
 """.strip()
  
  
     user_prompt = f"""
 Act as a Senior DevOps Engineer working at a FAANG company (Google, Amazon, Meta, Apple, or Netflix).
  
-Generate DevOps assessment questions representing realistic internal engineering tasks.
+Your task is to generate DevOps assessment questions that simulate realistic internal production engineering assignments.
  
-Platform Execution Model
+Sandbox Capabilities
 
-The platform does NOT execute infrastructure or services.
+The sandbox environment supports the following validation capabilities:
 
-Candidate submissions are validated by analyzing:
+- Linux commands can be executed
 
-- commands written
+- Shell scripts can be executed
 
-- files created
+- Docker build configuration files can be statically validated using Hadolint
 
-- configuration content written inside files
+- Container orchestration manifests can be statically validated
 
-Therefore:
+- CI workflow configuration files can be statically validated
 
-- Questions must NOT imply runtime execution.
+- Infrastructure configuration files can be validated using validation tools
 
-- Questions must NOT ask candidates to verify running services.
+Sandbox Limitations
 
-- Tasks must focus on preparing configurations and repository structures.
+- Container runtimes cannot be executed
 
-Environment Model
+- Cluster environments cannot be executed
+
+- CI workflows cannot be executed
+
+- Internet access is not available
+
+- No files or repositories exist initially
+
+- The machine starts completely empty
+
+- Execution environments do not persist state after the assessment session
+
+Execution Environment
 
 - Linux-based sandbox environment
 
-- The environment starts completely empty
+- Candidates must create all files and directories manually
 
-- No files, directories, or repositories exist initially
+- Tasks must start from an empty filesystem
 
-- Candidates must create everything manually using terminal commands
+- Tasks must rely only on local file creation and configuration
 
-- Internet access is disabled
-
-Infrastructure Restrictions
-
-- No cloud provisioning
-
-- No external downloads
-
-- No runtime deployment validation
-
-- Docker, Kubernetes, CI workflows, and Terraform configurations are validated statically only
+- Tasks must not depend on external downloads
 
 Technology Scope
 
-Tasks may involve these DevOps technologies:
+The engineer may use DevOps tools available in the environment, but the generated question must NOT explicitly mention any technology names.
 
-Linux filesystem operations  
+Technology Neutral Rule
 
-Git repository management  
+Generated tasks must NOT explicitly mention technologies such as Docker, Kubernetes, Terraform, GitHub Actions, or similar tools.
 
-Docker container build configuration  
+Tasks must describe the engineering objective rather than the specific tool used to achieve it.
 
-Kubernetes deployment manifests  
+The engineer taking the assessment should determine which tools or commands are required to complete the task.
 
-GitHub Actions CI workflows  
+DevOps Scope Rules
 
-Terraform infrastructure configuration  
+Tasks must test DevOps skills only.
 
-Technology Clarity Rule
+Generated tasks MUST NOT require:
 
-Each task step must clearly mention the technology being used when applicable.
+- writing application code
 
-Examples:
+- creating HTML pages
 
-Create a Dockerfile for container build configuration.  
+- writing backend services
 
-Create Kubernetes manifest files for Deployment and Service.  
+- implementing APIs
 
-Create a GitHub Actions workflow file inside `.github/workflows`.  
+- programming application logic
 
-Create Terraform configuration files such as `main.tf` and `provider.tf`.
-
-Configuration Definition Rule
-
-Tasks may require the candidate to **write configuration content inside files**.
-
-Examples:
-
-- Dockerfile instructions
-
-- Kubernetes YAML definitions
-
-- GitHub Actions workflow steps
-
-- Terraform resource definitions
-
-The question should describe **what configuration must be implemented** but must NOT include the actual solution code.
+- building full software applications
 
 Placeholder File Rule
 
-If an application artifact is required, instruct the user to create a **dummy placeholder file**.
+If a task requires any application or project artifact, the engineer must create a dummy placeholder file.
 
-Requirements:
+The placeholder file must remain empty and must not contain any content.
 
-- The file must be empty
+These files exist only to simulate application artifacts required for DevOps operations.
 
-- The file name must be explicitly mentioned
-
-Example:
-
-Create an empty placeholder file named `index.html`.
-
-Task Step Clarity Rules
-
-Each task step MUST:
-
-- Specify exact directory names
-
-- Specify exact file names
-
-- Specify the technology used
-
-- Be deterministic for automated validation
-
-Examples of good steps:
-
-Create a Git repository in the project directory.  
-
-Create a Dockerfile in the repository root.  
-
-Define container build instructions inside the Dockerfile.  
-
-Create a directory named `manifests` for Kubernetes YAML files.  
-
-Create a Kubernetes Deployment manifest named `deployment.yaml`.  
-
-Create a GitHub Actions workflow file named `ci.yml` inside `.github/workflows`.  
-
-Create Terraform configuration files named `main.tf` and `provider.tf`.
-
-Candidate Profile
-
-Role: {payload.jobRole}  
-
-Experience: {payload.yearsOfExperience}  
-
-Difficulty: {payload.difficulty}  
-
-Focus Area: {payload.focusArea}  
-
-Topics Required: {payload.topicsRequired}  
-
-Assessment Time Limit: {payload.timeLimit} minutes  
-
-Assessment Title: {payload.title}  
-
-Assessment Description: {payload.description}
-
-Difficulty Guidance
-
-Easy:
-
-- Basic Linux, Git, or Dockerfile tasks
-
-Medium:
-
-- Multi-file configuration tasks involving Docker + Kubernetes or CI
-
-Hard:
-
-- Repository structures involving multiple DevOps technologies such as Docker + Kubernetes + CI + Terraform
+Tasks must not require writing code inside these files.
 
 Allowed Artifact Types
 
@@ -396,6 +320,78 @@ Tasks may require the engineer to create:
 
 - empty placeholder files
 
+Validation Compatibility Rules
+
+Tasks must produce artifacts that can be statically validated in the sandbox.
+
+Container tasks
+
+- must focus only on container build configuration files
+
+- runtime execution is not allowed
+
+Orchestration tasks
+
+- must only involve creating manifest files
+
+- deployment to clusters is not allowed
+
+CI workflow tasks
+
+- must only involve creating workflow configuration files
+
+- workflows will not be executed
+
+- if CI workflows are required, the engineer must initialize a repository first
+
+Infrastructure configuration tasks
+
+- must be compatible with configuration validation tools
+
+- infrastructure must not be provisioned
+
+Linux tasks
+
+- may involve filesystem operations
+
+- may involve shell scripting
+
+- must operate entirely within the sandbox environment
+ 
+Candidate Profile
+
+Role: {payload.jobRole}
+
+Experience: {payload.yearsOfExperience}
+
+Difficulty Level: {payload.difficulty}
+
+Focus Area: {payload.focusArea}
+
+Topics Required: {payload.topicsRequired}
+
+Assessment Time Limit: {payload.timeLimit} minutes
+
+Assessment Title: {payload.title}
+
+Assessment Description: {payload.description}
+ 
+Task Design Requirements
+ 
+Each generated question must:
+ 
+- represent a realistic internal Cloud engineering assignment
+
+- be framed as a production incident, infrastructure recovery task, or internal platform engineering request
+
+- start from a completely empty environment
+
+- require manual terminal-based DevOps operations
+
+- avoid reliance on internet downloads
+
+- produce deterministic artifacts that can be statically validated
+ 
 Generate EXACTLY {safe_count} questions.
  
 Return STRICTLY the following JSON format:
@@ -409,8 +405,6 @@ Return STRICTLY the following JSON format:
       "title": "",
 
       "company": "",
-
-      "difficulty": "easy|medium|hard",
 
       "context": "",
 
@@ -441,29 +435,29 @@ Apple
 
 Netflix
  
-difficulty  
-
-Must be one of:
-
-easy  
-
-medium  
-
-hard  
-
 context
 
-Single paragraph describing the engineering scenario and the configuration objective.
+A single paragraph describing:
+
+- the production situation
+
+- environment conditions
+
+- system constraints
+
+- the final objective the engineer must achieve
  
 task_steps
 
-Ordered list of clear DevOps actions including technologies and file names.
+Ordered list of actions the engineer must perform.
  
 Important Output Rules
 
 - No commands
 
-- No solution code
+- No code snippets
+
+- No configuration examples
 
 - No explanations
 
@@ -534,9 +528,9 @@ Important Output Rules
 async def get_question(question_id: str, request: Request) -> Dict[str, Any]:
     if not ObjectId.is_valid(question_id):
         raise HTTPException(status_code=400, detail="Invalid question ID")
-    db = get_database()
+    db = get_cloud_database()
     actor_id = _get_actor_id(request)
-    doc = await db.devops_questions.find_one({"_id": ObjectId(question_id), "created_by": actor_id})
+    doc = await db.cloud_questions.find_one({"_id": ObjectId(question_id), "created_by": actor_id})
     if not doc:
         raise HTTPException(status_code=404, detail="Question not found")
     return {"success": True, "data": _normalize_doc(doc)}
@@ -546,18 +540,18 @@ async def get_question(question_id: str, request: Request) -> Dict[str, Any]:
 async def update_question(question_id: str, payload: DevOpsQuestionUpdate, request: Request) -> Dict[str, Any]:
     if not ObjectId.is_valid(question_id):
         raise HTTPException(status_code=400, detail="Invalid question ID")
-    db = get_database()
+    db = get_cloud_database()
     actor_id = _get_actor_id(request)
     updates = {k: v for k, v in payload.model_dump().items() if v is not None}
     if updates:
         updates["updated_at"] = datetime.utcnow()
-    result = await db.devops_questions.update_one(
+    result = await db.cloud_questions.update_one(
         {"_id": ObjectId(question_id), "created_by": actor_id},
         {"$set": updates},
     )
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="Question not found")
-    updated = await db.devops_questions.find_one({"_id": ObjectId(question_id)})
+    updated = await db.cloud_questions.find_one({"_id": ObjectId(question_id)})
     return {"success": True, "data": _normalize_doc(updated)}
 
 
@@ -570,7 +564,7 @@ async def toggle_publish_question(
 ) -> Dict[str, Any]:
     if not ObjectId.is_valid(question_id):
         raise HTTPException(status_code=400, detail="Invalid question ID")
-    db = get_database()
+    db = get_cloud_database()
     actor_id = _get_actor_id(request)
     published = is_published
     if published is None and body:
@@ -579,13 +573,13 @@ async def toggle_publish_question(
             published = raw
     if published is None:
         raise HTTPException(status_code=400, detail="is_published is required")
-    result = await db.devops_questions.update_one(
+    result = await db.cloud_questions.update_one(
         {"_id": ObjectId(question_id), "created_by": actor_id},
         {"$set": {"is_published": published, "updated_at": datetime.utcnow()}},
     )
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="Question not found")
-    updated = await db.devops_questions.find_one({"_id": ObjectId(question_id)})
+    updated = await db.cloud_questions.find_one({"_id": ObjectId(question_id)})
 
     if published:
         if updated:
@@ -603,13 +597,13 @@ async def toggle_publish_question(
                 "published_at": datetime.utcnow(),
                 "updated_at": datetime.utcnow(),
             }
-            await db.devops_published_questions.update_one(
+            await db.cloud_published_questions.update_one(
                 {"question_id": str(updated.get("_id")), "created_by": actor_id},
                 {"$set": published_doc},
                 upsert=True,
             )
     else:
-        await db.devops_published_questions.delete_one(
+        await db.cloud_published_questions.delete_one(
             {"question_id": question_id, "created_by": actor_id}
         )
 
@@ -620,11 +614,12 @@ async def toggle_publish_question(
 async def delete_question(question_id: str, request: Request) -> Dict[str, Any]:
     if not ObjectId.is_valid(question_id):
         raise HTTPException(status_code=400, detail="Invalid question ID")
-    db = get_database()
+    db = get_cloud_database()
     actor_id = _get_actor_id(request)
-    result = await db.devops_questions.delete_one({"_id": ObjectId(question_id), "created_by": actor_id})
+    result = await db.cloud_questions.delete_one({"_id": ObjectId(question_id), "created_by": actor_id})
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Question not found")
-    await db.devops_published_questions.delete_one({"question_id": question_id, "created_by": actor_id})
+    await db.cloud_published_questions.delete_one({"question_id": question_id, "created_by": actor_id})
     return {"success": True, "message": "Question deleted successfully"}
+
 

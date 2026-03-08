@@ -7,11 +7,11 @@ from typing import Any, Dict, List, Optional
 from bson import ObjectId
 from fastapi import APIRouter, Body, File, HTTPException, Query, Request, UploadFile
 
-from db.mongodb import get_database
+from db.mongodb import get_cloud_database
 from schemas.test import DevOpsTestCreate, DevOpsTestUpdate
 from utils.mongo import serialize_document
 
-router = APIRouter(prefix="/api/v1/devops/tests", tags=["devops-tests"])
+router = APIRouter(prefix="/api/v1/cloud/tests", tags=["cloud-tests"])
 
 
 def _normalize_doc(doc: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
@@ -30,7 +30,7 @@ def _get_actor_id(request: Request) -> str:
 
 def _assessment_collections(db: Any) -> List[Any]:
     # New primary collection + backward-compatible legacy collection
-    return [db.devops_assessments, db.devops_tests]
+    return [db.cloud_assessments, db.cloud_tests]
 
 
 async def _find_test_doc(db: Any, query: Dict[str, Any]) -> Optional[Dict[str, Any]]:
@@ -77,7 +77,7 @@ async def _materialize_inline_questions(
     now = datetime.utcnow()
     for q in inline_questions:
         q_doc = {
-            "title": q.get("title", "Untitled DevOps Question"),
+            "title": q.get("title", "Untitled Cloud Question"),
             "description": q.get("description", ""),
             "difficulty": q.get("difficulty", "medium"),
             "kind": q.get("kind", "command"),
@@ -93,9 +93,9 @@ async def _materialize_inline_questions(
             "created_by": actor_id,
             "created_at": now,
             "updated_at": now,
-            "module_type": "devops",
+            "module_type": "cloud",
         }
-        inserted = await db.devops_questions.insert_one(q_doc)
+        inserted = await db.cloud_questions.insert_one(q_doc)
         question_ids.append(str(inserted.inserted_id))
     test_payload["question_ids"] = question_ids
 
@@ -106,14 +106,14 @@ async def list_tests(
     page: int = Query(1, ge=1),
     limit: int = Query(100, ge=1, le=200),
 ) -> Dict[str, Any]:
-    db = get_database()
+    db = get_cloud_database()
     skip = (page - 1) * limit
     query: Dict[str, Any] = {}
     primary_docs = (
-        await db.devops_assessments.find(query).sort("created_at", -1).skip(skip).limit(limit).to_list(length=limit)
+        await db.cloud_assessments.find(query).sort("created_at", -1).skip(skip).limit(limit).to_list(length=limit)
     )
     legacy_docs = (
-        await db.devops_tests.find(query).sort("created_at", -1).skip(skip).limit(limit).to_list(length=limit)
+        await db.cloud_tests.find(query).sort("created_at", -1).skip(skip).limit(limit).to_list(length=limit)
     )
 
     seen: set[str] = set()
@@ -130,7 +130,7 @@ async def list_tests(
 
 @router.post("/", response_model=Dict[str, Any])
 async def create_test(payload: DevOpsTestCreate, request: Request) -> Dict[str, Any]:
-    db = get_database()
+    db = get_cloud_database()
     actor_id = _get_actor_id(request)
     now = datetime.utcnow()
     test_data = payload.model_dump()
@@ -146,11 +146,11 @@ async def create_test(payload: DevOpsTestCreate, request: Request) -> Dict[str, 
     test_data["created_by"] = actor_id
     test_data["is_active"] = True
     test_data["is_published"] = False
-    test_data["test_type"] = "devops"
+    test_data["test_type"] = "cloud"
     test_data["created_at"] = now
     test_data["updated_at"] = now
-    result = await db.devops_assessments.insert_one(test_data)
-    created = await db.devops_assessments.find_one({"_id": result.inserted_id})
+    result = await db.cloud_assessments.insert_one(test_data)
+    created = await db.cloud_assessments.find_one({"_id": result.inserted_id})
     return {"success": True, "data": _normalize_doc(created)}
 
 
@@ -158,7 +158,7 @@ async def create_test(payload: DevOpsTestCreate, request: Request) -> Dict[str, 
 async def get_test(test_id: str, request: Request) -> Dict[str, Any]:
     if not ObjectId.is_valid(test_id):
         raise HTTPException(status_code=400, detail="Invalid test ID")
-    db = get_database()
+    db = get_cloud_database()
     doc = await _find_test_doc(db, {"_id": ObjectId(test_id)})
     if not doc:
         raise HTTPException(status_code=404, detail="Test not found")
@@ -168,7 +168,7 @@ async def get_test(test_id: str, request: Request) -> Dict[str, Any]:
     object_ids: List[ObjectId] = [ObjectId(qid) for qid in raw_question_ids if ObjectId.is_valid(str(qid))]
     questions: List[Dict[str, Any]] = []
     if object_ids:
-        qdocs = await db.devops_questions.find(
+        qdocs = await db.cloud_questions.find(
             {"_id": {"$in": object_ids}}
         ).to_list(length=len(object_ids))
         by_id = {str(q.get("_id")): q for q in qdocs}
@@ -208,7 +208,7 @@ async def get_test(test_id: str, request: Request) -> Dict[str, Any]:
 async def update_test(test_id: str, payload: DevOpsTestUpdate, request: Request) -> Dict[str, Any]:
     if not ObjectId.is_valid(test_id):
         raise HTTPException(status_code=400, detail="Invalid test ID")
-    db = get_database()
+    db = get_cloud_database()
     updates = {k: v for k, v in payload.model_dump().items() if v is not None}
     if "question_ids" in updates and isinstance(updates["question_ids"], list):
         updates["question_ids"] = [str(qid) for qid in updates["question_ids"]]
@@ -225,7 +225,7 @@ async def update_test(test_id: str, payload: DevOpsTestUpdate, request: Request)
 async def delete_test(test_id: str, request: Request) -> Dict[str, Any]:
     if not ObjectId.is_valid(test_id):
         raise HTTPException(status_code=400, detail="Invalid test ID")
-    db = get_database()
+    db = get_cloud_database()
     deleted = await _delete_test_doc(db, {"_id": ObjectId(test_id)})
     if deleted == 0:
         raise HTTPException(status_code=404, detail="Test not found")
@@ -241,7 +241,7 @@ async def publish_test(
 ) -> Dict[str, Any]:
     if not ObjectId.is_valid(test_id):
         raise HTTPException(status_code=400, detail="Invalid test ID")
-    db = get_database()
+    db = get_cloud_database()
     published = is_published
     if published is None and body:
         value = body.get("is_published")
@@ -268,7 +268,7 @@ async def publish_test(
 async def pause_test(test_id: str, request: Request) -> Dict[str, Any]:
     if not ObjectId.is_valid(test_id):
         raise HTTPException(status_code=400, detail="Invalid test ID")
-    db = get_database()
+    db = get_cloud_database()
     matched = await _update_test_doc(
         db,
         {"_id": ObjectId(test_id)},
@@ -283,7 +283,7 @@ async def pause_test(test_id: str, request: Request) -> Dict[str, Any]:
 async def resume_test(test_id: str, request: Request) -> Dict[str, Any]:
     if not ObjectId.is_valid(test_id):
         raise HTTPException(status_code=400, detail="Invalid test ID")
-    db = get_database()
+    db = get_cloud_database()
     matched = await _update_test_doc(
         db,
         {"_id": ObjectId(test_id)},
@@ -302,7 +302,7 @@ async def clone_test(
 ) -> Dict[str, Any]:
     if not ObjectId.is_valid(test_id):
         raise HTTPException(status_code=400, detail="Invalid test ID")
-    db = get_database()
+    db = get_cloud_database()
     existing = await _find_test_doc(db, {"_id": ObjectId(test_id)})
     if not existing:
         raise HTTPException(status_code=404, detail="Test not found")
@@ -310,7 +310,7 @@ async def clone_test(
     payload = body or {}
     keep_schedule = bool(payload.get("keepSchedule", False))
     keep_candidates = bool(payload.get("keepCandidates", False))
-    new_title = payload.get("newTitle") or f"{existing.get('title', 'DevOps Test')} (Copy)"
+    new_title = payload.get("newTitle") or f"{existing.get('title', 'Cloud Test')} (Copy)"
 
     now = datetime.utcnow()
     clone_payload = {k: v for k, v in existing.items() if k != "_id"}
@@ -330,8 +330,8 @@ async def clone_test(
     if not keep_candidates:
         clone_payload["invited_users"] = []
 
-    result = await db.devops_assessments.insert_one(clone_payload)
-    created = await db.devops_assessments.find_one({"_id": result.inserted_id})
+    result = await db.cloud_assessments.insert_one(clone_payload)
+    created = await db.cloud_assessments.find_one({"_id": result.inserted_id})
     return {"success": True, "data": _normalize_doc(created)}
 
 
@@ -345,14 +345,14 @@ async def add_candidate(test_id: str, request: Request, body: Dict[str, Any] = B
     if not name or not email or "@" not in email:
         raise HTTPException(status_code=400, detail="Valid name and email are required")
 
-    db = get_database()
+    db = get_cloud_database()
     oid = ObjectId(test_id)
     test_doc = await _find_test_doc(db, {"_id": oid})
     if not test_doc:
         raise HTTPException(status_code=404, detail="Test not found")
 
     now = datetime.utcnow()
-    existing = await db.devops_test_candidates.find_one({"test_id": test_id, "email": email})
+    existing = await db.cloud_test_candidates.find_one({"test_id": test_id, "email": email})
     if existing:
         await _add_invited_email(db, oid, email)
         return {"success": True, "data": serialize_document(existing), "duplicate": True}
@@ -365,8 +365,8 @@ async def add_candidate(test_id: str, request: Request, body: Dict[str, Any] = B
         "created_at": now,
         "updated_at": now,
     }
-    inserted = await db.devops_test_candidates.insert_one(candidate_doc)
-    created = await db.devops_test_candidates.find_one({"_id": inserted.inserted_id})
+    inserted = await db.cloud_test_candidates.insert_one(candidate_doc)
+    created = await db.cloud_test_candidates.find_one({"_id": inserted.inserted_id})
     await _add_invited_email(db, oid, email)
 
     return {"success": True, "data": serialize_document(created)}
@@ -377,7 +377,7 @@ async def bulk_add_candidates(test_id: str, request: Request, file: UploadFile =
     if not ObjectId.is_valid(test_id):
         raise HTTPException(status_code=400, detail="Invalid test ID")
 
-    db = get_database()
+    db = get_cloud_database()
     oid = ObjectId(test_id)
     test_doc = await _find_test_doc(db, {"_id": oid})
     if not test_doc:
@@ -413,7 +413,7 @@ async def bulk_add_candidates(test_id: str, request: Request, file: UploadFile =
             errors.append({"row": idx, "error": "Invalid name/email"})
             continue
 
-        existing = await db.devops_test_candidates.find_one({"test_id": test_id, "email": email})
+        existing = await db.cloud_test_candidates.find_one({"test_id": test_id, "email": email})
         if existing:
             duplicate_count += 1
             await _add_invited_email(db, oid, email)
@@ -427,7 +427,7 @@ async def bulk_add_candidates(test_id: str, request: Request, file: UploadFile =
             "created_at": now,
             "updated_at": now,
         }
-        await db.devops_test_candidates.insert_one(candidate_doc)
+        await db.cloud_test_candidates.insert_one(candidate_doc)
         await _add_invited_email(db, oid, email)
         success_count += 1
 
@@ -446,6 +446,8 @@ async def bulk_add_candidates(test_id: str, request: Request, file: UploadFile =
 async def get_candidates(test_id: str, request: Request) -> Dict[str, Any]:
     if not ObjectId.is_valid(test_id):
         raise HTTPException(status_code=400, detail="Invalid test ID")
-    db = get_database()
-    docs = await db.devops_test_candidates.find({"test_id": test_id}).sort("created_at", -1).to_list(length=1000)
+    db = get_cloud_database()
+    docs = await db.cloud_test_candidates.find({"test_id": test_id}).sort("created_at", -1).to_list(length=1000)
     return {"success": True, "data": [serialize_document(d) for d in docs]}
+
+

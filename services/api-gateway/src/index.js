@@ -403,9 +403,9 @@ const proxyOptions = {
       targetHost = 'localhost:8000';
       targetServiceUrl = SERVICES.devops;
     } else if (path.includes('/api/v1/cloud')) {
-      serviceName = 'Cloud Service (AI Assessment)';
-      targetHost = 'localhost:3001';
-      targetServiceUrl = SERVICES.aiAssessment;  // Cloud tests are handled by AI Assessment service
+      serviceName = 'Cloud Service (Execution API)';
+      targetHost = 'localhost:8000';
+      targetServiceUrl = SERVICES.devops;
     } else if (path.includes('/api/v1/data-engineering')) {
       serviceName = 'Data Engineering Service (AI Assessment)';
       targetHost = 'localhost:3001';
@@ -729,7 +729,7 @@ app.use(
   '/api/v1/cloud',
   createProxyMiddleware({
     ...proxyOptions,
-    target: SERVICES.aiAssessment,  // Cloud tests are handled by AI Assessment service
+    target: SERVICES.devops,  // Cloud assessment/question endpoints are handled by execution API service
   })
 );
 

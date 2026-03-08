@@ -32,7 +32,7 @@ export const useCloudTest = (testId: string | undefined) => {
       const response = await cloudService.getTest(testId);
       return response.data;
     },
-    enabled: !!testId,
+    enabled: !!testId && testId !== 'sample' && testId !== 'ai-generated',
     staleTime: 5 * 60 * 1000,
   });
 };

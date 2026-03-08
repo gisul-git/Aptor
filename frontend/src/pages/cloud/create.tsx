@@ -14,7 +14,7 @@ import apiClient from "@/services/api/client";
 type Difficulty = "easy" | "medium" | "hard";
 type QuestionKind = "command" | "terraform" | "lint";
 
-interface DevOpsQuestion {
+interface CloudQuestion {
   id: string;
   title: string;
   description: string;
@@ -37,7 +37,7 @@ function normalizeKind(value: string): QuestionKind {
   return "command";
 }
 
-export default function DevOpsCreateAssessmentPage() {
+export default function CloudCreateAssessmentPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   type TimerMode = "GLOBAL" | "PER_QUESTION";
@@ -50,7 +50,7 @@ export default function DevOpsCreateAssessmentPage() {
   const [faceMismatchEnabled, setFaceMismatchEnabled] = useState(false);
   const [liveProctoringEnabled, setLiveProctoringEnabled] = useState(false);
 
-  const [questions, setQuestions] = useState<DevOpsQuestion[]>([]);
+  const [questions, setQuestions] = useState<CloudQuestion[]>([]);
   const [formData, setFormData] = useState({
     title: "",
     description: "",
@@ -63,17 +63,17 @@ export default function DevOpsCreateAssessmentPage() {
   useEffect(() => {
     const loadPublishedQuestions = async () => {
       try {
-        const response = await apiClient.get("/api/v1/devops/questions/published");
+        const response = await apiClient.get("/api/v1/cloud/questions/published");
         const rows = response?.data?.data || [];
         if (!Array.isArray(rows)) {
           setQuestions([]);
           return;
         }
 
-        const publishedQuestions: DevOpsQuestion[] = rows.map((item: any, idx: number) => ({
-          id: String(item.question_id || item.id || item._id || `published-devops-${idx + 1}`),
-          title: String(item.title || `Published DevOps Question ${idx + 1}`),
-          description: String(item.description || "Published DevOps question."),
+        const publishedQuestions: CloudQuestion[] = rows.map((item: any, idx: number) => ({
+          id: String(item.question_id || item.id || item._id || `published-cloud-${idx + 1}`),
+          title: String(item.title || `Published Cloud Question ${idx + 1}`),
+          description: String(item.description || "Published Cloud question."),
           difficulty: normalizeDifficulty(String(item.difficulty || "medium")),
           kind: normalizeKind(String(item.kind || "command")),
           points: Number(item.points || 10),
@@ -200,7 +200,7 @@ export default function DevOpsCreateAssessmentPage() {
           : { duration_minutes: formData.duration_minutes }),
       };
 
-      const createResponse = await fetch("/api/devops/create-test", {
+      const createResponse = await fetch("/api/cloud/create-test", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -218,7 +218,7 @@ export default function DevOpsCreateAssessmentPage() {
 
       const localGeneratedPayload = {
         generatedAt: new Date().toISOString(),
-        source: "devops-create-page",
+        source: "cloud-create-page",
         metadata: {
           title: formData.title,
           duration: formData.duration_minutes,
@@ -250,13 +250,13 @@ export default function DevOpsCreateAssessmentPage() {
         })),
       };
 
-      sessionStorage.setItem("devopsAIGeneratedPayload", JSON.stringify(localGeneratedPayload));
+      sessionStorage.setItem("cloudAIGeneratedPayload", JSON.stringify(localGeneratedPayload));
       sessionStorage.setItem(
-        "devopsAIGenerationMeta",
-        JSON.stringify({ source: "devops-create-page", generatedAt: new Date().toISOString() })
+        "cloudAIGenerationMeta",
+        JSON.stringify({ source: "cloud-create-page", generatedAt: new Date().toISOString() })
       );
 
-      router.push(`/devops/tests?testId=${encodeURIComponent(createdTestId)}`);
+      router.push(`/cloud/tests?testId=${encodeURIComponent(createdTestId)}`);
     } catch (err: any) {
       alert(err?.message || "Failed to create assessment in DB.");
     } finally {
@@ -270,7 +270,7 @@ export default function DevOpsCreateAssessmentPage() {
         <div style={{ marginBottom: "2rem" }}>
           <button
             type="button"
-            onClick={() => router.push("/devops")}
+            onClick={() => router.push("/cloud")}
             style={{
               display: "flex",
               alignItems: "center",
@@ -284,13 +284,13 @@ export default function DevOpsCreateAssessmentPage() {
               cursor: "pointer",
             }}
           >
-            <ArrowLeft size={16} strokeWidth={2.5} /> DevOps Dashboard
+            <ArrowLeft size={16} strokeWidth={2.5} /> Cloud Dashboard
           </button>
         </div>
 
         <div style={{ marginBottom: "2.5rem" }}>
           <h1 style={{ margin: "0 0 0.5rem 0", color: "#111827", fontSize: "2.25rem", fontWeight: 800, letterSpacing: "-0.025em" }}>
-            Create DevOps Assessment
+            Create Cloud Assessment
           </h1>
           <p style={{ color: "#6B7280", fontSize: "1rem", margin: 0 }}>
             Configure assessment settings, scheduling, and question selection.
@@ -312,7 +312,7 @@ export default function DevOpsCreateAssessmentPage() {
                 required
                 value={formData.title}
                 onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                placeholder="e.g., DevOps Screening - Platform Team"
+                placeholder="e.g., Cloud Screening - Platform Team"
                 style={{ width: "100%", padding: "0.75rem 1rem", border: "1px solid #D1D5DB", borderRadius: "0.5rem" }}
               />
             </div>
@@ -482,7 +482,7 @@ export default function DevOpsCreateAssessmentPage() {
           <div style={{ position: "sticky", bottom: 0, background: "rgba(255,255,255,0.9)", backdropFilter: "blur(8px)", paddingTop: "1rem", borderTop: "1px solid #E5E7EB", display: "flex", gap: "1rem" }}>
             <button
               type="button"
-              onClick={() => router.push("/devops")}
+              onClick={() => router.push("/cloud")}
               style={{ flex: 1, padding: "1rem", border: "1px solid #D1D5DB", borderRadius: "0.5rem", background: "#fff", fontWeight: 600, cursor: "pointer" }}
             >
               Cancel
@@ -510,3 +510,4 @@ export default function DevOpsCreateAssessmentPage() {
     </div>
   );
 }
+

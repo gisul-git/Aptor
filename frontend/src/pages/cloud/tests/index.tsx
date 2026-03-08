@@ -17,7 +17,7 @@ import {
   X,
 } from "lucide-react";
 import apiClient from "@/services/api/client";
-import { useDevOpsTests } from "@/hooks/api/useDevOps";
+import { useCloudTests } from "@/hooks/api/useCloud";
 
 const formatDate = (dateString?: string) => {
   if (!dateString) return "";
@@ -32,7 +32,7 @@ const formatDate = (dateString?: string) => {
   return `${month} ${day}, ${year} ${hours}:${minutes}`;
 };
 
-interface DevOpsTestCard {
+interface CloudTestCard {
   id: string;
   title: string;
   description: string;
@@ -58,10 +58,10 @@ interface DevOpsTestCard {
   updated_at?: string;
 }
 
-export default function DevOpsTestsListPage() {
+export default function CloudTestsListPage() {
   const router = useRouter();
-  const { data: testsData, isLoading: loading, refetch } = useDevOpsTests();
-  const [tests, setTests] = useState<DevOpsTestCard[]>([]);
+  const { data: testsData, isLoading: loading, refetch } = useCloudTests();
+  const [tests, setTests] = useState<CloudTestCard[]>([]);
   const [loadingById, setLoadingById] = useState(false);
   const [inviteModal, setInviteModal] = useState<{ testId: string; open: boolean }>({ testId: "", open: false });
   const [candidateName, setCandidateName] = useState("");
@@ -71,7 +71,7 @@ export default function DevOpsTestsListPage() {
 
   useEffect(() => {
     const apiTests = Array.isArray(testsData) ? (testsData as any[]) : [];
-    const mapped: DevOpsTestCard[] = apiTests.map((t) => ({
+    const mapped: CloudTestCard[] = apiTests.map((t) => ({
       id: String(t.id || t._id || ""),
       title: t.title || "",
       description: t.description || "",
@@ -100,11 +100,11 @@ export default function DevOpsTestsListPage() {
     let active = true;
     const fetchAllFallback = async () => {
       try {
-        const response = await fetch("/api/devops/list-tests");
+        const response = await fetch("/api/cloud/list-tests");
         const json = await response.json().catch(() => ({}));
         if (!response.ok) return;
         const rows = Array.isArray(json?.data) ? json.data : [];
-        const mapped: DevOpsTestCard[] = rows.map((t: any) => ({
+        const mapped: CloudTestCard[] = rows.map((t: any) => ({
           id: String(t.id || t._id || ""),
           title: t.title || "",
           description: t.description || "",
@@ -147,12 +147,12 @@ export default function DevOpsTestsListPage() {
     const fetchById = async () => {
       setLoadingById(true);
       try {
-        const response = await fetch(`/api/devops/get-test?id=${encodeURIComponent(testId)}`);
+        const response = await fetch(`/api/cloud/get-test?id=${encodeURIComponent(testId)}`);
         const json = await response.json().catch(() => ({}));
         if (!response.ok) return;
         const t = json?.data || json;
         if (!t || !t.id) return;
-        const mapped: DevOpsTestCard = {
+        const mapped: CloudTestCard = {
           id: String(t.id || t._id || ""),
           title: t.title || "",
           description: t.description || "",
@@ -203,7 +203,7 @@ export default function DevOpsTestsListPage() {
     return [...selected, ...others];
   }, [router.query.testId, tests]);
 
-  const updateLocalTest = (id: string, patch: Partial<DevOpsTestCard>) => {
+  const updateLocalTest = (id: string, patch: Partial<CloudTestCard>) => {
     setTests((prev) => prev.map((t) => (String(t.id) === String(id) ? { ...t, ...patch } : t)));
   };
 
@@ -212,9 +212,9 @@ export default function DevOpsTestsListPage() {
     updateLocalTest(testId, { is_published: newStatus });
     try {
       try {
-        await apiClient.patch(`/api/v1/devops/tests/${testId}/publish`, { is_published: newStatus });
+        await apiClient.patch(`/api/v1/cloud/tests/${testId}/publish`, { is_published: newStatus });
       } catch {
-        await apiClient.patch(`/api/v1/devops/tests/${testId}/publish?is_published=${newStatus}`);
+        await apiClient.patch(`/api/v1/cloud/tests/${testId}/publish?is_published=${newStatus}`);
       }
       await refetch();
       alert(`Test ${newStatus ? "published" : "unpublished"} successfully!`);
@@ -231,7 +231,7 @@ export default function DevOpsTestsListPage() {
     }
     setAddingCandidate(true);
     try {
-      const response = await apiClient.post(`/api/v1/devops/tests/${testId}/add-candidate`, {
+      const response = await apiClient.post(`/api/v1/cloud/tests/${testId}/add-candidate`, {
         name: candidateName.trim(),
         email: candidateEmail.trim(),
       });
@@ -266,7 +266,7 @@ export default function DevOpsTestsListPage() {
         <div style={{ marginBottom: "2rem" }}>
           <button
             type="button"
-            onClick={() => router.push("/devops")}
+            onClick={() => router.push("/cloud")}
             style={{
               display: "flex",
               alignItems: "center",
@@ -293,7 +293,7 @@ export default function DevOpsTestsListPage() {
               Test Management
             </h1>
             <p style={{ color: "#6B7280", fontSize: "1rem", margin: 0 }}>
-              Manage your DevOps assessments, invite candidates, and review configurations.
+              Manage your Cloud assessments, invite candidates, and review configurations.
             </p>
           </div>
           <button
@@ -412,14 +412,14 @@ export default function DevOpsTestsListPage() {
                         <div style={{ display: "flex", gap: "0.5rem" }}>
                           <input
                             type="text"
-                            value={`${typeof window !== "undefined" ? window.location.origin : ""}/devops/tests/${test.id}/take?token=${encodeURIComponent(test.test_token)}`}
+                            value={`${typeof window !== "undefined" ? window.location.origin : ""}/cloud/tests/${test.id}/take?token=${encodeURIComponent(test.test_token)}`}
                             readOnly
                             style={{ flex: 1, padding: "0.5rem 0.75rem", border: "1px solid #D1D5DB", borderRadius: "0.375rem", backgroundColor: "#ffffff", fontSize: "0.875rem", fontFamily: "monospace", color: "#374151", outline: "none" }}
                           />
                           <button
                             type="button"
                             onClick={async () => {
-                              const link = `${window.location.origin}/devops/tests/${test.id}/take?token=${encodeURIComponent(test.test_token || "")}`;
+                              const link = `${window.location.origin}/cloud/tests/${test.id}/take?token=${encodeURIComponent(test.test_token || "")}`;
                               try {
                                 await navigator.clipboard.writeText(link);
                                 alert("Link copied to clipboard!");
@@ -468,7 +468,7 @@ export default function DevOpsTestsListPage() {
                     </button>
 
                     <button
-                      onClick={() => router.push(`/devops/tests/${test.id}/take`)}
+                      onClick={() => router.push(`/cloud/tests/${test.id}/take`)}
                       style={{
                         display: "flex",
                         alignItems: "center",
@@ -560,7 +560,7 @@ export default function DevOpsTestsListPage() {
                   const formData = new FormData();
                   formData.append("file", file);
                   try {
-                    const response = await apiClient.post(`/api/v1/devops/tests/${inviteModal.testId}/bulk-add-candidates`, formData, {
+                    const response = await apiClient.post(`/api/v1/cloud/tests/${inviteModal.testId}/bulk-add-candidates`, formData, {
                       headers: { "Content-Type": "multipart/form-data" },
                     });
                     const summary = response?.data?.data || {};
@@ -659,3 +659,4 @@ export default function DevOpsTestsListPage() {
     </div>
   );
 }
+
