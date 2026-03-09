@@ -358,6 +358,22 @@ Instead use neutral instructions like:
 
 --------------------------------------------------
 
+STRUCTURE RULE (CRITICAL - MANDATORY)
+
+Every generated design challenge MUST include the following sections in this exact order:
+
+1. Description
+2. Task Requirements
+3. Constraints
+4. Deliverables
+5. Evaluation Criteria
+
+Do NOT skip any section. The "Task Requirements" section is MANDATORY for ALL difficulty levels (Beginner, Intermediate, Advanced).
+
+Without "Task Requirements", candidates will not know what to design.
+
+--------------------------------------------------
+
 INPUT PARAMETERS
 
 Role: {role_str}
@@ -472,16 +488,48 @@ CRITICAL RULES:
 CRITICAL DIFFICULTY RULES
 
 BEGINNER DIFFICULTY MUST:
-• Focus on a SINGLE screen or simple 2-screen interface
+• Focus on a SINGLE screen or simple 2-3 screen interface
+• Task Requirements MUST list 2-3 simple screens with clear descriptions
+• Each screen description should explain what elements to include
 • NO personas, NO user research, NO journey maps, NO strategy documents
 • NO business metrics or KPIs
 • Limit deliverables to 2-3 items ONLY
-• Focus on: layout, visual hierarchy, basic usability
+• Focus on: layout, visual hierarchy, basic usability, simple navigation
 • Constraints: 6 constraints ONLY
 • Description: 3-4 sentences maximum, focus on the design task
 
+BEGINNER TASK REQUIREMENTS RULE:
+For beginner challenges, Task Requirements must include 2-3 simple screens or flows.
+Clearly describe what should appear on each screen.
+Focus on basic navigation and usability problems.
+
+Example Beginner Task Requirements:
+```
+Task Requirements
+
+Design the following screens:
+
+1️⃣ Course discovery screen
+This screen should help users browse available courses.
+Include:
+• search bar for courses
+• category filters
+• featured courses section
+• course cards with title and rating
+
+2️⃣ Course details screen
+This screen provides information about a selected course.
+Include:
+• course title
+• instructor information
+• course description
+• course modules preview
+• enrollment button
+```
+
 INTERMEDIATE DIFFICULTY MUST:
 • Focus on 3-5 connected screens OR a dashboard with multiple sections
+• Task Requirements MUST list 3-5 screens with moderate descriptions
 • May include basic user flows (simple diagrams)
 • NO deep research, NO personas, NO strategy
 • Limit deliverables to 3-4 items
@@ -491,6 +539,7 @@ INTERMEDIATE DIFFICULTY MUST:
 
 ADVANCED DIFFICULTY MUST:
 • Focus on 5-8 screens with complex interactions and end-to-end workflows
+• Task Requirements MUST list 4-6 screens with DETAILED descriptions using "Include:" format
 • Include collaboration features, edge cases, or system complexity
 • Require product thinking and decision explanation in deliverables
 • Focus on system thinking, not just isolated screens
@@ -507,6 +556,19 @@ CRITICAL ADVANCED RULES:
 • Must introduce complexity: collaboration, multi-user scenarios, edge cases, or system workflows
 • Deliverables MUST include "Short explanation of key product decisions"
 • Evaluation criteria MUST emphasize product thinking (25% weight for Product Designer)
+
+--------------------------------------------------
+
+ROLE-SPECIFIC TASK RULE (CRITICAL)
+
+The type of artifacts and deliverables must match the role:
+
+UX Designer → wireframes, user flows, research tasks, information architecture
+UI Designer → high-fidelity UI screens, component libraries, visual hierarchy
+Product Designer → end-to-end product flows, feature prioritization, product decisions
+Visual Designer → visual layouts, brand assets, iconography, visual systems
+
+This ensures the challenge tests the right skills for each role.
 
 --------------------------------------------------
 
@@ -1025,33 +1087,52 @@ Before generating the final output verify:
 
 --------------------------------------------------
 
+QUALITY RULE (CRITICAL)
+
+Ensure the challenge clearly explains what the candidate must design.
+
+Avoid vague instructions like:
+❌ "Design an app"
+❌ "Create a dashboard"
+❌ "Improve the user experience"
+
+Instead use specific instructions like:
+✅ "Design the following screens: Home dashboard, Order tracking, Order history"
+✅ "Create a course discovery interface with search, filters, and course cards"
+✅ "Design an end-to-end itinerary planning experience with 5 screens"
+
+Every question must pass this test: "Can a candidate read this and know exactly what to design?"
+
+--------------------------------------------------
+
 CRITICAL INSTRUCTIONS:
 
 1. Topic "{topic_str}" MUST be the main subject - DO NOT CHANGE IT
-2. PLATFORM DETECTION (CRITICAL):
+2. STRUCTURE (CRITICAL): MUST include all 5 sections: Description, Task Requirements, Constraints, Deliverables, Evaluation Criteria
+3. TASK REQUIREMENTS (MANDATORY): Must list specific screens/components for ALL difficulty levels (Beginner, Intermediate, Advanced)
+4. PLATFORM DETECTION (CRITICAL):
    - If topic contains "mobile", "mobile UI", "app", "prototype", "checkout", "booking" → Canvas: 375px mobile layout, Grid: 8-column
    - If topic contains "dashboard", "analytics", "admin", "landing", "website" → Canvas: 1440px desktop layout, Grid: 12-column
-3. PROBLEM-FIRST (CRITICAL): Description must start with product context and user problem BEFORE design goal
-4. AGE USAGE (CRITICAL): Do NOT mention age unless it affects design decisions (healthcare, children, elderly apps only)
-5. TASK REQUIREMENTS section is MANDATORY:
-   - Beginner: 2-3 screens with simple descriptions
-   - Intermediate: 3-5 screens with moderate descriptions
-   - Advanced: 4-6 screens with DETAILED descriptions using "Include:" format with bullet points
-6. ADVANCED COMPLEXITY (CRITICAL for Advanced difficulty):
+5. PROBLEM-FIRST (CRITICAL): Description must start with product context and user problem BEFORE design goal
+6. AGE USAGE (CRITICAL): Do NOT mention age unless it affects design decisions (healthcare, children, elderly apps only)
+7. BEGINNER TASK REQUIREMENTS: Must list 2-3 simple screens with clear descriptions of what elements to include
+8. INTERMEDIATE TASK REQUIREMENTS: Must list 3-5 screens with moderate descriptions
+9. ADVANCED TASK REQUIREMENTS: Must list 4-6 screens with DETAILED descriptions using "Include:" format with bullet points
+10. ADVANCED COMPLEXITY (CRITICAL for Advanced difficulty):
    - Must include collaboration features, edge cases, or system workflows
    - Task Requirements must specify detailed features for each screen
    - Deliverables MUST include "Short explanation of key product decisions"
    - For Product Designer Advanced: Use Product thinking — 25% in evaluation
-7. CONSTRAINTS must be concise - ONE LINE per constraint, NO long explanations
-8. STRICTLY follow difficulty rules:
-   - Beginner: 2-3 deliverables, 6 constraints, 3-4 sentence description
-   - Intermediate: 3-4 deliverables, 8 constraints, 4-5 sentence description
-   - Advanced: 4-5 deliverables, 10 constraints, 6-8 sentence description
-9. Title format: "{topic_str} — {role_str} Challenge"
-10. Do NOT use "you", "your", "you should" - Use neutral language
-11. ALWAYS use 8px baseline grid (NOT 4px)
-12. Evaluation criteria must include short one-sentence descriptions
-13. Return ONLY valid JSON
+11. CONSTRAINTS must be concise - ONE LINE per constraint, NO long explanations
+12. STRICTLY follow difficulty rules:
+   - Beginner: 2-3 deliverables, 6 constraints, 3-4 sentence description, 2-3 screens in Task Requirements
+   - Intermediate: 3-4 deliverables, 8 constraints, 4-5 sentence description, 3-5 screens in Task Requirements
+   - Advanced: 4-5 deliverables, 10 constraints, 6-8 sentence description, 4-6 screens in Task Requirements
+13. Title format: "{topic_str} — {role_str} Challenge"
+14. Do NOT use "you", "your", "you should" - Use neutral language
+15. ALWAYS use 8px baseline grid (NOT 4px)
+16. Evaluation criteria must include short one-sentence descriptions
+17. Return ONLY valid JSON
 
 Generate ONE design challenge following ALL rules above. Return ONLY the JSON object."""
         
