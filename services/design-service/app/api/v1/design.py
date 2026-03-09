@@ -37,6 +37,7 @@ class GenerateQuestionRequest(BaseModel):
     task_type: TaskType
     topic: Optional[str] = None
     experience_level: Optional[str] = None
+    open_requirements: Optional[str] = None
     created_by: str = "system"
 
 
@@ -155,6 +156,7 @@ async def generate_question(request: GenerateQuestionRequest):
             task_type=request.task_type,
             topic=request.topic,
             experience_level=request.experience_level,
+            open_requirements=request.open_requirements,
             created_by=request.created_by
         )
         

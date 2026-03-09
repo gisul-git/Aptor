@@ -2,8 +2,8 @@
  * Design Assessment - Candidate Take Page
  * Route: /design/tests/[testId]/take
  * 
- * This page is accessed when a candidate clicks "Start Assessment" from dashboard
- * Auto-starts and shows split layout: Question (left) | Penpot workspace (right)
+ * Supports multiple questions with Next/Previous navigation
+ * Matches AIML competency flow
  */
 
 import React, { useState, useEffect } from 'react';
@@ -15,13 +15,18 @@ export default function DesignAssessmentTakePage() {
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [question, setQuestion] = useState<any>(null);
-  const [workspace, setWorkspace] = useState<any>(null);
+  const [questions, setQuestions] = useState<any[]>([]);
+  const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
+  const [workspaces, setWorkspaces] = useState<Record<string, any>>({});
+  const [completedQuestions, setCompletedQuestions] = useState<Set<string>>(new Set());
   const [timeLeft, setTimeLeft] = useState(3600);
   const [questionPanelCollapsed, setQuestionPanelCollapsed] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
 
-  const API_URL = process.env.NEXT_PUBLIC_DESIGN_SERVICE_URL || 'http://localhost:3006/api/v1/design';
+  const API_URL = process.env.NEXT_PUBLIC_DESIGN_SERVICE_URL || 'http://localhost:3007/api/v1/design';
+
+  const currentQuestion = questions[currentQuestionIndex];
+  const currentWorkspace = currentQuestion ? workspaces[currentQuestion._id || currentQuestion.id] : null;
 
   // Format time as MM:SS
   const formatTime = (seconds: number): string => {
@@ -46,39 +51,26 @@ export default function DesignAssessmentTakePage() {
         }
         const testData = await testResponse.json();
         
-        // Get the first question from the test
+        // Get ALL questions from the test
         const questionIds = testData.question_ids || [];
         if (questionIds.length === 0) {
           throw new Error('No questions assigned to this test');
         }
         
-        // Step 2: Fetch the first question details
-        const qResponse = await fetch(`${API_URL}/questions/${questionIds[0]}`);
-        if (!qResponse.ok) {
-          throw new Error('Failed to load question');
-        }
-        const questionData = await qResponse.json();
-        setQuestion(questionData);
+        // Step 2: Fetch ALL question details
+        const questionPromises = questionIds.map((id: string) =>
+          fetch(`${API_URL}/questions/${id}`).then(r => r.json())
+        );
+        const allQuestions = await Promise.all(questionPromises);
+        setQuestions(allQuestions);
 
-        // Step 3: Create Penpot workspace
-        const candidateEmail = (email as string) || 'candidate_' + Date.now();
-        const wResponse = await fetch(`${API_URL}/workspace/create`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            user_id: candidateEmail,
-            assessment_id: testId,
-            question_id: questionData._id || questionData.id,
-            test_id: testId
-          })
-        });
-
-        if (!wResponse.ok) {
-          throw new Error('Failed to create workspace');
+        // Set timer based on first question
+        if (allQuestions[0]?.time_limit_minutes) {
+          setTimeLeft(allQuestions[0].time_limit_minutes * 60);
         }
-        const workspaceData = await wResponse.json();
-        setWorkspace(workspaceData);
-        setTimeLeft(questionData.time_limit_minutes * 60);
+
+        // Create workspace for first question
+        await createWorkspaceForQuestion(allQuestions[0]);
 
       } catch (err: any) {
         console.error('Assessment start error:', err);
@@ -91,13 +83,74 @@ export default function DesignAssessmentTakePage() {
     startAssessment();
   }, [testId]);
 
+  // Create workspace for a specific question
+  const createWorkspaceForQuestion = async (question: any) => {
+    const questionId = question._id || question.id;
+    
+    // Check if workspace already exists
+    if (workspaces[questionId]) {
+      return workspaces[questionId];
+    }
+
+    try {
+      const candidateEmail = (email as string) || 'candidate_' + Date.now();
+      const wResponse = await fetch(`${API_URL}/workspace/create`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user_id: candidateEmail,
+          assessment_id: testId,
+          question_id: questionId,
+          test_id: testId
+        })
+      });
+
+      if (!wResponse.ok) {
+        throw new Error('Failed to create workspace');
+      }
+      
+      const workspaceData = await wResponse.json();
+      setWorkspaces(prev => ({
+        ...prev,
+        [questionId]: workspaceData
+      }));
+      
+      return workspaceData;
+    } catch (err: any) {
+      console.error('Workspace creation error:', err);
+      throw err;
+    }
+  };
+
+  // Navigate to next question
+  const handleNextQuestion = async () => {
+    if (currentQuestionIndex < questions.length - 1) {
+      const nextIndex = currentQuestionIndex + 1;
+      const nextQuestion = questions[nextIndex];
+      
+      // Create workspace for next question if it doesn't exist
+      if (!workspaces[nextQuestion._id || nextQuestion.id]) {
+        await createWorkspaceForQuestion(nextQuestion);
+      }
+      
+      setCurrentQuestionIndex(nextIndex);
+    }
+  };
+
+  // Navigate to previous question
+  const handlePreviousQuestion = () => {
+    if (currentQuestionIndex > 0) {
+      setCurrentQuestionIndex(currentQuestionIndex - 1);
+    }
+  };
+
   // Timer countdown
   useEffect(() => {
-    if (workspace && timeLeft > 0) {
+    if (questions.length > 0 && timeLeft > 0) {
       const timer = setInterval(() => {
         setTimeLeft((prev) => {
           if (prev <= 1) {
-            handleSubmit();
+            handleSubmitTest();
             return 0;
           }
           return prev - 1;
@@ -105,21 +158,22 @@ export default function DesignAssessmentTakePage() {
       }, 1000);
       return () => clearInterval(timer);
     }
-  }, [workspace, timeLeft]);
+  }, [questions, timeLeft]);
 
-  // Submit design
-  const handleSubmit = async () => {
+  // Submit current question
+  const handleSubmitQuestion = async () => {
+    if (!currentQuestion || !currentWorkspace) return;
+
     try {
-      const candidateEmail = (email as string) || workspace?.user_id || 'candidate-' + Date.now();
-      // TODO: Implement actual submission to backend
+      const candidateEmail = (email as string) || currentWorkspace?.user_id || 'candidate-' + Date.now();
       const response = await fetch(`${API_URL}/submit`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          session_id: workspace?.session_id,
+          session_id: currentWorkspace?.session_id,
           user_id: candidateEmail,
-          question_id: question?._id || question?.id,
-          file_id: workspace?.file_id,
+          question_id: currentQuestion._id || currentQuestion.id,
+          file_id: currentWorkspace?.file_id,
           test_id: testId
         })
       });
@@ -129,15 +183,33 @@ export default function DesignAssessmentTakePage() {
       }
       
       const result = await response.json();
-      console.log('✅ Submission successful:', result);
+      console.log('✅ Question submitted:', result);
       
-      // Show success page (not modal) - matches AIML flow
-      setShowSuccessModal(true);
+      // Mark question as completed
+      setCompletedQuestions(prev => new Set([...prev, currentQuestion._id || currentQuestion.id]));
+      
+      // Move to next question or finish
+      if (currentQuestionIndex < questions.length - 1) {
+        await handleNextQuestion();
+      } else {
+        // All questions completed
+        setShowSuccessModal(true);
+      }
       
     } catch (error) {
       console.error('Submission error:', error);
       alert('Submission failed. Please try again.');
     }
+  };
+
+  // Submit entire test
+  const handleSubmitTest = async () => {
+    // Submit current question if not already submitted
+    if (currentQuestion && !completedQuestions.has(currentQuestion._id || currentQuestion.id)) {
+      await handleSubmitQuestion();
+    }
+    
+    setShowSuccessModal(true);
   };
 
   // LOADING STATE
@@ -165,7 +237,7 @@ export default function DesignAssessmentTakePage() {
             color: '#6b7280',
             fontSize: '16px'
           }}>
-            {!question ? 'Generating your design challenge...' : 'Setting up your workspace...'}
+            Loading your design challenges...
           </p>
         </div>
         <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
@@ -223,8 +295,7 @@ export default function DesignAssessmentTakePage() {
     );
   }
 
-  // ASSESSMENT SCREEN - SPLIT LAYOUT
-  // Show success page after submission (matches AIML flow)
+  // SUCCESS PAGE
   if (showSuccessModal) {
     return (
       <div style={{
@@ -270,9 +341,8 @@ export default function DesignAssessmentTakePage() {
             color: '#6b7280',
             marginBottom: '16px'
           }}>
-            Your design has been recorded and is being evaluated.
+            Your designs have been recorded and are being evaluated.
           </p>
-          
           <p style={{
             fontSize: '14px',
             color: '#9ca3af'
@@ -284,6 +354,7 @@ export default function DesignAssessmentTakePage() {
     );
   }
 
+  // MAIN TEST INTERFACE
   return (
     <div style={{
       display: 'flex',
@@ -291,9 +362,7 @@ export default function DesignAssessmentTakePage() {
       height: '100vh',
       background: '#f3f4f6'
     }}>
-      {/* Success Modal - REMOVED, now using full page above */}
-      
-      {/* HEADER - Timer & Submit */}
+      {/* HEADER - Timer, Progress & Submit */}
       <div style={{
         background: 'white',
         borderBottom: '1px solid #e5e7eb',
@@ -308,15 +377,17 @@ export default function DesignAssessmentTakePage() {
             <h2 style={{
               fontSize: '20px',
               fontWeight: 'bold',
-              color: '#111827'
+              color: '#111827',
+              margin: 0
             }}>
-              {question?.title || 'Design Challenge'}
+              {currentQuestion?.title || 'Design Challenge'}
             </h2>
             <p style={{
               fontSize: '14px',
-              color: '#6b7280'
+              color: '#6b7280',
+              margin: '4px 0 0 0'
             }}>
-              {question?.role?.replace('_', ' ').toUpperCase()} • {question?.difficulty?.toUpperCase()}
+              Question {currentQuestionIndex + 1} of {questions.length} • {currentQuestion?.role?.replace('_', ' ').toUpperCase()} • {currentQuestion?.difficulty?.toUpperCase()}
             </p>
           </div>
           <div style={{
@@ -327,20 +398,22 @@ export default function DesignAssessmentTakePage() {
             <div style={{ textAlign: 'right' }}>
               <p style={{
                 fontSize: '14px',
-                color: '#6b7280'
+                color: '#6b7280',
+                margin: 0
               }}>
                 Time Remaining
               </p>
               <p style={{
                 fontSize: '24px',
                 fontWeight: 'bold',
-                color: timeLeft < 300 ? '#dc2626' : '#111827'
+                color: timeLeft < 300 ? '#dc2626' : '#111827',
+                margin: 0
               }}>
                 {formatTime(timeLeft)}
               </p>
             </div>
             <button
-              onClick={handleSubmit}
+              onClick={handleSubmitTest}
               style={{
                 padding: '8px 24px',
                 background: '#10b981',
@@ -354,19 +427,92 @@ export default function DesignAssessmentTakePage() {
               onMouseOver={(e) => e.currentTarget.style.background = '#059669'}
               onMouseOut={(e) => e.currentTarget.style.background = '#10b981'}
             >
-              Submit Design
+              Submit Test
             </button>
           </div>
         </div>
       </div>
 
-      {/* MAIN CONTENT - SPLIT LAYOUT */}
+      {/* MAIN CONTENT */}
       <div style={{
         display: 'flex',
         flex: 1,
         overflow: 'hidden'
       }}>
-        {/* LEFT SIDE - Question Panel (Collapsible) */}
+        {/* QUESTION NAVIGATION SIDEBAR */}
+        <div style={{
+          width: '80px',
+          background: 'white',
+          borderRight: '1px solid #e5e7eb',
+          padding: '16px 8px',
+          overflowY: 'auto'
+        }}>
+          <p style={{
+            fontSize: '11px',
+            fontWeight: 600,
+            color: '#6b7280',
+            textAlign: 'center',
+            marginBottom: '12px',
+            textTransform: 'uppercase',
+            letterSpacing: '0.5px'
+          }}>
+            Questions
+          </p>
+          {questions.map((q, idx) => {
+            const questionId = q._id || q.id;
+            const isCompleted = completedQuestions.has(questionId);
+            const isCurrent = idx === currentQuestionIndex;
+            
+            return (
+              <button
+                key={questionId}
+                onClick={() => setCurrentQuestionIndex(idx)}
+                style={{
+                  width: '100%',
+                  padding: '12px 8px',
+                  marginBottom: '8px',
+                  background: isCurrent ? '#7C3AED' : isCompleted ? '#10b981' : '#F3F4F6',
+                  color: isCurrent || isCompleted ? 'white' : '#6b7280',
+                  border: 'none',
+                  borderRadius: '8px',
+                  fontSize: '14px',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  transition: 'all 0.2s',
+                  position: 'relative'
+                }}
+                onMouseEnter={(e) => {
+                  if (!isCurrent && !isCompleted) e.currentTarget.style.background = '#E5E7EB'
+                }}
+                onMouseLeave={(e) => {
+                  if (!isCurrent && !isCompleted) e.currentTarget.style.background = '#F3F4F6'
+                }}
+              >
+                Q{idx + 1}
+                {isCompleted && (
+                  <div style={{
+                    position: 'absolute',
+                    top: '4px',
+                    right: '4px',
+                    width: '12px',
+                    height: '12px',
+                    background: 'white',
+                    borderRadius: '50%',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center'
+                  }}>
+                    <svg width="8" height="8" fill="#10b981" viewBox="0 0 24 24">
+                      <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" />
+                    </svg>
+                  </div>
+                )}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* QUESTION PANEL (Collapsible) */}
         <div style={{
           width: questionPanelCollapsed ? '48px' : '320px',
           background: 'white',
@@ -376,7 +522,6 @@ export default function DesignAssessmentTakePage() {
           transition: 'width 0.3s ease, padding 0.3s ease'
         }}>
           {questionPanelCollapsed ? (
-            /* Collapsed State - Show Toggle Button Only */
             <div style={{
               height: '100%',
               display: 'flex',
@@ -390,14 +535,9 @@ export default function DesignAssessmentTakePage() {
                   background: 'transparent',
                   border: 'none',
                   cursor: 'pointer',
-                  color: '#6b7280',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center'
+                  color: '#6b7280'
                 }}
                 title="Show Question Details"
-                onMouseOver={(e) => e.currentTarget.style.background = '#f3f4f6'}
-                onMouseOut={(e) => e.currentTarget.style.background = 'transparent'}
               >
                 <svg width="24" height="24" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
@@ -405,7 +545,6 @@ export default function DesignAssessmentTakePage() {
               </button>
             </div>
           ) : (
-            /* Expanded State - Show Full Content */
             <>
               <div style={{
                 display: 'flex',
@@ -428,14 +567,9 @@ export default function DesignAssessmentTakePage() {
                     background: 'transparent',
                     border: 'none',
                     cursor: 'pointer',
-                    color: '#6b7280',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center'
+                    color: '#6b7280'
                   }}
                   title="Hide Question Details"
-                  onMouseOver={(e) => e.currentTarget.style.background = '#f3f4f6'}
-                  onMouseOut={(e) => e.currentTarget.style.background = 'transparent'}
                 >
                   <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
@@ -449,8 +583,30 @@ export default function DesignAssessmentTakePage() {
                 marginBottom: '16px',
                 lineHeight: '1.5'
               }}>
-                {question?.description}
+                {currentQuestion?.description}
               </p>
+
+              {currentQuestion?.task_requirements && (
+                <>
+                  <h3 style={{
+                    fontWeight: 'bold',
+                    color: '#111827',
+                    marginBottom: '8px',
+                    fontSize: '16px'
+                  }}>
+                    Task Requirements
+                  </h3>
+                  <div style={{
+                    fontSize: '14px',
+                    color: '#374151',
+                    marginBottom: '16px',
+                    lineHeight: '1.5',
+                    whiteSpace: 'pre-wrap'
+                  }}>
+                    {currentQuestion.task_requirements}
+                  </div>
+                </>
+              )}
 
               <h3 style={{
                 fontWeight: 'bold',
@@ -467,8 +623,8 @@ export default function DesignAssessmentTakePage() {
                 color: '#374151',
                 marginBottom: '16px'
               }}>
-                {question?.constraints?.map((c: string, i: number) => (
-                  <li key={i} style={{ marginBottom: '4px' }}>{c}</li>
+                {currentQuestion?.constraints?.map((c: string, i: number) => (
+                  <li key={i} style={{ marginBottom: '8px', lineHeight: '1.4' }}>{c}</li>
                 ))}
               </ul>
 
@@ -487,7 +643,7 @@ export default function DesignAssessmentTakePage() {
                 color: '#374151',
                 marginBottom: '16px'
               }}>
-                {question?.deliverables?.map((d: string, i: number) => (
+                {currentQuestion?.deliverables?.map((d: string, i: number) => (
                   <li key={i} style={{ marginBottom: '4px' }}>{d}</li>
                 ))}
               </ul>
@@ -504,24 +660,92 @@ export default function DesignAssessmentTakePage() {
                 listStyle: 'disc',
                 paddingLeft: '20px',
                 fontSize: '14px',
-                color: '#374151'
+                color: '#374151',
+                marginBottom: '16px'
               }}>
-                {question?.evaluation_criteria?.map((e: string, i: number) => (
+                {currentQuestion?.evaluation_criteria?.map((e: string, i: number) => (
                   <li key={i} style={{ marginBottom: '4px' }}>{e}</li>
                 ))}
               </ul>
+
+              {/* Navigation Buttons */}
+              <div style={{
+                display: 'flex',
+                gap: '8px',
+                marginTop: '24px',
+                paddingTop: '16px',
+                borderTop: '1px solid #e5e7eb'
+              }}>
+                <button
+                  onClick={handlePreviousQuestion}
+                  disabled={currentQuestionIndex === 0}
+                  style={{
+                    flex: 1,
+                    padding: '10px',
+                    background: currentQuestionIndex === 0 ? '#F3F4F6' : '#ffffff',
+                    color: currentQuestionIndex === 0 ? '#9ca3af' : '#374151',
+                    border: '1px solid #D1D5DB',
+                    borderRadius: '8px',
+                    fontSize: '14px',
+                    fontWeight: 600,
+                    cursor: currentQuestionIndex === 0 ? 'not-allowed' : 'pointer',
+                    opacity: currentQuestionIndex === 0 ? 0.5 : 1
+                  }}
+                >
+                  ← Previous
+                </button>
+                <button
+                  onClick={handleNextQuestion}
+                  disabled={currentQuestionIndex >= questions.length - 1}
+                  style={{
+                    flex: 1,
+                    padding: '10px',
+                    background: currentQuestionIndex >= questions.length - 1 ? '#F3F4F6' : '#7C3AED',
+                    color: currentQuestionIndex >= questions.length - 1 ? '#9ca3af' : 'white',
+                    border: 'none',
+                    borderRadius: '8px',
+                    fontSize: '14px',
+                    fontWeight: 600,
+                    cursor: currentQuestionIndex >= questions.length - 1 ? 'not-allowed' : 'pointer',
+                    opacity: currentQuestionIndex >= questions.length - 1 ? 0.5 : 1
+                  }}
+                >
+                  Next →
+                </button>
+              </div>
+              
+              <button
+                onClick={handleSubmitQuestion}
+                style={{
+                  width: '100%',
+                  marginTop: '8px',
+                  padding: '10px',
+                  background: '#10b981',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '8px',
+                  fontSize: '14px',
+                  fontWeight: 600,
+                  cursor: 'pointer'
+                }}
+                onMouseOver={(e) => e.currentTarget.style.background = '#059669'}
+                onMouseOut={(e) => e.currentTarget.style.background = '#10b981'}
+              >
+                Submit Question
+              </button>
             </>
           )}
         </div>
 
-        {/* RIGHT SIDE - Penpot Workspace or File Upload */}
+        {/* PENPOT WORKSPACE */}
         <div style={{
           flex: 1,
           background: '#1f2937'
         }}>
-          {workspace?.workspace_url ? (
+          {currentWorkspace?.workspace_url ? (
             <iframe
-              src={workspace.workspace_url}
+              key={currentQuestion?._id || currentQuestion?.id}
+              src={currentWorkspace.workspace_url}
               style={{
                 width: '100%',
                 height: '100%',
@@ -530,78 +754,6 @@ export default function DesignAssessmentTakePage() {
               title="Penpot Design Workspace"
               allow="clipboard-read; clipboard-write"
             />
-          ) : workspace ? (
-            // File upload mode (fallback when Penpot is not available)
-            <div style={{
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              justifyContent: 'center',
-              height: '100%',
-              padding: '2rem',
-              color: '#e5e7eb'
-            }}>
-              <div style={{
-                maxWidth: '600px',
-                textAlign: 'center',
-                background: '#374151',
-                padding: '3rem',
-                borderRadius: '1rem',
-                border: '2px dashed #6b7280'
-              }}>
-                <h3 style={{ marginBottom: '1rem', fontSize: '1.5rem' }}>Upload Your Design</h3>
-                <p style={{ marginBottom: '2rem', color: '#9ca3af' }}>
-                  Create your design using your preferred tool (Figma, Adobe XD, Sketch, etc.) and upload the file here.
-                </p>
-                <p style={{ marginBottom: '2rem', color: '#9ca3af', fontSize: '0.875rem' }}>
-                  Accepted formats: PNG, JPG, PDF, Figma links, or design tool exports
-                </p>
-                <input
-                  type="file"
-                  accept="image/*,.pdf,.fig,.sketch,.xd"
-                  style={{ display: 'none' }}
-                  id="design-upload"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (file) {
-                      alert(`File "${file.name}" selected. Upload functionality will be implemented.`);
-                    }
-                  }}
-                />
-                <label
-                  htmlFor="design-upload"
-                  style={{
-                    display: 'inline-block',
-                    padding: '1rem 2rem',
-                    background: '#7C3AED',
-                    color: 'white',
-                    borderRadius: '0.5rem',
-                    cursor: 'pointer',
-                    fontSize: '1rem',
-                    fontWeight: '600'
-                  }}
-                >
-                  Choose File to Upload
-                </label>
-                <p style={{ marginTop: '1.5rem', fontSize: '0.875rem', color: '#6b7280' }}>
-                  Or paste your Figma/design tool link in the text area below
-                </p>
-                <textarea
-                  placeholder="Paste your design link here (e.g., Figma, Adobe XD, etc.)"
-                  style={{
-                    width: '100%',
-                    marginTop: '1rem',
-                    padding: '0.75rem',
-                    background: '#1f2937',
-                    border: '1px solid #4b5563',
-                    borderRadius: '0.5rem',
-                    color: '#e5e7eb',
-                    fontSize: '0.875rem',
-                    minHeight: '80px'
-                  }}
-                />
-              </div>
-            </div>
           ) : (
             <div style={{
               display: 'flex',

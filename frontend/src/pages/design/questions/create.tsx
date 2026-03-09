@@ -56,6 +56,7 @@ export default function DesignQuestionCreatePage() {
   const [taskTypeSuggestions, setTaskTypeSuggestions] = useState<string[]>([])
   const [selectedTaskType, setSelectedTaskType] = useState<string | null>(null)
   const [manualTaskType, setManualTaskType] = useState('')
+  const [openRequirements, setOpenRequirements] = useState('')
   
   // Manual question fields
   const [title, setTitle] = useState('')
@@ -206,23 +207,40 @@ export default function DesignQuestionCreatePage() {
       const extractTaskType = (topic: string): string => {
         const topicLower = topic.toLowerCase()
         
-        // Check for keywords in the topic
-        if (topicLower.includes('dashboard') || topicLower.includes('analytics')) {
-          return 'dashboard'
-        } else if (topicLower.includes('mobile app') || topicLower.includes('app') || topicLower.includes('onboarding')) {
+        // Check for keywords in the topic (order matters - most specific first)
+        // Mobile app indicators (check BEFORE dashboard since some topics might have both)
+        if (topicLower.includes('mobile') || 
+            topicLower.includes('app ui') || 
+            topicLower.includes('mobile app') || 
+            topicLower.includes('onboarding') ||
+            topicLower.includes('checkout') ||
+            topicLower.includes('booking') ||
+            topicLower.includes('delivery app')) {
           return 'mobile_app'
-        } else if (topicLower.includes('landing') || topicLower.includes('website') || topicLower.includes('page')) {
+        }
+        // Dashboard indicators
+        else if (topicLower.includes('dashboard') || topicLower.includes('analytics')) {
+          return 'dashboard'
+        }
+        // Landing page indicators
+        else if (topicLower.includes('landing') || topicLower.includes('website') || topicLower.includes('page')) {
           return 'landing_page'
-        } else if (topicLower.includes('component') || topicLower.includes('library') || topicLower.includes('system')) {
+        }
+        // Component indicators
+        else if (topicLower.includes('component') || topicLower.includes('library') || topicLower.includes('system')) {
           return 'component'
-        } else if (topicLower.includes('brand') || topicLower.includes('logo') || topicLower.includes('identity')) {
-          return 'component' // Brand work is component-based
-        } else if (topicLower.includes('wireframe') || topicLower.includes('flow') || topicLower.includes('research')) {
-          return 'mobile_app' // UX work typically mobile/flow based
+        }
+        // Brand work
+        else if (topicLower.includes('brand') || topicLower.includes('logo') || topicLower.includes('identity')) {
+          return 'component'
+        }
+        // UX work
+        else if (topicLower.includes('wireframe') || topicLower.includes('flow') || topicLower.includes('research')) {
+          return 'mobile_app'
         }
         
-        // Default to dashboard
-        return 'dashboard'
+        // Default to mobile_app for UI-related topics
+        return 'mobile_app'
       }
       
       const normalizedRole = roleMap[aiRole.toLowerCase()] || 'ui_designer'
@@ -238,6 +256,7 @@ export default function DesignQuestionCreatePage() {
           experience_level: experienceLevel,
           task_type: normalizedTaskType,
           topic: aiTaskType.trim() || undefined,
+          open_requirements: openRequirements.trim() || undefined,
           created_by: 'system',
         }),
       })
@@ -810,6 +829,71 @@ export default function DesignQuestionCreatePage() {
                       </div>
                     </>
                   ) : null}
+                </div>
+              )}
+
+              {/* Step 5: Open Requirements (Optional) */}
+              {aiRole && aiDifficulty && (
+                <div style={{ marginBottom: "2rem" }}>
+                  <label style={{ 
+                    display: "block", 
+                    marginBottom: "0.625rem", 
+                    fontWeight: 600,
+                    color: "#7C3AED",
+                    fontSize: "0.9375rem"
+                  }}>
+                    Additional Requirements <span style={{ 
+                      fontSize: "0.8125rem", 
+                      fontWeight: 500, 
+                      color: "#6B7280" 
+                    }}>(Optional)</span>
+                  </label>
+                  <p style={{ 
+                    fontSize: "0.8125rem", 
+                    color: "#6B7280", 
+                    marginBottom: "0.75rem",
+                    fontWeight: 500
+                  }}>
+                    Add any specific requirements, constraints, or context for this question
+                  </p>
+                  <textarea
+                    value={openRequirements}
+                    onChange={(e) => setOpenRequirements(e.target.value)}
+                    placeholder="e.g., Must include dark mode support, Focus on accessibility features, Include mobile-first approach..."
+                    style={{
+                      width: "100%",
+                      padding: "0.875rem 1rem",
+                      border: openRequirements ? "2px solid #7C3AED" : "1px solid #E8B4FA",
+                      borderRadius: "0.5rem",
+                      fontSize: "0.875rem",
+                      minHeight: "100px",
+                      backgroundColor: "#ffffff",
+                      transition: "all 0.2s ease",
+                      resize: "vertical",
+                      fontFamily: "inherit",
+                      outline: "none"
+                    }}
+                    onFocus={(e) => {
+                      if (!openRequirements) {
+                        e.currentTarget.style.borderColor = "#7C3AED"
+                      }
+                    }}
+                    onBlur={(e) => {
+                      if (!openRequirements) {
+                        e.currentTarget.style.borderColor = "#E8B4FA"
+                      }
+                    }}
+                  />
+                  {openRequirements && (
+                    <p style={{ 
+                      fontSize: "0.75rem", 
+                      color: "#7C3AED", 
+                      marginTop: "0.5rem",
+                      fontWeight: 500
+                    }}>
+                      ✓ Additional requirements will be incorporated into the generated question
+                    </p>
+                  )}
                 </div>
               )}
 

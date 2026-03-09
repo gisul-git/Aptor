@@ -224,11 +224,12 @@ Generate 5 DIVERSE topics for {role_str} now:"""
         task_type: TaskType,
         topic: str = None,
         experience_level: str = None,
+        open_requirements: str = None,
         created_by: str = "system"
     ) -> DesignQuestionModel:
         """Generate a design question using AI"""
         
-        prompt = self._build_generation_prompt(role, difficulty, task_type, topic, experience_level)
+        prompt = self._build_generation_prompt(role, difficulty, task_type, topic, experience_level, open_requirements)
         
         try:
             if self.provider == "openai":
@@ -276,7 +277,8 @@ Generate 5 DIVERSE topics for {role_str} now:"""
         difficulty: DifficultyLevel,
         task_type: TaskType,
         topic: str = None,
-        experience_level: str = None
+        experience_level: str = None,
+        open_requirements: str = None
     ) -> str:
         """Build the AI generation prompt using professional design assessment framework"""
         
@@ -307,6 +309,28 @@ Generate 5 DIVERSE topics for {role_str} now:"""
         topic_str = topic if topic else task_str
         experience_str = experience_level if experience_level else "1-3 years"
         time_limit = 45 if difficulty == DifficultyLevel.BEGINNER else 60 if difficulty == DifficultyLevel.INTERMEDIATE else 90
+        
+        # Build additional requirements section if provided
+        additional_requirements_section = ""
+        if open_requirements and open_requirements.strip():
+            additional_requirements_section = f"""
+
+--------------------------------------------------
+
+ADDITIONAL REQUIREMENTS (CRITICAL)
+
+The user has provided specific additional requirements that MUST be incorporated into the design challenge:
+
+{open_requirements.strip()}
+
+IMPORTANT:
+• These requirements are MANDATORY and must be reflected in the challenge
+• Incorporate them into the description, constraints, or deliverables as appropriate
+• Do NOT ignore or override these requirements
+• If they conflict with standard rules, prioritize these user requirements
+
+--------------------------------------------------
+"""
         
         base_prompt = f"""SYSTEM ROLE
 
@@ -341,7 +365,7 @@ Difficulty: {difficulty_str}
 Experience Level: {experience_str}
 Task Type: {task_str}
 Topic: {topic_str}
-
+{additional_requirements_section}
 --------------------------------------------------
 
 ROLE EXPECTATIONS
@@ -466,13 +490,23 @@ INTERMEDIATE DIFFICULTY MUST:
 • Description: 4-5 sentences, include user context and goals
 
 ADVANCED DIFFICULTY MUST:
-• Focus on 5-8 screens with complex interactions
+• Focus on 5-8 screens with complex interactions and end-to-end workflows
+• Include collaboration features, edge cases, or system complexity
+• Require product thinking and decision explanation in deliverables
+• Focus on system thinking, not just isolated screens
 • May include user flows, interaction specifications
 • May include light personas (1 persona max)
-• Limit deliverables to 4-5 items
-• Focus on: system thinking, scalability, advanced interactions
+• Limit deliverables to 4-5 items (MUST include decision explanation)
+• Focus on: system thinking, scalability, collaboration, edge cases, product decisions
 • Constraints: 10 constraints
 • Description: 5-6 sentences, include user context, business goals, success criteria
+
+CRITICAL ADVANCED RULES:
+• Task Requirements MUST specify 4-6 detailed screens with specific features
+• Each screen description must include what features/interactions it contains
+• Must introduce complexity: collaboration, multi-user scenarios, edge cases, or system workflows
+• Deliverables MUST include "Short explanation of key product decisions"
+• Evaluation criteria MUST emphasize product thinking (25% weight for Product Designer)
 
 --------------------------------------------------
 
@@ -481,115 +515,261 @@ ROLE-SPECIFIC TASK ALIGNMENT
 UI Designer:
 • Beginner: Single screen UI (home screen, dashboard view, profile page)
 • Intermediate: Multi-section interface (dashboard, settings flow, component library)
-• Advanced: Complete UI system (multi-screen app, design system, responsive layouts)
+• Advanced: Complete UI system (multi-screen app, design system, responsive layouts with system thinking)
 
 UX Designer:
 • Beginner: Simple wireframe (single screen wireframe, basic user flow)
 • Intermediate: User flow with wireframes (3-5 screen flow, interaction specs)
-• Advanced: Complete UX system (user journey, multiple flows, accessibility specs)
+• Advanced: Complete UX system (user journey, multiple flows, accessibility specs, edge cases)
 
 Product Designer:
 • Beginner: Simple product feature screen (single feature interface, basic product screen)
 • Intermediate: Feature workflow (3-5 screen feature flow, basic user journey)
-• Advanced: Product system (end-to-end product flow, feature prioritization, metrics)
+• Advanced: End-to-end product experience (5-8 screens, collaboration features, product decisions, feature prioritization)
 
 Visual Designer:
 • Beginner: Single visual design (hero section, landing section, visual mockup)
 • Intermediate: Visual system (multiple sections, visual style guide, icon set)
-• Advanced: Complete visual identity (full page designs, custom illustrations, brand visuals)
+• Advanced: Complete visual identity (full page designs, custom illustrations, brand visuals, system thinking)
 
 Interaction Designer:
 • Beginner: Simple interaction (button states, hover effects, basic animation)
 • Intermediate: Interaction flow (micro-interactions, transition specs, animated prototype)
-• Advanced: Complex interaction system (gesture controls, advanced animations, interaction patterns)
+• Advanced: Complex interaction system (gesture controls, advanced animations, interaction patterns, edge cases)
+
+--------------------------------------------------
+
+REAL-WORLD SCENARIO RULE (CRITICAL)
+
+Every design challenge must begin with a short realistic scenario that describes the product context and the problem users face.
+
+The scenario should explain:
+• What the product does
+• Who the primary users are
+• What problem they are facing
+
+This makes the challenge feel like a real product design problem, not just a UI exercise.
+
+--------------------------------------------------
+
+AGE USAGE RULE (CRITICAL)
+
+Do NOT mention age ranges unless they significantly influence design decisions.
+
+Use age ONLY when relevant to:
+• Healthcare applications (e.g., "adults aged 60+ tracking medication")
+• Children's applications (e.g., "children aged 5-8 learning to read")
+• Elderly accessibility scenarios (e.g., "seniors with limited tech experience")
+
+For most applications (dashboards, analytics tools, campaign tools, developer tools), age is NOT relevant.
+
+--------------------------------------------------
+
+PROBLEM-FIRST RULE (CRITICAL)
+
+The design challenge must start by describing the user problem BEFORE asking the candidate to design the interface.
+
+Format:
+
+[Product context] allows users to [main functionality]. However, [current problem users face].
+
+The design goal is to create [interface type] that allows users to:
+• [solve problem 1]
+• [solve problem 2]
+• [solve problem 3]
 
 --------------------------------------------------
 
 DESCRIPTION REQUIREMENTS BY DIFFICULTY
 
 BEGINNER (3-4 sentences):
-1. What to design (the interface/screen)
-2. Target user (age, basic context)
-3. Main goal (what the design should achieve)
-4. Keep it simple and focused on the design task
+1. Product context (what the product does)
+2. User problem (what users struggle with)
+3. Design goal (what the interface should achieve)
+4. Keep it simple and problem-focused
+
+Example:
+"A task management application allows users to organize their daily tasks. However, users struggle to quickly see their most important tasks for the day. The design goal is to create a simple dashboard that highlights priority tasks and upcoming deadlines."
 
 INTERMEDIATE (4-5 sentences):
-1. What to design (the interface/feature)
-2. Target user (age, profession, context)
+1. Product context (what the product does)
+2. User problem (specific pain points users face)
 3. User needs (2-3 key needs)
-4. Main goal (what the design should achieve)
-5. Expected outcome (simple metric or goal)
+4. Design goal (what the interface should achieve)
+5. Expected outcome (simple goal)
+
+Example:
+"A food delivery application allows users to browse restaurants and order meals online. However, frequent users struggle to quickly track active orders or reorder meals they previously purchased. Users need to quickly track ongoing orders, reorder favorite meals, and access order history easily. The design goal is to create a mobile interface that streamlines the ordering and tracking experience."
 
 ADVANCED (6-8 sentences):
-1. Product/service context (what is it, why it exists)
-2. Target user persona (detailed: age, profession, behavior, pain points)
+1. Product/service context (what it is, why it exists)
+2. User problem (detailed pain points)
 3. Business goals (what the company wants to achieve)
-4. User needs and pain points (3-4 specific needs)
+4. User needs (3-4 specific needs)
 5. Key features or functionality required
-6. Expected outcome with metrics (e.g., "increase engagement by 30%")
-7. Success criteria (how to measure success)
+6. Design goal (what the interface should achieve)
+7. Expected outcome (with context)
 8. Additional context (market, competitors, constraints)
+
+Example:
+"A healthcare application helps adults aged 60+ track their medication schedules and health metrics. However, current solutions are complex and difficult for elderly users to navigate, leading to missed medications and poor health outcomes. The company aims to improve medication adherence and reduce hospital readmissions. Users need to easily view daily medication schedules, receive clear reminders, log health metrics, and share data with caregivers. The design goal is to create a simple, accessible mobile interface that prioritizes clarity and ease of use for elderly users with limited tech experience. The interface should reduce cognitive load and support users with visual or motor impairments."
 
 --------------------------------------------------
 
-TASK REQUIREMENTS SECTION (NEW - CRITICAL)
+TASK REQUIREMENTS SECTION (MANDATORY - CRITICAL)
 
-After the description, add a "Task Requirements" section that explicitly lists what screens/steps the candidate must design.
+Every design challenge MUST include a "Task Requirements" section that explicitly lists the exact screens, flows, or components the candidate must design.
+
+Without this section, candidates won't know what to submit.
 
 Format:
 
 **Task Requirements**
 
-Design the [flow/interface] including the following [screens/components]:
+Design [an end-to-end experience / the following screens / components]:
 
-1️⃣ [First screen/component name]
-   [Brief description of what this screen should include]
+1️⃣ [Screen/Component name]
+   [Detailed description of what this includes - list specific features]
 
-2️⃣ [Second screen/component name]
-   [Brief description of what this screen should include]
+2️⃣ [Screen/Component name]
+   [Detailed description of what this includes - list specific features]
 
-3️⃣ [Third screen/component name]
-   [Brief description of what this screen should include]
+3️⃣ [Screen/Component name]
+   [Detailed description of what this includes - list specific features]
 
-Examples by Task Type:
+4️⃣ [Screen/Component name] (if applicable)
+   [Detailed description of what this includes - list specific features]
 
-**Mobile App Onboarding:**
-1️⃣ Welcome/Introduction screen - Explain app benefits and encourage sign-up
-2️⃣ Account setup screen - Email/social login options
-3️⃣ Preference selection - Collect user preferences
-4️⃣ Confirmation screen - Confirm setup and guide to main app
+CRITICAL RULES BY DIFFICULTY:
 
-**Dashboard:**
-1️⃣ Overview section - Key metrics and summary cards
-2️⃣ Data visualization section - Charts and graphs
-3️⃣ Action panel - Quick actions and filters
-4️⃣ Navigation - Sidebar or top navigation
+**BEGINNER (2-3 screens)**:
+• Simple descriptions (one sentence)
+• Focus on basic features
 
-**Landing Page:**
-1️⃣ Hero section - Value proposition and CTA
-2️⃣ Features section - Key product features
-3️⃣ Social proof section - Testimonials or logos
-4️⃣ Footer - Links and contact information
+**INTERMEDIATE (3-5 screens)**:
+• Moderate descriptions (1-2 sentences)
+• Include key features
 
-**Component Library:**
-1️⃣ Button variants - Primary, secondary, disabled states
-2️⃣ Input fields - Text, email, password with validation states
-3️⃣ Cards - Different card layouts and content types
-4️⃣ Navigation - Menu, tabs, breadcrumbs
+**ADVANCED (4-6 screens)**:
+• DETAILED descriptions (2-4 sentences with bullet points)
+• Include specific features, interactions, and edge cases
+• Introduce complexity: collaboration, multi-user, system workflows
+• Each screen must list 3-5 specific features using "Include:" format
+
+Examples by Difficulty:
+
+**BEGINNER Mobile App:**
+1️⃣ Home dashboard - Display active orders and quick actions
+2️⃣ Order tracking screen - Show delivery status
+
+**INTERMEDIATE Mobile App:**
+1️⃣ Home dashboard - Display active orders, recommended items, and quick reorder section
+2️⃣ Order tracking screen - Show real-time delivery status and driver progress
+3️⃣ Order history screen - Display past orders with quick reorder option
+
+**ADVANCED Mobile App (Product Designer):**
+Design an end-to-end itinerary planning experience that includes:
+
+1️⃣ Trip Overview Screen
+This screen provides a summary of an upcoming trip.
+Include:
+• destination information
+• travel dates
+• trip participants
+• quick summary of booked items (flights, hotels, activities)
+• button to add new itinerary items
+
+2️⃣ Daily Itinerary Screen
+This screen shows a day-by-day timeline of planned activities.
+Include:
+• timeline layout of activities
+• time slots for events
+• transportation details
+• location previews or map references
+• option to edit or reorder activities
+
+3️⃣ Add Activity / Booking Screen
+This screen allows users to add new itinerary items.
+Include:
+• activity title
+• date and time
+• location selection
+• notes or attachments
+• category (flight, hotel, activity, transport)
+
+4️⃣ Trip Collaboration Screen
+This screen allows users to collaborate with others.
+Include:
+• list of trip participants
+• shared editing permissions
+• comments or suggestions for activities
+• notifications for itinerary changes
+
+5️⃣ Travel Resource Screen
+This screen provides helpful travel information.
+Include:
+• booking confirmations
+• travel documents
+• emergency contacts
+• weather or travel updates
+
+CRITICAL RULES:
+• This section is MANDATORY for all questions
+• Beginner: 2-3 screens with simple descriptions
+• Intermediate: 3-5 screens with moderate descriptions
+• Advanced: 4-6 screens with DETAILED descriptions and specific features
+• Use numbered emoji format (1️⃣ 2️⃣ 3️⃣ 4️⃣ 5️⃣)
+• Advanced MUST use "Include:" format with bullet points
+
+--------------------------------------------------
+
+PLATFORM DETECTION RULE (CRITICAL)
+
+The canvas width and grid system MUST match the interface type:
+
+**Mobile Interface** (use when topic contains: "mobile", "mobile UI", "app", "prototype", "checkout", "booking", "delivery app"):
+• Canvas width: 375px mobile layout
+• Grid system: 8-column grid
+
+**Desktop Interface** (use when topic contains: "dashboard", "analytics", "admin panel", "landing page", "website"):
+• Canvas width: 1440px desktop layout
+• Grid system: 12-column grid
+
+CRITICAL: If the topic says "mobile" anywhere, you MUST use 375px canvas width.
+
+--------------------------------------------------
+
+CONSTRAINT FORMAT RULE (CRITICAL)
+
+Constraints MUST be short and concise. Each constraint should be ONE LINE without long explanations.
+
+Format: "[Constraint name]: [Value/Rule]"
+
+✅ GOOD (Concise):
+"Canvas width: 375px mobile layout"
+"Grid system: 8-column grid"
+"Spacing system: 8px baseline grid"
+"Maximum primary colors: 4"
+"Minimum contrast ratio: 4.5:1"
+"Minimum touch target height: 44px"
+
+❌ BAD (Too long):
+"Canvas width: 375px mobile layout - This ensures the design is optimized for mobile devices. All elements must fit..."
 
 --------------------------------------------------
 
 CONSTRAINT RULES
 
-ALL constraints MUST be measurable and align with evaluation engine.
+ALL constraints MUST be measurable, concise, and align with evaluation engine.
 
-REQUIRED constraints (all levels):
-• Canvas width: 375px mobile OR 1440px desktop (based on task type)
-• Grid system: 8-column (mobile) OR 12-column (desktop)
-• Spacing system: 8px baseline grid (ALWAYS use 8px, not 4px)
-• Maximum primary colors: 3-4 colors
-• Minimum contrast ratio: 4.5:1
-• Minimum button/touch target height: 44px
+**REQUIRED constraints (all difficulty levels):**
+
+1. Canvas width: [375px mobile layout OR 1440px desktop layout based on platform detection]
+2. Grid system: [8-column grid for mobile OR 12-column grid for desktop]
+3. Spacing system: 8px baseline grid (ALWAYS use 8px, not 4px)
+4. Maximum primary colors: 3-4
+5. Minimum contrast ratio: 4.5:1
+6. Minimum touch target height: 44px
 
 BEGINNER (6 constraints total):
 Use ONLY the 6 required constraints above. NO additional constraints.
@@ -597,45 +777,43 @@ Use ONLY the 6 required constraints above. NO additional constraints.
 INTERMEDIATE (8 constraints total):
 Required 6 + Choose 2 from:
 • Typography hierarchy: minimum 3 levels
-• Border radius: consistent rounding (8px or 16px)
+• Border radius: 8px or 16px
 • Icon size: 20px or 24px
-• Component spacing: consistent padding (8px, 16px, 24px)
+• Component spacing: 8px, 16px, or 24px padding
 
 ADVANCED (10 constraints total):
 Required 6 + Choose 4 from:
 • Typography hierarchy: minimum 4 levels
 • Shadow system: 3 elevation levels
 • Animation timing: 200-300ms transitions
-• Responsive breakpoints: mobile, tablet, desktop
 • Accessibility: WCAG AA compliance
 • Loading states: skeleton screens or spinners
+• Error states: validation and error handling
+• Empty states: placeholder content
 
 --------------------------------------------------
 
 DELIVERABLE RULES BY DIFFICULTY
 
-DELIVERABLE CLARITY RULE:
+DELIVERABLE FORMAT RULE:
 
-Deliverables must clearly specify:
-• number of screens or flows
-• design artifacts required
-• explanation or documentation length
+Deliverables must be clear and concise. Use bullet points.
 
 Format:
 "Candidates must submit:"
-1️⃣ [Number] high-fidelity [screens/components]
-2️⃣ [Specific artifact] (e.g., user flow diagram, component list)
-3️⃣ Short explanation ([number] sentences) describing [what to explain]
+• [Number] high-fidelity [screens/components]
+• [Specific artifact] (e.g., component library, style guide)
+• [Optional artifact if applicable]
 
 BEGINNER (2-3 deliverables ONLY):
 
 UI Designer:
 • 1-2 high-fidelity screens
-• Component list (buttons, cards, inputs used)
+• Component list
 
 UX Designer:
 • 1-2 wireframe screens
-• Simple user flow diagram (optional)
+• Simple user flow diagram
 
 Product Designer:
 • 1-2 product feature screens
@@ -647,7 +825,7 @@ Visual Designer:
 
 Interaction Designer:
 • 1-2 screens with interaction states
-• Interaction specification (hover, active, disabled)
+• Interaction specification
 
 INTERMEDIATE (3-4 deliverables):
 
@@ -655,31 +833,27 @@ UI Designer:
 • 3-5 high-fidelity screens
 • Component library
 • Style guide
-• Responsive layouts (optional)
 
 UX Designer:
 • 3-5 wireframe screens
 • User flow diagram
 • Interaction specifications
-• Basic usability notes (optional)
 
 Product Designer:
 • 3-5 product screens
 • User flow diagram
 • Feature specifications
-• Success metrics (optional)
 
 Visual Designer:
 • 3-5 visual mockups
 • Visual style guide
 • Icon set
-• Custom visual assets (optional)
 
 Interaction Designer:
 • 3-5 screens with interactions
 • Micro-interaction specifications
 • Animation timing guide
-• Interactive prototype (optional)
+• Interactive prototype
 
 ADVANCED (4-5 deliverables):
 
@@ -688,50 +862,44 @@ UI Designer:
 • Complete design system
 • Responsive layouts
 • Component documentation
-• Accessibility specifications (optional)
 
 UX Designer:
 • 5-8 wireframe screens
 • Complete user flow
 • Interaction specifications
 • Light persona (1 persona)
-• Usability test plan (optional)
 
 Product Designer:
 • 5-8 high-fidelity product screens
-• Complete user journey flow
-• Feature prioritization list
-• Brief explanation of product decisions
-• NO product strategy documents
-• NO success metrics definition (that's Expert level)
+• User journey flow diagram
+• Feature prioritization rationale
+• Short explanation of key product decisions
 
 Visual Designer:
 • 5-8 visual mockups
 • Complete visual system
 • Custom illustrations
 • Brand guidelines
-• Visual specifications (optional)
 
 Interaction Designer:
 • 5-8 screens with interactions
 • Complete interaction system
 • Advanced animation specs
 • Gesture/input specifications
-• Interaction patterns library (optional)
 
 --------------------------------------------------
 
 EVALUATION CRITERIA
 
-EVALUATION DETAILS RULE:
+EVALUATION FORMAT RULE:
 
-Evaluation criteria must include short explanations describing how the submission will be graded.
+Evaluation criteria must be concise with short explanations.
 
 Format:
-"Submissions will be evaluated based on the following criteria:"
+"Submissions will be evaluated based on:"
 
 [Criteria name] — [weight]%
-[Short explanation of what is evaluated]
+[One sentence explaining what is evaluated]
 
 MUST include exactly 5 criteria with weights totaling 100%.
 
@@ -739,63 +907,85 @@ ROLE-SPECIFIC EVALUATION:
 
 UI Designer:
 • Layout consistency — 20%
-  Proper alignment, spacing consistency, and grid usage.
+  Alignment, spacing consistency, and grid usage
 • Visual hierarchy — 20%
-  Clear prioritization of elements using typography, spacing, and color.
+  Clear prioritization using typography, spacing, and color
 • Component quality — 20%
-  Well-designed reusable components with proper states.
+  Reusable components with proper states
 • Constraint compliance — 20%
-  Adherence to layout, spacing, accessibility, and color constraints.
+  Adherence to grid, spacing, and accessibility rules
 • Visual quality — 20%
-  Overall aesthetic execution and attention to detail.
+  Overall aesthetics and attention to detail
 
 UX Designer:
 • Layout consistency — 20%
-  Proper alignment, spacing consistency, and grid usage.
+  Alignment, spacing consistency, and grid usage
 • Navigation clarity — 20%
-  Clear and intuitive navigation structure.
+  Clear and intuitive navigation structure
 • Usability — 20%
-  Ease of use and user-friendly interactions.
+  Ease of use and user-friendly interactions
 • Constraint compliance — 20%
-  Adherence to layout, spacing, accessibility, and color constraints.
+  Adherence to grid, spacing, and accessibility rules
 • User flow quality — 20%
-  Logical flow with minimal friction and clear user paths.
+  Logical flow with minimal friction
 
-Product Designer:
-• Layout consistency — 20%
-  Proper alignment, spacing consistency, and grid usage.
-• Visual hierarchy — 20%
-  Clear prioritization of elements using typography, spacing, and color.
+Product Designer (ADVANCED MUST USE THIS):
+• Product thinking — 25%
+  Ability to simplify complex problems and explain design decisions
 • User flow clarity — 20%
-  Logical sequence with minimal friction and clear user journeys.
+  Logical sequence with clear user journeys
+• Layout consistency — 20%
+  Alignment, spacing consistency, and grid usage
+• Constraint compliance — 15%
+  Adherence to grid, spacing, and accessibility rules
+• Interaction & usability — 20%
+  Clarity of actions, editing flows, and collaboration features
+
+Product Designer (BEGINNER/INTERMEDIATE):
+• Layout consistency — 20%
+  Alignment, spacing consistency, and grid usage
+• Visual hierarchy — 20%
+  Clear prioritization using typography, spacing, and color
+• User flow clarity — 20%
+  Logical sequence with clear user journeys
 • Constraint compliance — 20%
-  Adherence to layout, spacing, accessibility, and color constraints.
+  Adherence to grid, spacing, and accessibility rules
 • Product thinking — 20%
-  Quality of feature decisions and overall product experience.
+  Quality of feature decisions and product experienceUX Designer:
+• Layout consistency — 20%
+  Alignment, spacing consistency, and grid usage
+• Navigation clarity — 20%
+  Clear and intuitive navigation structure
+• Usability — 20%
+  Ease of use and user-friendly interactions
+• Constraint compliance — 20%
+  Adherence to grid, spacing, and accessibility rules
+• User flow quality — 20%
+  Logical flow with minimal friction
 
 Visual Designer:
 • Layout consistency — 20%
-  Proper alignment, spacing consistency, and grid usage.
+  Alignment, spacing consistency, and grid usage
 • Visual hierarchy — 20%
-  Clear prioritization of elements using typography, spacing, and color.
+  Clear prioritization using typography, spacing, and color
 • Visual creativity — 20%
-  Original and aesthetically pleasing visual solutions.
+  Original and aesthetically pleasing solutions
 • Constraint compliance — 20%
-  Adherence to layout, spacing, accessibility, and color constraints.
+  Adherence to grid, spacing, and accessibility rules
 • Brand consistency — 20%
-  Cohesive visual language and brand expression.
+  Cohesive visual language and brand expression
 
 Interaction Designer:
 • Layout consistency — 20%
-  Proper alignment, spacing consistency, and grid usage.
+  Alignment, spacing consistency, and grid usage
 • Visual hierarchy — 20%
-  Clear prioritization of elements using typography, spacing, and color.
+  Clear prioritization using typography, spacing, and color
 • Interaction quality — 20%
-  Well-designed micro-interactions and transitions.
+  Well-designed micro-interactions and transitions
 • Constraint compliance — 20%
-  Adherence to layout, spacing, accessibility, and color constraints.
+  Adherence to grid, spacing, and accessibility rules
 • Animation smoothness — 20%
-  Smooth and purposeful animations that enhance UX.
+  Smooth and purposeful animations that enhance UX
 
 --------------------------------------------------
 
@@ -838,27 +1028,30 @@ Before generating the final output verify:
 CRITICAL INSTRUCTIONS:
 
 1. Topic "{topic_str}" MUST be the main subject - DO NOT CHANGE IT
-2. Task type "{task_str}" MUST match the output - DO NOT CHANGE IT
-3. STRICTLY enforce interface type based on topic keywords:
-   - "prototype"/"app"/"mobile" → 375px mobile, 8-column grid
-   - "dashboard"/"analytics" → 1440px desktop, 12-column grid
-   - "landing"/"website" → 1440px desktop, 12-column grid
-   - "flow"/"journey"/"booking" → 375px mobile, 8-column grid
-4. STRICTLY follow difficulty rules:
-   - Beginner: 2-3 deliverables, 6 constraints, 3-4 sentence description, NO personas/research
+2. PLATFORM DETECTION (CRITICAL):
+   - If topic contains "mobile", "mobile UI", "app", "prototype", "checkout", "booking" → Canvas: 375px mobile layout, Grid: 8-column
+   - If topic contains "dashboard", "analytics", "admin", "landing", "website" → Canvas: 1440px desktop layout, Grid: 12-column
+3. PROBLEM-FIRST (CRITICAL): Description must start with product context and user problem BEFORE design goal
+4. AGE USAGE (CRITICAL): Do NOT mention age unless it affects design decisions (healthcare, children, elderly apps only)
+5. TASK REQUIREMENTS section is MANDATORY:
+   - Beginner: 2-3 screens with simple descriptions
+   - Intermediate: 3-5 screens with moderate descriptions
+   - Advanced: 4-6 screens with DETAILED descriptions using "Include:" format with bullet points
+6. ADVANCED COMPLEXITY (CRITICAL for Advanced difficulty):
+   - Must include collaboration features, edge cases, or system workflows
+   - Task Requirements must specify detailed features for each screen
+   - Deliverables MUST include "Short explanation of key product decisions"
+   - For Product Designer Advanced: Use Product thinking — 25% in evaluation
+7. CONSTRAINTS must be concise - ONE LINE per constraint, NO long explanations
+8. STRICTLY follow difficulty rules:
+   - Beginner: 2-3 deliverables, 6 constraints, 3-4 sentence description
    - Intermediate: 3-4 deliverables, 8 constraints, 4-5 sentence description
-   - Advanced: 4-5 deliverables, 10 constraints, 6-8 sentence DETAILED description with full context
-5. MUST include "task_requirements" section with numbered list of specific screens/components
-6. STRICTLY follow role-specific evaluation criteria with descriptions
-7. Title format: "{topic_str} - {role_str} Challenge"
-8. Do NOT use "you", "your", "you should"
-9. Constraints MUST be measurable
-10. Deliverables MUST specify quantities and artifacts
+   - Advanced: 4-5 deliverables, 10 constraints, 6-8 sentence description
+9. Title format: "{topic_str} — {role_str} Challenge"
+10. Do NOT use "you", "your", "you should" - Use neutral language
 11. ALWAYS use 8px baseline grid (NOT 4px)
-12. For Advanced: Description MUST be 6-8 sentences with complete product context
-13. Canvas width MUST match interface type (375px for mobile, 1440px for desktop)
-14. Evaluation criteria MUST include descriptions explaining what is evaluated
-15. Return ONLY valid JSON
+12. Evaluation criteria must include short one-sentence descriptions
+13. Return ONLY valid JSON
 
 Generate ONE design challenge following ALL rules above. Return ONLY the JSON object."""
         
