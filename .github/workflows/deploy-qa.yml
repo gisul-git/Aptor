@@ -336,9 +336,13 @@ jobs:
               exit 1
             fi
             
+            # Remove Docker Compose state files to prevent stale state issues
+            echo "🧹 Clearing Docker Compose state..."
+            rm -rf .docker-compose-state 2>/dev/null || true
+            
             echo "🚀 Starting services with docker-compose up..."
             # Use --remove-orphans to handle any edge cases
-            # Don't use --force-recreate since we've ensured nothing exists
+            # Parallel creation is now safe with proper depends_on configuration
             if ! docker compose up -d --remove-orphans; then
               echo "❌ docker-compose up failed!"
               echo "📋 Showing docker-compose logs for debugging..."
