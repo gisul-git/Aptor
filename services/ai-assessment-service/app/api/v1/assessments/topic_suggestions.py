@@ -63,7 +63,23 @@ def _get_openai_client() -> AsyncOpenAI:
     api_key = getattr(settings, 'openai_api_key', None)
     if not api_key:
         raise ValueError("OpenAI API key not configured")
-    return AsyncOpenAI(api_key=api_key)
+    
+    # Configure timeouts to prevent connection cancellation issues
+    import httpx
+    import os
+    
+    timeout_connect = float(os.getenv('OPENAI_TIMEOUT_CONNECT', '30'))
+    timeout_read = float(os.getenv('OPENAI_TIMEOUT_READ', '180'))
+    max_retries = int(os.getenv('OPENAI_MAX_RETRIES', '5'))
+    
+    return AsyncOpenAI(
+        api_key=api_key,
+        timeout=httpx.Timeout(timeout_connect, read=timeout_read, write=30.0, pool=10.0),
+        max_retries=max_retries,
+        http_client=httpx.AsyncClient(
+            limits=httpx.Limits(max_connections=20, max_keepalive_connections=10)
+        )
+    )
 
 
 async def suggest_topic_contexts(
