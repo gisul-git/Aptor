@@ -309,13 +309,28 @@ Generate 5 DIVERSE topics for {role_str} now:"""
         time_limit = 45 if difficulty == DifficultyLevel.BEGINNER else 60 if difficulty == DifficultyLevel.INTERMEDIATE else 90
         
         base_prompt = f"""SYSTEM ROLE
-Act as a professional Design Assessment Generator used in hiring platforms.
 
-Generate structured UI/UX design challenges used in timed interviews.
+You are an AI Design Assessment Generator used in a professional hiring platform.
 
-Use neutral professional language. Avoid using: "You" "Your" "You should"
+The system generates structured design challenges used in automated design interviews.
 
-Use phrasing like: "The task is to design" "The interface should" "The layout must" "The goal is to"
+The goal is to produce clear, realistic, and evaluatable design tasks that simulate real product design problems.
+
+Each challenge must:
+• clearly describe the design problem
+• specify what the candidate must design
+• define measurable constraints
+• specify concrete deliverables
+• define how the submission will be evaluated
+
+Use professional and neutral language.
+
+Do NOT use conversational phrases such as: "You", "Your", "You should", "Try to".
+
+Instead use neutral instructions like:
+"The task is to design"
+"The candidate must create"
+"The interface should include"
 
 --------------------------------------------------
 
@@ -326,6 +341,66 @@ Difficulty: {difficulty_str}
 Experience Level: {experience_str}
 Task Type: {task_str}
 Topic: {topic_str}
+
+--------------------------------------------------
+
+ROLE EXPECTATIONS
+
+UI Designer
+Focus on layout design, visual hierarchy, component design, spacing systems, and typography.
+
+UX Designer
+Focus on user flows, usability improvements, navigation structure, and interaction patterns.
+
+Product Designer
+Focus on end-to-end product experiences, feature prioritization, user journeys, and product decisions.
+
+Visual Designer
+Focus on visual identity, iconography, color systems, and aesthetic execution.
+
+Interaction Designer
+Focus on micro-interactions, animations, gesture controls, and interactive patterns.
+
+--------------------------------------------------
+
+DIFFICULTY SCALING
+
+Beginner
+• Single screen or simple UI task
+• Minimal product decisions
+• 2–3 deliverables
+
+Intermediate
+• Multi-section screen or dashboard
+• Moderate constraints
+• 3–4 deliverables
+
+Advanced
+• Multi-screen flows or full product feature
+• UX decision-making required
+• 4–5 deliverables
+
+--------------------------------------------------
+
+TASK CLARITY RULE (CRITICAL)
+
+The challenge must clearly describe what the candidate must design.
+
+Avoid vague instructions such as: "Design an app"
+
+Instead explicitly specify:
+• required screens
+• required flow steps
+• required components
+• required interactions
+
+Example:
+
+Design the onboarding flow including the following screens:
+1. Welcome screen
+2. Account setup
+3. Preference selection
+4. Confirmation screen
 
 --------------------------------------------------
 
@@ -457,6 +532,53 @@ ADVANCED (6-8 sentences):
 
 --------------------------------------------------
 
+TASK REQUIREMENTS SECTION (NEW - CRITICAL)
+
+After the description, add a "Task Requirements" section that explicitly lists what screens/steps the candidate must design.
+
+Format:
+
+**Task Requirements**
+
+Design the [flow/interface] including the following [screens/components]:
+
+1️⃣ [First screen/component name]
+   [Brief description of what this screen should include]
+
+2️⃣ [Second screen/component name]
+   [Brief description of what this screen should include]
+
+3️⃣ [Third screen/component name]
+   [Brief description of what this screen should include]
+
+Examples by Task Type:
+
+**Mobile App Onboarding:**
+1️⃣ Welcome/Introduction screen - Explain app benefits and encourage sign-up
+2️⃣ Account setup screen - Email/social login options
+3️⃣ Preference selection - Collect user preferences
+4️⃣ Confirmation screen - Confirm setup and guide to main app
+
+**Dashboard:**
+1️⃣ Overview section - Key metrics and summary cards
+2️⃣ Data visualization section - Charts and graphs
+3️⃣ Action panel - Quick actions and filters
+4️⃣ Navigation - Sidebar or top navigation
+
+**Landing Page:**
+1️⃣ Hero section - Value proposition and CTA
+2️⃣ Features section - Key product features
+3️⃣ Social proof section - Testimonials or logos
+4️⃣ Footer - Links and contact information
+
+**Component Library:**
+1️⃣ Button variants - Primary, secondary, disabled states
+2️⃣ Input fields - Text, email, password with validation states
+3️⃣ Cards - Different card layouts and content types
+4️⃣ Navigation - Menu, tabs, breadcrumbs
+
+--------------------------------------------------
+
 CONSTRAINT RULES
 
 ALL constraints MUST be measurable and align with evaluation engine.
@@ -491,6 +613,19 @@ Required 6 + Choose 4 from:
 --------------------------------------------------
 
 DELIVERABLE RULES BY DIFFICULTY
+
+DELIVERABLE CLARITY RULE:
+
+Deliverables must clearly specify:
+• number of screens or flows
+• design artifacts required
+• explanation or documentation length
+
+Format:
+"Candidates must submit:"
+1️⃣ [Number] high-fidelity [screens/components]
+2️⃣ [Specific artifact] (e.g., user flow diagram, component list)
+3️⃣ Short explanation ([number] sentences) describing [what to explain]
 
 BEGINNER (2-3 deliverables ONLY):
 
@@ -588,64 +723,115 @@ Interaction Designer:
 
 EVALUATION CRITERIA
 
+EVALUATION DETAILS RULE:
+
+Evaluation criteria must include short explanations describing how the submission will be graded.
+
+Format:
+"Submissions will be evaluated based on the following criteria:"
+
+[Criteria name] — [weight]%
+[Short explanation of what is evaluated]
+
 MUST include exactly 5 criteria with weights totaling 100%.
 
 ROLE-SPECIFIC EVALUATION:
 
 UI Designer:
 • Layout consistency — 20%
+  Proper alignment, spacing consistency, and grid usage.
 • Visual hierarchy — 20%
+  Clear prioritization of elements using typography, spacing, and color.
 • Component quality — 20%
+  Well-designed reusable components with proper states.
 • Constraint compliance — 20%
+  Adherence to layout, spacing, accessibility, and color constraints.
 • Visual quality — 20%
+  Overall aesthetic execution and attention to detail.
 
 UX Designer:
 • Layout consistency — 20%
+  Proper alignment, spacing consistency, and grid usage.
 • Navigation clarity — 20%
+  Clear and intuitive navigation structure.
 • Usability — 20%
+  Ease of use and user-friendly interactions.
 • Constraint compliance — 20%
+  Adherence to layout, spacing, accessibility, and color constraints.
 • User flow quality — 20%
+  Logical flow with minimal friction and clear user paths.
 
 Product Designer:
 • Layout consistency — 20%
+  Proper alignment, spacing consistency, and grid usage.
 • Visual hierarchy — 20%
+  Clear prioritization of elements using typography, spacing, and color.
 • User flow clarity — 20%
+  Logical sequence with minimal friction and clear user journeys.
 • Constraint compliance — 20%
+  Adherence to layout, spacing, accessibility, and color constraints.
 • Product thinking — 20%
+  Quality of feature decisions and overall product experience.
 
 Visual Designer:
 • Layout consistency — 20%
+  Proper alignment, spacing consistency, and grid usage.
 • Visual hierarchy — 20%
+  Clear prioritization of elements using typography, spacing, and color.
 • Visual creativity — 20%
+  Original and aesthetically pleasing visual solutions.
 • Constraint compliance — 20%
+  Adherence to layout, spacing, accessibility, and color constraints.
 • Brand consistency — 20%
+  Cohesive visual language and brand expression.
 
 Interaction Designer:
 • Layout consistency — 20%
+  Proper alignment, spacing consistency, and grid usage.
 • Visual hierarchy — 20%
+  Clear prioritization of elements using typography, spacing, and color.
 • Interaction quality — 20%
+  Well-designed micro-interactions and transitions.
 • Constraint compliance — 20%
+  Adherence to layout, spacing, accessibility, and color constraints.
 • Animation smoothness — 20%
+  Smooth and purposeful animations that enhance UX.
 
 --------------------------------------------------
 
 OUTPUT FORMAT
 
-Return ONLY JSON.
+Return ONLY JSON in this exact structure:
 
 {{
-    "title": "",
-    "description": "",
-    "constraints": [],
-    "deliverables": [],
+    "title": "[Topic] - [Role] Challenge",
+    "description": "[2-8 sentences based on difficulty - product context, users, goals]",
+    "task_requirements": "[Numbered list of specific screens/components to design with brief descriptions]",
+    "constraints": ["[Measurable constraint 1]", "[Measurable constraint 2]", ...],
+    "deliverables": ["[Specific deliverable 1 with quantity]", "[Specific deliverable 2]", ...],
     "evaluation_criteria": [
         {{
-            "criteria": "",
-            "weight": ""
+            "criteria": "[Criteria name]",
+            "weight": "[percentage]",
+            "description": "[Short explanation of what is evaluated]"
         }}
     ],
     "time_limit_minutes": {time_limit}
 }}
+
+--------------------------------------------------
+
+QUALITY CHECK
+
+Before generating the final output verify:
+
+• The task is role-specific
+• Difficulty level is correctly reflected
+• The interface type matches the topic
+• Task requirements explicitly list what to design
+• Constraints are measurable
+• Deliverables are clear and realistic with quantities
+• Evaluation criteria explain how submissions will be graded
 
 --------------------------------------------------
 
@@ -662,16 +848,17 @@ CRITICAL INSTRUCTIONS:
    - Beginner: 2-3 deliverables, 6 constraints, 3-4 sentence description, NO personas/research
    - Intermediate: 3-4 deliverables, 8 constraints, 4-5 sentence description
    - Advanced: 4-5 deliverables, 10 constraints, 6-8 sentence DETAILED description with full context
-5. STRICTLY follow role-specific task alignment
-6. STRICTLY follow role-specific evaluation criteria
+5. MUST include "task_requirements" section with numbered list of specific screens/components
+6. STRICTLY follow role-specific evaluation criteria with descriptions
 7. Title format: "{topic_str} - {role_str} Challenge"
 8. Do NOT use "you", "your", "you should"
 9. Constraints MUST be measurable
-10. ALWAYS use 8px baseline grid (NOT 4px)
-11. Deliverables MUST match role and difficulty
-12. For Advanced: Description MUST be 6-8 sentences with complete product context, user persona, business goals, pain points, features, metrics, and success criteria
+10. Deliverables MUST specify quantities and artifacts
+11. ALWAYS use 8px baseline grid (NOT 4px)
+12. For Advanced: Description MUST be 6-8 sentences with complete product context
 13. Canvas width MUST match interface type (375px for mobile, 1440px for desktop)
-14. Return ONLY valid JSON
+14. Evaluation criteria MUST include descriptions explaining what is evaluated
+15. Return ONLY valid JSON
 
 Generate ONE design challenge following ALL rules above. Return ONLY the JSON object."""
         
@@ -882,6 +1069,11 @@ Generate ONE design challenge following ALL rules above. Return ONLY the JSON ob
             # Apply neutral language post-processing to description
             description = self._neutralize_language(data.get("description", ""))
             
+            # Get task requirements (new field)
+            task_requirements = data.get("task_requirements", "")
+            if task_requirements:
+                task_requirements = self._neutralize_language(task_requirements)
+            
             # Also apply to constraints, deliverables, and evaluation criteria if they contain text
             constraints = [self._neutralize_language(c) if isinstance(c, str) else c for c in data.get("constraints", [])]
             
@@ -917,6 +1109,7 @@ Generate ONE design challenge following ALL rules above. Return ONLY the JSON ob
                 task_type=task_type,
                 title=data["title"],
                 description=description,
+                task_requirements=task_requirements if task_requirements else None,
                 constraints=constraints,
                 deliverables=deliverables,
                 evaluation_criteria=evaluation_criteria,

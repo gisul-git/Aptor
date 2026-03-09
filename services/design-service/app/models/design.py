@@ -49,6 +49,7 @@ class DesignQuestionModel(BaseModel):
     task_type: TaskType
     title: str
     description: str
+    task_requirements: Optional[str] = None  # New field for explicit task instructions
     constraints: List[str] = []
     deliverables: List[str] = []
     evaluation_criteria: List[str] = []
@@ -68,6 +69,7 @@ class DesignQuestionModel(BaseModel):
                 "task_type": "landing_page",
                 "title": "E-commerce Landing Page",
                 "description": "Design a modern landing page",
+                "task_requirements": "Design the landing page including: 1. Hero section 2. Features section 3. Footer",
                 "time_limit_minutes": 60
             }
         }

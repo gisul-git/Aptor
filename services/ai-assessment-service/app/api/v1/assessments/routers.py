@@ -4637,6 +4637,9 @@ async def generate_all_questions_endpoint_v2(
     Sets allQuestionsGenerated = True on assessment.
     """
     try:
+        logger.info("=" * 80)
+        logger.info(f"🚀 [GENERATE-ALL-QUESTIONS] Endpoint called - Assessment: {payload.assessmentId}, Topics: {len(payload.topics)}")
+        
         # ✅ SPEED OPTIMIZATION: Get cached context (or load from MongoDB if not cached)
         from .services.assessment_cache import get_assessment_context
         cached_context = await get_assessment_context(db, payload.assessmentId)
@@ -6161,123 +6164,6 @@ async def generate_question_endpoint_v2(
     except Exception as exc:
         logger.error(f"Error generating questions: {exc}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to generate questions: {str(exc)}") from exc
-
-
-@router.post("/generate-all-questions")
-async def generate_all_questions_endpoint_v2(
-    payload: GenerateAllQuestionsRequest,
-    current_user: Dict[str, Any] = Depends(require_editor),
-    db: AsyncIOMotorDatabase = Depends(get_db),
-):
-    """
-    Generate questions for all pending topics.
-    After completion: lock all topics, disable all buttons.
-    Sets allQuestionsGenerated = True on assessment.
-    """
-    try:
-        # ✅ SPEED OPTIMIZATION: Get cached context (or load from MongoDB if not cached)
-        from .services.assessment_cache import get_assessment_context
-        cached_context = await get_assessment_context(db, payload.assessmentId)
-        
-        # Still need full assessment for topics_v2
-        # Get assessment
-        assessment = await db.assessments.find_one({"_id": to_object_id(payload.assessmentId)})
-        if not assessment:
-            raise HTTPException(status_code=404, detail="Assessment not found")
-        
-        topics_v2 = payload.topics
-        
-        # Convert Pydantic models to dicts if needed
-        topics_list = [topic if isinstance(topic, dict) else topic.model_dump() for topic in topics_v2]
-        
-        # Get coding language from assessment (fallback to python)
-        coding_language = assessment.get("codingLanguage", "python")
-        
-        # Generate questions only for pending rows
-        generated_count = 0
-        for topic in topics_list:
-            question_rows = topic.get("questionRows", [])
-            for row in question_rows:
-                if row.get("status") == "pending" and not row.get("questions") and not row.get("locked"):
-                    try:
-                        # Get company context (new) or websiteSummary (legacy)
-                        company_context = assessment.get("contextSummary")
-                        website_summary = None
-                        if not company_context and assessment.get("websiteSummary") and assessment["websiteSummary"].get("useForQuestions"):
-                            website_summary = assessment["websiteSummary"]
-                        
-                        # Priority: row-level > assessment-level > company context > website summary
-                        additional_requirements = row.get("additionalRequirements")  # Topic/row-level (highest priority)
-                        if not additional_requirements:
-                            additional_requirements = assessment.get("additionalRequirements")  # Assessment-level (fallback)
-                        
-                        # ⭐ Extract context-aware personalization parameters
-                        assessment_requirements = assessment.get("requirements")
-                        job_designation = assessment.get("jobDesignation")
-                        experience_min = assessment.get("experienceMin")
-                        experience_max = assessment.get("experienceMax")
-                        company_name = company_context.get("company_name") if company_context else None
-                        
-                        questions = await generate_questions_for_row_v2(
-                            topic_label=topic["label"],
-                            question_type=row["questionType"],
-                            difficulty=row["difficulty"],
-                            questions_count=row["questionsCount"],
-                            can_use_judge0=row.get("canUseJudge0", False),
-                            coding_language=coding_language,
-                            additional_requirements=additional_requirements,
-                            experience_mode=assessment.get("experienceMode", "corporate"),
-                            website_summary=website_summary,
-                            company_context=company_context,
-                            job_designation=job_designation,  # ⭐ NEW
-                            experience_min=experience_min,  # ⭐ NEW
-                            experience_max=experience_max,  # ⭐ NEW
-                            company_name=company_name,  # ⭐ NEW
-                            assessment_requirements=assessment_requirements  # ⭐ NEW
-                        )
-                        
-                        row["questions"] = questions
-                        row["status"] = "generated"
-                        row["locked"] = True
-                        generated_count += 1
-                    except Exception as exc:
-                        logger.error(f"Error generating questions for row {row.get('rowId')}: {exc}")
-                        # Continue with other rows
-            
-            # Lock topic if any row was generated
-            if any(r.get("locked") for r in question_rows):
-                topic["locked"] = True
-        
-        # Lock all topics and set flags
-        for topic in topics_list:
-            topic["locked"] = True
-        
-        # Update assessment
-        assessment["topics_v2"] = topics_list
-        assessment["allQuestionsGenerated"] = True
-        assessment["fullTopicRegenLocked"] = True
-        assessment["updatedAt"] = datetime.now(timezone.utc)
-        
-        await db.assessments.update_one(
-            {"_id": to_object_id(payload.assessmentId)},
-            {"$set": {
-                "topics_v2": topics_list,
-                "allQuestionsGenerated": True,
-                "fullTopicRegenLocked": True,
-                "updatedAt": assessment["updatedAt"]
-            }}
-        )
-        
-        return success_response(
-            f"Generated questions for {generated_count} question rows",
-            {"topics": topics_list, "generatedCount": generated_count}
-        )
-        
-    except HTTPException:
-        raise
-    except Exception as exc:
-        logger.error(f"Error generating all questions: {exc}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to generate all questions: {str(exc)}") from exc
 
 
 @router.post("/add-question-row")
