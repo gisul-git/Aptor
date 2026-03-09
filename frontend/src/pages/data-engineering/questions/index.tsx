@@ -6,6 +6,38 @@ import { ArrowLeft, Plus, Search, Trash2, Eye, Edit3, Globe, Globe2, Clock, Bot,
 import Link from "next/link";
 import { useDataEngineeringQuestions, useDeleteDataEngineeringQuestion, usePublishDataEngineeringQuestion } from "@/hooks/api/useDataEngineering";
 
+// Topic display names mapping
+const TOPIC_DISPLAY_NAMES: Record<string, string> = {
+  "transformations": "Data Transformations",
+  "aggregations": "Aggregations",
+  "joins": "Joins",
+  "window_functions": "Window Functions",
+  "performance_optimization": "Performance Optimization",
+  "data_quality": "Data Quality",
+  "streaming": "Streaming",
+  "partitioning": "Partitioning",
+  "distributed_computing": "Distributed Computing",
+  "data_ingestion": "Data Ingestion",
+  "error_handling": "Error Handling",
+  "data_validation": "Data Validation",
+  "caching": "Caching",
+  "broadcast_joins": "Broadcast Joins",
+  "skew_handling": "Skew Handling",
+  "memory_optimization": "Memory Optimization",
+  "incremental_loads": "Incremental Loads",
+  "change_data_capture": "Change Data Capture (CDC)",
+  "data_cleansing": "Data Cleansing",
+  "shuffle_optimization": "Shuffle Optimization",
+  "data_locality": "Data Locality",
+  "orchestration": "Orchestration",
+  "monitoring": "Monitoring",
+  "data_modeling": "Data Modeling",
+  "dimensional_modeling": "Dimensional Modeling",
+  "slowly_changing_dimensions": "Slowly Changing Dimensions (SCD)",
+  "fact_tables": "Fact Tables",
+  "star_schema": "Star Schema"
+};
+
 interface Question {
   id: string;
   title: string;
@@ -324,6 +356,22 @@ export default function DataEngineeringQuestionsPage() {
     }
   };
 
+  const getTopicDisplayName = (topic: string): string => {
+    if (!topic) return 'General';
+    
+    // First try to find in predefined mapping
+    if (TOPIC_DISPLAY_NAMES[topic]) {
+      return TOPIC_DISPLAY_NAMES[topic];
+    }
+    
+    // Handle snake_case and convert to Title Case
+    return topic
+      .replace(/_/g, ' ')
+      .split(' ')
+      .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+      .join(' ');
+  };
+
   const filteredQuestions = questions.filter(q => {
     const matchesSearch = q.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
       q.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -594,7 +642,7 @@ export default function DataEngineeringQuestionsPage() {
                               padding: "0.25rem 0.75rem", borderRadius: "0.375rem", fontSize: "0.75rem", fontWeight: 600,
                               color: "#00684A", backgroundColor: "#F0F9F4", border: "1px solid #E1F2E9"
                             }}>
-                              {q.topic}
+                              {getTopicDisplayName(q.topic)}
                             </span>
                           )}
                           

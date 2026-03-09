@@ -1,12 +1,12 @@
 'use client'
 
-import { useEffect, useState, useMemo } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/router'
 import { useSession } from 'next-auth/react'
 import { GetServerSideProps } from 'next'
 import { requireAuth } from '../../../../lib/auth'
 import Link from 'next/link'
-import { ArrowLeft, Users, CheckCircle2, Clock, TrendingUp, AlertTriangle, Eye, Download, Mail, UserPlus, Video } from 'lucide-react'
+import { ArrowLeft, Users, CheckCircle2, Clock, TrendingUp, AlertTriangle, Eye, Download, Mail, UserPlus } from 'lucide-react'
 import { useDataEngineeringTest } from '@/hooks/api/useDataEngineering'
 import apiClient from '@/services/api/client'
 
@@ -29,7 +29,6 @@ export default function DataEngineeringAnalyticsPage() {
   const { data: testInfo, isLoading: loadingTest } = useDataEngineeringTest(testIdStr)
   const [candidates, setCandidates] = useState<Candidate[]>([])
   const [loading, setLoading] = useState(true)
-  const [selectedCandidate, setSelectedCandidate] = useState<string | null>(null)
 
   useEffect(() => {
     if (!testId || typeof testId !== 'string') return
@@ -115,6 +114,14 @@ export default function DataEngineeringAnalyticsPage() {
   const pendingCount = candidates.filter(c => c.status === 'pending').length
   const completedCount = candidates.filter(c => c.status === 'completed').length
 
+  // Debug logging
+  console.log('[Analytics Debug - v2]', {
+    testInfo,
+    hasToken: !!testInfo?.test_token,
+    isPublished: testInfo?.is_published,
+    timestamp: new Date().toISOString()
+  })
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-mint-50/90 via-white to-forest-50/70">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -196,9 +203,9 @@ export default function DataEngineeringAnalyticsPage() {
         </div>
 
         {/* Test Access Section */}
-        {testInfo && testInfo.test_token && (
-          <div className="bg-white rounded-xl border border-mint-200 p-6 shadow-sm mb-8">
-            <h2 className="text-xl font-bold text-primary mb-4">Test Access</h2>
+        <div className="bg-white rounded-xl border border-mint-200 p-6 shadow-sm mb-8">
+          <h2 className="text-xl font-bold text-primary mb-4">Test Access</h2>
+          {testInfo && testInfo.test_token ? (
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-semibold text-primary mb-2">
@@ -207,13 +214,13 @@ export default function DataEngineeringAnalyticsPage() {
                 <div className="flex gap-2">
                   <input
                     type="text"
-                    value={`${typeof window !== 'undefined' ? window.location.origin : ''}/test/${testId}?token=${testInfo.test_token}`}
+                    value={`${typeof window !== 'undefined' ? window.location.origin : ''}/data-engineering/test/${testId}/take?token=${testInfo.test_token}`}
                     readOnly
                     className="flex-1 px-4 py-2 border-2 border-mint-300 rounded-lg bg-mint-50/50 text-primary font-mono text-sm"
                   />
                   <button
                     onClick={() => {
-                      const testUrl = `${typeof window !== 'undefined' ? window.location.origin : ''}/test/${testId}?token=${testInfo.test_token}`;
+                      const testUrl = `${typeof window !== 'undefined' ? window.location.origin : ''}/data-engineering/test/${testId}/take?token=${testInfo.test_token}`;
                       navigator.clipboard.writeText(testUrl);
                       alert('Test URL copied to clipboard!');
                     }}
@@ -221,11 +228,27 @@ export default function DataEngineeringAnalyticsPage() {
                   >
                     Copy URL
                   </button>
+                  <button
+                    onClick={() => {
+                      const testUrl = `/data-engineering/test/${testId}/take?token=${testInfo.test_token}`;
+                      window.open(testUrl, '_blank');
+                    }}
+                    className="inline-flex items-center gap-2 px-6 py-2 bg-primary text-white font-semibold rounded-lg hover:bg-forest-600 transition-all shadow-md hover:shadow-lg"
+                  >
+                    <Eye className="w-4 h-4" />
+                    Take Test
+                  </button>
                 </div>
               </div>
             </div>
-          </div>
-        )}
+          ) : (
+            <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
+              <p className="text-orange-700 text-sm">
+                Test link will be available once the test is published. Please publish the test to generate the access link.
+              </p>
+            </div>
+          )}
+        </div>
 
         {/* Candidates Management Section */}
         <div className="bg-white rounded-xl border border-mint-200 shadow-sm mb-8">

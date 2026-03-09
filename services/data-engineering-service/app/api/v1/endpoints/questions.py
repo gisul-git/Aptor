@@ -194,27 +194,52 @@ async def get_job_roles() -> Dict[str, Any]:
         job_roles = {
             "Data Engineer": {
                 "description": "Builds and maintains data pipelines and ETL processes",
-                "suggested_topics": ["transformations", "aggregations", "joins", "window_functions", "partitioning", "performance_optimization"]
+                "suggested_topics": [
+                    "transformations", "aggregations", "joins", "window_functions", 
+                    "partitioning", "performance_optimization", "data_quality", 
+                    "data_ingestion", "error_handling", "data_validation"
+                ]
             },
             "Senior Data Engineer": {
                 "description": "Designs scalable data architectures and optimizes performance",
-                "suggested_topics": ["performance_optimization", "partitioning", "distributed_computing", "joins", "window_functions", "data_quality"]
+                "suggested_topics": [
+                    "performance_optimization", "partitioning", "distributed_computing", 
+                    "joins", "window_functions", "data_quality", "streaming", 
+                    "caching", "broadcast_joins", "skew_handling", "memory_optimization"
+                ]
             },
             "ETL Developer": {
                 "description": "Specializes in Extract, Transform, Load processes",
-                "suggested_topics": ["transformations", "data_ingestion", "data_quality", "joins", "aggregations"]
+                "suggested_topics": [
+                    "transformations", "data_ingestion", "data_quality", "joins", 
+                    "aggregations", "error_handling", "data_validation", 
+                    "incremental_loads", "change_data_capture", "data_cleansing"
+                ]
             },
             "Big Data Engineer": {
                 "description": "Works with large-scale distributed data processing systems",
-                "suggested_topics": ["partitioning", "performance_optimization", "distributed_computing", "streaming", "joins", "aggregations"]
+                "suggested_topics": [
+                    "partitioning", "performance_optimization", "distributed_computing", 
+                    "streaming", "joins", "aggregations", "broadcast_joins", 
+                    "skew_handling", "memory_optimization", "caching", 
+                    "shuffle_optimization", "data_locality"
+                ]
             },
             "Data Pipeline Engineer": {
                 "description": "Develops and maintains automated data pipelines",
-                "suggested_topics": ["transformations", "data_quality", "performance_optimization", "aggregations", "joins"]
+                "suggested_topics": [
+                    "transformations", "data_quality", "performance_optimization", 
+                    "aggregations", "joins", "error_handling", "data_validation", 
+                    "incremental_loads", "orchestration", "monitoring"
+                ]
             },
             "Analytics Engineer": {
                 "description": "Transforms raw data into analytics-ready datasets",
-                "suggested_topics": ["aggregations", "joins", "window_functions", "transformations", "data_quality"]
+                "suggested_topics": [
+                    "aggregations", "joins", "window_functions", "transformations", 
+                    "data_quality", "data_modeling", "dimensional_modeling", 
+                    "slowly_changing_dimensions", "fact_tables", "star_schema"
+                ]
             }
         }
         

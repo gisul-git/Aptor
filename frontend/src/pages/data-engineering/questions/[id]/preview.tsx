@@ -2,8 +2,40 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/router'
 import { GetServerSideProps } from 'next'
 import { requireAuth } from '../../../../lib/auth'
-import { ArrowLeft, FileCode, Table as TableIcon } from 'lucide-react'
+import { ArrowLeft, FileCode, Table as TableIcon, Bot } from 'lucide-react'
 import { useDataEngineeringQuestion } from '@/hooks/api/useDataEngineering'
+
+// Topic display names mapping
+const TOPIC_DISPLAY_NAMES: Record<string, string> = {
+  "transformations": "Data Transformations",
+  "aggregations": "Aggregations",
+  "joins": "Joins",
+  "window_functions": "Window Functions",
+  "performance_optimization": "Performance Optimization",
+  "data_quality": "Data Quality",
+  "streaming": "Streaming",
+  "partitioning": "Partitioning",
+  "distributed_computing": "Distributed Computing",
+  "data_ingestion": "Data Ingestion",
+  "error_handling": "Error Handling",
+  "data_validation": "Data Validation",
+  "caching": "Caching",
+  "broadcast_joins": "Broadcast Joins",
+  "skew_handling": "Skew Handling",
+  "memory_optimization": "Memory Optimization",
+  "incremental_loads": "Incremental Loads",
+  "change_data_capture": "Change Data Capture (CDC)",
+  "data_cleansing": "Data Cleansing",
+  "shuffle_optimization": "Shuffle Optimization",
+  "data_locality": "Data Locality",
+  "orchestration": "Orchestration",
+  "monitoring": "Monitoring",
+  "data_modeling": "Data Modeling",
+  "dimensional_modeling": "Dimensional Modeling",
+  "slowly_changing_dimensions": "Slowly Changing Dimensions (SCD)",
+  "fact_tables": "Fact Tables",
+  "star_schema": "Star Schema"
+};
 
 export default function DataEngineeringQuestionPreviewPage() {
   const router = useRouter()
@@ -40,6 +72,22 @@ export default function DataEngineeringQuestionPreviewPage() {
       case 3: return 'Hard'
       default: return 'Unknown'
     }
+  }
+
+  const getTopicDisplayName = (topic: string): string => {
+    if (!topic) return 'General';
+    
+    // First try to find in predefined mapping
+    if (TOPIC_DISPLAY_NAMES[topic]) {
+      return TOPIC_DISPLAY_NAMES[topic];
+    }
+    
+    // Handle snake_case and convert to Title Case
+    return topic
+      .replace(/_/g, ' ')
+      .split(' ')
+      .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+      .join(' ');
   }
 
   const renderDataTable = (data: any, title: string) => {
@@ -350,7 +398,7 @@ export default function DataEngineeringQuestionPreviewPage() {
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "2rem" }}>
             <div>
               <h1 style={{ marginBottom: "0.5rem", color: "#1a1625" }}>{question.title}</h1>
-              <div style={{ display: "flex", gap: "1rem", alignItems: "center", fontSize: "0.875rem", flexWrap: "wrap" }}>
+              <div style={{ display: "flex", gap: "0.75rem", alignItems: "center", fontSize: "0.875rem", flexWrap: "wrap" }}>
                 <span style={{
                   padding: "0.25rem 0.75rem",
                   borderRadius: "0.375rem",
@@ -360,25 +408,42 @@ export default function DataEngineeringQuestionPreviewPage() {
                 }}>
                   {getDifficultyLabel(question.difficulty_level)}
                 </span>
-                <span style={{ color: "#6B7280" }}>Topic: {question.topic}</span>
-                {question.metadata?.experience_level && (
+                {question.topic && (
+                  <span style={{
+                    padding: "0.25rem 0.75rem",
+                    borderRadius: "0.375rem",
+                    fontWeight: 600,
+                    backgroundColor: "#F0F9F4",
+                    color: "#00684A",
+                    border: "1px solid #E1F2E9"
+                  }}>
+                    {getTopicDisplayName(question.topic)}
+                  </span>
+                )}
+                {question.metadata?.ai_generated && (
+                  <span style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "0.375rem",
+                    padding: "0.25rem 0.75rem",
+                    borderRadius: "0.375rem",
+                    fontWeight: 600,
+                    backgroundColor: "#EDE9FE",
+                    color: "#6D28D9",
+                    border: "1px solid #DDD6FE"
+                  }}>
+                    <Bot size={14} /> AI Generated
+                  </span>
+                )}
+                {question.metadata?.experience_years && (
                   <span style={{
                     padding: "0.25rem 0.75rem",
                     borderRadius: "0.375rem",
                     backgroundColor: "#E0F2FE",
-                    color: "#0369A1"
+                    color: "#0369A1",
+                    fontWeight: 600
                   }}>
-                    {question.metadata.experience_level}
-                  </span>
-                )}
-                {question.metadata?.tools && question.metadata.tools.length > 0 && (
-                  <span style={{
-                    padding: "0.25rem 0.75rem",
-                    borderRadius: "0.375rem",
-                    backgroundColor: "#EDE9FE",
-                    color: "#7C3AED"
-                  }}>
-                    {question.metadata.tools.join(', ')}
+                    {question.metadata.experience_years} years experience
                   </span>
                 )}
               </div>

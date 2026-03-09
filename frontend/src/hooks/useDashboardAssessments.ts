@@ -32,6 +32,9 @@ export interface Assessment {
   is_published?: boolean;
   is_active?: boolean;
   pausedAt?: string;
+  questionCount?: number | null;
+  totalAssigned?: number | null;
+  avgScore?: number | null;
 }
 
 export interface UseDashboardAssessmentsReturn {
@@ -405,7 +408,10 @@ export function useDashboardAssessments(): UseDashboardAssessmentsReturn {
             type: 'data_engineering' as const,
             is_published: test.is_published,
             is_active: test.is_active,
-            pausedAt: test.pausedAt
+            pausedAt: test.pausedAt,
+            questionCount: test.question_count || null,
+            totalAssigned: test.total_assigned || 0,
+            avgScore: test.avg_score || null
           };
         });
       

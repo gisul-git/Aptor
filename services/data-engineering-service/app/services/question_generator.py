@@ -408,19 +408,49 @@ class QuestionGeneratorService:
         if not topic_str:
             return QuestionTopic.TRANSFORMATIONS
         
-        # Try to match topic string to enum values
+        # Normalize the topic string
+        normalized_topic = topic_str.lower().strip()
+        
+        # Try direct enum value match first
+        try:
+            return QuestionTopic(normalized_topic)
+        except ValueError:
+            pass
+        
+        # Fallback mapping for common variations
         topic_mapping = {
-            "transformations": QuestionTopic.TRANSFORMATIONS,
-            "aggregations": QuestionTopic.AGGREGATIONS,
-            "joins": QuestionTopic.JOINS,
-            "window_functions": QuestionTopic.WINDOW_FUNCTIONS,
+            "transformation": QuestionTopic.TRANSFORMATIONS,
+            "aggregation": QuestionTopic.AGGREGATIONS,
+            "join": QuestionTopic.JOINS,
+            "window": QuestionTopic.WINDOW_FUNCTIONS,
             "performance": QuestionTopic.PERFORMANCE_OPTIMIZATION,
-            "performance_optimization": QuestionTopic.PERFORMANCE_OPTIMIZATION,
-            "data_quality": QuestionTopic.DATA_QUALITY,
-            "streaming": QuestionTopic.STREAMING
+            "optimization": QuestionTopic.PERFORMANCE_OPTIMIZATION,
+            "quality": QuestionTopic.DATA_QUALITY,
+            "stream": QuestionTopic.STREAMING,
+            "partition": QuestionTopic.PARTITIONING,
+            "distributed": QuestionTopic.DISTRIBUTED_COMPUTING,
+            "ingestion": QuestionTopic.DATA_INGESTION,
+            "error": QuestionTopic.ERROR_HANDLING,
+            "validation": QuestionTopic.DATA_VALIDATION,
+            "cache": QuestionTopic.CACHING,
+            "broadcast": QuestionTopic.BROADCAST_JOINS,
+            "skew": QuestionTopic.SKEW_HANDLING,
+            "memory": QuestionTopic.MEMORY_OPTIMIZATION,
+            "incremental": QuestionTopic.INCREMENTAL_LOADS,
+            "cdc": QuestionTopic.CHANGE_DATA_CAPTURE,
+            "cleansing": QuestionTopic.DATA_CLEANSING,
+            "shuffle": QuestionTopic.SHUFFLE_OPTIMIZATION,
+            "locality": QuestionTopic.DATA_LOCALITY,
+            "orchestration": QuestionTopic.ORCHESTRATION,
+            "monitoring": QuestionTopic.MONITORING,
+            "modeling": QuestionTopic.DATA_MODELING,
+            "dimensional": QuestionTopic.DIMENSIONAL_MODELING,
+            "scd": QuestionTopic.SLOWLY_CHANGING_DIMENSIONS,
+            "fact": QuestionTopic.FACT_TABLES,
+            "star": QuestionTopic.STAR_SCHEMA,
         }
         
-        return topic_mapping.get(topic_str.lower(), QuestionTopic.TRANSFORMATIONS)
+        return topic_mapping.get(normalized_topic, QuestionTopic.TRANSFORMATIONS)
     
     def _determine_difficulty_level(self, experience_years: int) -> DifficultyLevel:
         """Determine difficulty level based on years of experience."""
@@ -591,7 +621,7 @@ class QuestionGeneratorService:
         Args:
             ai_data: AI response data
             experience_years: User's years of experience
-            topic: Optional topic filter
+            topic: Optional topic filter (user-selected topic)
             
         Returns:
             Question model instance
@@ -613,6 +643,10 @@ class QuestionGeneratorService:
                 description="Basic test case"
             ))
         
+        # CRITICAL: Use the user-selected topic, NOT the AI-returned topic
+        # The AI should respect the topic parameter, but we enforce it here
+        final_topic = topic if topic else ai_data.get("topic")
+        
         # Merge existing metadata with default metadata
         base_metadata = {
             "experience_years": experience_years,
@@ -630,7 +664,7 @@ class QuestionGeneratorService:
             title=ai_data["title"],
             description=ai_data["description"],
             difficulty_level=self._determine_difficulty_level(experience_years),
-            topic=self._map_topic_to_enum(topic),
+            topic=self._map_topic_to_enum(final_topic),
             input_schema=ai_data["input_schema"],
             sample_input=ai_data["sample_input"],
             expected_output=ai_data["expected_output"],

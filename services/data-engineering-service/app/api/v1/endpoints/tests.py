@@ -249,8 +249,22 @@ async def list_tests(
         
         result = []
         for test in tests:
+            test_id = str(test["_id"])
+            question_ids = test.get("question_ids", [])
+            
+            # Get candidate statistics
+            candidates = await db.test_candidates.find({"test_id": test_id}).to_list(length=None)
+            total_assigned = len(candidates)
+            
+            # Calculate average score from completed candidates
+            completed_candidates = [c for c in candidates if c.get("status") == "completed" and c.get("score") is not None]
+            avg_score = None
+            if completed_candidates:
+                total_score = sum(c.get("score", 0) for c in completed_candidates)
+                avg_score = round(total_score / len(completed_candidates), 2)
+            
             result.append({
-                "id": str(test["_id"]),
+                "id": test_id,
                 "title": test.get("title", ""),
                 "description": test.get("description", ""),
                 "duration_minutes": test.get("duration_minutes", 0),
@@ -258,7 +272,10 @@ async def list_tests(
                 "end_time": test.get("end_time").isoformat() if test.get("end_time") else None,
                 "is_active": test.get("is_active", False),
                 "is_published": test.get("is_published", False),
-                "question_ids": [str(qid) for qid in test.get("question_ids", [])],
+                "question_ids": [str(qid) for qid in question_ids],
+                "question_count": len(question_ids),
+                "total_assigned": total_assigned,
+                "avg_score": avg_score,
                 "created_at": test.get("created_at").isoformat() if test.get("created_at") else None,
                 "created_by": str(test.get("created_by", "")),  # CRITICAL: Include for client-side verification
             })
@@ -380,9 +397,15 @@ async def toggle_publish_test(
         if not test:
             raise HTTPException(status_code=404, detail="Test not found")
         
+        # Generate test_token if publishing and token doesn't exist
+        update_data = {"is_published": is_published, "updated_at": datetime.utcnow()}
+        if is_published and not test.get("test_token"):
+            update_data["test_token"] = secrets.token_urlsafe(32)
+            logger.info("Generated test_token for existing test", test_id=test_id)
+        
         await db.tests.update_one(
             {"_id": ObjectId(test_id)},
-            {"$set": {"is_published": is_published, "updated_at": datetime.utcnow()}}
+            {"$set": update_data}
         )
         
         updated_test = await db.tests.find_one({"_id": ObjectId(test_id)})
@@ -399,6 +422,7 @@ async def toggle_publish_test(
                 "id": str(updated_test["_id"]),
                 "title": updated_test.get("title", ""),
                 "is_published": updated_test.get("is_published", False),
+                "test_token": updated_test.get("test_token"),
             }
         }
     except HTTPException:

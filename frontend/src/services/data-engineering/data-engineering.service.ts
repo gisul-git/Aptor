@@ -68,8 +68,13 @@ export const dataEngineeringService = {
    * Get test by ID
    */
   getTest: async (testId: string): Promise<ApiResponse<DataEngineeringTest>> => {
-    const response = await apiClient.get<ApiResponse<DataEngineeringTest>>(`/api/v1/data-engineering/tests/${testId}`);
-    return response.data;
+    const response = await apiClient.get<DataEngineeringTest>(`/api/v1/data-engineering/tests/${testId}`);
+    // Backend returns test object directly, not wrapped in ApiResponse
+    return {
+      success: true,
+      data: response.data,
+      message: 'Test fetched successfully'
+    };
   },
 
   /**

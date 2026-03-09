@@ -314,10 +314,13 @@ export default function DataEngineeringTestsListPage() {
                         {test.examMode === "flexible" && (test.schedule?.endTime || test.end_time) ? ` - ${formatDate(test.schedule?.endTime || test.end_time, 'MMM dd, yyyy HH:mm')}` : ''}
                       </span>
                       <span style={{ display: "flex", alignItems: "center", gap: "0.375rem", fontSize: "0.8rem", color: "#6B7280", backgroundColor: "#F9FAFB", padding: "0.375rem 0.75rem", borderRadius: "0.5rem", border: "1px solid #E5E7EB", fontWeight: 500 }}>
-                        <Users size={14} /> {test.invited_users?.length || 0} Candidates
+                        <Users size={14} /> {test.invited_users?.length || 0} Invited
                       </span>
                       <span style={{ display: "flex", alignItems: "center", gap: "0.375rem", fontSize: "0.8rem", color: "#6B7280", backgroundColor: "#F9FAFB", padding: "0.375rem 0.75rem", borderRadius: "0.5rem", border: "1px solid #E5E7EB", fontWeight: 500 }}>
                         <List size={14} /> {test.question_ids?.length || 0} Questions
+                      </span>
+                      <span style={{ display: "flex", alignItems: "center", gap: "0.375rem", fontSize: "0.8rem", color: "#6B7280", backgroundColor: "#F9FAFB", padding: "0.375rem 0.75rem", borderRadius: "0.5rem", border: "1px solid #E5E7EB", fontWeight: 500 }}>
+                        <CheckCircle2 size={14} /> Avg Score: N/A
                       </span>
                     </div>
 

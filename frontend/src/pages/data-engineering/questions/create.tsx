@@ -14,7 +14,28 @@ const TOPIC_DISPLAY_NAMES: Record<string, string> = {
   "window_functions": "Window Functions",
   "performance_optimization": "Performance Optimization",
   "data_quality": "Data Quality",
-  "streaming": "Streaming"
+  "streaming": "Streaming",
+  "partitioning": "Partitioning",
+  "distributed_computing": "Distributed Computing",
+  "data_ingestion": "Data Ingestion",
+  "error_handling": "Error Handling",
+  "data_validation": "Data Validation",
+  "caching": "Caching",
+  "broadcast_joins": "Broadcast Joins",
+  "skew_handling": "Skew Handling",
+  "memory_optimization": "Memory Optimization",
+  "incremental_loads": "Incremental Loads",
+  "change_data_capture": "Change Data Capture (CDC)",
+  "data_cleansing": "Data Cleansing",
+  "shuffle_optimization": "Shuffle Optimization",
+  "data_locality": "Data Locality",
+  "orchestration": "Orchestration",
+  "monitoring": "Monitoring",
+  "data_modeling": "Data Modeling",
+  "dimensional_modeling": "Dimensional Modeling",
+  "slowly_changing_dimensions": "Slowly Changing Dimensions (SCD)",
+  "fact_tables": "Fact Tables",
+  "star_schema": "Star Schema"
 };
 
 export default function CreateDataEngineeringQuestionPage() {
@@ -27,7 +48,7 @@ export default function CreateDataEngineeringQuestionPage() {
   
   // AI Generation fields
   const [topics, setTopics] = useState<string[]>([]);
-  const [topic, setTopic] = useState("");
+  const [selectedTopics, setSelectedTopics] = useState<string[]>([]); // Changed to array for multiple selection
   const [difficulty, setDifficulty] = useState("medium");
   const [experienceLevel, setExperienceLevel] = useState(5);
   const [jobRoles, setJobRoles] = useState<Record<string, any>>({});
@@ -43,15 +64,11 @@ export default function CreateDataEngineeringQuestionPage() {
         if (response.ok) {
           const data = await response.json();
           setTopics(data);
-          if (data.length > 0) {
-            setTopic(data[0]); // Set first topic as default
-          }
         }
       } catch (error) {
         console.error('Error fetching topics:', error);
         // Fallback to default topics if API fails
         setTopics(["transformations", "aggregations", "joins"]);
-        setTopic("transformations");
       } finally {
         setLoadingTopics(false);
       }
@@ -85,17 +102,136 @@ export default function CreateDataEngineeringQuestionPage() {
   // Update suggested topics when job role changes
   useEffect(() => {
     if (jobRole && jobRoles[jobRole]) {
-      setSuggestedTopics(jobRoles[jobRole].suggested_topics || []);
+      updateSuggestedTopicsBasedOnExperience();
     }
   }, [jobRole, jobRoles]);
+
+  // Update suggested topics based on experience level and difficulty
+  useEffect(() => {
+    updateSuggestedTopicsBasedOnExperience();
+  }, [experienceLevel, difficulty, jobRole, jobRoles]);
+
+  const updateSuggestedTopicsBasedOnExperience = () => {
+    if (!jobRole || !jobRoles[jobRole]) {
+      setSuggestedTopics([]);
+      return;
+    }
+
+    const role = jobRoles[jobRole];
+    const allTopics = role.suggested_topics || [];
+    
+    // Define topic complexity levels (1=beginner, 2=intermediate, 3=advanced, 4=expert)
+    const topicComplexity: Record<string, number> = {
+      // Beginner topics
+      'transformations': 1,
+      'aggregations': 1,
+      'data_ingestion': 1,
+      'data_validation': 1,
+      
+      // Intermediate topics
+      'joins': 2,
+      'data_quality': 2,
+      'error_handling': 2,
+      'data_cleansing': 2,
+      'incremental_loads': 2,
+      
+      // Advanced topics
+      'window_functions': 3,
+      'performance_optimization': 3,
+      'partitioning': 3,
+      'caching': 3,
+      'data_modeling': 3,
+      'dimensional_modeling': 3,
+      'orchestration': 3,
+      'monitoring': 3,
+      
+      // Expert topics
+      'streaming': 4,
+      'distributed_computing': 4,
+      'broadcast_joins': 4,
+      'skew_handling': 4,
+      'memory_optimization': 4,
+      'shuffle_optimization': 4,
+      'data_locality': 4,
+      'change_data_capture': 4,
+      'slowly_changing_dimensions': 4,
+      'fact_tables': 4,
+      'star_schema': 4
+    };
+
+    // Determine complexity range based on experience and difficulty
+    let minComplexity = 1;
+    let maxComplexity = 4;
+    
+    // Experience level influence (primary factor)
+    if (experienceLevel <= 2) {
+      // Junior (1-2 years): Beginner to early intermediate
+      minComplexity = 1;
+      maxComplexity = 2;
+    } else if (experienceLevel <= 4) {
+      // Mid-level (3-4 years): Intermediate
+      minComplexity = 1;
+      maxComplexity = 3;
+    } else if (experienceLevel <= 7) {
+      // Senior (5-7 years): Intermediate to advanced
+      minComplexity = 2;
+      maxComplexity = 4;
+    } else if (experienceLevel <= 10) {
+      // Lead (8-10 years): Advanced to expert
+      minComplexity = 3;
+      maxComplexity = 4;
+    } else {
+      // Principal (11+ years): Expert only
+      minComplexity = 3;
+      maxComplexity = 4;
+    }
+
+    // Difficulty influence (adjusts the range)
+    if (difficulty === 'easy') {
+      // Easy: Lower the max complexity
+      maxComplexity = Math.min(maxComplexity, minComplexity + 1);
+    } else if (difficulty === 'hard') {
+      // Hard: Raise the min complexity
+      minComplexity = Math.max(minComplexity, maxComplexity - 1);
+    }
+
+    // Filter topics based on complexity
+    const filteredTopics = allTopics.filter((topic: string) => {
+      const complexity = topicComplexity[topic] || 2; // Default to intermediate
+      return complexity >= minComplexity && complexity <= maxComplexity;
+    });
+
+    // Always show at least 5 topics - if filtered list is too small, add more from role
+    if (filteredTopics.length < 5 && allTopics.length > filteredTopics.length) {
+      // Add topics that are just outside the range
+      const additionalTopics = allTopics.filter((topic: string) => {
+        const complexity = topicComplexity[topic] || 2;
+        return !filteredTopics.includes(topic) && 
+               (complexity === minComplexity - 1 || complexity === maxComplexity + 1);
+      });
+      filteredTopics.push(...additionalTopics.slice(0, 5 - filteredTopics.length));
+    }
+
+    setSuggestedTopics(filteredTopics.length > 0 ? filteredTopics : allTopics);
+  };
+
+  const toggleTopicSelection = (topicToToggle: string) => {
+    setSelectedTopics(prev => {
+      if (prev.includes(topicToToggle)) {
+        return prev.filter(t => t !== topicToToggle);
+      } else {
+        return [...prev, topicToToggle];
+      }
+    });
+  };
   
   // Manual fields
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
 
   const handleAiGenerate = async () => {
-    if (!topic || !difficulty) {
-      alert("Please select topic and difficulty");
+    if (selectedTopics.length === 0 || !difficulty) {
+      alert("Please select at least one topic and difficulty");
       return;
     }
 
@@ -113,28 +249,31 @@ export default function CreateDataEngineeringQuestionPage() {
         experienceLevelForDifficulty = Math.max(8, experienceLevel);
       }
       
-      // Build query parameters with user-selected values
-      const params = new URLSearchParams({
-        experience_level: experienceLevelForDifficulty.toString()
-      });
+      // Combine multiple topics into a single topic string
+      const combinedTopic = selectedTopics.join(', ');
       
-      // Add topic - use the exact value from backend
-      if (topic.trim()) {
-        params.append('topic', topic);
+      // Add topics to custom requirements if multiple topics are selected
+      let enhancedRequirements = customRequirements.trim();
+      if (selectedTopics.length > 1) {
+        const topicNames = selectedTopics.map(t => TOPIC_DISPLAY_NAMES[t] || t).join(', ');
+        const topicRequirement = `Create a question that covers multiple topics: ${topicNames}.`;
+        enhancedRequirements = enhancedRequirements 
+          ? `${topicRequirement} ${enhancedRequirements}`
+          : topicRequirement;
       }
       
       console.log('Generating question with params:', {
         experience_level: experienceLevelForDifficulty,
-        topic: topic,
+        topic: combinedTopic,
         job_role: jobRole,
-        custom_requirements: customRequirements
+        custom_requirements: enhancedRequirements
       });
 
       const result = await dataEngineeringService.generateQuestion({
         experience_level: experienceLevelForDifficulty,
-        topic: topic.trim() || undefined,
+        topic: combinedTopic,
         job_role: jobRole.trim() || undefined,
-        custom_requirements: customRequirements.trim() || undefined
+        custom_requirements: enhancedRequirements || undefined
       });
 
       console.log('Question generated:', result.data);
@@ -142,7 +281,7 @@ export default function CreateDataEngineeringQuestionPage() {
       // Invalidate questions cache to refresh the list
       queryClient.invalidateQueries({ queryKey: ['data-engineering', 'questions'] });
       
-      alert("Question generated and saved successfully!");
+      alert("Question generated successfully!");
       router.push("/data-engineering/questions");
     } catch (error: any) {
       console.error('Error generating question:', error);
@@ -382,93 +521,11 @@ export default function CreateDataEngineeringQuestionPage() {
                   </select>
                 </div>
 
-                {suggestedTopics.length > 0 && (
-                  <div style={{ gridColumn: "1 / -1" }}>
-                    <label style={{ display: "block", marginBottom: "0.5rem", fontWeight: 600, color: "#374151", fontSize: "0.875rem" }}>
-                      Suggested Topics for {jobRole}
-                    </label>
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem" }}>
-                      {suggestedTopics.map(t => (
-                        <button
-                          key={t}
-                          type="button"
-                          onClick={() => setTopic(t)}
-                          style={{
-                            padding: "0.5rem 1rem",
-                            borderRadius: "0.5rem",
-                            border: topic === t ? "2px solid #00684A" : "1px solid #D1D5DB",
-                            backgroundColor: topic === t ? "#F0FDF4" : "#ffffff",
-                            color: topic === t ? "#00684A" : "#6B7280",
-                            fontSize: "0.875rem",
-                            fontWeight: topic === t ? 600 : 400,
-                            cursor: "pointer",
-                            transition: "all 0.2s ease"
-                          }}
-                          onMouseOver={(e) => {
-                            if (topic !== t) {
-                              e.currentTarget.style.borderColor = "#00684A";
-                              e.currentTarget.style.color = "#00684A";
-                            }
-                          }}
-                          onMouseOut={(e) => {
-                            if (topic !== t) {
-                              e.currentTarget.style.borderColor = "#D1D5DB";
-                              e.currentTarget.style.color = "#6B7280";
-                            }
-                          }}
-                        >
-                          {TOPIC_DISPLAY_NAMES[t] || t}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                <div>
-                  <label style={{ display: "block", marginBottom: "0.5rem", fontWeight: 600, color: "#374151", fontSize: "0.875rem" }}>
-                    Topic <span style={{ color: "#DC2626" }}>*</span>
-                  </label>
-                  <div style={{ position: "relative" }}>
-                    <input
-                      type="text"
-                      list="topic-suggestions"
-                      value={topic}
-                      onChange={(e) => setTopic(e.target.value)}
-                      placeholder={loadingTopics ? "Loading topics..." : "Select or type a topic"}
-                      disabled={loadingTopics}
-                      style={{
-                        width: "100%", 
-                        padding: "0.75rem 1rem", 
-                        border: "1px solid #D1D5DB",
-                        borderRadius: "0.5rem", 
-                        fontSize: "0.95rem", 
-                        backgroundColor: "#ffffff",
-                        cursor: loadingTopics ? "wait" : "text", 
-                        transition: "all 0.2s ease", 
-                        outline: "none",
-                        boxSizing: "border-box"
-                      }}
-                      onFocus={(e) => e.currentTarget.style.borderColor = "#00684A"}
-                      onBlur={(e) => e.currentTarget.style.borderColor = "#D1D5DB"}
-                    />
-                    <datalist id="topic-suggestions">
-                      {!loadingTopics && topics.map(t => (
-                        <option key={t} value={t}>
-                          {TOPIC_DISPLAY_NAMES[t] || t}
-                        </option>
-                      ))}
-                    </datalist>
-                  </div>
-                  <p style={{ fontSize: "0.75rem", color: "#6B7280", marginTop: "0.375rem", marginBottom: 0 }}>
-                    Select from suggestions or type your own
-                  </p>
-                </div>
-
                 <div style={{ gridColumn: "1 / -1" }}>
                   <label style={{ display: "block", marginBottom: "0.5rem", fontWeight: 600, color: "#374151", fontSize: "0.875rem" }}>
                     Experience Level (years): {experienceLevel}
                     <span style={{ color: "#6B7280", fontWeight: 400, marginLeft: "0.5rem", fontSize: "0.8rem" }}>
-                      (Optional - overrides difficulty)
+                      (Adjusts question complexity)
                     </span>
                   </label>
                   <input
@@ -480,10 +537,72 @@ export default function CreateDataEngineeringQuestionPage() {
                     style={{ width: "100%", accentColor: "#00684A" }}
                   />
                   <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.75rem", color: "#6B7280", marginTop: "0.25rem" }}>
-                    <span>1 year</span>
-                    <span>15 years</span>
+                    <span>1 year (Beginner)</span>
+                    <span>15 years (Expert)</span>
                   </div>
                 </div>
+
+                {suggestedTopics.length > 0 && (
+                  <div style={{ gridColumn: "1 / -1" }}>
+                    <label style={{ display: "block", marginBottom: "0.75rem", fontWeight: 600, color: "#374151", fontSize: "0.875rem" }}>
+                      Select Topics <span style={{ color: "#DC2626" }}>*</span>
+                      <span style={{ color: "#6B7280", fontWeight: 400, marginLeft: "0.5rem", fontSize: "0.8rem" }}>
+                        (Click to select multiple - {selectedTopics.length} selected)
+                      </span>
+                    </label>
+                    <p style={{ fontSize: "0.75rem", color: "#6B7280", marginBottom: "0.75rem", marginTop: "-0.25rem" }}>
+                      Topics are filtered based on your experience level and difficulty selection
+                    </p>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem" }}>
+                      {suggestedTopics.map(t => {
+                        const isSelected = selectedTopics.includes(t);
+                        return (
+                          <button
+                            key={t}
+                            type="button"
+                            onClick={() => toggleTopicSelection(t)}
+                            style={{
+                              padding: "0.625rem 1.125rem",
+                              borderRadius: "0.5rem",
+                              border: isSelected ? "2px solid #00684A" : "1px solid #D1D5DB",
+                              backgroundColor: isSelected ? "#F0FDF4" : "#ffffff",
+                              color: isSelected ? "#00684A" : "#6B7280",
+                              fontSize: "0.875rem",
+                              fontWeight: isSelected ? 600 : 400,
+                              cursor: "pointer",
+                              transition: "all 0.2s ease",
+                              position: "relative"
+                            }}
+                            onMouseOver={(e) => {
+                              if (!isSelected) {
+                                e.currentTarget.style.borderColor = "#00684A";
+                                e.currentTarget.style.color = "#00684A";
+                              }
+                            }}
+                            onMouseOut={(e) => {
+                              if (!isSelected) {
+                                e.currentTarget.style.borderColor = "#D1D5DB";
+                                e.currentTarget.style.color = "#6B7280";
+                              }
+                            }}
+                          >
+                            {isSelected && (
+                              <span style={{ 
+                                marginRight: "0.375rem",
+                                fontSize: "1rem",
+                                fontWeight: 700
+                              }}>✓</span>
+                            )}
+                            {TOPIC_DISPLAY_NAMES[t] || t}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <p style={{ fontSize: "0.75rem", color: "#6B7280", marginTop: "0.5rem", marginBottom: 0 }}>
+                      💡 Tip: Select multiple topics to generate a single comprehensive question covering all selected topics
+                    </p>
+                  </div>
+                )}
 
                 <div style={{ gridColumn: "1 / -1" }}>
                   <label style={{ display: "block", marginBottom: "0.5rem", fontWeight: 600, color: "#374151", fontSize: "0.875rem" }}>
@@ -521,33 +640,33 @@ export default function CreateDataEngineeringQuestionPage() {
 
               <button
                 onClick={handleAiGenerate}
-                disabled={generating}
+                disabled={generating || selectedTopics.length === 0}
                 style={{
                   width: "100%",
                   padding: "1.125rem",
-                  background: generating ? "#9CA3AF" : "linear-gradient(135deg, #7C3AED 0%, #A78BFA 100%)",
+                  background: (generating || selectedTopics.length === 0) ? "#9CA3AF" : "linear-gradient(135deg, #7C3AED 0%, #A78BFA 100%)",
                   color: "#ffffff",
                   border: "none",
                   borderRadius: "0.75rem",
                   fontSize: "1.0625rem",
                   fontWeight: 700,
-                  cursor: generating ? "not-allowed" : "pointer",
+                  cursor: (generating || selectedTopics.length === 0) ? "not-allowed" : "pointer",
                   transition: "all 0.3s ease",
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
                   gap: "0.625rem",
-                  boxShadow: generating ? "none" : "0 4px 12px rgba(124, 58, 237, 0.3)",
+                  boxShadow: (generating || selectedTopics.length === 0) ? "none" : "0 4px 12px rgba(124, 58, 237, 0.3)",
                   letterSpacing: "0.01em"
                 }}
                 onMouseOver={(e) => {
-                  if (!generating) {
+                  if (!generating && selectedTopics.length > 0) {
                     e.currentTarget.style.transform = "translateY(-2px)";
                     e.currentTarget.style.boxShadow = "0 8px 20px rgba(124, 58, 237, 0.4)";
                   }
                 }}
                 onMouseOut={(e) => {
-                  if (!generating) {
+                  if (!generating && selectedTopics.length > 0) {
                     e.currentTarget.style.transform = "translateY(0)";
                     e.currentTarget.style.boxShadow = "0 4px 12px rgba(124, 58, 237, 0.3)";
                   }
@@ -558,10 +677,20 @@ export default function CreateDataEngineeringQuestionPage() {
                     <Loader2 size={22} className="animate-spin" style={{ animation: "spin 1s linear infinite" }} />
                     Generating Question...
                   </>
+                ) : selectedTopics.length === 0 ? (
+                  <>
+                    <Sparkles size={22} />
+                    Select Topics to Generate
+                  </>
+                ) : selectedTopics.length === 1 ? (
+                  <>
+                    <Sparkles size={22} />
+                    Generate Question with AI
+                  </>
                 ) : (
                   <>
                     <Sparkles size={22} />
-                    Generate with AI
+                    Generate Question Covering {selectedTopics.length} Topics
                   </>
                 )}
               </button>

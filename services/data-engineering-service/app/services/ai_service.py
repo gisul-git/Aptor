@@ -86,6 +86,12 @@ class AIService:
             requests_per_hour = settings.AI_REQUESTS_PER_HOUR
             
         redis = await self._get_redis_client()
+        
+        # If Redis is not available, skip rate limiting
+        if redis is None:
+            self.logger.warning("Redis not available, skipping rate limit check")
+            return
+            
         current_time = time.time()
         window_start = current_time - 3600  # 1 hour window
         
@@ -159,33 +165,138 @@ class AIService:
         
         timestamp = datetime.now().isoformat()
         
-        base_prompt = f"""You are an expert data engineer creating PySpark coding questions for technical assessments.
-Generate a unique, practical PySpark problem that tests real-world data engineering skills.
+        base_prompt = f"""You are a Staff Data Engineer at a FAANG company creating interview questions for Senior/Staff Data Engineer positions.
+Generate CHALLENGING, SCENARIO-BASED PySpark problems that test production-level data engineering expertise.
+
+!!!ABSOLUTE CRITICAL FOR ADVANCED LEVEL!!!
+You are NOT creating tutorial problems. You are creating INTERVIEW QUESTIONS that would be asked at:
+- Google/Meta/Amazon for L6/L7 Data Engineer roles
+- Netflix/Uber/Airbnb for Senior/Staff Data Engineer roles
+- Stripe/Databricks for Principal Engineer roles
+
+These problems should:
+- Make candidates THINK for 30-45 minutes before coding
+- Require PLANNING and ARCHITECTURE decisions
+- Test DEPTH of distributed systems knowledge
+- Include TRADE-OFFS and optimization decisions
+- Have MULTIPLE valid approaches with different trade-offs
+- Contain SUBTLE edge cases that break naive solutions
+- Require understanding of PySpark INTERNALS and performance characteristics
+
+REAL INTERVIEW PROBLEM EXAMPLES (Study these patterns):
+
+1. FRAUD DETECTION SYSTEM:
+"Build a real-time fraud detection system that analyzes transaction patterns. For each transaction, calculate:
+- User's transaction velocity (count in last 1 hour, 24 hours, 7 days)
+- Deviation from user's historical average amount (z-score)
+- Geographic anomaly score (distance from usual locations)
+- Device fingerprint changes
+Flag transactions with composite risk score > 0.8. Handle: new users (no history), missing location data, concurrent transactions."
+
+2. CUSTOMER 360 WITH CONFLICT RESOLUTION:
+"Merge customer data from 4 sources (CRM, Support, Web, Mobile) with conflicting information. Priority rules:
+- Email: CRM > Web > Mobile > Support
+- Phone: Support > CRM > Mobile > Web
+- Address: Most recent non-null value
+- Name: Longest non-null value (more complete)
+Calculate customer lifetime value with time-decay (0.95^months_ago). Handle: duplicate records within sources, circular references, partial matches."
+
+3. SLOWLY CHANGING DIMENSION TYPE 2:
+"Implement SCD Type 2 for product catalog tracking price/category changes. Requirements:
+- Maintain effective_from/effective_to dates
+- Handle backdated updates (price change effective last week)
+- Support bulk updates and late-arriving data
+- Ensure no gaps or overlaps in date ranges
+- Provide current_flag for active records
+Handle: same-day multiple changes, future-dated changes, corrections to historical data."
+
+4. SESSION ANALYSIS WITH ATTRIBUTION:
+"Sessionize clickstream (30-min timeout) and attribute conversions to marketing channels:
+- Last-touch attribution (credit to last channel before purchase)
+- Calculate session metrics: duration, page views, bounce rate
+- Identify drop-off points in conversion funnel
+- Handle: cross-device sessions, multiple conversions, session timeout edge cases
+- Optimize for 100M+ events per day with skewed user distribution."
+
+5. DATA QUALITY MONITORING SYSTEM:
+"Build automated data quality checks for daily ETL pipeline:
+- Detect schema drift (new columns, type changes)
+- Identify anomalies in distributions (sudden spikes/drops)
+- Find referential integrity violations across 5 tables
+- Calculate completeness scores per column
+- Flag records with suspicious patterns (all nulls, duplicates, outliers)
+Generate quality report with severity levels and affected record counts."
 
 CRITICAL REQUIREMENTS FOR EXECUTABLE PYSPARK CODE:
-- The question MUST be solvable using ONLY PySpark DataFrame API operations
-- Code must be executable on a PySpark platform with standard DataFrame operations
-- Use ONLY these PySpark operations: select, filter, withColumn, groupBy, agg, join, orderBy, window functions, etc.
-- DO NOT require external libraries beyond standard PySpark (no pandas, numpy, sklearn, etc.)
-- DO NOT require file I/O operations (no read/write to files)
-- DO NOT require Spark SQL CREATE TABLE or database operations
-- Focus on DataFrame transformations that can be executed in-memory
-- Ensure the solution can be written as a function that takes a DataFrame and returns a DataFrame
+- Use ONLY PySpark DataFrame API operations (select, filter, withColumn, groupBy, agg, join, orderBy, window functions, when, lit, col, etc.)
+- NO external libraries (no pandas, numpy, sklearn, scipy, etc.)
+- NO file I/O operations (no read/write to files)
+- NO Spark SQL DDL (no CREATE TABLE, ALTER TABLE)
+- Focus on in-memory DataFrame transformations
+- Solution must be a function: DataFrame(s) → DataFrame
 
-DATA ENGINEERING FOCUS:
-- Create problems that data engineers encounter in production ETL pipelines
-- Focus on data transformation, cleaning, aggregation, and joining operations
-- Use realistic business scenarios (e-commerce, finance, logistics, healthcare, etc.)
-- Include practical data quality and processing challenges
-- Emphasize scalable and efficient PySpark patterns
+DATASET COMPLEXITY REQUIREMENTS (STRICTLY ENFORCED):
 
-IMPORTANT REQUIREMENTS:
-- Create an original problem scenario with realistic business context
-- Use clear, descriptive column names that reflect the business domain
-- Include realistic sample data with appropriate data types (minimum 3-5 rows)
-- Ensure the expected output is deterministic and verifiable
-- Make the problem solvable using PySpark DataFrame operations
-- The sample_input and expected_output must use the exact same data structure format
+For ADVANCED problems, datasets MUST have:
+- **Minimum 60-120 rows** (200+ for performance optimization problems)
+- **12-20 columns** with realistic business data
+- **Multiple related datasets** (3-5 tables for join scenarios, each 50-100 rows)
+- **Production-like complexity**:
+  * Power-law distributions (80/20 rule, long tail)
+  * Multiple simultaneous data quality issues
+  * Time-series with gaps, out-of-order events, duplicates
+  * Hierarchical relationships (parent-child, multi-level)
+  * Skewed data requiring optimization
+  * Edge cases in 10-15% of records
+  * Realistic null patterns (not random - business logic driven)
+  * Data requiring multi-pass processing
+  * Scenarios where naive approach fails or is too slow
+
+PROBLEM STRUCTURE REQUIREMENTS:
+
+1. **Business Context** (2-3 sentences):
+   - Real company scenario (e-commerce, fintech, adtech, etc.)
+   - Business problem and impact
+   - Why this matters to the business
+
+2. **Technical Requirements** (4-6 specific requirements):
+   - What transformations are needed
+   - What metrics to calculate
+   - What edge cases to handle
+   - Performance considerations
+
+3. **Constraints & Edge Cases** (3-5 items):
+   - Data quality issues to handle
+   - Performance requirements
+   - Edge cases that break naive solutions
+
+4. **Expected Complexity**:
+   - 8-15 PySpark operations
+   - 3-4 different operation types (windows, joins, aggregations, conditionals)
+   - Requires careful sequencing (order matters)
+   - Multiple valid approaches with trade-offs
+
+WHAT MAKES A PROBLEM "EXPERT LEVEL":
+
+✓ Requires understanding of distributed computing concepts
+✓ Tests ability to handle data quality issues systematically
+✓ Involves optimization thinking (not just correctness)
+✓ Has trade-offs between approaches (memory vs speed, accuracy vs performance)
+✓ Tests knowledge of PySpark internals (partitioning, shuffling, broadcasting)
+✓ Requires multi-step reasoning (can't solve linearly)
+✓ Has subtle edge cases that are easy to miss
+✓ Would take a senior engineer 30-45 minutes to solve correctly
+✓ Solution quality separates senior from staff engineers
+
+AVOID THESE (Not Expert Level):
+✗ Simple aggregations ("group by and count")
+✗ Basic joins without complexity
+✗ Textbook examples
+✗ Problems solvable in 3-4 operations
+✗ No edge cases or data quality issues
+✗ No optimization considerations
+✗ Generic problems without business context
+✗ Problems where one approach is obviously correct
 
 Generation timestamp: {timestamp}
 
@@ -262,32 +373,227 @@ Focus on fundamental PySpark operations:
 - Simple filtering conditions
 - Keep the problem straightforward with clear requirements
 
+DATASET REQUIREMENTS FOR BEGINNER:
+- Provide 5-8 rows of sample data
+- Use 3-5 columns with simple data types (string, int, float, boolean)
+- Include straightforward data patterns that are easy to understand
+- Ensure data is clean with minimal edge cases
+
 Avoid: Complex joins, window functions, advanced optimizations
 """
         elif experience_level == ExperienceLevel.INTERMEDIATE:
             experience_prompt = """DIFFICULTY LEVEL: INTERMEDIATE (3-7 years experience)
 
-Focus on multi-step data processing:
-- Combine multiple DataFrame operations in sequence
-- Use joins (inner, left, right) between datasets
+Focus on multi-step data processing with moderate complexity:
+- Combine 3-4 DataFrame operations in sequence
+- Use various join types (inner, left, right, full outer) between datasets
 - Apply window functions for ranking, running totals, or partitioned calculations
-- Implement data quality checks and deduplication logic
-- Handle null values and data cleaning scenarios
+- Implement data quality checks and sophisticated deduplication logic
+- Handle null values with conditional logic and data cleaning scenarios
+- Use aggregate functions with groupBy and multiple aggregation columns
+- Implement conditional transformations using when/otherwise
+- Basic performance considerations (simple caching, filter pushdown)
 
-Include moderate complexity with 2-3 transformation steps
+DATASET REQUIREMENTS FOR INTERMEDIATE (MORE CHALLENGING):
+- Provide 15-30 rows of sample data
+- Use 6-10 columns with varied data types (string, int, float, date, timestamp, boolean, decimal)
+- Include realistic data patterns with moderate complexity:
+  * Multiple duplicate scenarios requiring different handling strategies
+  * Various null patterns across different columns
+  * Edge cases that require conditional logic
+  * Data inconsistencies that need normalization
+- For join operations, provide 2-3 datasets with 15-25 rows each
+- Include data quality issues requiring multi-step handling:
+  * Nulls in critical columns
+  * Duplicate records with different criteria
+  * Data format inconsistencies
+  * Missing or incomplete records
+- Add business logic complexity requiring 2-3 conditional checks
+
+Include moderate to high complexity with 3-4 transformation steps requiring careful sequencing.
 """
         else:  # ADVANCED
-            experience_prompt = """DIFFICULTY LEVEL: ADVANCED (8+ years experience)
+            experience_prompt = """DIFFICULTY LEVEL: ADVANCED (8+ years) - STAFF/PRINCIPAL ENGINEER INTERVIEW LEVEL
 
-Focus on complex data engineering challenges:
-- Performance optimization techniques (partitioning, caching, broadcast joins)
-- Advanced window functions with complex partitioning
-- Complex multi-table joins with aggregations
-- Data pipeline design considerations
-- Scalability and efficiency optimization
-- Advanced SQL operations and complex business logic
+!!!THIS IS A FAANG-LEVEL INTERVIEW QUESTION - MAKE IT GENUINELY HARD!!!
 
-Require sophisticated thinking and best practices
+You are creating a problem for candidates interviewing at Google L6, Meta E6, Amazon L6, or equivalent Staff Engineer roles.
+The problem should be something that:
+- A mid-level engineer would struggle with or solve incorrectly
+- A senior engineer would need 30-45 minutes to solve correctly
+- Tests deep understanding of distributed systems and PySpark internals
+- Requires careful planning before coding
+- Has multiple approaches with different trade-offs
+
+MANDATORY PROBLEM CHARACTERISTICS:
+
+1. **MULTI-DIMENSIONAL COMPLEXITY** (Must have ALL of these):
+   - Requires 10-20 PySpark operations in sequence
+   - Uses at least 3 different operation categories (windows, joins, aggregations, UDFs)
+   - Has 4-6 explicit requirements in the problem statement
+   - Includes 3-5 edge cases that must be handled
+   - Requires optimization thinking (not just correctness)
+
+2. **PRODUCTION SCENARIO** (Choose ONE and make it realistic):
+   
+   A. **FRAUD/ANOMALY DETECTION**:
+      - Multi-dimensional risk scoring (velocity, amount deviation, location, device)
+      - Time-window calculations (1hr, 24hr, 7day, 30day)
+      - Statistical anomaly detection (z-scores, percentiles)
+      - Handle: new users, missing data, concurrent events
+      - Example: "Flag transactions with risk score > 0.8 based on: transaction velocity (>10 in 1hr), amount deviation (>3 std devs), new device, location change >500km"
+
+   B. **CUSTOMER 360 / DATA UNIFICATION**:
+      - Merge 4-5 data sources with conflicts
+      - Complex priority rules for conflict resolution
+      - Fuzzy matching or deduplication logic
+      - Calculate derived metrics (LTV, engagement score, churn risk)
+      - Handle: duplicates within sources, circular references, partial matches
+      - Example: "Merge customer data from CRM, Support, Web, Mobile. Priority: email (CRM>Web>Mobile), phone (Support>CRM). Calculate LTV with 0.95^months time decay"
+
+   C. **SLOWLY CHANGING DIMENSIONS (SCD TYPE 2)**:
+      - Track historical changes with effective dates
+      - Handle backdated updates and corrections
+      - Maintain current_flag and version numbers
+      - Ensure no gaps/overlaps in date ranges
+      - Handle: same-day multiple changes, future-dated changes, late-arriving data
+      - Example: "Implement SCD Type 2 for product prices. Handle backdated price changes, ensure no date gaps, maintain current_flag, support bulk updates"
+
+   D. **SESSION ANALYSIS / FUNNEL ANALYSIS**:
+      - Sessionize events with timeout logic
+      - Calculate session-level metrics
+      - Identify conversion paths and drop-off points
+      - Attribution modeling (first-touch, last-touch, multi-touch)
+      - Handle: cross-device, timeout edge cases, multiple conversions
+      - Example: "Sessionize clicks (30min timeout), identify 5-step funnel (view→cart→checkout→payment→confirm), calculate drop-off rates, attribute to last marketing channel"
+
+   E. **INCREMENTAL PROCESSING / CDC**:
+      - Implement upsert logic (insert + update)
+      - Handle deletes and soft deletes
+      - Merge incremental with historical data
+      - Maintain audit trail (created_at, updated_at, deleted_at)
+      - Handle: late-arriving data, out-of-order updates, duplicate keys
+      - Example: "Process daily order updates. Upsert based on order_id, handle cancellations (soft delete), maintain update history, handle out-of-order arrivals"
+
+   F. **COMPLEX AGGREGATIONS / ANALYTICS**:
+      - Multi-level aggregations with rollups
+      - Cohort analysis or retention metrics
+      - Moving averages, percentiles, or cumulative calculations
+      - Time-series analysis with gaps
+      - Handle: sparse data, irregular intervals, multiple dimensions
+      - Example: "Calculate 7-day rolling retention by cohort and segment. Cohort = signup week, retention = active in week N. Handle: users with gaps, multiple segments"
+
+   G. **DATA QUALITY / VALIDATION SYSTEM**:
+      - Multi-dimensional quality checks
+      - Anomaly detection in distributions
+      - Referential integrity across tables
+      - Completeness and consistency scoring
+      - Handle: schema evolution, missing references, outliers
+      - Example: "Build quality report: schema drift detection, null rate by column, referential integrity (orders→customers), distribution anomalies (>3 std dev), duplicate detection"
+
+   H. **HIERARCHICAL DATA / GRAPH OPERATIONS**:
+      - Process parent-child relationships
+      - Calculate hierarchical aggregations (rollups)
+      - Flatten or build hierarchies
+      - Handle: circular references, orphaned nodes, multiple levels
+      - Example: "Calculate total sales by org hierarchy (company→division→dept→team). Handle: employees in multiple teams, circular reporting, missing managers"
+
+   I. **PERFORMANCE OPTIMIZATION SCENARIO**:
+      - Optimize slow query with data skew
+      - Implement salting or bucketing
+      - Use broadcast joins appropriately
+      - Cache intermediate results strategically
+      - Handle: skewed keys, large shuffles, memory pressure
+      - Example: "Optimize join between 1B orders (skewed by merchant_id) and 10K merchants. Use salting for top 100 merchants, broadcast for rest. Reduce shuffle from 500GB to 50GB"
+
+   J. **COMPLEX BUSINESS LOGIC**:
+      - Multi-step business rules with dependencies
+      - State machine or workflow processing
+      - Conditional logic with many branches
+      - Calculate derived metrics with complex formulas
+      - Handle: circular dependencies, invalid states, edge cases
+      - Example: "Calculate customer tier (Bronze/Silver/Gold/Platinum) based on: total spend, recency, frequency, returns rate, support tickets. Rules have 15+ conditions with dependencies"
+
+3. **DATASET REQUIREMENTS** (MANDATORY - AI MUST FOLLOW):
+   - **Minimum 80-150 rows** in primary dataset (200+ for optimization problems)
+   - **15-20 columns** with realistic business data types
+   - **3-5 related datasets** for join scenarios (each 60-100 rows)
+   - **Realistic distributions**:
+     * Power-law (80/20 rule): 20% of users generate 80% of events
+     * Long tail: Many entities with 1-2 records, few with 100+
+     * Skewed keys: Some join keys appear 100x more than others
+   - **Data quality issues** (include 5-7 of these):
+     * 10-15% null values in non-critical columns
+     * 5-8% duplicate records (exact or near-duplicates)
+     * 3-5% outliers (values >3 std deviations)
+     * Time-series gaps (missing days/hours)
+     * Out-of-order timestamps (5-10% of records)
+     * Referential integrity violations (orphaned foreign keys)
+     * Schema inconsistencies (mixed formats, types)
+   - **Edge cases** (include 4-6 of these):
+     * Records with all nulls except ID
+     * Same entity with conflicting information
+     * Circular references in hierarchies
+     * Events with same timestamp
+     * Extreme values (0, negative, very large)
+     * Missing required fields
+     * Invalid state transitions
+
+4. **SOLUTION COMPLEXITY REQUIREMENTS**:
+   - **10-20 operations** required (not 3-4)
+   - **Multiple passes** over data (can't solve in one linear pass)
+   - **Intermediate results** need to be joined back
+   - **Window functions** with complex partitioning/ordering
+   - **Conditional logic** with 5+ branches
+   - **Performance considerations** explicitly mentioned
+   - **Trade-offs** between approaches
+
+5. **EVALUATION CRITERIA** (What makes this HARD):
+   - ✓ Naive solution produces incorrect results (not just slow)
+   - ✓ Requires understanding of PySpark execution model
+   - ✓ Edge cases are subtle and easy to miss
+   - ✓ Multiple valid approaches with different trade-offs
+   - ✓ Optimization is necessary, not optional
+   - ✓ Tests ability to handle data quality systematically
+   - ✓ Requires planning and architecture decisions
+   - ✓ Would take 30-45 minutes for senior engineer
+
+6. **PROBLEM STATEMENT STRUCTURE**:
+   ```
+   [Business Context - 2-3 sentences about the company/scenario]
+   
+   You need to [main objective].
+   
+   Requirements:
+   1. [Specific requirement with metrics]
+   2. [Specific requirement with edge case]
+   3. [Specific requirement with optimization]
+   4. [Specific requirement with business logic]
+   5. [Specific requirement with validation]
+   
+   Edge Cases to Handle:
+   - [Edge case 1 with example]
+   - [Edge case 2 with example]
+   - [Edge case 3 with example]
+   - [Edge case 4 with example]
+   
+   Performance Considerations:
+   - [Optimization requirement or constraint]
+   
+   Output should contain: [specific columns and format]
+   ```
+
+ABSOLUTELY AVOID:
+- Simple "group by and aggregate" problems
+- Basic joins without complexity
+- Problems solvable in 5 operations
+- No edge cases or data quality issues
+- Generic problems without business context
+- Problems where solution is obvious
+- Toy datasets with 10-20 rows
+- Problems that don't require optimization thinking
+
+REMEMBER: This is a STAFF ENGINEER interview question. It should be HARD. Make candidates THINK.
 """
         
         # Topic-specific guidance - CRITICAL: This must be respected
@@ -297,10 +603,18 @@ Require sophisticated thinking and best practices
             topic_lower = topic.lower().replace("_", " ")
             
             topic_prompt = f"""
+!!!CRITICAL REQUIREMENT - MUST BE FOLLOWED!!!
 REQUIRED TOPIC: {topic}
 
+The generated question MUST be stored with "topic": "{topic}" in the JSON output.
 The problem MUST specifically focus on and test {topic_lower} concepts.
-This is the PRIMARY requirement - ensure the question directly addresses this topic.
+This is the PRIMARY and MANDATORY requirement - the question MUST directly address this topic.
+DO NOT generate questions about other topics. ONLY generate questions about {topic}.
+
+VALIDATION: Before returning the JSON, verify that:
+1. The "topic" field in JSON is set to "{topic}"
+2. The question description explicitly mentions {topic_lower}
+3. The solution requires {topic_lower} operations
 
 """
             # Add topic-specific guidance
@@ -363,6 +677,15 @@ OUTPUT FORMAT (Valid JSON only):
     }
   ]
 }
+
+CRITICAL DATASET SIZE REQUIREMENTS:
+- BEGINNER (0-2 years): Provide 5-8 rows minimum in sample_input
+- INTERMEDIATE (3-7 years): Provide 10-20 rows minimum in sample_input
+- ADVANCED (8+ years): Provide 25-50 rows minimum in sample_input
+- For problems with multiple datasets (joins), each dataset should follow the same row count guidelines
+- Test cases should also follow similar row count patterns
+- Ensure datasets are large enough to demonstrate the complexity of the problem
+- Include diverse data patterns, edge cases, and realistic scenarios
 
 CRITICAL: Return ONLY valid JSON. No markdown, no code blocks, no explanations - just the JSON object.
 """
