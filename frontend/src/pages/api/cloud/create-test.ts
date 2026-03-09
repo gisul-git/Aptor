@@ -1,5 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import axios from "axios";
+import { getServerSession } from "next-auth";
+import { authOptions } from "../auth/[...nextauth]";
 
 const DEFAULT_CLOUD_URL = "http://localhost:8010";
 
@@ -13,8 +15,18 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   try {
+    const session = await getServerSession(req, res, authOptions);
+    const userId = String((session?.user as any)?.id || "").trim();
     const baseUrl = getDevopsBaseUrl();
-    const response = await axios.post(`${baseUrl}/api/v1/cloud/tests/`, req.body || {}, { timeout: 120000 });
+    const response = await axios.post(`${baseUrl}/api/v1/cloud/tests/`, req.body || {}, {
+      timeout: 120000,
+      headers: userId
+        ? {
+            "x-user-id": userId,
+            "x-actor-id": userId,
+          }
+        : undefined,
+    });
     return res.status(response.status).json(response.data);
   } catch (error: any) {
     const status = error?.response?.status || 500;

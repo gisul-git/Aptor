@@ -78,6 +78,19 @@ export function useDashboardAssessments(): UseDashboardAssessmentsReturn {
     [session]
   );
 
+  const isOwnedByCurrentUser = (test: any): boolean => {
+    if (!currentUserId) return false;
+    const testCreatedBy = test?.created_by;
+    if (!testCreatedBy) return false;
+    return String(testCreatedBy).trim() === String(currentUserId).trim();
+  };
+
+  // Backward compatibility for tests created before user headers were forwarded.
+  const isLegacyLocalTest = (test: any): boolean => {
+    const createdBy = String(test?.created_by || "").trim().toLowerCase();
+    return createdBy === "local-dev-user";
+  };
+
   // Check if each service has assessments
   const hasAIAssessments = useMemo(() => {
     return !!(assessmentsData && Array.isArray(assessmentsData) && assessmentsData.length > 0);
@@ -135,24 +148,12 @@ export function useDashboardAssessments(): UseDashboardAssessmentsReturn {
 
   const hasCloudAssessments = useMemo(() => {
     if (!cloudTestsData || !currentUserId) return false;
-    return cloudTestsData.some((test: any) => {
-      const testCreatedBy = test.created_by;
-      if (!testCreatedBy) return false;
-      const testCreatedByStr = String(testCreatedBy).trim();
-      const currentUserIdStr = String(currentUserId).trim();
-      return testCreatedByStr === currentUserIdStr;
-    });
+    return cloudTestsData.some((test: any) => isOwnedByCurrentUser(test) || isLegacyLocalTest(test));
   }, [cloudTestsData, currentUserId]);
 
   const hasDevOpsAssessments = useMemo(() => {
     if (!devopsTestsData || !currentUserId) return false;
-    return devopsTestsData.some((test: any) => {
-      const testCreatedBy = test.created_by;
-      if (!testCreatedBy) return false;
-      const testCreatedByStr = String(testCreatedBy).trim();
-      const currentUserIdStr = String(currentUserId).trim();
-      return testCreatedByStr === currentUserIdStr;
-    });
+    return devopsTestsData.some((test: any) => isOwnedByCurrentUser(test) || isLegacyLocalTest(test));
   }, [devopsTestsData, currentUserId]);
 
   // Combine all assessments into a single array
@@ -392,11 +393,7 @@ export function useDashboardAssessments(): UseDashboardAssessmentsReturn {
     if (cloudTestsData && currentUserId) {
       const cloudTests = cloudTestsData
         .filter((test: any) => {
-          const testCreatedBy = test.created_by;
-          if (!testCreatedBy) return false;
-          const testCreatedByStr = String(testCreatedBy).trim();
-          const currentUserIdStr = String(currentUserId).trim();
-          return testCreatedByStr === currentUserIdStr;
+          return isOwnedByCurrentUser(test) || isLegacyLocalTest(test);
         })
         .map((test: any) => {
           let status = 'draft';
@@ -435,11 +432,7 @@ export function useDashboardAssessments(): UseDashboardAssessmentsReturn {
     if (devopsTestsData && currentUserId) {
       const devopsTests = devopsTestsData
         .filter((test: any) => {
-          const testCreatedBy = test.created_by;
-          if (!testCreatedBy) return false;
-          const testCreatedByStr = String(testCreatedBy).trim();
-          const currentUserIdStr = String(currentUserId).trim();
-          return testCreatedByStr === currentUserIdStr;
+          return isOwnedByCurrentUser(test) || isLegacyLocalTest(test);
         })
         .map((test: any) => {
           let status = 'draft';
