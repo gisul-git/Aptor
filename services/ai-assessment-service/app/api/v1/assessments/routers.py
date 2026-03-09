@@ -1361,64 +1361,87 @@ async def generate_questions(
     if not topics:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No valid topics for question generation")
 
+    # ⭐ CRITICAL FIX: Add concurrent processing with semaphore
+    # Process 2 topics at a time to prevent overwhelming OpenAI API
+    import os
+    max_concurrent = int(os.getenv("MAX_CONCURRENT_QUESTIONS", "2"))
+    semaphore = asyncio.Semaphore(max_concurrent)
+    
     results = []
     failed_topics = []
     
-    for topic in topics:
-        topic = _ensure_topic_structure(topic)
-        config = _build_generation_config(topic)
-        expected_count = topic.get("numQuestions", 0)
-        
-        # Retry logic for each topic
-        max_retries = 2
-        generated_questions = []
-        
-        for retry in range(max_retries):
-            try:
-                generated_questions = await generate_questions_for_topic_safe(topic.get("topic"), config)
-                # Check if we got enough questions
-                if len(generated_questions) >= expected_count:
-                    break
-                elif retry < max_retries - 1:
-                    logger.warning(f"Topic '{topic.get('topic')}' generated only {len(generated_questions)}/{expected_count} questions. Retrying...")
-                    await asyncio.sleep(1)  # Brief delay before retry
-                else:
-                    logger.warning(f"Topic '{topic.get('topic')}' generated only {len(generated_questions)}/{expected_count} questions after retries.")
-            except Exception as exc:
-                logger.error(f"Error generating questions for topic '{topic.get('topic')}': {exc}")
-                if retry < max_retries - 1:
-                    await asyncio.sleep(1)
-                else:
-                    failed_topics.append(topic.get("topic"))
-                    break
-        
-        # If we got some questions but not all, still use what we have
-        if generated_questions:
-            existing_questions = topic.get("questions", [])
-            merged_questions: List[Dict[str, Any]] = []
-            for index, new_question in enumerate(generated_questions):
-                if index < len(existing_questions):
-                    merged = existing_questions[index].copy()
-                    merged.update(new_question)
-                else:
-                    merged = new_question
-                
-                # Auto-generate time and score if not already set
-                if "time" not in merged or "score" not in merged:
-                    try:
-                        time_score = await suggest_time_and_score(merged)
-                        merged["time"] = time_score.get("time", 10)
-                        merged["score"] = time_score.get("score", 5)
-                    except Exception as exc:
-                        logger.warning(f"Failed to generate time/score for question, using defaults: {exc}")
-                        merged["time"] = merged.get("time", 10)
-                        merged["score"] = merged.get("score", 5)
-                
-                merged_questions.append(merged)
-            topic["questions"] = merged_questions
-            results.append({"topic": topic.get("topic"), "questions": merged_questions, "expected": expected_count, "generated": len(merged_questions)})
-        else:
-            failed_topics.append(topic.get("topic"))
+    async def process_topic(topic):
+        """Process a single topic with semaphore control"""
+        async with semaphore:
+            topic = _ensure_topic_structure(topic)
+            config = _build_generation_config(topic)
+            expected_count = topic.get("numQuestions", 0)
+            
+            # Retry logic for each topic
+            max_retries = 2
+            generated_questions = []
+            
+            for retry in range(max_retries):
+                try:
+                    generated_questions = await generate_questions_for_topic_safe(topic.get("topic"), config)
+                    # Check if we got enough questions
+                    if len(generated_questions) >= expected_count:
+                        break
+                    elif retry < max_retries - 1:
+                        logger.warning(f"Topic '{topic.get('topic')}' generated only {len(generated_questions)}/{expected_count} questions. Retrying...")
+                        await asyncio.sleep(1)  # Brief delay before retry
+                    else:
+                        logger.warning(f"Topic '{topic.get('topic')}' generated only {len(generated_questions)}/{expected_count} questions after retries.")
+                except Exception as exc:
+                    logger.error(f"Error generating questions for topic '{topic.get('topic')}': {exc}")
+                    if retry < max_retries - 1:
+                        await asyncio.sleep(1)
+                    else:
+                        return None, topic.get("topic")
+            
+            # If we got some questions but not all, still use what we have
+            if generated_questions:
+                existing_questions = topic.get("questions", [])
+                merged_questions: List[Dict[str, Any]] = []
+                for index, new_question in enumerate(generated_questions):
+                    if index < len(existing_questions):
+                        merged = existing_questions[index].copy()
+                        merged.update(new_question)
+                    else:
+                        merged = new_question
+                    
+                    # Auto-generate time and score if not already set
+                    if "time" not in merged or "score" not in merged:
+                        try:
+                            time_score = await suggest_time_and_score(merged)
+                            merged["time"] = time_score.get("time", 10)
+                            merged["score"] = time_score.get("score", 5)
+                        except Exception as exc:
+                            logger.warning(f"Failed to generate time/score for question, using defaults: {exc}")
+                            merged["time"] = merged.get("time", 10)
+                            merged["score"] = merged.get("score", 5)
+                    
+                    merged_questions.append(merged)
+                topic["questions"] = merged_questions
+                return {"topic": topic.get("topic"), "questions": merged_questions, "expected": expected_count, "generated": len(merged_questions)}, None
+            else:
+                return None, topic.get("topic")
+    
+    # Process all topics concurrently with semaphore control
+    tasks = [process_topic(topic) for topic in topics]
+    topic_results = await asyncio.gather(*tasks, return_exceptions=True)
+    
+    # Collect results and failures
+    for result in topic_results:
+        if isinstance(result, Exception):
+            logger.error(f"Topic processing failed with exception: {result}")
+            failed_topics.append("Unknown topic")
+        elif result:
+            success_result, failed_topic = result
+            if success_result:
+                results.append(success_result)
+            if failed_topic:
+                failed_topics.append(failed_topic)
     
     # Save assessment even if some topics failed
     assessment["isGenerated"] = True
@@ -3473,6 +3496,13 @@ async def get_candidate_detailed_results(
                         ""
                     )
                     logger.info(f"[DETAILED_RESULTS] Question {q_idx} ({question_type}): textAnswer={bool(submitted_answer.get('textAnswer'))}, answer={bool(submitted_answer.get('answer'))}, extracted_length={len(candidate_answer_text) if candidate_answer_text else 0}")
+                    
+                    # Log the actual content for debugging
+                    if submitted_answer.get('textAnswer'):
+                        logger.info(f"[DETAILED_RESULTS] Question {q_idx} ({question_type}): textAnswer field content preview: {str(submitted_answer.get('textAnswer'))[:200]}")
+                    if submitted_answer.get('answer'):
+                        logger.info(f"[DETAILED_RESULTS] Question {q_idx} ({question_type}): answer field content preview: {str(submitted_answer.get('answer'))[:200]}")
+                    
                     # If answer is just a string, use it as text answer
                     if not candidate_answer_text or not candidate_answer_text.strip():
                         answer_value = submitted_answer.get("answer", "")
@@ -3483,12 +3513,18 @@ async def get_candidate_detailed_results(
                     # Validate that answer is not empty and not the same as question text
                     if candidate_answer_text and candidate_answer_text.strip():
                         answer_text_normalized = candidate_answer_text.strip().lower()
-                        # Check if answer is not the same as question text (avoid showing question as answer)
-                        if answer_text_normalized != question_text_normalized:
+                        # FIXED: Only check if answer starts with question text (not exact match)
+                        # This prevents filtering out valid answers that may include the question
+                        is_question_only = (
+                            answer_text_normalized == question_text_normalized or
+                            (len(answer_text_normalized) < 50 and question_text_normalized.startswith(answer_text_normalized))
+                        )
+                        
+                        if not is_question_only:
                             has_valid_answer = True
                             logger.info(f"[DETAILED_RESULTS] Question {q_idx} ({question_type}): Valid text answer found (length={len(candidate_answer_text)})")
                         else:
-                            logger.warning(f"[DETAILED_RESULTS] Question {q_idx} ({question_type}): Answer matches question text, filtering out")
+                            logger.warning(f"[DETAILED_RESULTS] Question {q_idx} ({question_type}): Answer appears to be question text only, filtering out")
                     else:
                         logger.warning(f"[DETAILED_RESULTS] Question {q_idx} ({question_type}): No valid text answer found")
                 
@@ -3944,6 +3980,10 @@ async def get_all_questions(
         # Determine status based on response
         # Priority: completed > started > invited > pending
         candidate_status = candidate.get("status", "pending")
+        
+        # FIXED: Initialize variables before use to prevent UnboundLocalError
+        started_at = None
+        submitted_at = None
         
         # Check if candidate has submitted
         submitted_at = candidate_response.get("submittedAt") or candidate_response.get("answers", {}).get("submittedAt")
@@ -5383,6 +5423,10 @@ async def get_all_questions(
         # Priority: completed > started > invited > pending
         candidate_status = candidate.get("status", "pending")
         
+        # FIXED: Initialize variables before use to prevent UnboundLocalError
+        started_at = None
+        submitted_at = None
+        
         # Check if candidate has submitted
         submitted_at = candidate_response.get("submittedAt") or candidate_response.get("answers", {}).get("submittedAt")
         if submitted_at:
@@ -5997,173 +6041,6 @@ async def update_question_type_put(
     except Exception as e:
         logger.error(f"Error updating question type: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.post("/generate-question")
-async def generate_question_endpoint_v2(
-    payload: GenerateQuestionRequest,
-    current_user: Dict[str, Any] = Depends(require_editor),
-    db: AsyncIOMotorDatabase = Depends(get_db),
-):
-    """
-    Generate questions for a single question row (preview).
-    After generation: row.status = "generated", row.locked = True, topic.locked = True
-    Sets fullTopicRegenLocked = True on assessment.
-    """
-    try:
-        # ✅ SPEED OPTIMIZATION: Get cached context (or load from MongoDB if not cached)
-        from .services.assessment_cache import get_assessment_context
-        cached_context = await get_assessment_context(db, payload.assessmentId)
-        
-        # Still need full assessment for topics_v2
-        # Get assessment
-        assessment = await db.assessments.find_one({"_id": to_object_id(payload.assessmentId)})
-        if not assessment:
-            raise HTTPException(status_code=404, detail="Assessment not found")
-        
-        # Get topics_v2
-        topics_v2 = assessment.get("topics_v2", [])
-        topic_index = None
-        for idx, topic in enumerate(topics_v2):
-            if topic.get("id") == payload.topicId:
-                topic_index = idx
-                break
-        
-        if topic_index is None:
-            raise HTTPException(status_code=404, detail="Topic not found")
-        
-        topic = topics_v2[topic_index]
-        
-        # Find the question row
-        question_rows = topic.get("questionRows", [])
-        row_index = None
-        for idx, row in enumerate(question_rows):
-            if row.get("rowId") == payload.rowId:
-                row_index = idx
-                break
-        
-        if row_index is None:
-            raise HTTPException(status_code=404, detail="Question row not found")
-        
-        row = question_rows[row_index]
-        
-        # Check if already generated
-        if row.get("status") == "generated" and row.get("questions") and len(row.get("questions", [])) > 0:
-            return success_response(
-                "Questions already generated",
-                {"questions": row.get("questions", []), "row": row, "topic": topic}
-            )
-        
-        # Check if locked (but allow if questions don't exist yet)
-        if row.get("locked", False) and row.get("questions") and len(row.get("questions", [])) > 0:
-            raise HTTPException(status_code=400, detail="Row is locked and already has questions")
-        if topic.get("locked", False) and row.get("questions") and len(row.get("questions", [])) > 0:
-            raise HTTPException(status_code=400, detail="Topic is locked and row already has questions")
-        
-        # ⭐ CRITICAL FIX: Use question type from database row (source of truth), not payload
-        # The payload might have stale data if frontend state wasn't updated
-        question_type = row.get("questionType") or payload.questionType
-        difficulty = row.get("difficulty") or payload.difficulty
-        questions_count = row.get("questionsCount") or payload.questionsCount
-        can_use_judge0 = row.get("canUseJudge0", False) if (row.get("questionType") or payload.questionType) == "Coding" else False
-        
-        # Validate required fields
-        if not question_type:
-            raise HTTPException(status_code=400, detail="questionType is required")
-        if not difficulty:
-            raise HTTPException(status_code=400, detail="difficulty is required")
-        if not questions_count or questions_count < 1:
-            raise HTTPException(status_code=400, detail="questionsCount must be at least 1")
-        
-        logger.info(f"Generating {questions_count} {question_type} question(s) for topic: {payload.topicLabel}, difficulty: {difficulty}, canUseJudge0: {can_use_judge0} (using row.questionType from DB)")
-        
-        # ✅ SPEED OPTIMIZATION: Use cached context instead of extracting from assessment
-        if cached_context:
-            coding_language = cached_context.get("coding_language", "python")
-            experience_mode = payload.experienceMode or cached_context.get("experience_mode", "corporate")
-            company_context = cached_context.get("company_context")
-            website_summary = cached_context.get("website_summary")
-            assessment_requirements = cached_context.get("assessment_requirements")
-            job_designation = cached_context.get("job_designation")
-            experience_min = cached_context.get("experience_min")
-            experience_max = cached_context.get("experience_max")
-            company_name = cached_context.get("company_name")
-            additional_requirements = payload.additionalRequirements or cached_context.get("additional_requirements")
-        else:
-            # Fallback to assessment if cache fails
-            coding_language = assessment.get("codingLanguage", "python")
-            experience_mode = payload.experienceMode or assessment.get("experienceMode", "corporate")
-            company_context = assessment.get("contextSummary")
-            website_summary = None
-            if not company_context and assessment.get("websiteSummary") and assessment["websiteSummary"].get("useForQuestions"):
-                website_summary = assessment["websiteSummary"]
-            additional_requirements = payload.additionalRequirements or assessment.get("additionalRequirements")
-            assessment_requirements = assessment.get("requirements")
-            job_designation = assessment.get("jobDesignation")
-            experience_min = assessment.get("experienceMin")
-            experience_max = assessment.get("experienceMax")
-            company_name = company_context.get("company_name") if company_context else None
-        
-        # ⭐ CRITICAL FIX: Use question type from database row (source of truth), not payload
-        # The payload might have stale data if frontend state wasn't updated
-        question_type = row.get("questionType") or payload.questionType
-        difficulty = row.get("difficulty") or payload.difficulty
-        questions_count = row.get("questionsCount") or payload.questionsCount
-        can_use_judge0 = row.get("canUseJudge0", False) if question_type == "Coding" else False
-        
-        questions = await generate_questions_for_row_v2(
-            topic_label=payload.topicLabel,
-            question_type=question_type,  # ⭐ Use row's question type from DB
-            difficulty=difficulty,  # ⭐ Use row's difficulty from DB
-            questions_count=questions_count,  # ⭐ Use row's questions count from DB
-            can_use_judge0=can_use_judge0,  # ⭐ Use row's canUseJudge0 from DB
-            coding_language=coding_language,
-            additional_requirements=additional_requirements,
-            experience_mode=experience_mode,
-            website_summary=website_summary,  # Legacy
-            company_context=company_context,  # New unified field
-            job_designation=job_designation,  # ⭐ NEW
-            experience_min=experience_min,  # ⭐ NEW
-            experience_max=experience_max,  # ⭐ NEW
-            company_name=company_name,  # ⭐ NEW
-            assessment_requirements=assessment_requirements,
-            previous_question=None  # Not regenerating  # ⭐ NEW - Highest priority context
-        )
-        
-        if not questions or len(questions) == 0:
-            logger.error(f"No questions generated for topic: {payload.topicLabel}, type: {payload.questionType}")
-            raise HTTPException(status_code=500, detail="Failed to generate questions - no questions returned")
-        
-        # Update row
-        row["questions"] = questions
-        row["status"] = "generated"
-        row["locked"] = True
-        
-        # Lock topic and full topic regeneration
-        topic["locked"] = True
-        assessment["fullTopicRegenLocked"] = True
-        assessment["topics_v2"] = topics_v2
-        assessment["updatedAt"] = datetime.now(timezone.utc)
-        
-        await db.assessments.update_one(
-            {"_id": to_object_id(payload.assessmentId)},
-            {"$set": {
-                "topics_v2": topics_v2,
-                "fullTopicRegenLocked": True,
-                "updatedAt": assessment["updatedAt"]
-            }}
-        )
-        
-        return success_response(
-            "Questions generated successfully",
-            {"questions": questions, "row": row, "topic": topic}
-        )
-        
-    except HTTPException:
-        raise
-    except Exception as exc:
-        logger.error(f"Error generating questions: {exc}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to generate questions: {str(exc)}") from exc
 
 
 @router.post("/add-question-row")

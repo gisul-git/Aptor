@@ -253,205 +253,106 @@ jobs:
               sleep 1
             fi
             
-            # Build and start services
+            # Build services (images only, no container creation)
             echo "🔨 Building services..."
             docker compose build --no-cache
             
-            # One more cleanup check before starting - use reliable method
-            echo "🔍 Pre-start cleanup check..."
-            pre_start_ids=$(docker ps -a --filter "name=gisul-" --format "{{.ID}} {{.Names}}" | grep -v "gisul-aiml-agent-service" | awk '{print $1}' | tr '\n' ' ')
-            if [ -n "$pre_start_ids" ]; then
-              echo "⚠️  Found remaining containers before start, removing..."
-              for id in $pre_start_ids; do
-                if [ -n "$id" ]; then
-                  name=$(docker ps -a --filter "id=$id" --format "{{.Names}}")
-                  echo "Removing remaining container: $name ($id)"
-                  docker stop "$id" 2>/dev/null || true
-                  docker rm -f "$id" 2>/dev/null || true
-                fi
-              done
-              sleep 1
-            fi
+            # CRITICAL: After build, remove any containers that might have been created
+            # Docker Compose build can sometimes create containers in "Created" state
+            echo "🧹 Post-build cleanup - removing any containers created during build..."
+            sleep 2
             
-            # Final check - ensure network doesn't exist before starting
-            echo "🔍 Final network check before starting services..."
-            max_network_retries=3
-            network_retry=0
-            while [ $network_retry -lt $max_network_retries ] && docker network inspect aptor_microservices-network >/dev/null 2>&1; do
-              echo "⚠️  Network still exists (attempt $((network_retry + 1))/$max_network_retries), removing..."
-              docker network rm -f aptor_microservices-network 2>/dev/null || true
-              sleep 2
-              network_retry=$((network_retry + 1))
-            done
-            
-            # Verify network is gone and force remove if still exists
-            if docker network inspect aptor_microservices-network >/dev/null 2>&1; then
-              echo "⚠️  Network still exists, disconnecting all containers and force removing..."
-              # Disconnect all containers from network
-              CONTAINERS=$(docker network inspect aptor_microservices-network --format '{{range .Containers}}{{.Name}} {{end}}' 2>/dev/null || echo "")
-              if [ -n "$CONTAINERS" ]; then
-                echo "$CONTAINERS" | tr ' ' '\n' | grep -v '^$' | while read container; do
-                  if [ -n "$container" ]; then
-                    echo "Disconnecting container: $container"
-                    docker network disconnect -f aptor_microservices-network "$container" 2>/dev/null || true
-                  fi
-                done
-                sleep 2
-              fi
-              # Force remove network
-              docker network rm -f aptor_microservices-network 2>/dev/null || true
-              sleep 1
-              # Prune networks as last resort
-              docker network prune -f 2>/dev/null || true
-              sleep 1
-            fi
-            
-            # Final network check right before docker-compose up
-            if docker network inspect aptor_microservices-network >/dev/null 2>&1; then
-              echo "❌ ERROR: Network still exists! Force pruning all networks..."
-              docker network prune -f
-              sleep 2
-            else
-              echo "✅ Network successfully removed"
-            fi
-            
-            # One final container check - check by exact names to be absolutely sure
-            echo "🔍 Final container check before docker-compose up..."
-            # Check each container by exact name using grep (more reliable than Docker filter)
+            # Remove ALL gisul containers (except aiml-agent) using multiple methods
+            # Method 1: By exact name
             for container_name in gisul-frontend gisul-api-gateway gisul-auth-service \
                                  gisul-ai-assessment-service gisul-custom-mcq-service \
                                  gisul-aiml-service gisul-dsa-service gisul-proctoring-service \
                                  gisul-super-admin-service gisul-employee-service gisul-demo-service gisul-redis; do
-              # Use grep for exact match instead of Docker filter (which doesn't support regex)
-              container_id=$(docker ps -a --format "{{.ID}} {{.Names}}" | grep -E "^[a-f0-9]+ ${container_name}$" | awk '{print $1}' | head -1)
-              if [ -n "$container_id" ]; then
-                echo "⚠️  Found container before docker-compose up: $container_name ($container_id), removing..."
-                docker stop "$container_id" 2>/dev/null || true
-                docker rm -f "$container_id" 2>/dev/null || true
+              if docker ps -a --format "{{.Names}}" | grep -qE "^${container_name}$"; then
+                echo "Removing post-build container: $container_name"
+                docker rm -f "$container_name" 2>/dev/null || true
               fi
             done
             
-            # Also check with filter as backup
-            final_check_ids=$(docker ps -a --filter "name=gisul-" --format "{{.ID}} {{.Names}}" | grep -v "gisul-aiml-agent-service" | awk '{print $1}' | tr '\n' ' ')
-            if [ -n "$final_check_ids" ]; then
-              echo "⚠️  Found additional containers with filter, removing..."
-              for id in $final_check_ids; do
+            # Method 2: By ID (catches any that name removal missed)
+            post_build_ids=$(docker ps -a --filter "name=gisul-" --format "{{.ID}} {{.Names}}" | grep -v "gisul-aiml-agent-service" | awk '{print $1}' | tr '\n' ' ')
+            if [ -n "$post_build_ids" ]; then
+              echo "Removing post-build containers by ID: $post_build_ids"
+              for id in $post_build_ids; do
                 if [ -n "$id" ]; then
-                  name=$(docker ps -a --filter "id=$id" --format "{{.Names}}")
-                  echo "Removing container: $name ($id)"
-                  docker stop "$id" 2>/dev/null || true
                   docker rm -f "$id" 2>/dev/null || true
                 fi
               done
             fi
             
-            # Verify all are gone
-            sleep 2
-            remaining=$(docker ps -a --filter "name=gisul-" --format "{{.Names}}" | grep -v "gisul-aiml-agent-service" | wc -l | tr -d ' ')
-            # Ensure remaining is a number, default to 0 if empty
-            remaining=${remaining:-0}
-            if [ "$remaining" -gt 0 ] 2>/dev/null; then
-              echo "❌ ERROR: Containers still exist after final cleanup!"
-              docker ps -a --filter "name=gisul-"
-              echo "Force removing all..."
-              docker ps -a --filter "name=gisul-" --format "{{.ID}}" | grep -v "$(docker ps -a --filter "name=gisul-aiml-agent-service" --format "{{.ID}}")" | xargs -r docker rm -f 2>/dev/null || true
-              sleep 2
-            fi
-            
-            # Use docker-compose down first to ensure clean state, then up
-            echo "🧹 Running docker-compose down to ensure clean state..."
+            # Method 3: Use docker-compose down to catch anything compose knows about
+            echo "🧹 Running docker-compose down to ensure compose state is clean..."
             docker compose down --remove-orphans 2>/dev/null || true
+            
+            # Wait for all removals to complete
+            sleep 3
+            
+            # Final aggressive cleanup - remove network to force clean slate
+            echo "🧹 Removing network to ensure clean slate..."
+            docker network rm aptor_microservices-network 2>/dev/null || true
+            docker network prune -f 2>/dev/null || true
+            
+            # Wait for network removal to complete
             sleep 2
             
-            # Force remove any containers that docker-compose down might have missed
-            echo "🧹 Force removing any remaining containers by name..."
-            for container_name in gisul-frontend gisul-api-gateway gisul-auth-service \
-                                 gisul-ai-assessment-service gisul-custom-mcq-service \
-                                 gisul-aiml-service gisul-dsa-service gisul-proctoring-service \
-                                 gisul-super-admin-service gisul-employee-service gisul-demo-service gisul-redis; do
-              if docker ps -a --format "{{.Names}}" | grep -qE "^${container_name}$"; then
-                echo "Force removing: $container_name"
-                docker stop "$container_name" 2>/dev/null || true
-                docker rm -f "$container_name" 2>/dev/null || true
-              fi
-            done
-            sleep 1
+            # FINAL VERIFICATION - ensure absolutely nothing exists
+            echo "🔍 Final verification before docker-compose up..."
             
-            # Final check one more time - use exact name matching
-            echo "🔍 Absolute final check - removing any remaining containers..."
-            for container_name in gisul-frontend gisul-api-gateway gisul-auth-service \
-                                 gisul-ai-assessment-service gisul-custom-mcq-service \
-                                 gisul-aiml-service gisul-dsa-service gisul-proctoring-service \
-                                 gisul-super-admin-service gisul-employee-service gisul-demo-service gisul-redis; do
-              # Check by exact name match
-              if docker ps -a --format "{{.Names}}" | grep -qE "^${container_name}$"; then
-                echo "Force removing: $container_name"
-                # Try by name first (faster)
-                docker rm -f "$container_name" 2>/dev/null || true
-                # If that fails, get ID and remove by ID
-                container_id=$(docker ps -a --format "{{.ID}} {{.Names}}" | grep -E "^[a-f0-9]+ ${container_name}$" | awk '{print $1}' | head -1)
-                if [ -n "$container_id" ]; then
-                  echo "Removing by ID: $container_name ($container_id)"
-                  docker rm -f "$container_id" 2>/dev/null || true
-                fi
-              fi
-            done
-            sleep 2
-            
-            # Last check - verify NO containers exist before docker-compose up
-            echo "🔍 Last verification - ensuring zero containers exist..."
-            all_containers=$(docker ps -a --format "{{.Names}}" | grep -E "^(gisul-frontend|gisul-api-gateway|gisul-auth-service|gisul-ai-assessment-service|gisul-custom-mcq-service|gisul-aiml-service|gisul-dsa-service|gisul-proctoring-service|gisul-super-admin-service|gisul-employee-service|gisul-demo-service|gisul-redis)$" | grep -v "gisul-aiml-agent-service" || true)
-            if [ -n "$all_containers" ]; then
-              echo "❌ CRITICAL: Containers still exist right before docker-compose up!"
-              echo "$all_containers"
-              echo "Force removing all found containers..."
-              echo "$all_containers" | while read container_name; do
+            # Check containers one last time
+            final_containers=$(docker ps -a --filter "name=gisul-" --format "{{.Names}}" | grep -v "gisul-aiml-agent-service" || true)
+            if [ -n "$final_containers" ]; then
+              echo "❌ CRITICAL: Containers still exist after cleanup!"
+              echo "$final_containers"
+              echo "Emergency removal..."
+              echo "$final_containers" | while read container_name; do
                 if [ -n "$container_name" ]; then
-                  echo "Emergency removal: $container_name"
                   docker rm -f "$container_name" 2>/dev/null || true
                 fi
               done
               sleep 2
-            else
-              echo "✅ Verified: No containers exist, safe to proceed"
             fi
             
-            # Final verification - ensure network and containers are gone
-            echo "🔍 Final pre-start verification..."
-            NETWORK_EXISTS=$(docker network inspect aptor_microservices-network >/dev/null 2>&1 && echo "yes" || echo "no")
-            CONTAINERS_EXIST=$(docker ps -a --filter "name=gisul-" --format "{{.Names}}" | grep -v "gisul-aiml-agent-service" | wc -l | tr -d ' ')
-            CONTAINERS_EXIST=${CONTAINERS_EXIST:-0}
-            
-            if [ "$NETWORK_EXISTS" = "yes" ]; then
-              echo "⚠️  WARNING: Network still exists, force removing..."
+            # Check network one last time
+            if docker network inspect aptor_microservices-network >/dev/null 2>&1; then
+              echo "⚠️  Network still exists, force removing..."
               docker network rm -f aptor_microservices-network 2>/dev/null || true
-              docker network prune -f 2>/dev/null || true
               sleep 1
             fi
             
-            if [ "$CONTAINERS_EXIST" -gt 0 ] 2>/dev/null; then
-              echo "⚠️  WARNING: Containers still exist, force removing..."
-              docker ps -a --filter "name=gisul-" --format "{{.ID}} {{.Names}}" | grep -v "gisul-aiml-agent-service" | awk '{print $1}' | xargs -r docker rm -f 2>/dev/null || true
-              sleep 1
+            # Verify clean state
+            remaining_count=$(docker ps -a --filter "name=gisul-" --format "{{.Names}}" | grep -v "gisul-aiml-agent-service" | wc -l | tr -d ' ')
+            remaining_count=${remaining_count:-0}
+            
+            if [ "$remaining_count" -eq 0 ] 2>/dev/null; then
+              echo "✅ Verified: Clean state achieved, no containers exist"
+            else
+              echo "❌ ERROR: Failed to achieve clean state, $remaining_count containers remain"
+              docker ps -a --filter "name=gisul-"
+              exit 1
             fi
             
-            echo "🚀 Starting services..."
-            # Don't use --force-recreate to avoid double creation
-            # The cleanup above ensures containers don't exist
-            # If docker-compose fails, clean up and exit to prevent partial state
+            echo "🚀 Starting services with docker-compose up..."
+            # Use --remove-orphans to handle any edge cases
+            # Don't use --force-recreate since we've ensured nothing exists
             if ! docker compose up -d --remove-orphans; then
-              echo "❌ docker-compose up failed, cleaning up and exiting..."
+              echo "❌ docker-compose up failed!"
+              echo "📋 Showing docker-compose logs for debugging..."
+              docker compose logs --tail=50
+              echo "🧹 Cleaning up failed deployment..."
               docker compose down --remove-orphans 2>/dev/null || true
-              # Remove any containers that were created by exact name
+              # Force remove any containers by name
               for container_name in gisul-frontend gisul-api-gateway gisul-auth-service \
                                    gisul-ai-assessment-service gisul-custom-mcq-service \
                                    gisul-aiml-service gisul-dsa-service gisul-proctoring-service \
                                    gisul-super-admin-service gisul-employee-service gisul-demo-service gisul-redis; do
                 docker rm -f "$container_name" 2>/dev/null || true
               done
-              # Also remove network if it exists
               docker network rm -f aptor_microservices-network 2>/dev/null || true
-              docker network prune -f 2>/dev/null || true
               exit 1
             fi
             
