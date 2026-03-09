@@ -358,19 +358,29 @@ Instead use neutral instructions like:
 
 --------------------------------------------------
 
-STRUCTURE RULE (CRITICAL - MANDATORY)
+STRUCTURE RULE (CRITICAL - MANDATORY - ABSOLUTE REQUIREMENT)
 
 Every generated design challenge MUST include the following sections in this exact order:
 
 1. Description
-2. Task Requirements
+2. Task Requirements ⚠️ MANDATORY - DO NOT SKIP THIS SECTION
 3. Constraints
 4. Deliverables
 5. Evaluation Criteria
 
-Do NOT skip any section. The "Task Requirements" section is MANDATORY for ALL difficulty levels (Beginner, Intermediate, Advanced).
+⚠️ CRITICAL: The "Task Requirements" section is ABSOLUTELY MANDATORY for ALL difficulty levels.
 
-Without "Task Requirements", candidates will not know what to design.
+WITHOUT "Task Requirements", the challenge is INCOMPLETE and UNUSABLE.
+
+The AI MUST NOT generate a challenge without explicitly listing what screens/components to design.
+
+If you skip "Task Requirements", the output will be REJECTED.
+
+MANDATORY TASK SECTION RULE:
+• Every generated challenge MUST include a section titled "Task Requirements"
+• This section must list the specific screens, flows, or artifacts the candidate must design
+• Do NOT generate a challenge without this section
+• This is NOT optional - it is REQUIRED
 
 --------------------------------------------------
 
@@ -388,18 +398,30 @@ ROLE EXPECTATIONS
 
 UI Designer
 Focus on layout design, visual hierarchy, component design, spacing systems, and typography.
+⚠️ MUST include Task Requirements listing specific UI screens to design.
 
 UX Designer
 Focus on user flows, usability improvements, navigation structure, and interaction patterns.
+⚠️ MUST include Task Requirements listing specific wireframes/flows to design.
 
 Product Designer
 Focus on end-to-end product experiences, feature prioritization, user journeys, and product decisions.
+⚠️ MUST include Task Requirements listing specific product screens/flows to design.
 
 Visual Designer
 Focus on visual identity, iconography, color systems, and aesthetic execution.
+⚠️ MUST include Task Requirements listing specific visual mockups to design.
 
 Interaction Designer
 Focus on micro-interactions, animations, gesture controls, and interactive patterns.
+⚠️ MUST include Task Requirements listing specific interaction screens to design.
+
+UI DESIGN TASK RULE:
+For UI Designer challenges:
+• Beginner → 2-3 screens with simple descriptions
+• Intermediate → 3-4 screens with moderate descriptions
+• Advanced → 4-6 screens with detailed descriptions
+Each screen must include a short description of what UI elements should appear.
 
 --------------------------------------------------
 
@@ -1058,7 +1080,7 @@ Return ONLY JSON in this exact structure:
 {{
     "title": "[Topic] - [Role] Challenge",
     "description": "[2-8 sentences based on difficulty - product context, users, goals]",
-    "task_requirements": "[Numbered list of specific screens/components to design with brief descriptions]",
+    "task_requirements": "⚠️ MANDATORY FIELD - MUST NOT BE EMPTY\n\nDesign the following screens:\n\n1️⃣ [Screen name]\n[Description of what this screen includes]\n\n2️⃣ [Screen name]\n[Description of what this screen includes]\n\n3️⃣ [Screen name]\n[Description of what this screen includes]",
     "constraints": ["[Measurable constraint 1]", "[Measurable constraint 2]", ...],
     "deliverables": ["[Specific deliverable 1 with quantity]", "[Specific deliverable 2]", ...],
     "evaluation_criteria": [
@@ -1071,6 +1093,10 @@ Return ONLY JSON in this exact structure:
     "time_limit_minutes": {time_limit}
 }}
 
+⚠️ CRITICAL: The "task_requirements" field MUST contain a numbered list of screens/components.
+⚠️ DO NOT leave "task_requirements" empty or null.
+⚠️ DO NOT skip the "task_requirements" field.
+
 --------------------------------------------------
 
 QUALITY CHECK
@@ -1080,10 +1106,19 @@ Before generating the final output verify:
 • The task is role-specific
 • Difficulty level is correctly reflected
 • The interface type matches the topic
-• Task requirements explicitly list what to design
+• ⚠️ CRITICAL: Task requirements explicitly list what to design (MANDATORY - NOT OPTIONAL)
+• ⚠️ CRITICAL: "task_requirements" field is NOT empty or null
+• ⚠️ CRITICAL: Task requirements include numbered list of screens (1️⃣ 2️⃣ 3️⃣)
 • Constraints are measurable
 • Deliverables are clear and realistic with quantities
 • Evaluation criteria explain how submissions will be graded
+
+FINAL VERIFICATION:
+✅ Does the output include "task_requirements" field?
+✅ Does "task_requirements" list specific screens to design?
+✅ Are the screens numbered with emoji (1️⃣ 2️⃣ 3️⃣)?
+
+If ANY of these are NO, the output is INVALID and must be regenerated.
 
 --------------------------------------------------
 
@@ -1109,7 +1144,13 @@ CRITICAL INSTRUCTIONS:
 
 1. Topic "{topic_str}" MUST be the main subject - DO NOT CHANGE IT
 2. STRUCTURE (CRITICAL): MUST include all 5 sections: Description, Task Requirements, Constraints, Deliverables, Evaluation Criteria
-3. TASK REQUIREMENTS (MANDATORY): Must list specific screens/components for ALL difficulty levels (Beginner, Intermediate, Advanced)
+3. ⚠️ TASK REQUIREMENTS (ABSOLUTELY MANDATORY - TOP PRIORITY):
+   • The "task_requirements" field is REQUIRED and MUST NOT be empty
+   • Must list specific screens/components for ALL difficulty levels (Beginner, Intermediate, Advanced)
+   • Must use numbered emoji format (1️⃣ 2️⃣ 3️⃣ 4️⃣)
+   • Each screen must have a description of what it includes
+   • WITHOUT this section, the challenge is INCOMPLETE and UNUSABLE
+   • This is the MOST IMPORTANT field - DO NOT SKIP IT
 4. PLATFORM DETECTION (CRITICAL):
    - If topic contains "mobile", "mobile UI", "app", "prototype", "checkout", "booking" → Canvas: 375px mobile layout, Grid: 8-column
    - If topic contains "dashboard", "analytics", "admin", "landing", "website" → Canvas: 1440px desktop layout, Grid: 12-column
@@ -1133,6 +1174,12 @@ CRITICAL INSTRUCTIONS:
 15. ALWAYS use 8px baseline grid (NOT 4px)
 16. Evaluation criteria must include short one-sentence descriptions
 17. Return ONLY valid JSON
+18. ⚠️ FINAL CHECK: Verify "task_requirements" field is NOT empty before returning
+
+⚠️⚠️⚠️ ABSOLUTE REQUIREMENT ⚠️⚠️⚠️
+Before returning the JSON, verify that "task_requirements" contains a numbered list of screens.
+If "task_requirements" is empty or missing, the output is INVALID.
+DO NOT return a challenge without Task Requirements.
 
 Generate ONE design challenge following ALL rules above. Return ONLY the JSON object."""
         
@@ -1343,10 +1390,28 @@ Generate ONE design challenge following ALL rules above. Return ONLY the JSON ob
             # Apply neutral language post-processing to description
             description = self._neutralize_language(data.get("description", ""))
             
-            # Get task requirements (new field)
+            # Get task requirements (new field) - MANDATORY
             task_requirements = data.get("task_requirements", "")
+            
+            # LOG WHAT WE GOT FROM AI
+            logger.info(f"🔍 AI Response - task_requirements field: {repr(task_requirements)[:200]}")
+            logger.info(f"🔍 AI Response - task_requirements type: {type(task_requirements)}")
+            logger.info(f"🔍 AI Response - task_requirements length: {len(task_requirements) if task_requirements else 0}")
+            
             if task_requirements:
                 task_requirements = self._neutralize_language(task_requirements)
+            
+            # CRITICAL VALIDATION: Task Requirements MUST NOT be empty
+            if not task_requirements or not task_requirements.strip():
+                logger.error("❌ AI generated question WITHOUT Task Requirements - INVALID")
+                logger.error(f"❌ task_requirements value: {repr(task_requirements)}")
+                raise ValueError(
+                    "AI generated an incomplete question. The 'Task Requirements' section is missing. "
+                    "This section is MANDATORY and must list the specific screens/components to design. "
+                    "Please regenerate the question."
+                )
+            
+            logger.info(f"✅ Task Requirements validation PASSED - Length: {len(task_requirements)}")
             
             # Also apply to constraints, deliverables, and evaluation criteria if they contain text
             constraints = [self._neutralize_language(c) if isinstance(c, str) else c for c in data.get("constraints", [])]

@@ -7,6 +7,7 @@ interface Question {
   _id: string;
   title: string;
   description: string;
+  task_requirements?: string;
   role: string;
   difficulty: string;
   task_type: string;
@@ -91,6 +92,15 @@ export default function PreviewQuestionPage() {
           <h2 style={{ fontSize: '1.25rem', fontWeight: '600', marginBottom: '0.5rem', color: '#9333EA' }}>Description</h2>
           <p style={{ color: '#4B5563', lineHeight: '1.6' }}>{question.description}</p>
         </div>
+
+        {question.task_requirements && (
+          <div style={{ marginBottom: '1.5rem' }}>
+            <h2 style={{ fontSize: '1.25rem', fontWeight: '600', marginBottom: '0.5rem', color: '#9333EA' }}>Task Requirements</h2>
+            <div style={{ color: '#4B5563', lineHeight: '1.6', whiteSpace: 'pre-wrap' }}>
+              {question.task_requirements}
+            </div>
+          </div>
+        )}
 
         {question.constraints && question.constraints.length > 0 && (
           <div style={{ marginBottom: '1.5rem' }}>
