@@ -324,14 +324,14 @@ jobs:
               sleep 1
             fi
             
-            # Verify clean state
-            remaining_count=$(docker ps -a --filter "name=gisul-" --format "{{.Names}}" | grep -v "gisul-aiml-agent-service" | wc -l | tr -d ' ')
-            remaining_count=${remaining_count:-0}
+            # Verify clean state - use more reliable method
+            remaining_containers=$(docker ps -a --filter "name=gisul-" --format "{{.Names}}" | grep -v "gisul-aiml-agent-service" | grep -v '^$' || true)
             
-            if [ "$remaining_count" -eq 0 ] 2>/dev/null; then
+            if [ -z "$remaining_containers" ]; then
               echo "✅ Verified: Clean state achieved, no containers exist"
             else
-              echo "❌ ERROR: Failed to achieve clean state, $remaining_count containers remain"
+              echo "❌ ERROR: Failed to achieve clean state, containers remain:"
+              echo "$remaining_containers"
               docker ps -a --filter "name=gisul-"
               exit 1
             fi
