@@ -1126,7 +1126,7 @@ Return ONLY JSON in this exact structure:
 {{
     "title": "[Topic] - [Role] Challenge",
     "description": "[2-8 sentences based on difficulty - product context, users, goals]",
-    "task_requirements": "⚠️ MANDATORY FIELD - MUST NOT BE EMPTY\n\nDesign the following screens:\n\n1️⃣ [Screen name]\n[Description of what this screen includes]\n\n2️⃣ [Screen name]\n[Description of what this screen includes]\n\n3️⃣ [Screen name]\n[Description of what this screen includes]",
+    "task_requirements": "Design the following screens:\n\n1️⃣ [Screen name]\n[Description of what this screen includes]\n\n2️⃣ [Screen name]\n[Description of what this screen includes]\n\n3️⃣ [Screen name]\n[Description of what this screen includes]",
     "constraints": ["[Measurable constraint 1]", "[Measurable constraint 2]", ...],
     "deliverables": ["[Specific deliverable 1 with quantity]", "[Specific deliverable 2]", ...],
     "evaluation_criteria": [
@@ -1142,6 +1142,7 @@ Return ONLY JSON in this exact structure:
 ⚠️ CRITICAL: The "task_requirements" field MUST contain a numbered list of screens/components.
 ⚠️ DO NOT leave "task_requirements" empty or null.
 ⚠️ DO NOT skip the "task_requirements" field.
+⚠️ DO NOT include warning text like "MANDATORY FIELD" in the actual output - that's for your reference only.
 
 --------------------------------------------------
 
