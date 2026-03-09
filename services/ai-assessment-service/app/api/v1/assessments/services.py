@@ -103,7 +103,26 @@ def _get_client() -> AsyncOpenAI:
     settings = get_settings()
     if not settings.openai_api_key:
         raise ValueError("OpenAI API key not configured. Please set OPENAI_API_KEY in your environment variables.")
-    return AsyncOpenAI(api_key=settings.openai_api_key)
+    
+    # ⭐ CRITICAL FIX: Configure timeouts to prevent connection cancellation issues
+    # Increased read timeout to 300s (5 minutes) for complex coding questions
+    import httpx
+    import os
+    
+    timeout_connect = float(os.getenv('OPENAI_TIMEOUT_CONNECT', '30'))
+    timeout_read = float(os.getenv('OPENAI_TIMEOUT_READ', '300'))  # Increased from 180s to 300s
+    max_retries = int(os.getenv('OPENAI_MAX_RETRIES', '5'))
+    
+    logger.info(f"Initializing OpenAI client with timeouts: connect={timeout_connect}s, read={timeout_read}s, retries={max_retries}")
+    
+    return AsyncOpenAI(
+        api_key=settings.openai_api_key,
+        timeout=httpx.Timeout(timeout_connect, read=timeout_read, write=30.0, pool=10.0),
+        max_retries=max_retries,
+        http_client=httpx.AsyncClient(
+            limits=httpx.Limits(max_connections=20, max_keepalive_connections=10)
+        )
+    )
 
 
 def _get_paragraph_requirements(difficulty: str) -> Dict[str, str]:

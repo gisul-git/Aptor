@@ -6,7 +6,7 @@
 
 export const API_CONFIG = {
   baseURL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:80',
-  timeout: 120000, // 2 minutes
+  timeout: 600000, // 10 minutes - allow enough time for question generation
   retryAttempts: 3,
   retryDelay: 1000,
 } as const;

@@ -495,38 +495,6 @@ const renderCodingQuestion = (
       ? `${question.title}\n\n${question.description || question.problemStatement || ""}`
       : "");
 
-  // Debug logging to trace problem statement issue
-  if (!questionText || !questionText.trim()) {
-    console.warn("⚠️ Coding question missing problem statement:", {
-      hasQuestionText: !!question.questionText,
-      questionTextValue: question.questionText
-        ? question.questionText.substring(0, 100)
-        : null,
-      hasDescription: !!question.description,
-      descriptionValue: question.description
-        ? question.description.substring(0, 100)
-        : null,
-      hasQuestion: !!question.question,
-      hasProblemStatement: !!question.problemStatement,
-      hasTitle: !!question.title,
-      titleValue: question.title,
-      questionKeys: Object.keys(question),
-      fullQuestion: question, // Log full question for debugging
-    });
-  } else {
-    console.log("✅ Coding question has problem statement:", {
-      questionTextLength: questionText.length,
-      source: question.questionText
-        ? "questionText"
-        : question.description
-          ? "description"
-          : question.question
-            ? "question"
-            : question.problemStatement
-              ? "problemStatement"
-              : "title",
-    });
-  }
   const starterCode = question.starterCode || "";
   const visibleTestCases =
     question.visibleTestCases || (question.visibleTestCases ? [] : []);
@@ -1200,8 +1168,8 @@ const renderCodingQuestion = (
     );
   }
 
-  // ⭐ CRITICAL FIX: questionText exists (confirmed by console logs showing 402+ chars)
-  // Use questionText directly since we know it exists from the logs
+  // ⭐ CRITICAL FIX: Use questionText which contains title + description + examples
+  // Don't display description separately to avoid duplication
   const problemStatementText =
     question.questionText ||
     questionText ||
@@ -1211,21 +1179,13 @@ const renderCodingQuestion = (
     question.title ||
     "";
 
-  // Force render - we know questionText exists from logs
   const shouldShowProblemStatement = !!(
     problemStatementText && problemStatementText.trim()
   );
 
-  console.log("🎯 Final render check:", {
-    questionQuestionText: question.questionText?.substring(0, 50),
-    questionTextVar: questionText?.substring(0, 50),
-    problemStatementText: problemStatementText?.substring(0, 50),
-    shouldShow: shouldShowProblemStatement,
-  });
-
   return (
     <div>
-      {/* Problem Statement - Force render since we know questionText exists */}
+      {/* Problem Statement - Display ONCE (contains title + description + examples) */}
       {shouldShowProblemStatement ? (
         <div style={{ marginBottom: "1.5rem" }}>
           <div
@@ -1265,56 +1225,9 @@ const renderCodingQuestion = (
             color: "#991b1b",
           }}
         >
-          ⚠️ DEBUG: Problem statement not showing. question.questionText:{" "}
-          {question.questionText
-            ? `YES (${question.questionText.length} chars)`
-            : "NO"}
-          , questionText var:{" "}
-          {questionText ? `YES (${questionText.length} chars)` : "NO"}
+          ⚠️ Problem statement is missing. Please regenerate this question.
         </div>
       )}
-
-      {/* Debug: Show warning if problem statement is still empty */}
-      {!questionText &&
-        !question.description &&
-        !question.problemStatement &&
-        !question.question &&
-        !question.title && (
-          <div
-            style={{
-              marginBottom: "1.5rem",
-              padding: "1rem",
-              backgroundColor: "#fef3c7",
-              borderRadius: "0.5rem",
-              border: "1px solid #fbbf24",
-              color: "#92400e",
-            }}
-          >
-            ⚠️ Problem statement is empty. Check browser console for details.
-            Available fields: {Object.keys(question).join(", ")}
-          </div>
-        )}
-
-      {/* Debug: Show warning if problem statement is still empty */}
-      {!questionText &&
-        !question.description &&
-        !question.problemStatement &&
-        !question.question &&
-        !question.title && (
-          <div
-            style={{
-              marginBottom: "1.5rem",
-              padding: "1rem",
-              backgroundColor: "#fef3c7",
-              borderRadius: "0.5rem",
-              border: "1px solid #fbbf24",
-              color: "#92400e",
-            }}
-          >
-            ⚠️ Problem statement is empty. Available fields:{" "}
-            {JSON.stringify(Object.keys(question))}
-          </div>
-        )}
 
       {/* Starter Code (Readonly) */}
       {starterCode && (
@@ -1403,51 +1316,6 @@ const renderCodingQuestion = (
         </div>
       )}
 
-      {/* Problem Statement - Always show if available */}
-      {questionText && (
-        <div style={{ marginBottom: "1.5rem" }}>
-          <div
-            style={{
-              fontSize: "0.875rem",
-              fontWeight: 600,
-              color: "#64748b",
-              marginBottom: "0.5rem",
-            }}
-          >
-            Problem Statement:
-          </div>
-          <div
-            style={{
-              padding: "1.25rem",
-              backgroundColor: "#ffffff",
-              borderRadius: "0.75rem",
-              border: "1px solid #e2e8f0",
-              color: "#1e293b",
-              whiteSpace: "pre-wrap",
-              lineHeight: "1.7",
-              fontSize: "1rem",
-            }}
-          >
-            {questionText}
-          </div>
-        </div>
-      )}
-
-      {/* Fallback: Show title if questionText is empty */}
-      {!questionText && question.title && (
-        <div style={{ marginBottom: "1.5rem" }}>
-          <h2
-            style={{
-              fontSize: "1.25rem",
-              fontWeight: 700,
-              color: "#1e293b",
-              marginBottom: "1rem",
-            }}
-          >
-            {question.title}
-          </h2>
-        </div>
-      )}
       {/* Constraints */}
       {constraints && (
         <div style={{ marginBottom: "1.5rem" }}>
@@ -4080,38 +3948,97 @@ const handleStartCrafting = async () => {
     return;
   }
 
-  setIsCrafting(true);
-  setCraftingProgress(0);
+  // Validate required fields before proceeding
+  if (!startTime) {
+    setError("Please enter a start time for the assessment");
+    return;
+  }
+  
+  if (!duration || parseInt(duration) <= 0) {
+    setError("Please enter a valid duration");
+    return;
+  }
+  
+  if (examMode === "flexible" && !endTime) {
+    setError("Please enter an end time for flexible mode");
+    return;
+  }
 
-  // 2. Generate dynamic URL
+  // Generate dynamic URL
   const token = Math.random().toString(36).substring(2, 15);
   const url = `${window.location.origin}/assessment/${assessmentId}/${token}`;
   setAssessmentUrl(url);
   console.log("🔗 Generated assessment URL:", url);
 
-  // 3. Logic to calculate total duration - FIXED TS ERROR
-  const totalQs = topicsV2.reduce((acc, t) => 
-    acc + t.questionRows.reduce((sum, r) => sum + (r.questionsCount || 0), 0), 0
-  );
-  
-  // Update state with calculated duration string
-  setDuration(Math.round(totalQs * 2.5).toString());
-  console.log("⏱️  Auto-calculated duration based on questions:", Math.round(totalQs * 2.5));
-
-  // 4. Animation Engine
-  const interval = setInterval(() => {
-    setCraftingProgress((prev) => {
-      if (prev >= 100) {
-        clearInterval(interval);
-        setTimeout(() => {
-          setIsCrafting(false);
-          setShowFinalReview(true);
-        }, 600);
-        return 100;
+  // Save schedule and candidates to backend BEFORE showing animation
+  try {
+    console.log("💾 Saving schedule and candidates to backend...");
+    
+    // Normalize datetime strings
+    const normalizeDateTime = (dt: string): string => {
+      if (!dt) return dt;
+      if (dt.match(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/)) {
+        const dtWithSeconds = dt + ":00";
+        const istDate = new Date(dtWithSeconds + "+05:30");
+        if (!isNaN(istDate.getTime())) {
+          return istDate.toISOString();
+        } else {
+          return dt + ":00Z";
+        }
       }
-      return Math.min(prev + Math.floor(Math.random() * 8) + 2, 100);
+      if (dt.match(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/)) {
+        return dt + "Z";
+      }
+      return dt;
+    };
+
+    const scheduleData: any = {
+      examMode,
+      duration: parseInt(duration || "0"),
+    };
+
+    if (examMode === "strict") {
+      scheduleData.startTime = normalizeDateTime(startTime);
+    } else if (examMode === "flexible") {
+      scheduleData.startTime = normalizeDateTime(startTime);
+      scheduleData.endTime = normalizeDateTime(endTime);
+    }
+
+    console.log("📦 Schedule data to save:", scheduleData);
+
+    await updateScheduleAndCandidatesMutation.mutateAsync({
+      assessmentId,
+      ...scheduleData,
+      candidates: accessMode === "private" ? candidates : [],
+      assessmentUrl: url,
+      token,
+      accessMode: accessMode,
     });
-  }, 120);
+
+    console.log("✅ Schedule and candidates saved successfully");
+
+    // Now start the animation
+    setIsCrafting(true);
+    setCraftingProgress(0);
+
+    const interval = setInterval(() => {
+      setCraftingProgress((prev) => {
+        if (prev >= 100) {
+          clearInterval(interval);
+          setTimeout(() => {
+            setIsCrafting(false);
+            setShowFinalReview(true);
+          }, 600);
+          return 100;
+        }
+        return Math.min(prev + Math.floor(Math.random() * 8) + 2, 100);
+      });
+    }, 120);
+  } catch (err: any) {
+    console.error("❌ Error saving schedule:", err);
+    setError(err.message || "Failed to save schedule and candidates");
+    setIsCrafting(false);
+  }
 };
   
 const handleStartReviewProcess = () => {
@@ -6077,8 +6004,17 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
 
     // Collect skills from all sources (optional - can be used to supplement requirements)
 
+    // Parse manual skill input (comma-separated)
+    const manualSkillsFromInput = manualSkillInput
+      .split(',')
+      .map(skill => skill.trim())
+      .filter(skill => skill.length > 0);
+
+    // Merge manual input skills with selectedSkills
+    const allSelectedSkills = [...new Set([...selectedSkills, ...manualSkillsFromInput])];
+
     // Method A (Role-based): Skills from topic cards (auto-generated from job designation)
-    const roleBasedSkills = selectedSkills
+    const roleBasedSkills = allSelectedSkills
       .filter((skill) => topicCards.includes(skill))
       .map((skill) => ({
         skill_name: skill.trim(),
@@ -6088,7 +6024,7 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
       }));
 
     // Method B (Manual): Skills manually entered that are NOT in topic cards
-    const manualSkills = selectedSkills
+    const manualSkills = allSelectedSkills
       .filter((skill) => !topicCards.includes(skill))
       .map((skill) => ({
         skill_name: skill.trim(),
@@ -6932,12 +6868,18 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
   // ONLY generates for topics with status "pending" or "regenerated"
   // NEVER regenerates topics with status "generated" or "completed"
   const handleNextToReviewQuestions = async () => {
+    console.log("🚀 ========== QUESTION GENERATION START ==========");
+    console.log("📋 Assessment ID:", assessmentId);
+    console.log("📊 Total topics configured:", topicsV2?.length || 0);
+    
     if (!assessmentId) {
+      console.error("❌ ERROR: Assessment ID is required");
       setError("Assessment ID is required");
       return;
     }
 
     if (!topicsV2 || topicsV2.length === 0) {
+      console.error("❌ ERROR: No topics configured");
       setError("Please configure at least one topic");
       return;
     }
@@ -6948,20 +6890,24 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
       rows: Array<{ rowId: string; row: QuestionRow }>;
     }> = [];
 
-    topicsV2.forEach((topic) => {
+    console.log("🔍 Analyzing topics for generation...");
+    topicsV2.forEach((topic, index) => {
       const topicStatus = topic.status || "pending";
+      console.log(`  Topic ${index + 1}: "${topic.label}" - Status: ${topicStatus}`);
 
       // ONLY generate for topics with status "pending" or "regenerated"
       // SKIP topics with status "generated" or "completed"
       if (topicStatus === "pending" || topicStatus === "regenerated") {
         const rowsToGenerate: Array<{ rowId: string; row: QuestionRow }> = [];
 
-        topic.questionRows.forEach((row) => {
+        topic.questionRows.forEach((row, rowIndex) => {
           // Only generate for rows that don't have questions or are pending
           const needsGeneration =
             row.status === "pending" ||
             !row.questions ||
             row.questions.length === 0;
+
+          console.log(`    Row ${rowIndex + 1}: ${row.questionType} (${row.difficulty}) - Count: ${row.questionsCount} - Needs generation: ${needsGeneration} - Locked: ${row.locked || false}`);
 
           if (needsGeneration && !row.locked) {
             rowsToGenerate.push({
@@ -6972,15 +6918,23 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
         });
 
         if (rowsToGenerate.length > 0) {
+          console.log(`  ✅ Topic "${topic.label}" has ${rowsToGenerate.length} rows to generate`);
           topicsToGenerate.push({
             topic,
             rows: rowsToGenerate,
           });
+        } else {
+          console.log(`  ⏭️  Topic "${topic.label}" - All rows already generated or locked`);
         }
+      } else {
+        console.log(`  ⏭️  Topic "${topic.label}" - Skipped (status: ${topicStatus})`);
       }
     });
 
+    console.log(`\n📈 Summary: ${topicsToGenerate.length} topics need generation`);
+
     if (topicsToGenerate.length === 0) {
+      console.log("✅ All topics already have questions generated, moving to Review station");
       // All topics already have questions generated, just move to Review station
       setCurrentStation(4.5);
       return;
@@ -6995,6 +6949,11 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
       (sum, { rows }) => sum + rows.length,
       0,
     );
+    
+    console.log(`\n🎯 Total question rows to generate: ${totalTasks}`);
+    console.log(`⚡ Concurrency limit: 5 parallel requests`);
+    console.log(`🔄 Max retries per row: 3`);
+    
     setGenerationProgress({
       total: totalTasks,
       completed: 0,
@@ -7006,10 +6965,12 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
     setShowGenerationSkeleton(true);
 
     const startTime = Date.now();
+    console.log(`⏰ Generation started at: ${new Date(startTime).toISOString()}\n`);
 
     try {
-      // ✅ SPEED OPTIMIZATION: Parallel generation with concurrency limit (5)
-      const CONCURRENCY_LIMIT = 5;
+      // ✅ SPEED OPTIMIZATION: Parallel generation with concurrency limit (3)
+      // Reduced from 5 to 3 to prevent OpenAI API timeout/cancellation issues
+      const CONCURRENCY_LIMIT = 3;
 
       // Create all tasks
       const allTasks: Array<{
@@ -7026,12 +6987,14 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
             rowId,
             row,
             task: async () => {
+              console.log(`\n🔨 Generating: "${topic.label}" > ${row.questionType} (${row.difficulty}) - ${row.questionsCount} questions`);
               let retries = 0;
               const maxRetries = 3;
               const baseDelay = 1000; // 1 second
 
               while (retries <= maxRetries) {
                 try {
+                  console.log(`  📤 API Call attempt ${retries + 1}/${maxRetries + 1}...`);
                   const response = await generateQuestionMutation.mutateAsync({
                     assessmentId: assessmentId || "",
                     topicId: topic.id,
@@ -7050,6 +7013,7 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
                   });
 
                   if (response?.success) {
+                    console.log(`  ✅ SUCCESS: Generated ${response.data?.row?.questions?.length || 0} questions`);
                     return {
                       success: true,
                       topic,
@@ -7058,11 +7022,16 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
                       response: response,
                     };
                   } else {
+                    console.error(`  ❌ FAILED: Response not successful`, response);
                     throw new Error(
                       `Failed to generate questions for topic ${topic.label}, row ${rowId}`,
                     );
                   }
                 } catch (err: any) {
+                  console.error(`  ⚠️  ERROR on attempt ${retries + 1}:`, err.message);
+                  console.error(`     Status: ${err.response?.status || 'N/A'}`);
+                  console.error(`     Error code: ${err.code || 'N/A'}`);
+                  
                   // ✅ SPEED OPTIMIZATION: Automatic backoff for rate limiting
                   if (
                     err.response?.status === 429 ||
@@ -7072,7 +7041,7 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
                     if (retries < maxRetries) {
                       const delay = baseDelay * Math.pow(2, retries);
                       console.warn(
-                        `Rate limit hit for ${topic.label}/${rowId}, retrying in ${delay}ms...`,
+                        `  🔄 Rate limit hit for ${topic.label}/${rowId}, retrying in ${delay}ms...`,
                       );
                       await new Promise((resolve) =>
                         setTimeout(resolve, delay),
@@ -7085,14 +7054,17 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
                   // Other errors or max retries reached
                   if (retries < maxRetries) {
                     const delay = baseDelay * Math.pow(2, retries);
+                    console.warn(`  🔄 Retrying in ${delay}ms...`);
                     await new Promise((resolve) => setTimeout(resolve, delay));
                     retries++;
                   } else {
+                    console.error(`  ❌ MAX RETRIES REACHED - Giving up on this row`);
                     throw err;
                   }
                 }
               }
 
+              console.error(`  ❌ FINAL FAILURE: Max retries reached without success`);
               return {
                 success: false,
                 topic,
@@ -7181,8 +7153,8 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
                 );
               } else {
                 failedCount++;
-                console.warn(
-                  `Failed to generate questions for topic ${result.topic.label}, row ${result.rowId}`,
+                console.error(
+                  `  ❌ FAILED: Topic "${result.topic.label}", row ${result.rowId} - Error: ${result.error || 'Unknown'}`,
                 );
               }
 
@@ -7217,7 +7189,7 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
               }));
 
               console.error(
-                `Error generating questions for topic ${taskData.topic.label}, row ${taskData.rowId}:`,
+                `  ❌ EXCEPTION: Topic "${taskData.topic.label}", row ${taskData.rowId}:`,
                 err,
               );
               return {
@@ -7232,9 +7204,14 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
       };
 
       // Process tasks in batches with concurrency limit
+      console.log(`\n🔄 Processing ${allTasks.length} tasks in batches of ${CONCURRENCY_LIMIT}...`);
       for (let i = 0; i < allTasks.length; i += CONCURRENCY_LIMIT) {
         const batch = allTasks.slice(i, i + CONCURRENCY_LIMIT);
+        const batchNumber = Math.floor(i / CONCURRENCY_LIMIT) + 1;
+        const totalBatches = Math.ceil(allTasks.length / CONCURRENCY_LIMIT);
+        console.log(`\n📦 Batch ${batchNumber}/${totalBatches} - Processing ${batch.length} tasks...`);
         await processBatch(batch);
+        console.log(`✅ Batch ${batchNumber}/${totalBatches} completed - Success: ${completedCount}, Failed: ${failedCount}`);
       }
 
       // Save draft after generation with updated statuses
@@ -7308,10 +7285,32 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
       }
 
       // Hide skeleton and move to Review Generated Questions station
+      const endTime = Date.now();
+      const totalTime = ((endTime - startTime) / 1000).toFixed(2);
+      
+      console.log(`\n🏁 ========== QUESTION GENERATION COMPLETE ==========`);
+      console.log(`⏱️  Total time: ${totalTime} seconds`);
+      console.log(`✅ Successfully generated: ${completedCount}/${totalTasks} rows`);
+      console.log(`❌ Failed: ${failedCount}/${totalTasks} rows`);
+      console.log(`📊 Success rate: ${((completedCount / totalTasks) * 100).toFixed(1)}%`);
+      
+      if (failedCount > 0) {
+        console.warn(`\n⚠️  WARNING: ${failedCount} question rows failed to generate`);
+        console.warn(`   You may need to regenerate these manually or try again`);
+      }
+      
+      console.log(`\n🎯 Navigating to Station 4.5 (Review Generated Questions)`);
+      console.log(`====================================================\n`);
+      
       setShowGenerationSkeleton(false);
       setCurrentStation(4.5);
     } catch (err: any) {
-      console.error("Error generating questions:", err);
+      console.error("\n❌ ========== GENERATION ERROR ==========");
+      console.error("Error details:", err);
+      console.error("Error message:", err.message);
+      console.error("Error response:", err.response?.data);
+      console.error("=========================================\n");
+      
       setError(
         err.response?.data?.message ||
           err.message ||
@@ -7320,6 +7319,7 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
       setShowGenerationSkeleton(false);
     } finally {
       setGeneratingAllQuestions(false);
+      console.log("🔚 Question generation process ended\n");
     }
   };
 
@@ -10889,17 +10889,81 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
                 </div>
                 <p className="create-new-hint" style={{ marginBottom: "1.5rem" }}>Be specific for better AI-generated questions.</p>
 
-                {/* Get AI Skills – secondary action */}
+                {/* Manual Skills Input */}
                 <div style={{ marginBottom: "1.5rem" }}>
-                  <button
-                    type="button"
-                    className="create-new-btn-secondary"
-                    onClick={handleGenerateTopicsUnified}
-                    disabled={loading || !jobDesignation.trim()}
-                  >
-                    <Sparkles size={16} /> {loading ? "Generating…" : "Get AI Skills"}
-                  </button>
+                  <label className="create-new-label" style={{ display: "block", marginBottom: "0.5rem", fontSize: "0.875rem", fontWeight: "500", color: "#374151" }}>
+                    Skills (Optional)
+                    <span style={{ fontSize: "0.875rem", fontWeight: "normal", color: "#6B7280", marginLeft: "0.5rem" }}>
+                      - Press Enter to add
+                    </span>
+                  </label>
+                  <input
+                    type="text"
+                    className="create-new-input"
+                    value={manualSkillInput}
+                    onChange={(e) => setManualSkillInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        const skills = manualSkillInput.split(',').map(s => s.trim()).filter(s => s.length > 0);
+                        if (skills.length > 0) {
+                          setSelectedSkills(prev => [...new Set([...prev, ...skills])]);
+                          setManualSkillInput('');
+                        }
+                      }
+                    }}
+                    placeholder="Type a skill and press Enter (e.g. Java, React, Docker)"
+                  />
+                  <p className="create-new-hint" style={{ marginTop: "0.5rem", marginBottom: "0" }}>Add specific skills to include in the assessment.</p>
                 </div>
+
+                {/* Selected Skills Display */}
+                {selectedSkills.length > 0 && (
+                  <div style={{ marginBottom: "1.5rem" }}>
+                    <label style={{ display: "block", marginBottom: "0.75rem", fontSize: "0.875rem", fontWeight: "600", color: "#1e293b" }}>
+                      Selected Skills
+                    </label>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem" }}>
+                      {selectedSkills.map((skill) => (
+                        <div
+                          key={skill}
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: "0.5rem",
+                            padding: "0.5rem 0.75rem",
+                            backgroundColor: "#ecfdf5",
+                            border: "1px solid #10b981",
+                            borderRadius: "2rem",
+                            fontSize: "0.875rem",
+                            fontWeight: "500",
+                            color: "#047857",
+                          }}
+                        >
+                          <span>{skill}</span>
+                          <button
+                            type="button"
+                            onClick={() => setSelectedSkills(prev => prev.filter(s => s !== skill))}
+                            style={{
+                              background: "none",
+                              border: "none",
+                              cursor: "pointer",
+                              padding: "0",
+                              display: "flex",
+                              alignItems: "center",
+                              color: "#047857",
+                              fontSize: "1rem",
+                              lineHeight: "1",
+                            }}
+                            aria-label={`Remove ${skill}`}
+                          >
+                            ×
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 {/* HIDDEN LOGIC PRESERVED: 
       The actual skills display (topicCards) is usually shown here. 
@@ -10920,7 +10984,7 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
                         color: "#1e293b",
                       }}
                     >
-                      Select Skills
+                      AI-Suggested Skills (Click to add)
                     </label>
                     <div
                       style={{
@@ -11810,48 +11874,6 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
                   <p className="create-new-hint" style={{ marginTop: "0.75rem", marginBottom: 0, display: "flex", alignItems: "center", gap: "0.5rem" }}><Info size={16} /> Candidates will see times in their local timezone.</p>
                 </div>
 
-                <div className="create-new-step-section" style={{ marginBottom: "1.5rem" }}>
-                  <h2 style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}><Mail size={20} color="#64748b" /> Candidate email preview</h2>
-                  <div
-                    style={{
-                      padding: "1.25rem",
-                      border: "1px dashed #e2e8f0",
-                      borderRadius: "0.75rem",
-                      color: "#475569",
-                      lineHeight: 1.6,
-                      backgroundColor: "#f8fafc",
-                      fontSize: "0.9375rem",
-                    }}
-                  >
-                    You have been invited to take the{" "}
-                    <strong style={{ color: "#334155" }}>
-                      {jobDesignation
-                        ? `${jobDesignation} Assessment`
-                        : "Full Stack Developer Assessment"}
-                    </strong>
-                    .<br />
-                    Available from:{" "}
-                    <strong style={{ color: "#334155" }}>
-                      {startTime
-                        ? new Date(startTime).toLocaleString("en-IN", {
-                            dateStyle: "medium",
-                            timeStyle: "short",
-                          }) + " IST"
-                        : "Feb 17, 2026, 9:00 AM IST"}
-                    </strong>
-                    <br />
-                    Duration: <strong style={{ color: "#334155" }}>{duration} minutes</strong>
-                    <br />
-                    <br />
-                    <span
-                      className="create-new-btn-primary"
-                      style={{ maxWidth: "none", display: "inline-flex", padding: "0.5rem 1rem", fontSize: "0.875rem" }}
-                    >
-                      Start Assessment
-                    </span>
-                  </div>
-                </div>
-
                 <div style={{ display: "flex", gap: "1rem", flexWrap: "wrap" }}>
                   <button type="button" className="create-new-btn-secondary" onClick={() => setCurrentStation(4)}>Back</button>
                   <button type="button" className="create-new-btn-primary" onClick={() => {
@@ -11910,8 +11932,13 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
                 <label style={{ display: "block", marginBottom: "0.5rem" }}>Email</label>
                 <input type="email" value={candidateEmail} onChange={(e) => setCandidateEmail(e.target.value)} placeholder="john.doe@example.com" className="create-new-input" />
               </div>
-              <button type="button" className="create-new-btn-secondary" onClick={handleAddCandidate} style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "0.5rem" }}>
-                <Plus size={18} /> Add another candidate
+              <button 
+                type="button" 
+                className="create-new-btn-primary" 
+                onClick={handleAddCandidate} 
+                style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "0.5rem" }}
+              >
+                <Plus size={18} /> Add Candidate
               </button>
             </div>
           </div>
@@ -11945,9 +11972,28 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
           )}
         </div>
 
-        <button type="button" className="create-new-btn-primary" onClick={handleStartCrafting} style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: "0.5rem" }}>
+        <button 
+          type="button" 
+          className="create-new-btn-primary" 
+          onClick={handleStartCrafting} 
+          disabled={candidates.length === 0}
+          style={{ 
+            width: "100%", 
+            display: "flex", 
+            alignItems: "center", 
+            justifyContent: "center", 
+            gap: "0.5rem",
+            opacity: candidates.length === 0 ? 0.5 : 1,
+            cursor: candidates.length === 0 ? "not-allowed" : "pointer"
+          }}
+        >
           Review Assessment <ChevronRight size={24} />
         </button>
+        {candidates.length === 0 && (
+          <p style={{ color: "#ef4444", fontSize: "0.875rem", marginTop: "0.5rem", textAlign: "center" }}>
+            Please add at least one candidate before reviewing
+          </p>
+        )}
       </>
     )}
 
@@ -12009,9 +12055,14 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
         ? assessmentUrl 
         : "Generating secure link...";
 
-                  function normalizeDateTime(startTime: string): any {
-                    throw new Error("Function not implemented.");
-                  }
+    // Normalize datetime strings to ISO format with timezone
+    const normalizeDateTime = (dt: string): string => {
+        if (!dt) return dt;
+        if (dt.match(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/)) {
+            return dt + ':00+05:30';
+        }
+        return dt;
+    };
 
     return (
         <div style={{ paddingBottom: '5rem' }}>
@@ -12160,46 +12211,67 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
     </div>
 )}
 
-
-
-            {/* AI Warning Box */}
-            <div style={{ padding: "1.5rem", backgroundColor: "#fffbeb", border: "1px solid #fcd34d", borderRadius: "1.25rem", color: "#1E5A3B", marginBottom: "2.5rem" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginBottom: "1rem" }}>
-                    <Sparkles size={20} color="#b45309" />
-                    <strong style={{ fontSize: "1.15rem" }}>AI will generate:</strong>
-                </div>
-                <ul style={{ listStyle: "none", padding: 0, margin: 0, fontWeight: 600, display: "grid", gap: "0.6rem" }}>
-                    <li>• {totalQuestionsCount} questions across {topicsV2.length} topics configured</li>
-                    <li>• Estimated time: ~{formatTime(calculatedMinutes)}</li>
-                    <li>• Questions will be generated based on your configuration</li>
-                </ul>
-            </div>
-
             {/* Navigation Buttons */}
-            <div style={{ display: "flex", gap: "1.5rem", justifyContent: 'center' }}>
-                <button onClick={() => setShowFinalReview(false)} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: "1rem 2rem", border: "1.5px solid #E2E8F0", borderRadius: "1rem", backgroundColor: "#ffffff", color: "#1E5A3B", fontWeight: 800 }}>
+            <div style={{ display: "flex", gap: "1.5rem", justifyContent: 'center', marginTop: "2rem" }}>
+                <button 
+                    onClick={() => setShowFinalReview(false)} 
+                    style={{ 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        gap: '8px', 
+                        padding: "1rem 2rem", 
+                        border: "1.5px solid #E2E8F0", 
+                        borderRadius: "1rem", 
+                        backgroundColor: "#ffffff", 
+                        color: "#64748b", 
+                        fontWeight: 600,
+                        cursor: "pointer"
+                    }}
+                >
                     <ArrowLeft size={20} /> Back to Edit
                 </button>
                 <button 
                     onClick={async () => {
                         setLoading(true);
-                        if (assessmentId) {
-                            await updateScheduleAndCandidatesMutation.mutateAsync({ 
-                                assessmentId, 
-                                examMode, 
-                                duration: calculatedMinutes, 
-                                startTime: startTime ? normalizeDateTime(startTime) : undefined, 
-                                endTime: endTime ? normalizeDateTime(endTime) : undefined, 
-                                candidates: accessMode === "private" ? candidates : [], 
-                                complete: true, 
-                                accessMode 
-                            });
-                            router.push("/dashboard?refresh=" + Date.now());
+                        try {
+                            if (assessmentId) {
+                                await updateScheduleAndCandidatesMutation.mutateAsync({ 
+                                    assessmentId, 
+                                    examMode, 
+                                    duration: calculatedMinutes, 
+                                    startTime: startTime ? normalizeDateTime(startTime) : undefined, 
+                                    endTime: endTime ? normalizeDateTime(endTime) : undefined, 
+                                    candidates: accessMode === "private" ? candidates : [], 
+                                    complete: true, 
+                                    accessMode 
+                                });
+                                // Redirect to assessments dashboard
+                                router.push("/assessments");
+                            }
+                        } catch (error) {
+                            console.error("Error finalizing assessment:", error);
+                            setError("Failed to finalize assessment. Please try again.");
+                        } finally {
+                            setLoading(false);
                         }
                     }}
-                    style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: "1rem 2.5rem", backgroundColor: "#10b981", color: "#ffffff", fontSize: "1.1rem", fontWeight: 900, border: "none", borderRadius: "1rem", cursor: "pointer", boxShadow: "0 10px 20px rgba(16, 185, 129, 0.2)" }}
+                    disabled={loading}
+                    style={{ 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        gap: '8px', 
+                        padding: "1rem 2.5rem", 
+                        backgroundColor: loading ? "#94a3b8" : "#10b981", 
+                        color: "#ffffff", 
+                        fontSize: "1.1rem", 
+                        fontWeight: 900, 
+                        border: "none", 
+                        borderRadius: "1rem", 
+                        cursor: loading ? "not-allowed" : "pointer", 
+                        boxShadow: "0 10px 20px rgba(16, 185, 129, 0.2)" 
+                    }}
                 >
-                    Continue to Candidates <ChevronRight size={20} />
+                    {loading ? "Finalizing..." : "Finish"} <CheckCircle2 size={20} />
                 </button>
             </div>
         </div>
