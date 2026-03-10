@@ -298,7 +298,7 @@ jobs:
             echo "🔍 Final verification before docker-compose up..."
             
             # Check containers one last time
-            final_containers=$(docker ps -a --filter "name=gisul-" --format "{{.Names}}" | grep -v "gisul-aiml-agent-service" || true)
+            final_containers=$(docker ps -a --filter "name=gisul-" --format "{{.Names}}" | grep -v '^$' || true)
             if [ -n "$final_containers" ]; then
               echo "❌ CRITICAL: Containers still exist after cleanup!"
               echo "$final_containers"
@@ -311,11 +311,29 @@ jobs:
               sleep 2
             fi
             
-            # Check network one last time
+            # Check network one last time and remove if exists
             if docker network inspect aptor_microservices-network >/dev/null 2>&1; then
-              echo "⚠️  Network still exists, force removing..."
+              echo "⚠️  Network still exists, disconnecting all containers and removing..."
+              # Get all containers connected to this network
+              connected_containers=$(docker network inspect aptor_microservices-network --format '{{range .Containers}}{{.Name}} {{end}}' 2>/dev/null || echo "")
+              if [ -n "$connected_containers" ]; then
+                echo "Disconnecting containers: $connected_containers"
+                echo "$connected_containers" | tr ' ' '\n' | while read container; do
+                  if [ -n "$container" ]; then
+                    docker network disconnect -f aptor_microservices-network "$container" 2>/dev/null || true
+                  fi
+                done
+                sleep 1
+              fi
+              # Now remove the network
               docker network rm -f aptor_microservices-network 2>/dev/null || true
               sleep 1
+              # Verify it's gone
+              if docker network inspect aptor_microservices-network >/dev/null 2>&1; then
+                echo "❌ ERROR: Network still exists after forced removal!"
+                docker network prune -f 2>/dev/null || true
+                sleep 1
+              fi
             fi
             
             # Verify clean state - use more reliable method
