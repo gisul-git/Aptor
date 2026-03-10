@@ -1061,6 +1061,94 @@ async def oauth_login(
             await db.users.update_one({"_id": user["_id"]}, {"$set": updates})
             user = await db.users.find_one({"_id": user["_id"]})
 
+        # MFA CHECKS - Same as email_login
+        
+        # Check if user is super_admin - require MFA
+        if user.get("role") == "super_admin":
+            # Check if TOTP secret exists
+            if not user.get("totp_secret"):
+                logger.warning("Super admin %s does not have TOTP secret configured", email)
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="TOTP not configured. Please contact administrator.",
+                )
+            # Return require_mfa flag instead of logging in
+            return success_response(
+                "MFA required",
+                {
+                    "require_mfa": True,
+                    "email": email,
+                },
+            )
+        
+        # Check if org_admin needs to set up MFA (mandatory for org admins)
+        logger.info(f"🔍 [OAuth MFA Check] User: {email}, Role: {user.get('role')}, MFA Enabled: {user.get('mfaEnabled')}")
+        
+        if user.get("role") == "org_admin" and not user.get("mfaEnabled"):
+            logger.info(f"✅ [OAuth MFA Setup Required] User {email} (org_admin) needs to set up MFA")
+            
+            # Generate temporary token for MFA setup (valid for 15 minutes)
+            import jwt
+            
+            settings = get_settings()
+            expires_delta = timedelta(minutes=15)
+            expire = datetime.now(timezone.utc) + expires_delta
+            
+            # Create custom token with mfa_setup flag
+            to_encode = {
+                "sub": str(user["_id"]),
+                "email": email,
+                "role": user.get("role"),
+                "mfa_setup": True,  # Special flag for MFA setup
+                "exp": expire,
+                "iat": datetime.now(timezone.utc),
+            }
+            
+            mfa_setup_token = jwt.encode(to_encode, settings.jwt_secret, algorithm=settings.jwt_algorithm)
+            
+            response_data = {
+                "requireMFASetup": True,
+                "email": email,
+                "mfaSetupToken": mfa_setup_token,  # Temporary token for MFA setup
+            }
+            logger.info(f"📤 [OAuth Response] Returning requireMFASetup with temporary token")
+            
+            return success_response(
+                "MFA setup required for organization administrators",
+                response_data
+            )
+        
+        # Check if MFA is enabled for org_admin users
+        if user.get("role") == "org_admin" and user.get("mfaEnabled"):
+            logger.info("OAuth user %s requires MFA verification", email)
+            # Generate temporary token for MFA verification
+            import jwt
+            
+            settings = get_settings()
+            expires_delta = timedelta(minutes=10)
+            expire = datetime.now(timezone.utc) + expires_delta
+            
+            # Create custom token with temp flag
+            to_encode = {
+                "sub": str(user["_id"]),
+                "role": user.get("role"),
+                "temp": True,  # Temporary token for MFA verification
+                "exp": expire,
+                "iat": datetime.now(timezone.utc),
+            }
+            
+            temp_token = jwt.encode(to_encode, settings.jwt_secret, algorithm=settings.jwt_algorithm)
+            
+            return success_response(
+                "MFA verification required",
+                {
+                    "requireMFA": True,
+                    "tempToken": temp_token,
+                    "email": email,
+                },
+            )
+
+        # No MFA required - proceed with normal login
         return _build_login_success_response(user)
     except Exception as exc:
         logger.error("OAuth login error: %s", exc, exc_info=True)
