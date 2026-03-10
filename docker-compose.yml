@@ -24,6 +24,12 @@ services:
       - redis_data:/data
     networks:
       - microservices-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
 
   # Frontend
   frontend:
@@ -32,6 +38,7 @@ services:
       dockerfile: Dockerfile
       args:
         - NEXT_PUBLIC_AIML_AGENT_URL=${NEXT_PUBLIC_AIML_AGENT_URL}
+    image: ${DOCKER_REGISTRY:-ghcr.io}/${GITHUB_REPOSITORY:-local}/gisul-frontend:${IMAGE_TAG:-latest}
     container_name: gisul-frontend
     ports:
       - "3000:3000"
@@ -48,16 +55,24 @@ services:
       - AZURE_AD_CLIENT_SECRET=${AZURE_AD_CLIENT_SECRET}
       - AZURE_AD_TENANT_ID=${AZURE_AD_TENANT_ID:-common}
     depends_on:
-      - api-gateway
+      api-gateway:
+        condition: service_healthy
     networks:
       - microservices-network
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
 
   # API Gateway
   api-gateway:
     build:
       context: ./services/api-gateway
       dockerfile: Dockerfile
+    image: ${DOCKER_REGISTRY:-ghcr.io}/${GITHUB_REPOSITORY:-local}/gisul-api-gateway:${IMAGE_TAG:-latest}
     container_name: gisul-api-gateway
     ports:
       - "80:80"
@@ -74,16 +89,24 @@ services:
       - CORS_ORIGINS=${CORS_ORIGINS:-https://qa.aaptor.com,http://frontend:3000,http://localhost:3000,http://localhost:3001}
       - EMPLOYEE_SERVICE_URL=${EMPLOYEE_SERVICE_URL:-http://employee-service:4005}
     depends_on:
-      - auth-service
+      auth-service:
+        condition: service_healthy
     networks:
       - microservices-network
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:80/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
 
   # Auth Service
   auth-service:
     build:
       context: ./services/auth-service
       dockerfile: Dockerfile
+    image: ${DOCKER_REGISTRY:-ghcr.io}/${GITHUB_REPOSITORY:-local}/gisul-auth-service:${IMAGE_TAG:-latest}
     container_name: gisul-auth-service
     ports:
       - "4000:4000"
@@ -110,16 +133,24 @@ services:
       - AZURE_COMM_CONNECTION_STRING=${AZURE_COMM_CONNECTION_STRING}
       - AZURE_COMM_SENDER_ADDRESS=${AZURE_COMM_SENDER_ADDRESS}
     depends_on:
-      - redis
+      redis:
+        condition: service_healthy
     networks:
       - microservices-network
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
 
   # AI Assessment Service
   ai-assessment-service:
     build:
       context: ./services/ai-assessment-service
       dockerfile: Dockerfile
+    image: ${DOCKER_REGISTRY:-ghcr.io}/${GITHUB_REPOSITORY:-local}/gisul-ai-assessment-service:${IMAGE_TAG:-latest}
     container_name: gisul-ai-assessment-service
     ports:
       - "3001:3001"
@@ -141,17 +172,24 @@ services:
       - SENDGRID_FROM_EMAIL=${SENDGRID_FROM_EMAIL}
       - DEBUG=${DEBUG:-false}
     depends_on:
-      - redis
+      redis:
+        condition: service_healthy
     networks:
       - microservices-network
     restart: unless-stopped
-    # Note: Service routes need to be copied from backend/app/api/v1/assessments/*
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3001/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
 
   # Custom MCQ Service
   custom-mcq-service:
     build:
       context: ./services/custom-mcq-service
       dockerfile: Dockerfile
+    image: ${DOCKER_REGISTRY:-ghcr.io}/${GITHUB_REPOSITORY:-local}/gisul-custom-mcq-service:${IMAGE_TAG:-latest}
     container_name: gisul-custom-mcq-service
     ports:
       - "3002:3002"
@@ -166,16 +204,24 @@ services:
       - SENDGRID_FROM_EMAIL=${SENDGRID_FROM_EMAIL}
       - SENDGRID_FROM_NAME=${SENDGRID_FROM_NAME:-AI Assessment Platform}
     depends_on:
-      - redis
+      redis:
+        condition: service_healthy
     networks:
       - microservices-network
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3002/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
 
   # AIML Service
   aiml-service:
     build:
       context: ./services/aiml-service
       dockerfile: Dockerfile
+    image: ${DOCKER_REGISTRY:-ghcr.io}/${GITHUB_REPOSITORY:-local}/gisul-aiml-service:${IMAGE_TAG:-latest}
     container_name: gisul-aiml-service
     ports:
       - "3003:3003"
@@ -195,17 +241,26 @@ services:
       - AZURE_COMM_CONNECTION_STRING=${AZURE_COMM_CONNECTION_STRING}
       - AZURE_COMM_SENDER_ADDRESS=${AZURE_COMM_SENDER_ADDRESS}
     depends_on:
-      - redis
-      - aiml-agent-service
+      redis:
+        condition: service_healthy
+      aiml-agent-service:
+        condition: service_healthy
     networks:
       - microservices-network
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3003/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
 
   # AIML Agent Service
   aiml-agent-service:
     build:
       context: ./services/aiml-agent-service
       dockerfile: Dockerfile
+    image: ${DOCKER_REGISTRY:-ghcr.io}/${GITHUB_REPOSITORY:-local}/gisul-aiml-agent-service:${IMAGE_TAG:-latest}
     container_name: gisul-aiml-agent-service
     ports:
       - "8889:8889"
@@ -216,12 +271,19 @@ services:
     networks:
       - microservices-network
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8889/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
 
   # DSA Service
   dsa-service:
     build:
       context: ./services/dsa-service
       dockerfile: Dockerfile
+    image: ${DOCKER_REGISTRY:-ghcr.io}/${GITHUB_REPOSITORY:-local}/gisul-dsa-service:${IMAGE_TAG:-latest}
     container_name: gisul-dsa-service
     ports:
       - "3004:3004"
@@ -244,16 +306,24 @@ services:
       - SENDGRID_FROM_EMAIL=${SENDGRID_FROM_EMAIL}
       - SENDGRID_FROM_NAME=${SENDGRID_FROM_NAME:-AI Assessment Platform}
     depends_on:
-      - redis
+      redis:
+        condition: service_healthy
     networks:
       - microservices-network
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3004/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
 
   # Proctoring Service
   proctoring-service:
     build:
       context: ./services/proctoring-service
       dockerfile: Dockerfile
+    image: ${DOCKER_REGISTRY:-ghcr.io}/${GITHUB_REPOSITORY:-local}/gisul-proctoring-service:${IMAGE_TAG:-latest}
     container_name: gisul-proctoring-service
     ports:
       - "3005:3005"
@@ -267,16 +337,24 @@ services:
       - AWS_REGION=${AWS_REGION}
       - AWS_S3_BUCKET=${AWS_S3_BUCKET}
     depends_on:
-      - redis
+      redis:
+        condition: service_healthy
     networks:
       - microservices-network
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3005/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
 
   # Super Admin Service
   super-admin-service:
     build:
       context: ./services/super-admin-service
       dockerfile: Dockerfile
+    image: ${DOCKER_REGISTRY:-ghcr.io}/${GITHUB_REPOSITORY:-local}/gisul-super-admin-service:${IMAGE_TAG:-latest}
     container_name: gisul-super-admin-service
     ports:
       - "3006:3006"
@@ -292,16 +370,24 @@ services:
       - CORS_ORIGINS=${CORS_ORIGINS:-https://qa.aaptor.com,http://localhost:3000,http://frontend:3000}
       - DEBUG=${DEBUG:-false}
     depends_on:
-      - redis
+      redis:
+        condition: service_healthy
     networks:
       - microservices-network
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3006/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
 
   # Employee Service
   employee-service:
     build:
       context: ./services/employee-service
       dockerfile: Dockerfile
+    image: ${DOCKER_REGISTRY:-ghcr.io}/${GITHUB_REPOSITORY:-local}/gisul-employee-service:${IMAGE_TAG:-latest}
     container_name: gisul-employee-service
     ports:
       - "4005:4005"
@@ -326,16 +412,24 @@ services:
       - AZURE_COMM_SENDER_ADDRESS=${AZURE_COMM_SENDER_ADDRESS}
       - DEBUG=${DEBUG:-false}
     depends_on:
-      - redis
+      redis:
+        condition: service_healthy
     networks:
       - microservices-network
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4005/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
 
   # Demo Service
   demo-service:
     build:
       context: ./services/demo-service
       dockerfile: Dockerfile
+    image: ${DOCKER_REGISTRY:-ghcr.io}/${GITHUB_REPOSITORY:-local}/gisul-demo-service:${IMAGE_TAG:-latest}
     container_name: gisul-demo-service
     ports:
       - "3008:3008"
@@ -352,10 +446,17 @@ services:
       - RATE_LIMIT_WINDOW_MS=${RATE_LIMIT_WINDOW_MS:-900000}
       - RATE_LIMIT_MAX_REQUESTS=${RATE_LIMIT_MAX_REQUESTS:-5}
     depends_on:
-      - redis
+      redis:
+        condition: service_healthy
     networks:
       - microservices-network
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3008/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
 
 volumes:
   # mongo_data:  # Not needed when using Atlas
