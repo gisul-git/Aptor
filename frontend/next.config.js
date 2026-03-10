@@ -52,6 +52,7 @@ const nextConfig = {
                      : 'http://localhost:80');  // API Gateway on port 80 for local development
     
     const devopsUrl = process.env.DEVOPS_SERVICE_URL;
+    const cloudUrl = process.env.CLOUD_SERVICE_URL || process.env.DEVOPS_SERVICE_URL;
 
     const rewrites = [
       ...(devopsUrl
@@ -59,6 +60,14 @@ const nextConfig = {
             {
               source: '/api/v1/devops/:path*',
               destination: `${devopsUrl}/api/v1/devops/:path*`,
+            },
+          ]
+        : []),
+      ...(cloudUrl
+        ? [
+            {
+              source: '/api/v1/cloud/:path*',
+              destination: `${cloudUrl}/api/v1/cloud/:path*`,
             },
           ]
         : []),

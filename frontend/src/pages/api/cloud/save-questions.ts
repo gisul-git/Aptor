@@ -2,11 +2,20 @@ import type { NextApiRequest, NextApiResponse } from "next";
 
 type QuestionLike = Record<string, any>;
 
+function normalizeDifficulty(value: unknown): "easy" | "medium" | "hard" {
+  const lowered = String(value ?? "").trim().toLowerCase();
+  if (lowered === "beginner") return "easy";
+  if (lowered === "intermediate") return "medium";
+  if (lowered === "advanced") return "hard";
+  if (lowered === "easy" || lowered === "medium" || lowered === "hard") return lowered;
+  return "medium";
+}
+
 function normalizePayload(q: QuestionLike, idx: number) {
   return {
     title: String(q.title || `Cloud Question ${idx + 1}`),
     description: String(q.description || "Cloud task"),
-    difficulty: String(q.difficulty || "medium"),
+    difficulty: normalizeDifficulty(q.difficulty),
     kind: String(q.kind || "command"),
     points: Number(q.points || 10),
     instructions: Array.isArray(q.instructions) ? q.instructions : [],

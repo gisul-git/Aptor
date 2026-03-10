@@ -147,6 +147,11 @@
   background: var(--dv-accent-soft);
 }
 
+.questionBtnLocked {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 .questionBody {
   padding: 14px 16px 16px;
   overflow: auto;

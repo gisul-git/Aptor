@@ -76,8 +76,6 @@ interface TerminalLine {
 }
 
 interface SubmissionSummary {
-  totalScore: number;
-  maxScore: number;
   passedCount: number;
   totalCount: number;
 }
@@ -322,6 +320,15 @@ function safeRegexCheck(pattern: string, text: string): boolean {
   }
 }
 
+function formatCountdown(totalSeconds: number): string {
+  const safe = Math.max(0, totalSeconds);
+  const mins = Math.floor(safe / 60)
+    .toString()
+    .padStart(2, "0");
+  const secs = (safe % 60).toString().padStart(2, "0");
+  return `${mins}:${secs}`;
+}
+
 function evaluateSubmission(
   question: RuntimeQuestion,
   submittedContent: string,
@@ -555,6 +562,7 @@ export default function CloudTakePage() {
   const [isRunning, setIsRunning] = useState(false);
   const [submission, setSubmission] = useState<SubmissionSummary | null>(null);
   const submitted = !!submission;
+  const [remainingSeconds, setRemainingSeconds] = useState(0);
 
   const getViolationMessage = (eventType: string): string => {
     const messages: Record<string, string> = {
@@ -719,8 +727,39 @@ export default function CloudTakePage() {
   const currentQuestion = questions[currentIndex];
   const currentValue = currentQuestion ? editorByQuestion[currentQuestion.id] || "" : "";
   const terminalLines = currentQuestion ? terminalByQuestion[currentQuestion.id] || [] : [];
-  const scoreNow = questions.reduce((total, question) => total + (attempts[question.id]?.score || 0), 0);
-  const scoreMax = questions.reduce((total, question) => total + question.points, 0);
+  const timerMode = String((testData as any)?.timer_mode || "GLOBAL").toUpperCase();
+  const isPerQuestionTimer = timerMode === "PER_QUESTION";
+  const questionTimingMap = useMemo(() => {
+    const map = new Map<string, number>();
+    const rows = Array.isArray((testData as any)?.question_timings) ? (testData as any).question_timings : [];
+    rows.forEach((row: any) => {
+      const qid = String(row?.question_id || "").trim();
+      const minutes = Number(row?.duration_minutes || 0);
+      if (qid && Number.isFinite(minutes) && minutes > 0) {
+        map.set(qid, Math.floor(minutes * 60));
+      }
+    });
+    return map;
+  }, [testData]);
+  const defaultDurationSeconds = Math.max(60, Number((testData as any)?.duration_minutes || 10) * 60);
+
+  useEffect(() => {
+    if (!currentQuestion || submitted) return;
+    if (!isPerQuestionTimer) {
+      setRemainingSeconds(defaultDurationSeconds);
+      return;
+    }
+    const perQuestion = questionTimingMap.get(currentQuestion.id);
+    setRemainingSeconds(perQuestion ?? defaultDurationSeconds);
+  }, [currentQuestion, submitted, isPerQuestionTimer, questionTimingMap, defaultDurationSeconds]);
+
+  useEffect(() => {
+    if (!currentQuestion || submitted || remainingSeconds <= 0) return;
+    const timer = window.setInterval(() => {
+      setRemainingSeconds((prev) => Math.max(0, prev - 1));
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [currentQuestion, submitted, remainingSeconds]);
 
   const runQuestion = async () => {
     if (!currentQuestion || isRunning) return;
@@ -844,18 +883,24 @@ export default function CloudTakePage() {
       (acc, question) => {
         const attempt = attempts[question.id];
         const passed = !!attempt?.passed;
-        const score = passed ? question.points : 0;
         return {
-          totalScore: acc.totalScore + score,
-          maxScore: acc.maxScore + question.points,
           passedCount: acc.passedCount + (passed ? 1 : 0),
           totalCount: acc.totalCount + 1,
         };
       },
-      { totalScore: 0, maxScore: 0, passedCount: 0, totalCount: 0 }
+      { passedCount: 0, totalCount: 0 }
     );
 
     setSubmission(summary);
+  };
+
+  const finishCurrentQuestion = () => {
+    if (!currentQuestion) return;
+    if (currentIndex < questions.length - 1) {
+      setCurrentIndex((prev) => prev + 1);
+      return;
+    }
+    submitAssessment();
   };
 
   if (isLoading || (isGeneratedRoute && isGeneratedLoading && aiGeneratedQuestions.length === 0)) {
@@ -917,13 +962,7 @@ export default function CloudTakePage() {
               <span className={styles.chip}>Scenario {currentIndex + 1}/{questions.length}</span>
               <span className={styles.chip}>Mode {currentQuestion.kind}</span>
               <span className={styles.chip}>Difficulty {currentQuestion.difficulty}</span>
-            </div>
-          </div>
-
-          <div className={styles.scoreBox}>
-            <div className={styles.scoreText}>Current Score</div>
-            <div className={styles.scoreValue}>
-              {scoreNow} / {scoreMax}
+              <span className={styles.chip}>Time {formatCountdown(remainingSeconds)}</span>
             </div>
           </div>
         </motion.header>
@@ -960,9 +999,13 @@ export default function CloudTakePage() {
                   type="button"
                   className={cx(
                     styles.questionBtn,
-                    idx === currentIndex && styles.questionBtnActive
+                    idx === currentIndex && styles.questionBtnActive,
+                    idx !== currentIndex && styles.questionBtnLocked
                   )}
-                  onClick={() => setCurrentIndex(idx)}
+                  onClick={() => {
+                    if (idx === currentIndex) setCurrentIndex(idx);
+                  }}
+                  disabled={idx !== currentIndex}
                 >
                   S{idx + 1}
                 </button>
@@ -1000,7 +1043,6 @@ export default function CloudTakePage() {
             <div className={styles.editorBar}>
               <div className={styles.editorMeta}>
                 <span>{currentQuestion.kind === "command" ? "Shell Input" : "Workspace File"}</span>
-                <span>Points {currentQuestion.points}</span>
                 <span>Runs {currentAttempt?.runCount || 0}</span>
               </div>
 
@@ -1009,17 +1051,17 @@ export default function CloudTakePage() {
                   type="button"
                   className={cx(styles.btn, styles.btnRun)}
                   onClick={runQuestion}
-                  disabled={isRunning}
+                  disabled={isRunning || remainingSeconds <= 0}
                 >
-                  {isRunning ? "Running..." : "Run"}
+                  {remainingSeconds <= 0 ? "Time Up" : isRunning ? "Running..." : "Run"}
                 </button>
                 <button
                   type="button"
                   className={cx(styles.btn, styles.btnSubmit)}
-                  onClick={submitAssessment}
+                  onClick={finishCurrentQuestion}
                   disabled={isRunning}
                 >
-                  Submit
+                  {currentIndex < questions.length - 1 ? "Finish Question" : "Finish Test"}
                 </button>
               </div>
             </div>
@@ -1087,18 +1129,16 @@ export default function CloudTakePage() {
           <AnimatePresence mode="wait">
             {submission && (
               <motion.div
-                key={`${submission.totalScore}-${submission.maxScore}`}
+                key={`${submission.passedCount}-${submission.totalCount}`}
                 className={styles.submitResult}
                 initial={{ opacity: 0, y: 6 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: 6 }}
                 transition={{ duration: 0.2 }}
               >
-                <span>
-                  Final Score: {submission.totalScore} / {submission.maxScore}
-                </span>
+                <span>Submission completed.</span>
                 <span className={submission.passedCount === submission.totalCount ? styles.statusPass : styles.statusFail}>
-                  Passed {submission.passedCount} of {submission.totalCount}
+                  Validated {submission.passedCount} of {submission.totalCount}
                 </span>
               </motion.div>
             )}

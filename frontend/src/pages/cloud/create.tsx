@@ -26,7 +26,10 @@ interface CloudQuestion {
 }
 
 function normalizeDifficulty(value: string): Difficulty {
-  const lowered = String(value || "").toLowerCase();
+  const lowered = String(value || "").trim().toLowerCase();
+  if (lowered === "beginner") return "easy";
+  if (lowered === "intermediate") return "medium";
+  if (lowered === "advanced") return "hard";
   if (lowered === "easy" || lowered === "medium" || lowered === "hard") return lowered;
   return "medium";
 }
@@ -63,7 +66,7 @@ export default function CloudCreateAssessmentPage() {
   useEffect(() => {
     const loadPublishedQuestions = async () => {
       try {
-        const response = await apiClient.get("/api/v1/cloud/questions/published");
+        const response = await apiClient.get("/api/cloud/questions?published=1");
         const rows = response?.data?.data || [];
         if (!Array.isArray(rows)) {
           setQuestions([]);

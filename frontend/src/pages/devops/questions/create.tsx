@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/router";
 import { ArrowLeft, BookOpen, Bot, PenTool, Server, Sparkles } from "lucide-react";
 import { type DevopsDifficulty } from "@/lib/devops/ai-question-generator";
@@ -13,18 +13,21 @@ const SUGGESTED_TOPICS_BY_DIFFICULTY: Record<DevopsDifficulty, string[]> = {
     "Basic shell scripting",
     "Repository initialization and branching",
     "Simple CI pipeline structure",
+    "Basic container build configuration",
   ],
   intermediate: [
     "CI/CD pipelines",
     "Container build optimization",
     "Deployment manifest organization",
     "Infrastructure configuration validation",
+    "Release versioning workflow",
   ],
   advanced: [
     "Incident recovery automation",
     "Multi-environment release governance",
     "Policy-as-code validation gates",
     "Scalable platform reliability workflows",
+    "Platform security compliance automation",
   ],
 };
 
@@ -55,6 +58,9 @@ export default function DevOpsQuestionCreatePage() {
   const [difficulty, setDifficulty] = useState<DevopsDifficulty>("intermediate");
   const [topicsRequired, setTopicsRequired] = useState("CI/CD pipelines");
   const [jobRole, setJobRole] = useState("DevOps Engineer");
+  const [suggestedTopics, setSuggestedTopics] = useState<string[]>(
+    SUGGESTED_TOPICS_BY_DIFFICULTY.intermediate
+  );
 
   const [manualTitle, setManualTitle] = useState("Create a resilient CI/CD workflow");
   const [manualDescription, setManualDescription] = useState(
@@ -65,7 +71,35 @@ export default function DevOpsQuestionCreatePage() {
 
   const effectiveYearsOfExperience = `${experienceYears} ${experienceYears === 1 ? "year" : "years"}`;
   const effectiveTopicsRequired = topicsRequired.trim() || "CI/CD pipelines";
-  const suggestedTopics = SUGGESTED_TOPICS_BY_DIFFICULTY[difficulty];
+
+  useEffect(() => {
+    let mounted = true;
+
+    const loadSuggestedTopics = async () => {
+      try {
+        const response = await fetch(
+          `/api/devops/suggested-topics?yearsOfExperience=${experienceYears}&difficulty=${encodeURIComponent(difficulty)}`
+        );
+        const json = await response.json().catch(() => ({}));
+        const topics = json?.data?.topics;
+        if (mounted && Array.isArray(topics) && topics.length > 0) {
+          setSuggestedTopics(topics.slice(0, 5));
+          return;
+        }
+      } catch (_err) {
+        // Fall back to local defaults below.
+      }
+
+      if (mounted) {
+        setSuggestedTopics(SUGGESTED_TOPICS_BY_DIFFICULTY[difficulty]);
+      }
+    };
+
+    loadSuggestedTopics();
+    return () => {
+      mounted = false;
+    };
+  }, [experienceYears, difficulty]);
 
   const handleGenerateAI = async () => {
     setLoading(true);
@@ -300,7 +334,7 @@ export default function DevOpsQuestionCreatePage() {
             </label>
             <div style={{ marginTop: "0.8rem" }}>
               <div style={{ fontSize: "0.8rem", color: "#6B7280", fontWeight: 600, marginBottom: "0.45rem" }}>
-                Suggested topics for {difficulty}
+                Suggested topics for {experienceYears} year{experienceYears === 1 ? "" : "s"} ({difficulty})
               </div>
               <div style={{ display: "flex", flexWrap: "wrap", gap: "0.45rem" }}>
                 {suggestedTopics.map((topic) => (

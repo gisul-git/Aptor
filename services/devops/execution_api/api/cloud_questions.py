@@ -14,6 +14,19 @@ from utils.mongo import serialize_document
 
 router = APIRouter(prefix="/api/v1/cloud/questions", tags=["cloud-questions"])
 
+_QUESTION_DIFFICULTY_ALIASES: Dict[str, str] = {
+    "beginner": "easy",
+    "easy": "easy",
+    "intermediate": "medium",
+    "medium": "medium",
+    "advanced": "hard",
+    "hard": "hard",
+}
+
+
+def _normalize_question_difficulty(value: Any) -> str:
+    return _QUESTION_DIFFICULTY_ALIASES.get(str(value or "").strip().lower(), "medium")
+
 
 def _normalize_doc(doc: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
     serialized = serialize_document(doc)
@@ -74,9 +87,7 @@ def _sanitize_generated_questions(raw: Any, count: int) -> List[Dict[str, Any]]:
         kind = str(q.get("kind") or "command").lower()
         if kind not in {"command", "terraform", "lint"}:
             kind = "command"
-        difficulty = str(q.get("difficulty") or "medium").lower()
-        if difficulty not in {"easy", "medium", "hard"}:
-            difficulty = "medium"
+        difficulty = _normalize_question_difficulty(q.get("difficulty"))
         starter = q.get("starterCode")
         if not isinstance(starter, str) or not starter.strip():
             if kind == "terraform":
@@ -185,7 +196,7 @@ async def generate_ai_questions(payload: DevOpsAIGenerationRequest) -> Dict[str,
         raise HTTPException(status_code=500, detail="Missing OPENAI_API_KEY in Cloud backend environment.")
     safe_count = 1
     system_prompt = """
-You generate DevOps hands-on assessment tasks designed for controlled sandbox execution environments.
+You generate AWS hands-on assessment tasks designed for controlled sandbox environments using LocalStack.
  
 Output MUST be strictly valid JSON.
 
@@ -199,172 +210,28 @@ Hard Rules:
 
 - Do not include commands.
 
-- Do not include code snippets.
+- Do not include solution code.
 
-- Do not include configuration examples.
-
-- Do not include command syntax.
+- Do not include configuration solutions.
 
 - Only generate task descriptions and step instructions.
  
-All tasks must simulate realistic Cloud engineering work and must be compatible with sandbox execution and static validation systems.
+All tasks must simulate realistic cloud engineering work and must be compatible with LocalStack-based sandbox validation systems.
 """.strip()
  
  
     user_prompt = f"""
-Act as a Senior DevOps Engineer working at a FAANG company (Google, Amazon, Meta, Apple, or Netflix).
+Act as a Senior Cloud Engineer working at a FAANG company (Google, Amazon, Meta, Apple, or Netflix).
  
-Your task is to generate DevOps assessment questions that simulate realistic internal production engineering assignments.
+Generate AWS assessment questions strictly based on the examiner's requirements.
  
-Sandbox Capabilities
-
-The sandbox environment supports the following validation capabilities:
-
-- Linux commands can be executed
-
-- Shell scripts can be executed
-
-- Docker build configuration files can be statically validated using Hadolint
-
-- Container orchestration manifests can be statically validated
-
-- CI workflow configuration files can be statically validated
-
-- Infrastructure configuration files can be validated using validation tools
-
-Sandbox Limitations
-
-- Container runtimes cannot be executed
-
-- Cluster environments cannot be executed
-
-- CI workflows cannot be executed
-
-- Internet access is not available
-
-- No files or repositories exist initially
-
-- The machine starts completely empty
-
-- Execution environments do not persist state after the assessment session
-
-Execution Environment
-
-- Linux-based sandbox environment
-
-- Candidates must create all files and directories manually
-
-- Tasks must start from an empty filesystem
-
-- Tasks must rely only on local file creation and configuration
-
-- Tasks must not depend on external downloads
-
-Technology Scope
-
-The engineer may use DevOps tools available in the environment, but the generated question must NOT explicitly mention any technology names.
-
-Technology Neutral Rule
-
-Generated tasks must NOT explicitly mention technologies such as Docker, Kubernetes, Terraform, GitHub Actions, or similar tools.
-
-Tasks must describe the engineering objective rather than the specific tool used to achieve it.
-
-The engineer taking the assessment should determine which tools or commands are required to complete the task.
-
-DevOps Scope Rules
-
-Tasks must test DevOps skills only.
-
-Generated tasks MUST NOT require:
-
-- writing application code
-
-- creating HTML pages
-
-- writing backend services
-
-- implementing APIs
-
-- programming application logic
-
-- building full software applications
-
-Placeholder File Rule
-
-If a task requires any application or project artifact, the engineer must create a dummy placeholder file.
-
-The placeholder file must remain empty and must not contain any content.
-
-These files exist only to simulate application artifacts required for DevOps operations.
-
-Tasks must not require writing code inside these files.
-
-Allowed Artifact Types
-
-Tasks may require the engineer to create:
-
-- directories and filesystem structures
-
-- Git repositories
-
-- container build configuration files
-
-- orchestration configuration manifests
-
-- CI workflow configuration files
-
-- infrastructure configuration files
-
-- shell scripts
-
-- empty placeholder files
-
-Validation Compatibility Rules
-
-Tasks must produce artifacts that can be statically validated in the sandbox.
-
-Container tasks
-
-- must focus only on container build configuration files
-
-- runtime execution is not allowed
-
-Orchestration tasks
-
-- must only involve creating manifest files
-
-- deployment to clusters is not allowed
-
-CI workflow tasks
-
-- must only involve creating workflow configuration files
-
-- workflows will not be executed
-
-- if CI workflows are required, the engineer must initialize a repository first
-
-Infrastructure configuration tasks
-
-- must be compatible with configuration validation tools
-
-- infrastructure must not be provisioned
-
-Linux tasks
-
-- may involve filesystem operations
-
-- may involve shell scripting
-
-- must operate entirely within the sandbox environment
+Examiner Inputs
  
-Candidate Profile
-
 Role: {payload.jobRole}
 
-Experience: {payload.yearsOfExperience}
+Years Of Experience: {payload.yearsOfExperience}
 
-Difficulty Level: {payload.difficulty}
+Difficulty: {payload.difficulty}
 
 Focus Area: {payload.focusArea}
 
@@ -376,25 +243,237 @@ Assessment Title: {payload.title}
 
 Assessment Description: {payload.description}
  
-Task Design Requirements
+Question Generation Priority Rule
  
-Each generated question must:
+The generated questions MUST follow these constraints in priority order:
  
-- represent a realistic internal Cloud engineering assignment
+1. topicsRequired
 
-- be framed as a production incident, infrastructure recovery task, or internal platform engineering request
+   Only AWS services listed in topicsRequired may be used.
+ 
+2. difficulty
 
-- start from a completely empty environment
+   The structural complexity must match the difficulty level.
+ 
+3. yearsOfExperience
 
-- require manual terminal-based DevOps operations
+   The configuration depth and scenario realism must match the candidate's experience.
+ 
+These parameters are strict constraints and must NOT be ignored.
+ 
+Cloud Execution Environment
+ 
+All AWS operations run locally using LocalStack.
+ 
+Environment characteristics:
+ 
+- Linux terminal
 
-- avoid reliance on internet downloads
+- AWS CLI available
 
-- produce deterministic artifacts that can be statically validated
+- LocalStack running locally
+
+- Internet access disabled
+
+- No real AWS account
+ 
+STRICT Topic Control Rule
+ 
+Questions MUST ONLY involve AWS services listed in:
+ 
+{payload.topicsRequired}
+ 
+Example allowed services:
+ 
+S3  
+
+Lambda  
+
+DynamoDB  
+
+SQS  
+
+SNS  
+
+IAM  
+
+CloudFormation  
+ 
+Do NOT introduce services not listed.
+ 
+Strict Difficulty Structure Rule
+ 
+Easy:
+
+- Only ONE AWS service
+
+- Maximum 4 task steps
+
+- Single resource creation
+
+- Minimal configuration
+ 
+Medium:
+
+- One or two AWS services
+
+- 4-6 task steps
+
+- Resource configuration or interaction
+ 
+Hard:
+
+- Two or more AWS services
+
+- 6-10 task steps
+
+- Multi-service architecture or integration
+ 
+Service Count Rule
+ 
+Easy questions must use exactly ONE AWS service.
+ 
+Medium questions may use ONE or TWO AWS services.
+ 
+Hard questions may use TWO or more AWS services.
+ 
+Step Count Rule
+ 
+Easy questions -> 3-4 steps  
+
+Medium questions -> 4-6 steps  
+
+Hard questions -> 6-10 steps  
+ 
+Experience Alignment Rule
+ 
+0-1 years
+
+- Simple resource creation tasks
+ 
+2-3 years
+
+- Resource configuration tasks
+ 
+3-5 years
+
+- Multi-step configuration tasks
+ 
+5-7 years
+
+- IAM configuration, event integrations
+ 
+7+ years
+
+- Multi-service architecture and infrastructure design
+ 
+Experience-Difficulty Consistency Rule
+ 
+0-2 years -> easy  
+
+3-4 years -> easy or medium  
+
+5+ years -> medium or hard  
+ 
+Platform Validation Model
+ 
+Candidate submissions are validated by analyzing:
+ 
+- AWS CLI commands executed
+
+- AWS resources created in LocalStack
+
+- configuration files written
+
+- infrastructure definitions
+ 
+Validation Target Rule
+ 
+Every generated question MUST produce deterministic AWS resources.
+ 
+Examples:
+ 
+S3
+
+- bucket named logs-bucket
+ 
+Lambda
+
+- function named process-data
+ 
+DynamoDB
+
+- table named users-table
+ 
+SQS
+
+- queue named job-queue
+ 
+IAM
+
+- role or policy file
+ 
+CloudFormation
+
+- template.yaml
+ 
+These resources must be verifiable through LocalStack.
+ 
+Configuration Definition Rule
+ 
+Some tasks may require configuration files such as:
+ 
+CloudFormation templates  
+
+IAM policy JSON files  
+
+Lambda handler files  
+ 
+The question must describe what configuration should be implemented but must NOT include the solution code.
+ 
+Placeholder File Rule
+ 
+If application code is required (for example Lambda), instruct the user to create a placeholder file.
+ 
+Rules:
+ 
+- File must be empty or minimal
+
+- Filename must be explicitly specified
+ 
+Example:
+ 
+Create a placeholder file named `lambda_handler.py`.
+ 
+Task Step Clarity Rules
+ 
+Each task step MUST:
+ 
+- Specify exact AWS resource names
+
+- Specify file names when required
+
+- Specify the AWS service used
+
+- Be deterministic for automated validation
+ 
+Examples:
+ 
+Create an S3 bucket named `logs-storage`.
+ 
+Create a DynamoDB table named `users-table`.
+ 
+Create an SQS queue named `job-queue`.
+ 
+Create a Lambda function named `process-data`.
+ 
+Create an IAM policy file named `policy.json`.
+ 
+Create a CloudFormation template file named `template.yaml`.
  
 Generate EXACTLY {safe_count} questions.
  
-Return STRICTLY the following JSON format:
+Return STRICTLY this JSON format:
  
 {{
 
@@ -406,9 +485,12 @@ Return STRICTLY the following JSON format:
 
       "company": "",
 
+      "difficulty": "",
+
       "context": "",
 
-      "task_steps": [],
+      "task_steps": []
+
     }}
 
   ]
@@ -419,12 +501,12 @@ Field Rules
  
 title
 
-Short DevOps task title.
+Short AWS cloud engineering task title.
  
 company
 
-Must be one of the following:
- 
+Must be one of:
+
 Google
 
 Amazon
@@ -435,29 +517,25 @@ Apple
 
 Netflix
  
+difficulty
+
+Must exactly match:
+
+{payload.difficulty}
+ 
 context
 
-A single paragraph describing:
-
-- the production situation
-
-- environment conditions
-
-- system constraints
-
-- the final objective the engineer must achieve
+Single paragraph describing the cloud engineering scenario.
  
 task_steps
 
-Ordered list of actions the engineer must perform.
+Ordered list of AWS resource setup steps including service names and resource names.
  
 Important Output Rules
-
+ 
 - No commands
 
-- No code snippets
-
-- No configuration examples
+- No solution code
 
 - No explanations
 

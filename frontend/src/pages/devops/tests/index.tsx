@@ -69,34 +69,35 @@ export default function DevOpsTestsListPage() {
   const [addingCandidate, setAddingCandidate] = useState(false);
   const [generatedLink, setGeneratedLink] = useState<{ testId: string; name: string; email: string } | null>(null);
 
+  const mapTest = (t: any): DevOpsTestCard => ({
+    id: String(t.id || t._id || ""),
+    title: t.title || "",
+    description: t.description || "",
+    duration_minutes: t.duration_minutes || t.duration || 60,
+    start_time: t.start_time || t.schedule?.startTime || "",
+    end_time: t.end_time || t.schedule?.endTime || "",
+    is_active: t.is_active !== undefined ? t.is_active : true,
+    is_published: t.is_published || false,
+    invited_users: t.invited_users || [],
+    question_ids: t.question_ids || t.questions?.map((q: any) => q.id || q) || [],
+    test_token: t.test_token || "",
+    pausedAt: t.pausedAt || null,
+    schedule: t.schedule || null,
+    examMode: t.examMode,
+    timer_mode: t.timer_mode,
+    question_timings: Array.isArray(t.question_timings) ? t.question_timings : [],
+    proctoringSettings: t.proctoringSettings || {},
+    created_at: t.created_at || t.createdAt,
+    updated_at: t.updated_at || t.updatedAt,
+  });
+
   useEffect(() => {
     const apiTests = Array.isArray(testsData) ? (testsData as any[]) : [];
-    const mapped: DevOpsTestCard[] = apiTests.map((t) => ({
-      id: String(t.id || t._id || ""),
-      title: t.title || "",
-      description: t.description || "",
-      duration_minutes: t.duration_minutes || t.duration || 60,
-      start_time: t.start_time || t.schedule?.startTime || "",
-      end_time: t.end_time || t.schedule?.endTime || "",
-      is_active: t.is_active !== undefined ? t.is_active : true,
-      is_published: t.is_published || false,
-      invited_users: t.invited_users || [],
-      question_ids: t.question_ids || t.questions?.map((q: any) => q.id || q) || [],
-      test_token: t.test_token || "",
-      pausedAt: t.pausedAt || null,
-      schedule: t.schedule || null,
-      examMode: t.examMode,
-      timer_mode: t.timer_mode,
-      question_timings: Array.isArray(t.question_timings) ? t.question_timings : [],
-      proctoringSettings: t.proctoringSettings || {},
-      created_at: t.created_at || t.createdAt,
-      updated_at: t.updated_at || t.updatedAt,
-    }));
+    const mapped: DevOpsTestCard[] = apiTests.map(mapTest);
     setTests(mapped);
   }, [testsData]);
 
   useEffect(() => {
-    if (tests.length > 0) return;
     let active = true;
     const fetchAllFallback = async () => {
       try {
@@ -104,39 +105,29 @@ export default function DevOpsTestsListPage() {
         const json = await response.json().catch(() => ({}));
         if (!response.ok) return;
         const rows = Array.isArray(json?.data) ? json.data : [];
-        const mapped: DevOpsTestCard[] = rows.map((t: any) => ({
-          id: String(t.id || t._id || ""),
-          title: t.title || "",
-          description: t.description || "",
-          duration_minutes: t.duration_minutes || t.duration || 60,
-          start_time: t.start_time || t.schedule?.startTime || "",
-          end_time: t.end_time || t.schedule?.endTime || "",
-          is_active: t.is_active !== undefined ? t.is_active : true,
-          is_published: t.is_published || false,
-          invited_users: t.invited_users || [],
-          question_ids: t.question_ids || t.questions?.map((q: any) => q.id || q) || [],
-          test_token: t.test_token || "",
-          pausedAt: t.pausedAt || null,
-          schedule: t.schedule || null,
-          examMode: t.examMode,
-          timer_mode: t.timer_mode,
-          question_timings: Array.isArray(t.question_timings) ? t.question_timings : [],
-          proctoringSettings: t.proctoringSettings || {},
-          created_at: t.created_at || t.createdAt,
-          updated_at: t.updated_at || t.updatedAt,
-        }));
+        const mapped: DevOpsTestCard[] = rows.map(mapTest);
         if (active && mapped.length > 0) {
-          setTests(mapped);
+          setTests((prev) => {
+            const byId = new Map<string, DevOpsTestCard>();
+            [...mapped, ...prev].forEach((item) => {
+              if (item.id) byId.set(String(item.id), item);
+            });
+            return Array.from(byId.values()).sort((a, b) => {
+              const ta = new Date(a.created_at || 0).getTime();
+              const tb = new Date(b.created_at || 0).getTime();
+              return tb - ta;
+            });
+          });
         }
       } catch {
-        // keep existing empty state if fallback also fails
+        // Keep existing list if fallback fails
       }
     };
     fetchAllFallback();
     return () => {
       active = false;
     };
-  }, [tests.length]);
+  }, []);
 
   useEffect(() => {
     const q = router.query.testId;
@@ -231,11 +222,20 @@ export default function DevOpsTestsListPage() {
     }
     setAddingCandidate(true);
     try {
-      const response = await apiClient.post(`/api/v1/devops/tests/${testId}/add-candidate`, {
-        name: candidateName.trim(),
-        email: candidateEmail.trim(),
+      const response = await fetch("/api/devops/add-candidate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          testId,
+          name: candidateName.trim(),
+          email: candidateEmail.trim(),
+        }),
       });
-      const data = response?.data?.data || {};
+      const json = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(json?.error || json?.detail || "Failed to add candidate");
+      }
+      const data = json?.data || {};
       setGeneratedLink({
         testId,
         name: data?.name || candidateName.trim(),
@@ -243,7 +243,7 @@ export default function DevOpsTestsListPage() {
       });
       await refetch();
     } catch (error: any) {
-      alert(error?.response?.data?.detail || "Failed to add candidate");
+      alert(error?.message || "Failed to add candidate");
     } finally {
       setAddingCandidate(false);
     }
@@ -486,6 +486,34 @@ export default function DevOpsTestsListPage() {
                       }}
                     >
                       <Server size={16} /> Open Test
+                    </button>
+
+                    <button
+                      onClick={() => {
+                        const target = test.test_token
+                          ? `/devops/tests/${test.id}/take?token=${encodeURIComponent(test.test_token)}`
+                          : `/devops/tests/${test.id}/take`;
+                        router.push(target);
+                      }}
+                      disabled={!test.is_published}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "0.375rem",
+                        width: "100%",
+                        justifyContent: "center",
+                        padding: "0.5rem 1rem",
+                        fontSize: "0.875rem",
+                        fontWeight: 600,
+                        color: "#374151",
+                        backgroundColor: "#ffffff",
+                        border: "1px solid #D1D5DB",
+                        borderRadius: "0.5rem",
+                        cursor: !test.is_published ? "not-allowed" : "pointer",
+                        opacity: !test.is_published ? 0.5 : 1,
+                      }}
+                    >
+                      <Eye size={16} /> View
                     </button>
 
                     <button

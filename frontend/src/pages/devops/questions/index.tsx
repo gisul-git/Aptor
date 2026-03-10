@@ -248,6 +248,9 @@ function PreviewModal({ isOpen, question, onClose }: PreviewModalProps) {
 
 function normalizeDifficulty(value: string): Difficulty {
   const lowered = String(value || "").toLowerCase();
+  if (lowered === "beginner") return "easy";
+  if (lowered === "intermediate") return "medium";
+  if (lowered === "advanced") return "hard";
   if (lowered === "easy" || lowered === "medium" || lowered === "hard") return lowered;
   return "medium";
 }
