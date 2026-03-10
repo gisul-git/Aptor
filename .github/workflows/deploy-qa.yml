@@ -253,9 +253,26 @@ jobs:
               sleep 1
             fi
             
+            # Remove existing images to prevent conflicts
+            echo "🧹 Removing existing images to prevent conflicts..."
+            # Remove images by exact tag to avoid conflicts
+            for service in frontend api-gateway auth-service ai-assessment-service custom-mcq-service \
+                          aiml-service aiml-agent-service dsa-service proctoring-service \
+                          super-admin-service employee-service demo-service; do
+              image_name="ghcr.io/local/gisul-${service}:latest"
+              if docker images --format "{{.Repository}}:{{.Tag}}" | grep -q "^${image_name}$"; then
+                echo "Removing image: ${image_name}"
+                docker rmi -f "${image_name}" 2>/dev/null || true
+              fi
+            done
+            
+            # Also remove any dangling images
+            echo "🧹 Removing dangling images..."
+            docker image prune -f 2>/dev/null || true
+            
             # Build and start services
             echo "🔨 Building services..."
-            docker compose build --no-cache
+            docker compose build --no-cache --force-rm
             
             # One more cleanup check before starting - use reliable method
             echo "🔍 Pre-start cleanup check..."
