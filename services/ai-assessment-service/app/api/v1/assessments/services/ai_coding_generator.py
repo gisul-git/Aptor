@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from typing import Any, Dict, List, Optional
 
 from fastapi import HTTPException
@@ -39,10 +40,17 @@ from fastapi import HTTPException
 from .....utils.service_clients import get_dsa_client
 
 _dsa_client = get_dsa_client()
-DSA_AVAILABLE = True
+
+# ⭐ CRITICAL FIX: Check if DSA service should be disabled (service is down)
+DISABLE_DSA_SERVICE = os.getenv("DISABLE_DSA_SERVICE", "false").lower() == "true"
+DSA_AVAILABLE = not DISABLE_DSA_SERVICE
 
 async def dsa_generate_question(*args, **kwargs):
     """Call DSA service via HTTP to generate questions."""
+    if DISABLE_DSA_SERVICE:
+        logger.info("DSA service is disabled via DISABLE_DSA_SERVICE env var, skipping")
+        return None
+    
     return await _dsa_client.generate_question(
         difficulty=kwargs.get("difficulty", "medium"),
         topic=kwargs.get("topic"),
@@ -73,6 +81,7 @@ from .judge0_utils import (
     _get_starter_code_template,
     _validate_and_fix_function_signature,
 )
+from .....utils.circuit_breaker import get_openai_circuit_breaker
 
 logger = logging.getLogger(__name__)
 
@@ -141,8 +150,9 @@ async def _generate_coding_questions(
             detail="Coding questions require Judge0 support. Set can_use_judge0=True."
         )
     
-    # Try DSA module first if available
-    if DSA_AVAILABLE and dsa_generate_question is not None:
+    # ⭐ CRITICAL FIX: Skip DSA service if disabled (service is down)
+    # Try DSA module first if available AND not disabled
+    if DSA_AVAILABLE and dsa_generate_question is not None and not DISABLE_DSA_SERVICE:
         try:
             logger.info("Using DSA module for coding question generation")
             questions = []
@@ -199,6 +209,8 @@ async def _generate_coding_questions(
                 logger.warning("DSA module returned no questions, falling back to basic generation")
         except Exception as exc:
             logger.warning(f"DSA generator failed: {exc}. Falling back to basic generation")
+    elif DISABLE_DSA_SERVICE:
+        logger.info("DSA service disabled, using OpenAI directly for coding questions")
     
     # Fallback: Basic coding question generation using OpenAI (matching DSA format)
     logger.info(f"Using basic Coding question generation (OpenAI) with DSA format - generating {count} question(s)")
@@ -368,7 +380,10 @@ CRITICAL REQUIREMENTS:
 Return ONLY valid JSON, no markdown."""
         
         client = _get_openai_client()
-        try:
+        circuit_breaker = get_openai_circuit_breaker()
+        
+        # ⭐ CRITICAL FIX: Wrap OpenAI call with circuit breaker
+        async def make_openai_call():
             # ✅ SPEED OPTIMIZATION: Use gpt-4o (newer, faster) with fallback to gpt-4-turbo-preview
             try:
                 response = await client.chat.completions.create(
@@ -377,6 +392,7 @@ Return ONLY valid JSON, no markdown."""
                     temperature=0.7,
                     response_format={"type": "json_object"}
                 )
+                return response
             except Exception as gpt4o_error:
                 logger.warning(f"gpt-4o failed, falling back to gpt-4-turbo-preview: {gpt4o_error}")
                 response = await client.chat.completions.create(
@@ -385,8 +401,18 @@ Return ONLY valid JSON, no markdown."""
                     temperature=0.7,
                     response_format={"type": "json_object"}
                 )
+                return response
+        
+        try:
+            response = await circuit_breaker.call(make_openai_call)
         except Exception as exc:
-            logger.error(f"OpenAI API error in _generate_coding_questions: {exc}", exc_info=True)
+            logger.error(f"OpenAI API error in _generate_coding_questions (circuit breaker): {exc}", exc_info=True)
+            # Check if circuit is open
+            if "Circuit breaker is OPEN" in str(exc):
+                raise HTTPException(
+                    status_code=503,
+                    detail="Question generation service is temporarily unavailable. Please try again in a few minutes."
+                ) from exc
             raise HTTPException(status_code=500, detail="Failed to generate Coding questions") from exc
 
         # Parse response

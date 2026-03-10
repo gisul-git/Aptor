@@ -124,7 +124,31 @@ async def generate_questions_for_row_v2(
     Raises:
         HTTPException: If question type is unsupported or generation fails
     """
+    import time
+    start_time = time.time()
+    
+    logger.info("=" * 80)
+    logger.info("🎯 AI QUESTION GENERATION START")
+    logger.info(f"📝 Topic: {topic_label}")
+    logger.info(f"❓ Type: {question_type}")
+    logger.info(f"⚡ Difficulty: {difficulty}")
+    logger.info(f"🔢 Count: {questions_count}")
+    logger.info(f"💻 Language: {coding_language}")
+    logger.info(f"🎓 Experience Mode: {experience_mode}")
+    logger.info(f"👔 Job: {job_designation}")
+    logger.info(f"📊 Experience Range: {experience_min}-{experience_max} years")
+    logger.info(f"🏢 Company: {company_name}")
+    logger.info(f"🔧 Can use Judge0: {can_use_judge0}")
+    if additional_requirements:
+        logger.info(f"📋 Additional Requirements: {additional_requirements[:100]}...")
+    logger.info("=" * 80)
+    
     if not topic_label or not question_type or not difficulty or questions_count <= 0:
+        logger.error("❌ Invalid parameters provided")
+        logger.error(f"   - topic_label: {topic_label}")
+        logger.error(f"   - question_type: {question_type}")
+        logger.error(f"   - difficulty: {difficulty}")
+        logger.error(f"   - questions_count: {questions_count}")
         raise HTTPException(
             status_code=400,
             detail="Invalid parameters: topic_label, question_type, difficulty are required and questions_count must be > 0"
@@ -134,14 +158,18 @@ async def generate_questions_for_row_v2(
     question_type_upper = question_type.upper()
     experience_mode = experience_mode or "corporate"
     
+    logger.info(f"🔀 Routing to generator for type: {question_type_upper}")
+    
     # Route to appropriate generator based on question type
     if question_type_upper in ["CODING", "CODE"]:
         if not can_use_judge0:
+            logger.error("❌ Coding questions require Judge0 support")
             raise HTTPException(
                 status_code=400,
                 detail="Coding questions require Judge0 support (can_use_judge0 must be True)"
             )
-        return await _generate_coding_questions(
+        logger.info("🚀 Calling Coding question generator...")
+        result = await _generate_coding_questions(
             topic=topic_label,
             difficulty=difficulty,
             count=questions_count,
@@ -156,9 +184,15 @@ async def generate_questions_for_row_v2(
             assessment_requirements=assessment_requirements,
             previous_question=previous_question
         )
+        elapsed = time.time() - start_time
+        logger.info(f"✅ Coding questions generated successfully in {elapsed:.2f}s")
+        logger.info(f"   - Generated {len(result)} questions")
+        logger.info("=" * 80)
+        return result
     
     elif question_type_upper in ["SQL"]:
-        return await _generate_sql_questions(
+        logger.info("🚀 Calling SQL question generator...")
+        result = await _generate_sql_questions(
             topic=topic_label,
             difficulty=difficulty,
             count=questions_count,
@@ -170,9 +204,15 @@ async def generate_questions_for_row_v2(
             company_name=company_name,
             assessment_requirements=assessment_requirements
         )
+        elapsed = time.time() - start_time
+        logger.info(f"✅ SQL questions generated successfully in {elapsed:.2f}s")
+        logger.info(f"   - Generated {len(result)} questions")
+        logger.info("=" * 80)
+        return result
     
     elif question_type_upper in ["AIML", "AI/ML", "MACHINE LEARNING", "ML"]:
-        return await _generate_aiml_questions(
+        logger.info("🚀 Calling AIML question generator...")
+        result = await _generate_aiml_questions(
             topic=topic_label,
             difficulty=difficulty,
             count=questions_count,
@@ -184,9 +224,15 @@ async def generate_questions_for_row_v2(
             company_name=company_name,
             assessment_requirements=assessment_requirements
         )
+        elapsed = time.time() - start_time
+        logger.info(f"✅ AIML questions generated successfully in {elapsed:.2f}s")
+        logger.info(f"   - Generated {len(result)} questions")
+        logger.info("=" * 80)
+        return result
     
     elif question_type_upper in ["MCQ", "MULTIPLE CHOICE"]:
-        return await _generate_mcq_questions(
+        logger.info("🚀 Calling MCQ question generator...")
+        result = await _generate_mcq_questions(
             topic=topic_label,
             difficulty=difficulty,
             count=questions_count,
@@ -199,9 +245,15 @@ async def generate_questions_for_row_v2(
             assessment_requirements=assessment_requirements,
             previous_question=previous_question  # ⭐ NEW - Pass through for regeneration
         )
+        elapsed = time.time() - start_time
+        logger.info(f"✅ MCQ questions generated successfully in {elapsed:.2f}s")
+        logger.info(f"   - Generated {len(result)} questions")
+        logger.info("=" * 80)
+        return result
     
     elif question_type_upper in ["SUBJECTIVE", "DESCRIPTIVE"]:
-        return await _generate_subjective_questions(
+        logger.info("🚀 Calling Subjective question generator...")
+        result = await _generate_subjective_questions(
             topic=topic_label,
             difficulty=difficulty,
             count=questions_count,
@@ -214,9 +266,15 @@ async def generate_questions_for_row_v2(
             assessment_requirements=assessment_requirements,
             previous_question=previous_question  # ⭐ NEW - Pass through for regeneration
         )
+        elapsed = time.time() - start_time
+        logger.info(f"✅ Subjective questions generated successfully in {elapsed:.2f}s")
+        logger.info(f"   - Generated {len(result)} questions")
+        logger.info("=" * 80)
+        return result
     
     elif question_type_upper in ["PSEUDOCODE", "PSEUDO CODE", "PSEUDO-CODE"]:
-        return await _generate_pseudocode_questions(
+        logger.info("🚀 Calling PseudoCode question generator...")
+        result = await _generate_pseudocode_questions(
             topic=topic_label,
             difficulty=difficulty,
             count=questions_count,
@@ -229,8 +287,16 @@ async def generate_questions_for_row_v2(
             assessment_requirements=assessment_requirements,
             previous_question=previous_question  # ⭐ NEW - Pass through for regeneration
         )
+        elapsed = time.time() - start_time
+        logger.info(f"✅ PseudoCode questions generated successfully in {elapsed:.2f}s")
+        logger.info(f"   - Generated {len(result)} questions")
+        logger.info("=" * 80)
+        return result
     
     else:
+        logger.error(f"❌ Unsupported question type: {question_type}")
+        logger.error(f"   Supported types: MCQ, Subjective, PseudoCode, Coding, SQL, AIML")
+        logger.info("=" * 80)
         raise HTTPException(
             status_code=400,
             detail=f"Unsupported question type: {question_type}. Supported types: MCQ, Subjective, PseudoCode, Coding, SQL, AIML"
