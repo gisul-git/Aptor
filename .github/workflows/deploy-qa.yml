@@ -109,16 +109,8 @@ jobs:
               echo "✅ .env file verified"
             fi
             
-            # Preserve aiml-agent-service - ensure it stays running
-            echo "🔒 Preserving aiml-agent-service..."
-            AIML_AGENT_RUNNING=false
-            if docker compose ps aiml-agent-service 2>/dev/null | grep -q "Up"; then
-              AIML_AGENT_RUNNING=true
-              echo "✅ aiml-agent-service is running, will preserve it"
-            fi
-            
             # Stop and remove existing containers properly
-            echo "🛑 Stopping existing containers..."
+            echo "� Stopping existing containers..."
             docker compose down --timeout 10 --remove-orphans 2>/dev/null || true
             
             # Force remove any containers that compose knows about
@@ -133,7 +125,8 @@ jobs:
             for container in gisul-frontend gisul-api-gateway gisul-auth-service \
                             gisul-ai-assessment-service gisul-custom-mcq-service \
                             gisul-aiml-service gisul-dsa-service gisul-proctoring-service \
-                            gisul-super-admin-service gisul-employee-service gisul-demo-service gisul-redis; do
+                            gisul-super-admin-service gisul-employee-service gisul-demo-service \
+                            gisul-aiml-agent-service gisul-redis; do
               # Try multiple times to ensure removal
               for attempt in 1 2 3; do
                 if docker ps -a --format "{{.Names}}" | grep -q "^${container}$"; then
@@ -150,7 +143,7 @@ jobs:
             # Remove any orphaned containers with our naming pattern (catch-all, including Created state)
             echo "🧹 Removing any orphaned containers (including Created state)..."
             # Use a more reliable method - get all IDs first, then remove
-            container_ids=$(docker ps -a --filter "name=gisul-" --format "{{.ID}} {{.Names}}" | grep -v "gisul-aiml-agent-service" | awk '{print $1}' | tr '\n' ' ')
+            container_ids=$(docker ps -a --filter "name=gisul-" --format "{{.ID}} {{.Names}}" | awk '{print $1}' | tr '\n' ' ')
             if [ -n "$container_ids" ]; then
               echo "Found containers to remove: $container_ids"
               for id in $container_ids; do
@@ -164,7 +157,7 @@ jobs:
             
             # Specifically remove containers in "Created" state that might not be caught above
             echo "🧹 Removing containers in Created state..."
-            created_ids=$(docker ps -a --filter "status=created" --filter "name=gisul-" --format "{{.ID}} {{.Names}}" | grep -v "gisul-aiml-agent-service" | awk '{print $1}' | tr '\n' ' ')
+            created_ids=$(docker ps -a --filter "status=created" --filter "name=gisul-" --format "{{.ID}} {{.Names}}" | awk '{print $1}' | tr '\n' ' ')
             if [ -n "$created_ids" ]; then
               echo "Found Created containers to remove: $created_ids"
               for id in $created_ids; do
@@ -179,7 +172,7 @@ jobs:
             # Verify all containers are removed - more aggressive approach
             echo "✅ Verifying cleanup..."
             sleep 2
-            remaining_ids=$(docker ps -a --filter "name=gisul-" --format "{{.ID}} {{.Names}}" | grep -v "gisul-aiml-agent-service" | awk '{print $1}' | tr '\n' ' ')
+            remaining_ids=$(docker ps -a --filter "name=gisul-" --format "{{.ID}} {{.Names}}" | awk '{print $1}' | tr '\n' ' ')
             if [ -n "$remaining_ids" ]; then
               echo "⚠️  Warning: Some containers still exist, force removing by ID..."
               for id in $remaining_ids; do
@@ -215,7 +208,7 @@ jobs:
             
             # Final cleanup right before build - remove ALL containers by ID to be absolutely sure
             echo "🧹 Final aggressive cleanup before build..."
-            final_cleanup_ids=$(docker ps -a --filter "name=gisul-" --format "{{.ID}} {{.Names}}" | grep -v "gisul-aiml-agent-service" | awk '{print $1}' | tr '\n' ' ')
+            final_cleanup_ids=$(docker ps -a --filter "name=gisul-" --format "{{.ID}} {{.Names}}" | awk '{print $1}' | tr '\n' ' ')
             if [ -n "$final_cleanup_ids" ]; then
               echo "Found containers for final cleanup: $final_cleanup_ids"
               for id in $final_cleanup_ids; do
@@ -262,12 +255,13 @@ jobs:
             echo "🧹 Post-build cleanup - removing any containers created during build..."
             sleep 2
             
-            # Remove ALL gisul containers (except aiml-agent) using multiple methods
+            # Remove ALL gisul containers using multiple methods
             # Method 1: By exact name
             for container_name in gisul-frontend gisul-api-gateway gisul-auth-service \
                                  gisul-ai-assessment-service gisul-custom-mcq-service \
                                  gisul-aiml-service gisul-dsa-service gisul-proctoring-service \
-                                 gisul-super-admin-service gisul-employee-service gisul-demo-service gisul-redis; do
+                                 gisul-super-admin-service gisul-employee-service gisul-demo-service \
+                                 gisul-aiml-agent-service gisul-redis; do
               if docker ps -a --format "{{.Names}}" | grep -qE "^${container_name}$"; then
                 echo "Removing post-build container: $container_name"
                 docker rm -f "$container_name" 2>/dev/null || true
@@ -275,7 +269,7 @@ jobs:
             done
             
             # Method 2: By ID (catches any that name removal missed)
-            post_build_ids=$(docker ps -a --filter "name=gisul-" --format "{{.ID}} {{.Names}}" | grep -v "gisul-aiml-agent-service" | awk '{print $1}' | tr '\n' ' ')
+            post_build_ids=$(docker ps -a --filter "name=gisul-" --format "{{.ID}} {{.Names}}" | awk '{print $1}' | tr '\n' ' ')
             if [ -n "$post_build_ids" ]; then
               echo "Removing post-build containers by ID: $post_build_ids"
               for id in $post_build_ids; do
@@ -325,7 +319,7 @@ jobs:
             fi
             
             # Verify clean state - use more reliable method
-            remaining_containers=$(docker ps -a --filter "name=gisul-" --format "{{.Names}}" | grep -v "gisul-aiml-agent-service" | grep -v '^$' || true)
+            remaining_containers=$(docker ps -a --filter "name=gisul-" --format "{{.Names}}" | grep -v '^$' || true)
             
             if [ -z "$remaining_containers" ]; then
               echo "✅ Verified: Clean state achieved, no containers exist"
