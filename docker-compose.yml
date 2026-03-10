@@ -325,6 +325,8 @@ services:
       - JWT_RSA_PUBLIC_KEY_PATH=${JWT_RSA_PUBLIC_KEY_PATH}
       - CORS_ORIGINS=${CORS_ORIGINS:-https://qa.aaptor.com,http://localhost:3000,http://frontend:3000}
       - DEBUG=${DEBUG:-false}
+    depends_on:
+      - redis
     networks:
       - microservices-network
     restart: unless-stopped
@@ -357,6 +359,8 @@ services:
       - AZURE_COMM_CONNECTION_STRING=${AZURE_COMM_CONNECTION_STRING}
       - AZURE_COMM_SENDER_ADDRESS=${AZURE_COMM_SENDER_ADDRESS}
       - DEBUG=${DEBUG:-false}
+    depends_on:
+      - redis
     networks:
       - microservices-network
     restart: unless-stopped
@@ -381,6 +385,8 @@ services:
       - CORS_ORIGINS=${CORS_ORIGINS:-https://qa.aaptor.com,http://localhost:3000,http://frontend:3000}
       - RATE_LIMIT_WINDOW_MS=${RATE_LIMIT_WINDOW_MS:-900000}
       - RATE_LIMIT_MAX_REQUESTS=${RATE_LIMIT_MAX_REQUESTS:-5}
+    depends_on:
+      - redis
     networks:
       - microservices-network
     restart: unless-stopped
