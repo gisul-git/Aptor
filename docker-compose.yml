@@ -1,19 +1,6 @@
 version: '3.8'
 
 services:
-  # MongoDB - Commented out, using MongoDB Atlas instead
-  # mongo:
-  #   image: mongo:7.0
-  #   container_name: gisul-mongo
-  #   ports:
-  #     - "27017:27017"
-  #   volumes:
-  #     - mongo_data:/data/db
-  #   environment:
-  #     - MONGO_INITDB_DATABASE=ai_assessment
-  #   networks:
-  #     - microservices-network
-
   # Redis
   redis:
     image: redis:7-alpine
@@ -459,11 +446,9 @@ services:
       start_period: 30s
 
 volumes:
-  # mongo_data:  # Not needed when using Atlass
   redis_data:
   aiml_agent_uploads:
 
 networks:
   microservices-network:
     driver: bridge
-
