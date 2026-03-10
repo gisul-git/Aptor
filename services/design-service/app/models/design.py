@@ -49,9 +49,14 @@ class DesignQuestionModel(BaseModel):
     task_type: TaskType
     title: str
     description: str
-    task_requirements: Optional[str] = None  # New field for explicit task instructions
+    product_context: Optional[str] = None  # New field for business context (Advanced + Senior)
+    task_requirements: Optional[str] = None  # Explicit task instructions
+    design_challenges: Optional[str] = None  # New field for design tensions (Intermediate & Advanced)
+    edge_cases: Optional[str] = None  # New field for edge case handling (Advanced)
     constraints: List[str] = []
+    additional_requirements: Optional[str] = None  # New field for user-provided requirements
     deliverables: List[str] = []
+    design_decisions: Optional[str] = None  # New field for decision reasoning (Advanced + Senior)
     evaluation_criteria: List[str] = []
     time_limit_minutes: int = 60
     created_by: str

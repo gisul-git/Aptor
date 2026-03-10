@@ -37,7 +37,7 @@ class AIQuestionGenerator:
         experience_level: str,
         task_type: TaskType
     ) -> List[str]:
-        """Generate 5 relevant topic suggestions with MIXED task types based on role, difficulty, and experience"""
+        """Generate 10 relevant topic suggestions with MIXED task types based on role, difficulty, and experience"""
         
         # Map enums to readable strings
         role_mapping = {
@@ -59,45 +59,77 @@ class AIQuestionGenerator:
         
         prompt = f"""You are an AI system that generates professional design challenge topics for hiring assessments.
 
-Generate 5 DIVERSE design challenge topics based on:
+Generate 10 DIVERSE design challenge topics based on:
 
 Role: {role_str}
 Experience Level: {experience_level}
 Difficulty: {difficulty_str}
 
 CRITICAL RULES:
-• Generate topics across DIFFERENT types: mobile UI, dashboard design, onboarding flow, wireframes, design systems, landing pages, components, etc.
-• DO NOT generate all topics for the same type
+• Generate exactly 10 topics across DIFFERENT types: mobile UI, dashboard design, onboarding flow, wireframes, design systems, landing pages, components, etc.
+• DO NOT generate all topics for the same type - MAXIMUM 2 topics of the same type
 • Mix it up based on the role:
-  - UI Designer: mobile UI, dashboard, components, design systems, web interfaces
-  - UX Designer: onboarding flow, user research, wireframes, accessibility, user journeys
-  - Product Designer: product strategy, user flows, prototypes, dashboards, end-to-end experiences
-  - Visual Designer: visual design, illustrations, graphics, layouts, brand visuals
-  - Interaction Designer: micro-interactions, animations, prototypes, user flows, interactive elements
+  - UI Designer: mobile UI, dashboard, components, design systems, web interfaces, responsive layouts, admin panels
+  - UX Designer: onboarding flow, user research, wireframes, accessibility, user journeys, information architecture, usability testing
+  - Product Designer: product strategy, user flows, prototypes, dashboards, end-to-end experiences, feature design, MVP planning
+  - Visual Designer: visual design, illustrations, graphics, layouts, brand visuals, marketing materials, icon systems
+  - Interaction Designer: micro-interactions, animations, prototypes, user flows, interactive elements, gesture controls, transitions
 • Topics must be realistic hiring tasks used in professional design interviews
 • Keep topics short and specific (3-6 words maximum)
 • Focus on real product scenarios and business domains
 • Avoid generic names like "Modern Dashboard" or "Beautiful App"
-• Use specific domains: fintech, healthcare, e-commerce, fitness, education, travel, food delivery, project management, analytics, social media, etc.
-• Make topics appropriate for the difficulty level and experience
+• Use specific domains: fintech, healthcare, e-commerce, fitness, education, travel, food delivery, project management, analytics, social media, real estate, entertainment, productivity, communication, etc.
 
-EXAMPLES OF GOOD DIVERSE TOPICS BY ROLE:
+DIFFICULTY & EXPERIENCE LEVEL ADJUSTMENTS:
 
-UI Designer:
-["Fitness tracking dashboard", "Recipe discovery mobile app", "E-commerce checkout flow", "Design system components", "Banking app interface"]
+BEGINNER + FRESHER (0 years):
+• Simple, single-purpose apps
+• Basic features only
+• Clear, straightforward domains
+• Examples: "Weather app interface", "To-do list mobile app", "Recipe finder app", "Expense tracker dashboard"
 
-UX Designer:
-["Healthcare onboarding flow", "User research for fintech", "Accessibility audit wireframes", "Travel booking user journey", "Dashboard information architecture"]
+INTERMEDIATE + 1-3 YEARS:
+• Moderate complexity
+• Multi-feature apps
+• Standard business domains
+• Examples: "Fitness tracking dashboard", "E-commerce product page", "Restaurant booking app", "Team collaboration tool"
 
-Interaction Designer:
-["E-commerce micro-interactions", "Healthcare app animations", "Travel app user flows", "Fintech onboarding prototype", "Social media interaction design"]
+INTERMEDIATE + 3-5 YEARS:
+• More sophisticated features
+• Business-focused applications
+• Multi-user scenarios
+• Examples: "Project management dashboard", "Healthcare patient portal", "Financial analytics platform", "CRM sales pipeline"
+
+ADVANCED + 3-5 YEARS:
+• Complex workflows
+• Enterprise features
+• System thinking required
+• Examples: "Multi-tenant SaaS platform", "Supply chain management system", "Healthcare EMR interface", "Investment portfolio manager"
+
+ADVANCED + SENIOR (5+ years):
+• Strategic complexity
+• Multi-stakeholder scenarios
+• Enterprise-scale systems
+• Cross-platform considerations
+• Examples: "Enterprise design system", "Multi-platform analytics suite", "B2B SaaS admin console", "Healthcare compliance dashboard", "Fintech trading platform"
+
+EXAMPLES OF GOOD DIVERSE TOPICS BY ROLE & LEVEL:
+
+UI Designer (Intermediate, 1-3 years):
+["Fitness tracking dashboard", "Recipe discovery mobile app", "E-commerce checkout flow", "Design system components", "Banking app interface", "Travel booking platform", "Music streaming app", "Real estate listing page", "Event management dashboard", "Social media profile page"]
+
+UX Designer (Advanced, Senior):
+["Enterprise onboarding flow", "Multi-platform user research", "Accessibility compliance audit", "B2B user journey mapping", "Healthcare information architecture", "Fintech transaction flow", "E-learning course builder", "Supply chain workflow design", "Customer support portal UX", "Data migration user flow"]
+
+Product Designer (Advanced, 3-5 years):
+["Project collaboration platform", "Healthcare appointment system", "E-commerce recommendation engine", "Financial budgeting tool", "Learning management system", "Inventory management dashboard", "Customer feedback platform", "Marketing automation tool", "HR onboarding system", "Analytics reporting dashboard"]
 
 RESPONSE FORMAT:
-Return ONLY a valid JSON array of exactly 5 strings. No explanations, no markdown code blocks, no extra text.
+Return ONLY a valid JSON array of exactly 10 strings. No explanations, no markdown code blocks, no extra text.
 Just the raw JSON array like this:
-["Topic 1", "Topic 2", "Topic 3", "Topic 4", "Topic 5"]
+["Topic 1", "Topic 2", "Topic 3", "Topic 4", "Topic 5", "Topic 6", "Topic 7", "Topic 8", "Topic 9", "Topic 10"]
 
-Generate 5 DIVERSE topics for {role_str} now:"""
+Generate 10 DIVERSE topics for {role_str} ({difficulty_str}, {experience_level}) now:"""
         
         try:
             if self.provider == "openai":
@@ -158,22 +190,27 @@ Generate 5 DIVERSE topics for {role_str} now:"""
                 logger.error(f"AI returned unexpected type: {type(parsed)}")
                 raise ValueError(f"AI returned {type(parsed).__name__} instead of list or dict")
             
-            # If we got fewer or more than 5, log warning but continue
-            if len(topics) != 5:
-                logger.warning(f"AI returned {len(topics)} topics instead of 5")
-                # Trim or pad to 5
-                if len(topics) > 5:
-                    topics = topics[:5]
-                elif len(topics) < 5:
+            # If we got fewer or more than 10, log warning but continue
+            if len(topics) != 10:
+                logger.warning(f"AI returned {len(topics)} topics instead of 10")
+                # Trim or pad to 10
+                if len(topics) > 10:
+                    topics = topics[:10]
+                elif len(topics) < 10:
                     # Pad with fallback topics
                     fallback = [
                         "Fitness tracking dashboard",
                         "E-commerce analytics dashboard",
                         "Healthcare patient dashboard",
                         "Financial portfolio dashboard",
-                        "Project management dashboard"
+                        "Project management dashboard",
+                        "Recipe discovery mobile app",
+                        "Travel booking platform",
+                        "Social media feed design",
+                        "Music streaming interface",
+                        "Real estate listing page"
                     ]
-                    while len(topics) < 5:
+                    while len(topics) < 10:
                         topics.append(fallback[len(topics)])
             
             logger.info(f"Successfully parsed {len(topics)} topics: {topics}")
@@ -190,28 +227,48 @@ Generate 5 DIVERSE topics for {role_str} now:"""
                     "E-commerce analytics dashboard",
                     "Project management dashboard",
                     "Healthcare patient dashboard",
-                    "Financial portfolio dashboard"
+                    "Financial portfolio dashboard",
+                    "Marketing campaign dashboard",
+                    "Sales performance dashboard",
+                    "Customer support dashboard",
+                    "Inventory management dashboard",
+                    "HR analytics dashboard"
                 ],
                 TaskType.LANDING_PAGE: [
                     "SaaS product landing page",
                     "Fintech app landing page",
                     "Online course platform landing",
                     "Travel booking landing page",
-                    "Food delivery service landing"
+                    "Food delivery service landing",
+                    "Real estate agency landing",
+                    "Healthcare service landing",
+                    "E-commerce store landing",
+                    "Mobile app launch landing",
+                    "Event registration landing"
                 ],
                 TaskType.MOBILE_APP: [
                     "Meditation and wellness app",
                     "Expense tracking app",
                     "Recipe discovery app",
                     "Workout planning app",
-                    "Language learning app"
+                    "Language learning app",
+                    "Travel itinerary app",
+                    "Music streaming app",
+                    "Social networking app",
+                    "Food delivery app",
+                    "Task management app"
                 ],
                 TaskType.COMPONENT: [
                     "Data visualization chart library",
                     "Navigation menu system",
                     "Form input components",
                     "Card layout system",
-                    "Modal dialog system"
+                    "Modal dialog system",
+                    "Button component library",
+                    "Table component system",
+                    "Icon system design",
+                    "Notification components",
+                    "Search component system"
                 ]
             }
             
@@ -317,17 +374,24 @@ Generate 5 DIVERSE topics for {role_str} now:"""
 
 --------------------------------------------------
 
-ADDITIONAL REQUIREMENTS (CRITICAL)
+ADDITIONAL REQUIREMENTS (CRITICAL - HIGHEST PRIORITY)
 
 The user has provided specific additional requirements that MUST be incorporated into the design challenge:
 
 {open_requirements.strip()}
 
-IMPORTANT:
-• These requirements are MANDATORY and must be reflected in the challenge
-• Incorporate them into the description, constraints, or deliverables as appropriate
-• Do NOT ignore or override these requirements
+⚠️ MANDATORY ACTIONS:
+• These requirements are MANDATORY and MUST be added to the Constraints section
+• If the requirement is about colors, spacing, typography, or design style → ADD IT AS A CONSTRAINT
+• If the requirement is about features or functionality → ADD IT TO Task Requirements or Description
+• If the requirement is about deliverables → ADD IT TO Deliverables section
+• Do NOT ignore or skip these requirements under any circumstances
 • If they conflict with standard rules, prioritize these user requirements
+
+EXAMPLE:
+If user says "use pastel colors only" → Add constraint: "Color palette: Pastel colors only (soft, muted tones with low saturation)"
+If user says "must support dark mode" → Add constraint: "Dark mode support required with proper contrast ratios"
+If user says "include animations" → Add to Task Requirements or Deliverables
 
 --------------------------------------------------
 """
@@ -367,11 +431,33 @@ STRUCTURE RULE (CRITICAL - MANDATORY - ABSOLUTE REQUIREMENT)
 
 Every generated design challenge MUST include the following sections in this exact order:
 
+**FOR BEGINNER DIFFICULTY:**
 1. Description
-2. Task Requirements ⚠️ MANDATORY - DO NOT SKIP THIS SECTION
+2. Task Requirements ⚠️ MANDATORY
 3. Constraints
 4. Deliverables
 5. Evaluation Criteria
+
+**FOR INTERMEDIATE DIFFICULTY:**
+1. Description
+2. Task Requirements ⚠️ MANDATORY
+3. Design Challenges (trade-offs and tensions)
+4. Constraints
+5. Additional Design Requirements (if user provided)
+6. Deliverables
+7. Evaluation Criteria
+
+**FOR ADVANCED DIFFICULTY (ESPECIALLY SENIOR 5+ YEARS):**
+1. Description
+2. Product Context (business goals, current problems, metrics)
+3. Task Requirements ⚠️ MANDATORY
+4. Design Challenges (trade-offs and tensions)
+5. Edge Cases to Consider
+6. Constraints
+7. Additional Design Requirements (if user provided)
+8. Deliverables
+9. Design Decisions (reasoning requirements)
+10. Evaluation Criteria
 
 ⚠️ CRITICAL: The "Task Requirements" section is ABSOLUTELY MANDATORY for ALL difficulty levels.
 
@@ -470,6 +556,168 @@ The experience level significantly impacts question complexity and expectations:
 - "The product serves both B2B and B2C users with different needs. Design for both."
 - "The design must work across web, iOS, and Android with a single design system."
 - "Consider accessibility compliance (WCAG 2.1 AA) and document your approach."
+
+--------------------------------------------------
+
+NEW SECTION RULES FOR INTERMEDIATE & ADVANCED (CRITICAL)
+
+**1. PRODUCT CONTEXT SECTION (ADVANCED + SENIOR ONLY)**
+
+For Advanced difficulty with Senior experience (5+ years), include a "Product Context" section that provides:
+• Current business metrics (number of users, customers, scale)
+• Specific problems administrators/users face
+• Business goals (reduce time by X%, improve Y metric)
+• Company objectives
+
+Format:
+```
+Product Context
+
+The [product/platform] currently serves [number] [type of customers] with an average of [number] users per [organization/account].
+
+[User type] frequently report difficulty:
+• [specific problem 1]
+• [specific problem 2]
+• [specific problem 3]
+
+The company aims to [business goal 1] and [business goal 2].
+```
+
+Example:
+```
+Product Context
+
+The SaaS platform currently serves 5,000 enterprise customers with an average of 200 users per organization.
+
+Administrators frequently report difficulty:
+• identifying inactive users
+• detecting suspicious account behavior
+• managing permission conflicts across teams
+
+The company aims to reduce administrative task time by 30% and improve security monitoring across enterprise accounts.
+```
+
+**2. DESIGN CHALLENGES SECTION (INTERMEDIATE & ADVANCED)**
+
+For Intermediate and Advanced difficulty, include a "Design Challenges" section that introduces design tensions and trade-offs.
+
+This section must describe 3-4 realistic product or UX problems that require the candidate to make trade-offs.
+
+These challenges should test:
+• Complexity vs simplicity
+• Power vs usability
+• Speed vs clarity
+• Scalability vs performance
+
+Format:
+```
+Design Challenges
+
+The solution should address the following challenges:
+• [Challenge 1 - introduces a trade-off]
+• [Challenge 2 - introduces a tension]
+• [Challenge 3 - requires decision-making]
+• [Challenge 4 - tests system thinking]
+```
+
+Example for Advanced:
+```
+Design Challenges
+
+The solution should address the following challenges:
+• Enterprise customers may have thousands of users, making user discovery and filtering difficult
+• Administrators must quickly detect suspicious activity without being overwhelmed by excessive alerts
+• Permission systems can become complex with multiple roles and overlapping access levels
+• The interface must support both experienced administrators and occasional users
+```
+
+Example for Intermediate:
+```
+Design Challenges
+
+The solution should address the following challenges:
+• Users need quick access to key features without cluttering the interface
+• The dashboard must display multiple data types while maintaining clarity
+• Navigation must be intuitive for first-time users while efficient for power users
+```
+
+**3. EDGE CASES TO CONSIDER SECTION (ADVANCED ONLY)**
+
+For Advanced difficulty, include an "Edge Cases to Consider" section that tests system thinking.
+
+Format:
+```
+Edge Cases to Consider
+
+The design should handle at least two of the following situations:
+• [Edge case 1 - scale/volume]
+• [Edge case 2 - conflicts/errors]
+• [Edge case 3 - empty/loading states]
+• [Edge case 4 - extreme scenarios]
+```
+
+Example:
+```
+Edge Cases to Consider
+
+The design should handle at least two of the following situations:
+• Very large user lists (1000+ users)
+• Permission conflicts between roles
+• Suspicious activity alerts requiring immediate attention
+• Empty analytics states when no data exists
+```
+
+**4. DESIGN DECISIONS SECTION (ADVANCED + SENIOR ONLY)**
+
+For Advanced difficulty with Senior experience (5+ years), include a "Design Decisions" section in deliverables.
+
+This requires candidates to explain their reasoning.
+
+Format:
+```
+Design Decisions
+
+Provide a short explanation for the following:
+• [Decision point 1 - layout/prioritization]
+• [Decision point 2 - scalability]
+• [Decision point 3 - usability/cognitive load]
+```
+
+Example:
+```
+Design Decisions
+
+Provide a short explanation for the following:
+• How your layout prioritizes critical admin actions
+• How the interface scales for organizations with 1000+ users
+• How your design reduces cognitive load for administrators
+```
+
+**5. ADDITIONAL DESIGN REQUIREMENTS SECTION (IF USER PROVIDED)**
+
+If the user provided additional requirements in the "open_requirements" field, you MUST include them as a separate section called "Additional Design Requirements".
+
+⚠️ CRITICAL: Do NOT skip user-provided requirements. They are MANDATORY.
+
+Format:
+```
+Additional Design Requirements
+
+• [User requirement 1 - exactly as provided]
+• [User requirement 2 - exactly as provided]
+• [User requirement 3 - exactly as provided]
+```
+
+Example:
+```
+Additional Design Requirements
+
+• Use pastel color palette only
+• Ensure dark mode compatibility
+• Prioritize accessibility for visually impaired users
+```
+
+These requirements should also influence the constraints section (e.g., if user says "use pastel colors", add a color constraint).
 
 --------------------------------------------------
 
@@ -939,11 +1187,16 @@ The canvas width and grid system MUST match the interface type:
 • Canvas width: 375px mobile layout
 • Grid system: 8-column grid
 
-**Desktop Interface** (use when topic contains: "dashboard", "analytics", "admin panel", "landing page", "website"):
+**Desktop Interface** (use when topic contains: "dashboard", "analytics", "admin panel", "admin console", "console", "landing page", "website", "platform", "portal", "management system", "CRM", "ERP", "SaaS"):
 • Canvas width: 1440px desktop layout
 • Grid system: 12-column grid
 
-CRITICAL: If the topic says "mobile" anywhere, you MUST use 375px canvas width.
+CRITICAL RULES:
+• If the topic says "mobile" anywhere, you MUST use 375px canvas width
+• If the topic says "dashboard", "admin", "console", "analytics", "platform", "portal", you MUST use 1440px canvas width
+• B2B SaaS admin consoles are ALWAYS desktop (1440px)
+• Management systems, CRM, ERP are ALWAYS desktop (1440px)
+• When in doubt for enterprise/business tools → use desktop (1440px)
 
 --------------------------------------------------
 
@@ -984,6 +1237,10 @@ Constraints directly map to evaluation scoring:
 • Accessibility constraints → contrast scoring
 • Component constraints → component consistency scoring
 
+⚠️ ADDITIONAL REQUIREMENTS REMINDER:
+If the user provided additional requirements (colors, styles, features, etc.), you MUST add them to the constraints list.
+Do NOT skip user-provided requirements. They are MANDATORY.
+
 **REQUIRED LAYOUT & GRID CONSTRAINTS (all difficulty levels):**
 
 1. Canvas width: [375px mobile layout OR 1440px desktop layout based on platform detection]
@@ -1012,6 +1269,7 @@ Required 6 + Choose 2 from:
 • Icon size: 20px or 24px
 • Border radius: 8px or 16px
 • Component spacing: 8px, 16px, or 24px padding
+• [ADD USER-PROVIDED ADDITIONAL REQUIREMENTS HERE IF ANY]
 
 INTERMEDIATE (10 constraints total):
 Required 6 + Choose 4 from:
@@ -1023,6 +1281,7 @@ Required 6 + Choose 4 from:
   Primary content must be visually dominant using size, weight, or spacing
 • Reusable UI components must be used for repeated elements (cards, buttons, inputs)
 • Shadow system: 3 elevation levels (subtle, medium, prominent)
+• [ADD USER-PROVIDED ADDITIONAL REQUIREMENTS HERE IF ANY]
 
 ADVANCED (12 constraints total):
 Required 6 + Choose 6 from:
@@ -1039,6 +1298,7 @@ Required 6 + Choose 6 from:
 • Animation timing: 200-300ms transitions for micro-interactions
 • Accessibility: WCAG AA compliance for all interactive elements
 • Loading states: skeleton screens or spinners for async operations
+• [ADD USER-PROVIDED ADDITIONAL REQUIREMENTS HERE IF ANY]
 
 --------------------------------------------------
 
@@ -1178,7 +1438,21 @@ UX Designer:
 • User flow quality — 20%
   Logical flow with minimal friction
 
-Product Designer (ADVANCED MUST USE THIS):
+Product Designer (ADVANCED + SENIOR 5+ YEARS):
+• Product thinking — 25%
+  Ability to simplify complex problems and explain design decisions
+• System scalability — 20%
+  Design demonstrates scalability and handles edge cases
+• User flow clarity — 20%
+  Logical sequence with clear user journeys
+• Layout consistency — 15%
+  Alignment, spacing consistency, and grid usage
+• Constraint compliance — 10%
+  Adherence to grid, spacing, and accessibility rules
+• Decision reasoning — 10%
+  Quality of design decision explanations and trade-off analysis
+
+Product Designer (ADVANCED 3-5 YEARS):
 • Product thinking — 25%
   Ability to simplify complex problems and explain design decisions
 • User flow clarity — 20%
@@ -1200,7 +1474,23 @@ Product Designer (BEGINNER/INTERMEDIATE):
 • Constraint compliance — 20%
   Adherence to grid, spacing, and accessibility rules
 • Product thinking — 20%
-  Quality of feature decisions and product experienceUX Designer:
+  Quality of feature decisions and product experience
+
+UI Designer (ADVANCED + SENIOR 5+ YEARS):
+• System scalability — 25%
+  Design demonstrates scalability and reusable components
+• Layout consistency — 20%
+  Alignment, spacing consistency, and grid usage
+• Visual hierarchy — 20%
+  Clear prioritization using typography, spacing, and color
+• Component quality — 15%
+  Reusable components with proper states
+• Constraint compliance — 10%
+  Adherence to grid, spacing, and accessibility rules
+• Decision reasoning — 10%
+  Quality of design decision explanations
+
+UX Designer:
 • Layout consistency — 20%
   Alignment, spacing consistency, and grid usage
 • Navigation clarity — 20%
@@ -1242,22 +1532,70 @@ OUTPUT FORMAT
 
 Return ONLY JSON in this exact structure:
 
+**FOR BEGINNER:**
 {{
-    "title": "[Topic] - [Role] Challenge",
-    "description": "[2-8 sentences based on difficulty - product context, users, goals]",
-    "task_requirements": "Design the following screens:\n\n1️⃣ [Screen name]\n[Description of what this screen includes]\n\n2️⃣ [Screen name]\n[Description of what this screen includes]\n\n3️⃣ [Screen name]\n[Description of what this screen includes]",
-    "constraints": ["[Measurable constraint 1]", "[Measurable constraint 2]", ...],
-    "deliverables": ["[Specific deliverable 1 with quantity]", "[Specific deliverable 2]", ...],
+    "title": "[Topic] — [Role] Challenge",
+    "description": "[3-4 sentences - product context, users, goals]",
+    "task_requirements": "Design the following screens:\n\n1️⃣ [Screen name]\n[Description]\n\n2️⃣ [Screen name]\n[Description]",
+    "constraints": ["[Constraint 1]", "[Constraint 2]", ...],
+    "deliverables": ["[Deliverable 1]", "[Deliverable 2]", ...],
     "evaluation_criteria": [
         {{
             "criteria": "[Criteria name]",
             "weight": "[percentage]",
-            "description": "[Short explanation of what is evaluated]"
+            "description": "[Short explanation]"
         }}
     ],
     "time_limit_minutes": {time_limit}
 }}
 
+**FOR INTERMEDIATE:**
+{{
+    "title": "[Topic] — [Role] Challenge",
+    "description": "[4-5 sentences - product context, users, goals]",
+    "task_requirements": "Design the following screens:\n\n1️⃣ [Screen name]\n[Description]\n\n2️⃣ [Screen name]\n[Description]\n\n3️⃣ [Screen name]\n[Description]",
+    "design_challenges": "The solution should address the following challenges:\n\n• [Challenge 1]\n• [Challenge 2]\n• [Challenge 3]",
+    "constraints": ["[Constraint 1]", "[Constraint 2]", ...],
+    "additional_requirements": "[User-provided requirements if any]",
+    "deliverables": ["[Deliverable 1]", "[Deliverable 2]", ...],
+    "evaluation_criteria": [
+        {{
+            "criteria": "[Criteria name]",
+            "weight": "[percentage]",
+            "description": "[Short explanation]"
+        }}
+    ],
+    "time_limit_minutes": {time_limit}
+}}
+
+**FOR ADVANCED (ESPECIALLY SENIOR 5+ YEARS):**
+{{
+    "title": "[Topic] — [Role] Challenge",
+    "description": "[6-8 sentences - product/service context, problems, business goals, user needs]",
+    "product_context": "The [product] currently serves [metrics].\n\n[User type] frequently report difficulty:\n• [Problem 1]\n• [Problem 2]\n• [Problem 3]\n\nThe company aims to [business goal 1] and [business goal 2].",
+    "task_requirements": "Design the following screens:\n\n1️⃣ [Screen name]\n[Detailed description]\nInclude:\n• [Feature 1]\n• [Feature 2]\n• [Feature 3]\n\n2️⃣ [Screen name]\n[Detailed description]\nInclude:\n• [Feature 1]\n• [Feature 2]",
+    "design_challenges": "The solution should address the following challenges:\n\n• [Challenge 1 - trade-off]\n• [Challenge 2 - tension]\n• [Challenge 3 - complexity]\n• [Challenge 4 - scalability]",
+    "edge_cases": "The design should handle at least two of the following situations:\n\n• [Edge case 1]\n• [Edge case 2]\n• [Edge case 3]\n• [Edge case 4]",
+    "constraints": ["[Constraint 1]", "[Constraint 2]", ...],
+    "additional_requirements": "[User-provided requirements if any]",
+    "deliverables": ["[Deliverable 1]", "[Deliverable 2]", "Design decision documentation", ...],
+    "design_decisions": "Provide a short explanation for the following:\n\n• [Decision point 1]\n• [Decision point 2]\n• [Decision point 3]",
+    "evaluation_criteria": [
+        {{
+            "criteria": "[Criteria name]",
+            "weight": "[percentage]",
+            "description": "[Short explanation]"
+        }}
+    ],
+    "time_limit_minutes": {time_limit}
+}}
+
+⚠️ CRITICAL NOTES:
+• For BEGINNER: Use simple structure (no design_challenges, no product_context)
+• For INTERMEDIATE: Add design_challenges section
+• For ADVANCED + SENIOR: Add product_context, design_challenges, edge_cases, and design_decisions
+• If user provided additional requirements, include them in "additional_requirements" field
+• DO NOT include warning text like "MANDATORY FIELD" in the actual output - that's for your reference only
 ⚠️ CRITICAL: The "task_requirements" field MUST contain a numbered list of screens/components.
 ⚠️ DO NOT leave "task_requirements" empty or null.
 ⚠️ DO NOT skip the "task_requirements" field.
@@ -1387,7 +1725,7 @@ Generate ONE design challenge following ALL rules above. Return ONLY the JSON ob
                     {"role": "user", "content": prompt}
                 ],
                 temperature=0.7,
-                max_tokens=500
+                max_tokens=800
             )
         else:
             # For full question generation, use structured JSON object
@@ -1568,16 +1906,35 @@ Generate ONE design challenge following ALL rules above. Return ONLY the JSON ob
             # Apply neutral language post-processing to description
             description = self._neutralize_language(data.get("description", ""))
             
-            # Get task requirements (new field) - MANDATORY
+            # Get new fields
+            product_context = data.get("product_context", "")
+            if product_context:
+                product_context = self._neutralize_language(product_context)
+            
             task_requirements = data.get("task_requirements", "")
+            if task_requirements:
+                task_requirements = self._neutralize_language(task_requirements)
+            
+            design_challenges = data.get("design_challenges", "")
+            if design_challenges:
+                design_challenges = self._neutralize_language(design_challenges)
+            
+            edge_cases = data.get("edge_cases", "")
+            if edge_cases:
+                edge_cases = self._neutralize_language(edge_cases)
+            
+            additional_requirements = data.get("additional_requirements", "")
+            if additional_requirements:
+                additional_requirements = self._neutralize_language(additional_requirements)
+            
+            design_decisions = data.get("design_decisions", "")
+            if design_decisions:
+                design_decisions = self._neutralize_language(design_decisions)
             
             # LOG WHAT WE GOT FROM AI
             logger.info(f"🔍 AI Response - task_requirements field: {repr(task_requirements)[:200]}")
             logger.info(f"🔍 AI Response - task_requirements type: {type(task_requirements)}")
             logger.info(f"🔍 AI Response - task_requirements length: {len(task_requirements) if task_requirements else 0}")
-            
-            if task_requirements:
-                task_requirements = self._neutralize_language(task_requirements)
             
             # CRITICAL VALIDATION: Task Requirements MUST NOT be empty
             if not task_requirements or not task_requirements.strip():
@@ -1626,9 +1983,14 @@ Generate ONE design challenge following ALL rules above. Return ONLY the JSON ob
                 task_type=task_type,
                 title=data["title"],
                 description=description,
+                product_context=product_context if product_context else None,
                 task_requirements=task_requirements if task_requirements else None,
+                design_challenges=design_challenges if design_challenges else None,
+                edge_cases=edge_cases if edge_cases else None,
                 constraints=constraints,
+                additional_requirements=additional_requirements if additional_requirements else None,
                 deliverables=deliverables,
+                design_decisions=design_decisions if design_decisions else None,
                 evaluation_criteria=evaluation_criteria,
                 time_limit_minutes=data.get("time_limit_minutes", 60),
                 created_by=created_by
