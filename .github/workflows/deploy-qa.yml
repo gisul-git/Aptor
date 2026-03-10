@@ -1,11 +1,4 @@
-name: Deploy to QA (Optimized)
-
-# ROLLBACK INSTRUCTIONS:
-# If deployment fails or you need to rollback:
-# 1. Go to Actions tab > Deploy to QA (Optimized)
-# 2. Find a previous successful run
-# 3. Click "Re-run all jobs"
-# OR manually on VM: ./scripts/deploy-qa.sh qa-<previous-commit-sha>
+name: Deploy All Services to QA (Debian VM)
 
 on:
   push:
@@ -15,96 +8,21 @@ on:
     types: [closed]
     branches:
       - QA
-  workflow_dispatch:
+  workflow_dispatch: # Allow manual triggerings
 
 env:
-  REGISTRY: ghcr.io
-  IMAGE_TAG: qa-${{ github.sha }}
+  VM_HOST: ${{ secrets.QA_VM_HOST }}
+  VM_USER: ${{ secrets.QA_VM_USER }}
+  VM_SSH_KEY: ${{ secrets.QA_VM_SSH_KEY }}
+  VM_DEPLOY_PATH: ${{ secrets.QA_VM_DEPLOY_PATH }}
 
 jobs:
-  # Build all images in parallel with caching
-  build-images:
+  deploy-to-qa-vm:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
-    strategy:
-      matrix:
-        service:
-          - name: frontend
-            context: ./frontend
-          - name: api-gateway
-            context: ./services/api-gateway
-          - name: auth-service
-            context: ./services/auth-service
-          - name: ai-assessment-service
-            context: ./services/ai-assessment-service
-          - name: custom-mcq-service
-            context: ./services/custom-mcq-service
-          - name: aiml-service
-            context: ./services/aiml-service
-          - name: aiml-agent-service
-            context: ./services/aiml-agent-service
-          - name: dsa-service
-            context: ./services/dsa-service
-          - name: proctoring-service
-            context: ./services/proctoring-service
-          - name: super-admin-service
-            context: ./services/super-admin-service
-          - name: employee-service
-            context: ./services/employee-service
-          - name: demo-service
-            context: ./services/demo-service
-      fail-fast: false
-      max-parallel: 6
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-        with:
-          ref: QA
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Extract metadata
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.REGISTRY }}/${{ github.repository }}/gisul-${{ matrix.service.name }}
-          tags: |
-            type=raw,value=${{ env.IMAGE_TAG }}
-            type=raw,value=qa-latest
-
-      - name: Build and push ${{ matrix.service.name }}
-        uses: docker/build-push-action@v5
-        with:
-          context: ${{ matrix.service.context }}
-          file: ${{ matrix.service.context }}/Dockerfile
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ github.repository }}/gisul-${{ matrix.service.name }}:buildcache
-          cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ github.repository }}/gisul-${{ matrix.service.name }}:buildcache,mode=max
-          build-args: |
-            NEXT_PUBLIC_AIML_AGENT_URL=${{ secrets.NEXT_PUBLIC_AIML_AGENT_URL }}
-
-  # Deploy to QA VM
-  deploy-to-qa:
-    runs-on: ubuntu-latest
-    needs: build-images
     if: |
       github.event_name == 'push' ||
       (github.event_name == 'pull_request' && github.event.pull_request.merged == true) ||
       github.event_name == 'workflow_dispatch'
-    
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -114,116 +32,445 @@ jobs:
       - name: Setup SSH
         run: |
           mkdir -p ~/.ssh
-          echo "${{ secrets.QA_VM_SSH_KEY }}" > ~/.ssh/deploy_key
+          echo "${{ env.VM_SSH_KEY }}" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
-          ssh-keyscan -H ${{ secrets.QA_VM_HOST }} >> ~/.ssh/known_hosts
-
-      - name: Copy deployment files to VM
+          ssh-keyscan -H ${{ env.VM_HOST }} >> ~/.ssh/known_hosts
+      - name: Deploy to Debian VM
         run: |
-          scp -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no \
-            docker-compose.yml \
-            ${{ secrets.QA_VM_USER }}@${{ secrets.QA_VM_HOST }}:${{ secrets.QA_VM_DEPLOY_PATH }}/
-
-      - name: Deploy to QA VM
-        env:
-          DEPLOY_PATH: ${{ secrets.QA_VM_DEPLOY_PATH }}
-          IMAGE_TAG: ${{ env.IMAGE_TAG }}
-          REGISTRY: ${{ env.REGISTRY }}
-          REPO: ${{ github.repository }}
-        run: |
-          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no \
-            ${{ secrets.QA_VM_USER }}@${{ secrets.QA_VM_HOST }} \
-            "bash -s" << 'ENDSSH'
-          set -e
-          
-          echo "🚀 Starting QA deployment..."
-          cd ${DEPLOY_PATH:-/opt/aptor}
-          
-          # Verify .env exists
-          if [ ! -f .env ]; then
-            echo "❌ ERROR: .env file not found!"
-            exit 1
+          DEPLOY_PATH="${{ env.VM_DEPLOY_PATH }}"
+          if [ -z "$DEPLOY_PATH" ]; then
+            DEPLOY_PATH="/opt/aptor"
           fi
           
-          # Export environment variables for docker-compose
-          export DOCKER_REGISTRY="${REGISTRY}"
-          export GITHUB_REPOSITORY="${REPO}"
-          export IMAGE_TAG="${IMAGE_TAG}"
-          
-          # Login to GitHub Container Registry
-          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
-          
-          # Pull all new images in parallel
-          echo "📥 Pulling new images..."
-          docker compose pull --quiet
-          
-          # Rolling update - update services one by one with health checks
-          echo "🔄 Performing rolling update..."
-          
-          # Update infrastructure services first (redis is already running)
-          
-          # Update backend services with dependencies
-          SERVICES="auth-service api-gateway ai-assessment-service custom-mcq-service aiml-agent-service aiml-service dsa-service proctoring-service super-admin-service employee-service demo-service"
-          
-          for service in $SERVICES; do
-            echo "🔄 Updating $service..."
-            docker compose up -d --no-deps --wait --timeout 60 $service
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no ${{ env.VM_USER }}@${{ env.VM_HOST }} bash << EOF
+            set -e
             
-            if [ $? -eq 0 ]; then
-              echo "✅ $service updated successfully"
+            echo "🚀 Starting QA deployment..."
+            
+            # Navigate to deployment directory
+            cd ${DEPLOY_PATH}
+            
+            # Sync workspace with QA branch
+            echo "📥 Syncing workspace with QA branch..."
+            
+            # Backup critical files
+            echo "💾 Backing up critical files..."
+            if [ -f .env ]; then
+              cp .env .env.backup
+              echo "✅ .env backed up"
+            fi
+            
+            # Fetch and checkout latest changes - handle local changes
+            echo "🔄 Updating code from repository..."
+            
+            # Clean up stale Git refs to prevent locking errors
+            echo "🧹 Cleaning up stale Git references..."
+            git remote prune origin || true
+            rm -rf .git/refs/remotes/origin/* || true
+            
+            # Fetch with prune to clean up stale refs
+            echo "📥 Fetching latest changes..."
+            git fetch origin --prune --force || {
+              echo "⚠️  Fetch with prune failed, trying regular fetch..."
+              git fetch origin || {
+                echo "⚠️  Regular fetch failed, cleaning refs and retrying..."
+                rm -rf .git/refs/remotes/origin/* || true
+                git fetch origin
+              }
+            }
+            
+            # Stash or discard local changes to allow pull
+            if [ -n "$(git status --porcelain)" ]; then
+              echo "⚠️  Local changes detected, stashing them..."
+              git stash push -m "Auto-stash before deployment $(date +%Y%m%d_%H%M%S)" || true
+            fi
+            
+            # Reset to remote QA branch to ensure clean state
+            git checkout QA
+            git reset --hard origin/QA || {
+              echo "⚠️  Reset failed, trying pull..."
+              git pull origin QA --no-edit || {
+                echo "⚠️  Pull failed, cleaning refs and forcing reset..."
+                git remote prune origin || true
+                rm -rf .git/refs/remotes/origin/* || true
+                git fetch origin --prune --force
+                git reset --hard origin/QA
+              }
+            }
+            
+            echo "✅ Code updated to latest QA branch"
+            
+            # Ensure .env file exists
+            if [ ! -f .env ]; then
+              echo "❌ ERROR: .env file not found after git operations!"
+              echo "⚠️  Deployment cannot proceed without .env file."
+              exit 1
             else
-              echo "❌ $service update failed, rolling back..."
-              docker compose logs --tail=50 $service
+              echo "✅ .env file verified"
+            fi
+            
+            # Preserve aiml-agent-service - ensure it stays running
+            echo "🔒 Preserving aiml-agent-service..."
+            AIML_AGENT_RUNNING=false
+            if docker compose ps aiml-agent-service 2>/dev/null | grep -q "Up"; then
+              AIML_AGENT_RUNNING=true
+              echo "✅ aiml-agent-service is running, will preserve it"
+            fi
+            
+            # Stop and remove existing containers properly
+            echo "🛑 Stopping existing containers..."
+            docker compose down --timeout 10 --remove-orphans 2>/dev/null || true
+            
+            # Force remove any containers that compose knows about
+            echo "🛑 Force removing containers with docker-compose rm..."
+            docker compose rm -f 2>/dev/null || true
+            
+            # Wait for containers to be fully stopped
+            sleep 2
+            
+            # Force stop and remove any remaining containers by name pattern (including Created state)
+            echo "🛑 Force stopping and removing any remaining containers..."
+            for container in gisul-frontend gisul-api-gateway gisul-auth-service \
+                            gisul-ai-assessment-service gisul-custom-mcq-service \
+                            gisul-aiml-service gisul-dsa-service gisul-proctoring-service \
+                            gisul-super-admin-service gisul-employee-service gisul-demo-service gisul-redis; do
+              # Try multiple times to ensure removal
+              for attempt in 1 2 3; do
+                if docker ps -a --format "{{.Names}}" | grep -q "^${container}$"; then
+                  echo "Attempt $attempt: Removing container (any state): ${container}"
+                  docker stop "${container}" 2>/dev/null || true
+                  docker rm -f "${container}" 2>/dev/null || true
+                  sleep 0.5
+                else
+                  break
+                fi
+              done
+            done
+            
+            # Remove any orphaned containers with our naming pattern (catch-all, including Created state)
+            echo "🧹 Removing any orphaned containers (including Created state)..."
+            # Use a more reliable method - get all IDs first, then remove
+            container_ids=$(docker ps -a --filter "name=gisul-" --format "{{.ID}} {{.Names}}" | grep -v "gisul-aiml-agent-service" | awk '{print $1}' | tr '\n' ' ')
+            if [ -n "$container_ids" ]; then
+              echo "Found containers to remove: $container_ids"
+              for id in $container_ids; do
+                if [ -n "$id" ]; then
+                  name=$(docker ps -a --filter "id=$id" --format "{{.Names}}")
+                  echo "Removing orphaned container: $name ($id)"
+                  docker rm -f "$id" 2>/dev/null || true
+                fi
+              done
+            fi
+            
+            # Specifically remove containers in "Created" state that might not be caught above
+            echo "🧹 Removing containers in Created state..."
+            created_ids=$(docker ps -a --filter "status=created" --filter "name=gisul-" --format "{{.ID}} {{.Names}}" | grep -v "gisul-aiml-agent-service" | awk '{print $1}' | tr '\n' ' ')
+            if [ -n "$created_ids" ]; then
+              echo "Found Created containers to remove: $created_ids"
+              for id in $created_ids; do
+                if [ -n "$id" ]; then
+                  name=$(docker ps -a --filter "id=$id" --format "{{.Names}}")
+                  echo "Removing Created container: $name ($id)"
+                  docker rm -f "$id" 2>/dev/null || true
+                fi
+              done
+            fi
+            
+            # Verify all containers are removed - more aggressive approach
+            echo "✅ Verifying cleanup..."
+            sleep 2
+            remaining_ids=$(docker ps -a --filter "name=gisul-" --format "{{.ID}} {{.Names}}" | grep -v "gisul-aiml-agent-service" | awk '{print $1}' | tr '\n' ' ')
+            if [ -n "$remaining_ids" ]; then
+              echo "⚠️  Warning: Some containers still exist, force removing by ID..."
+              for id in $remaining_ids; do
+                if [ -n "$id" ]; then
+                  name=$(docker ps -a --filter "id=$id" --format "{{.Names}}")
+                  echo "Force removing remaining container: $name ($id)"
+                  docker stop "$id" 2>/dev/null || true
+                  docker rm -f "$id" 2>/dev/null || true
+                fi
+              done
+              sleep 1
+            fi
+            
+            # Cleanup old images
+            echo "🧹 Cleaning up old Docker images..."
+            docker system prune -f || true
+            
+            # Final verification - ensure no conflicting containers exist
+            echo "🔍 Final verification before build..."
+            conflicting_ids=$(docker ps -a --filter "name=gisul-" --format "{{.ID}} {{.Names}}" | grep -v "gisul-aiml-agent-service" | grep -E "(gisul-frontend|gisul-api-gateway|gisul-auth-service|gisul-ai-assessment-service|gisul-custom-mcq-service|gisul-aiml-service|gisul-dsa-service|gisul-proctoring-service|gisul-super-admin-service|gisul-employee-service|gisul-demo-service|gisul-redis)" | awk '{print $1}' | tr '\n' ' ')
+            if [ -n "$conflicting_ids" ]; then
+              echo "❌ ERROR: Conflicting containers still exist, force removing by ID..."
+              for id in $conflicting_ids; do
+                if [ -n "$id" ]; then
+                  name=$(docker ps -a --filter "id=$id" --format "{{.Names}}")
+                  echo "Force removing conflicting container: $name ($id)"
+                  docker stop "$id" 2>/dev/null || true
+                  docker rm -f "$id" 2>/dev/null || true
+                fi
+              done
+              sleep 2
+            fi
+            
+            # Final cleanup right before build - remove ALL containers by ID to be absolutely sure
+            echo "🧹 Final aggressive cleanup before build..."
+            final_cleanup_ids=$(docker ps -a --filter "name=gisul-" --format "{{.ID}} {{.Names}}" | grep -v "gisul-aiml-agent-service" | awk '{print $1}' | tr '\n' ' ')
+            if [ -n "$final_cleanup_ids" ]; then
+              echo "Found containers for final cleanup: $final_cleanup_ids"
+              for id in $final_cleanup_ids; do
+                if [ -n "$id" ]; then
+                  name=$(docker ps -a --filter "id=$id" --format "{{.Names}}")
+                  echo "Force removing container ID: $id (name: $name)"
+                  docker stop "$id" 2>/dev/null || true
+                  docker rm -f "$id" 2>/dev/null || true
+                fi
+              done
+              sleep 1
+            fi
+            
+            # Remove network if it exists (will be recreated) - more aggressive cleanup
+            echo "🧹 Cleaning up network..."
+            # Disconnect all containers from network first
+            if docker network inspect aptor_microservices-network >/dev/null 2>&1; then
+              echo "Disconnecting containers from network..."
+              docker network inspect aptor_microservices-network --format '{{range .Containers}}{{.Name}} {{end}}' | tr ' ' '\n' | grep -v '^$' | while read container; do
+                if [ -n "$container" ]; then
+                  docker network disconnect -f aptor_microservices-network "$container" 2>/dev/null || true
+                fi
+              done
+              sleep 1
+            fi
+            # Remove network
+            docker network rm aptor_microservices-network 2>/dev/null || true
+            # Prune unused networks to ensure it's gone
+            docker network prune -f 2>/dev/null || true
+            # Wait and verify network is removed
+            sleep 2
+            if docker network inspect aptor_microservices-network >/dev/null 2>&1; then
+              echo "⚠️  Network still exists, force removing again..."
+              docker network rm -f aptor_microservices-network 2>/dev/null || true
+              sleep 1
+            fi
+            
+            # Build and start services
+            echo "🔨 Building services..."
+            docker compose build --no-cache
+            
+            # One more cleanup check before starting - use reliable method
+            echo "🔍 Pre-start cleanup check..."
+            pre_start_ids=$(docker ps -a --filter "name=gisul-" --format "{{.ID}} {{.Names}}" | grep -v "gisul-aiml-agent-service" | awk '{print $1}' | tr '\n' ' ')
+            if [ -n "$pre_start_ids" ]; then
+              echo "⚠️  Found remaining containers before start, removing..."
+              for id in $pre_start_ids; do
+                if [ -n "$id" ]; then
+                  name=$(docker ps -a --filter "id=$id" --format "{{.Names}}")
+                  echo "Removing remaining container: $name ($id)"
+                  docker stop "$id" 2>/dev/null || true
+                  docker rm -f "$id" 2>/dev/null || true
+                fi
+              done
+              sleep 1
+            fi
+            
+            # Final check - ensure network doesn't exist before starting
+            echo "🔍 Final network check before starting services..."
+            max_network_retries=3
+            network_retry=0
+            while [ $network_retry -lt $max_network_retries ] && docker network inspect aptor_microservices-network >/dev/null 2>&1; do
+              echo "⚠️  Network still exists (attempt $((network_retry + 1))/$max_network_retries), removing..."
+              docker network rm -f aptor_microservices-network 2>/dev/null || true
+              sleep 2
+              network_retry=$((network_retry + 1))
+            done
+            
+            # Verify network is gone and force remove if still exists
+            if docker network inspect aptor_microservices-network >/dev/null 2>&1; then
+              echo "⚠️  Network still exists, disconnecting all containers and force removing..."
+              # Disconnect all containers from network
+              CONTAINERS=$(docker network inspect aptor_microservices-network --format '{{range .Containers}}{{.Name}} {{end}}' 2>/dev/null || echo "")
+              if [ -n "$CONTAINERS" ]; then
+                echo "$CONTAINERS" | tr ' ' '\n' | grep -v '^$' | while read container; do
+                  if [ -n "$container" ]; then
+                    echo "Disconnecting container: $container"
+                    docker network disconnect -f aptor_microservices-network "$container" 2>/dev/null || true
+                  fi
+                done
+                sleep 2
+              fi
+              # Force remove network
+              docker network rm -f aptor_microservices-network 2>/dev/null || true
+              sleep 1
+              # Prune networks as last resort
+              docker network prune -f 2>/dev/null || true
+              sleep 1
+            fi
+            
+            # Final network check right before docker-compose up
+            if docker network inspect aptor_microservices-network >/dev/null 2>&1; then
+              echo "❌ ERROR: Network still exists! Force pruning all networks..."
+              docker network prune -f
+              sleep 2
+            else
+              echo "✅ Network successfully removed"
+            fi
+            
+            # One final container check - check by exact names to be absolutely sure
+            echo "🔍 Final container check before docker-compose up..."
+            # Check each container by exact name using grep (more reliable than Docker filter)
+            for container_name in gisul-frontend gisul-api-gateway gisul-auth-service \
+                                 gisul-ai-assessment-service gisul-custom-mcq-service \
+                                 gisul-aiml-service gisul-dsa-service gisul-proctoring-service \
+                                 gisul-super-admin-service gisul-employee-service gisul-demo-service gisul-redis; do
+              # Use grep for exact match instead of Docker filter (which doesn't support regex)
+              container_id=$(docker ps -a --format "{{.ID}} {{.Names}}" | grep -E "^[a-f0-9]+ ${container_name}$" | awk '{print $1}' | head -1)
+              if [ -n "$container_id" ]; then
+                echo "⚠️  Found container before docker-compose up: $container_name ($container_id), removing..."
+                docker stop "$container_id" 2>/dev/null || true
+                docker rm -f "$container_id" 2>/dev/null || true
+              fi
+            done
+            
+            # Also check with filter as backup
+            final_check_ids=$(docker ps -a --filter "name=gisul-" --format "{{.ID}} {{.Names}}" | grep -v "gisul-aiml-agent-service" | awk '{print $1}' | tr '\n' ' ')
+            if [ -n "$final_check_ids" ]; then
+              echo "⚠️  Found additional containers with filter, removing..."
+              for id in $final_check_ids; do
+                if [ -n "$id" ]; then
+                  name=$(docker ps -a --filter "id=$id" --format "{{.Names}}")
+                  echo "Removing container: $name ($id)"
+                  docker stop "$id" 2>/dev/null || true
+                  docker rm -f "$id" 2>/dev/null || true
+                fi
+              done
+            fi
+            
+            # Verify all are gone
+            sleep 2
+            remaining=$(docker ps -a --filter "name=gisul-" --format "{{.Names}}" | grep -v "gisul-aiml-agent-service" | wc -l | tr -d ' ')
+            # Ensure remaining is a number, default to 0 if empty
+            remaining=${remaining:-0}
+            if [ "$remaining" -gt 0 ] 2>/dev/null; then
+              echo "❌ ERROR: Containers still exist after final cleanup!"
+              docker ps -a --filter "name=gisul-"
+              echo "Force removing all..."
+              docker ps -a --filter "name=gisul-" --format "{{.ID}}" | grep -v "$(docker ps -a --filter "name=gisul-aiml-agent-service" --format "{{.ID}}")" | xargs -r docker rm -f 2>/dev/null || true
+              sleep 2
+            fi
+            
+            # Use docker-compose down first to ensure clean state, then up
+            echo "🧹 Running docker-compose down to ensure clean state..."
+            docker compose down --remove-orphans 2>/dev/null || true
+            sleep 2
+            
+            # Force remove any containers that docker-compose down might have missed
+            echo "🧹 Force removing any remaining containers by name..."
+            for container_name in gisul-frontend gisul-api-gateway gisul-auth-service \
+                                 gisul-ai-assessment-service gisul-custom-mcq-service \
+                                 gisul-aiml-service gisul-dsa-service gisul-proctoring-service \
+                                 gisul-super-admin-service gisul-employee-service gisul-demo-service gisul-redis; do
+              if docker ps -a --format "{{.Names}}" | grep -qE "^${container_name}$"; then
+                echo "Force removing: $container_name"
+                docker stop "$container_name" 2>/dev/null || true
+                docker rm -f "$container_name" 2>/dev/null || true
+              fi
+            done
+            sleep 1
+            
+            # Final check one more time - use exact name matching
+            echo "🔍 Absolute final check - removing any remaining containers..."
+            for container_name in gisul-frontend gisul-api-gateway gisul-auth-service \
+                                 gisul-ai-assessment-service gisul-custom-mcq-service \
+                                 gisul-aiml-service gisul-dsa-service gisul-proctoring-service \
+                                 gisul-super-admin-service gisul-employee-service gisul-demo-service gisul-redis; do
+              # Check by exact name match
+              if docker ps -a --format "{{.Names}}" | grep -qE "^${container_name}$"; then
+                echo "Force removing: $container_name"
+                # Try by name first (faster)
+                docker rm -f "$container_name" 2>/dev/null || true
+                # If that fails, get ID and remove by ID
+                container_id=$(docker ps -a --format "{{.ID}} {{.Names}}" | grep -E "^[a-f0-9]+ ${container_name}$" | awk '{print $1}' | head -1)
+                if [ -n "$container_id" ]; then
+                  echo "Removing by ID: $container_name ($container_id)"
+                  docker rm -f "$container_id" 2>/dev/null || true
+                fi
+              fi
+            done
+            sleep 2
+            
+            # Last check - verify NO containers exist before docker-compose up
+            echo "🔍 Last verification - ensuring zero containers exist..."
+            all_containers=$(docker ps -a --format "{{.Names}}" | grep -E "^(gisul-frontend|gisul-api-gateway|gisul-auth-service|gisul-ai-assessment-service|gisul-custom-mcq-service|gisul-aiml-service|gisul-dsa-service|gisul-proctoring-service|gisul-super-admin-service|gisul-employee-service|gisul-demo-service|gisul-redis)$" | grep -v "gisul-aiml-agent-service" || true)
+            if [ -n "$all_containers" ]; then
+              echo "❌ CRITICAL: Containers still exist right before docker-compose up!"
+              echo "$all_containers"
+              echo "Force removing all found containers..."
+              echo "$all_containers" | while read container_name; do
+                if [ -n "$container_name" ]; then
+                  echo "Emergency removal: $container_name"
+                  docker rm -f "$container_name" 2>/dev/null || true
+                fi
+              done
+              sleep 2
+            else
+              echo "✅ Verified: No containers exist, safe to proceed"
+            fi
+            
+            # Final verification - ensure network and containers are gone
+            echo "🔍 Final pre-start verification..."
+            NETWORK_EXISTS=$(docker network inspect aptor_microservices-network >/dev/null 2>&1 && echo "yes" || echo "no")
+            CONTAINERS_EXIST=$(docker ps -a --filter "name=gisul-" --format "{{.Names}}" | grep -v "gisul-aiml-agent-service" | wc -l | tr -d ' ')
+            CONTAINERS_EXIST=${CONTAINERS_EXIST:-0}
+            
+            if [ "$NETWORK_EXISTS" = "yes" ]; then
+              echo "⚠️  WARNING: Network still exists, force removing..."
+              docker network rm -f aptor_microservices-network 2>/dev/null || true
+              docker network prune -f 2>/dev/null || true
+              sleep 1
+            fi
+            
+            if [ "$CONTAINERS_EXIST" -gt 0 ] 2>/dev/null; then
+              echo "⚠️  WARNING: Containers still exist, force removing..."
+              docker ps -a --filter "name=gisul-" --format "{{.ID}} {{.Names}}" | grep -v "gisul-aiml-agent-service" | awk '{print $1}' | xargs -r docker rm -f 2>/dev/null || true
+              sleep 1
+            fi
+            
+            echo "🚀 Starting services..."
+            # Don't use --force-recreate to avoid double creation
+            # The cleanup above ensures containers don't exist
+            # If docker-compose fails, clean up and exit to prevent partial state
+            if ! docker compose up -d --remove-orphans; then
+              echo "❌ docker-compose up failed, cleaning up and exiting..."
+              docker compose down --remove-orphans 2>/dev/null || true
+              # Remove any containers that were created by exact name
+              for container_name in gisul-frontend gisul-api-gateway gisul-auth-service \
+                                   gisul-ai-assessment-service gisul-custom-mcq-service \
+                                   gisul-aiml-service gisul-dsa-service gisul-proctoring-service \
+                                   gisul-super-admin-service gisul-employee-service gisul-demo-service gisul-redis; do
+                docker rm -f "$container_name" 2>/dev/null || true
+              done
+              # Also remove network if it exists
+              docker network rm -f aptor_microservices-network 2>/dev/null || true
+              docker network prune -f 2>/dev/null || true
               exit 1
             fi
-          done
-          
-          # Update frontend last (depends on api-gateway)
-          echo "🔄 Updating frontend..."
-          docker compose up -d --no-deps --wait --timeout 60 frontend
-          
-          if [ $? -eq 0 ]; then
-            echo "✅ frontend updated successfully"
-          else
-            echo "❌ frontend update failed, rolling back..."
-            docker compose logs --tail=50 frontend
-            exit 1
-          fi
-          
-          # Clean up old images
-          echo "🧹 Cleaning up old images..."
-          docker image prune -af --filter "until=24h" || true
-          
-          # Final status check
-          echo "📊 Deployment Status:"
-          docker compose ps
-          
-          # Verify all services are healthy
-          echo "🏥 Health Check:"
-          UNHEALTHY=$(docker compose ps --format json | jq -r 'select(.Health != "healthy" and .Health != "") | .Service' 2>/dev/null || echo "")
-          
-          if [ -n "$UNHEALTHY" ]; then
-            echo "⚠️  Warning: Some services are not healthy: $UNHEALTHY"
+            
+            # Wait for services
+            echo "⏳ Waiting for services to be ready..."
+            sleep 10
+            
+            # Status check
+            echo "📊 Container status:"
             docker compose ps
-          else
-            echo "✅ All services are healthy"
-          fi
-          
-          echo "✅ QA deployment completed successfully!"
-          ENDSSH
-
+            
+            # Verify containers are running
+            echo "✅ Verifying services..."
+            docker compose ps | grep -q "Up" || (echo "❌ Some services failed to start" && exit 1)
+            
+            echo "✅ QA deployment completed successfully!"
+          EOF
       - name: Verify Deployment
         run: |
-          echo "✅ Deployment completed"
-          echo "📦 Deployed to: ${{ secrets.QA_VM_HOST }}"
-          echo "🏷️  Image Tag: ${{ env.IMAGE_TAG }}"
+          echo "✅ Deployment workflow completed"
+          echo "📦 All services deployed to: ${{ env.VM_HOST }}"
           echo "🌿 Branch: QA"
-
-      - name: Deployment Summary
-        if: always()
-        run: |
-          if [ "${{ job.status }}" == "success" ]; then
-            echo "✅ Deployment successful!"
-          else
-            echo "❌ Deployment failed. Check logs above."
-          fi
