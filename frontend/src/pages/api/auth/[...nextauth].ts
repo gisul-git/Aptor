@@ -440,6 +440,32 @@ export const authOptions: NextAuthOptions = {
         }
 
         const data = response.data?.data;
+        
+        // Check if MFA setup is required (org_admin first OAuth login)
+        const requireMFASetup = data?.requireMFASetup || response.data?.requireMFASetup;
+        if (requireMFASetup === true) {
+          console.log("🔐 [OAuth] MFA setup required");
+          const mfaSetupToken = data?.mfaSetupToken || response.data?.mfaSetupToken;
+          const email = data?.email || response.data?.email || user.email;
+          throw new Error(`MFA_SETUP_REQUIRED:${email}:${mfaSetupToken}`);
+        }
+
+        // Check if MFA verification is required (org_admin with MFA enabled)
+        const requireMFA = data?.requireMFA || response.data?.requireMFA;
+        if (requireMFA === true) {
+          console.log("🔐 [OAuth] MFA verification required");
+          const tempToken = data?.tempToken || response.data?.tempToken;
+          const email = data?.email || response.data?.email || user.email;
+          throw new Error(`MFA_REQUIRED:${email}:${tempToken}`);
+        }
+
+        // Check if MFA is required for super_admin
+        const requireMfa = data?.require_mfa ?? response.data?.require_mfa;
+        if (requireMfa === true) {
+          console.log("🔐 [OAuth] MFA required for super admin");
+          throw new Error("MFA_REQUIRED");
+        }
+        
         if (!data?.token || !data?.user) {
           console.error("Invalid OAuth response:", response.data);
           throw new Error("Invalid response from authentication service");
@@ -468,6 +494,13 @@ export const authOptions: NextAuthOptions = {
           code: error?.code,
           baseURL: process.env.API_GATEWAY_URL || "http://api-gateway:80",
         });
+        
+        // Pass through MFA-related errors
+        if (error?.message?.startsWith("MFA_SETUP_REQUIRED:") ||
+            error?.message?.startsWith("MFA_REQUIRED:") ||
+            error?.message === "MFA_REQUIRED") {
+          throw error;
+        }
         
         // Check if this is a signup required error
         if (error?.message?.startsWith("OAuthSignupRequired:")) {
