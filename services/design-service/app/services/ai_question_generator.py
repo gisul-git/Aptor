@@ -399,6 +399,80 @@ Topic: {topic_str}
 {additional_requirements_section}
 --------------------------------------------------
 
+EXPERIENCE LEVEL ADJUSTMENTS (CRITICAL FOR SENIOR CANDIDATES)
+
+The experience level significantly impacts question complexity and expectations:
+
+**FRESHER (0 years):**
+- Focus on basic design principles and simple layouts
+- Clear, straightforward requirements
+- Minimal complexity, single-user scenarios
+- Basic deliverables (screens + simple documentation)
+
+**1-3 YEARS:**
+- Standard design challenges with moderate complexity
+- Multi-screen flows with clear user journeys
+- Basic interaction states
+- Standard deliverables (screens + component library + style guide)
+
+**3-5 YEARS:**
+- More sophisticated design problems
+- Consider edge cases and error states
+- System thinking starts to emerge
+- Enhanced deliverables (+ interaction specs, user flows)
+
+**SENIOR (5+ years):**
+⚠️ CRITICAL: Senior-level questions MUST be significantly more sophisticated:
+
+1. **Complex Problem Spaces:**
+   - Multi-stakeholder scenarios (users, admins, moderators)
+   - Cross-platform considerations (mobile + web + tablet)
+   - Real-world constraints (legacy system integration, technical debt, migration paths)
+   - Business constraints (budget limits, timeline pressures, team size)
+
+2. **Strategic Thinking Required:**
+   - Must explain design decisions and trade-offs
+   - Must consider scalability and future growth
+   - Must address technical feasibility
+   - Must balance user needs with business goals
+
+3. **Advanced Deliverables:**
+   - Design system thinking (not just components)
+   - Migration strategies (from old to new design)
+   - Accessibility compliance documentation
+   - Performance considerations
+   - Responsive design specifications
+   - Design tokens and theming systems
+
+4. **Real-World Complexity:**
+   - Incomplete or conflicting requirements (candidate must make decisions)
+   - Multiple user personas with different needs
+   - Integration with existing systems
+   - Data privacy and security considerations
+   - Internationalization and localization needs
+
+5. **Leadership & Communication:**
+   - Deliverables must include rationale for key decisions
+   - Must demonstrate ability to communicate design choices
+   - Must show understanding of developer handoff
+   - Must consider team collaboration and design system governance
+
+**SENIOR QUESTION CHARACTERISTICS:**
+- Description should mention business context and constraints
+- Task Requirements should include ambiguity that requires decision-making
+- Constraints should include real-world technical limitations
+- Deliverables MUST include "Design decision documentation" or "Trade-off analysis"
+- Evaluation criteria should emphasize strategic thinking (30% weight minimum)
+
+**EXAMPLE SENIOR-LEVEL ADDITIONS:**
+- "The existing system uses a legacy design that cannot be changed immediately. Design a migration path."
+- "The development team has limited resources. Prioritize features for MVP vs future releases."
+- "The product serves both B2B and B2C users with different needs. Design for both."
+- "The design must work across web, iOS, and Android with a single design system."
+- "Consider accessibility compliance (WCAG 2.1 AA) and document your approach."
+
+--------------------------------------------------
+
 ROLE EXPECTATIONS
 
 UI Designer
@@ -584,6 +658,41 @@ CRITICAL ADVANCED RULES:
 • Deliverables MUST include "Short explanation of key product decisions"
 • Evaluation criteria MUST emphasize product thinking (25% weight for Product Designer)
 
+⚠️ SENIOR EXPERIENCE LEVEL (5+ years) ADVANCED QUESTIONS MUST ALSO INCLUDE:
+
+**Additional Complexity for Senior Candidates:**
+1. **Strategic Context:**
+   - Mention business constraints (budget, timeline, technical limitations)
+   - Include stakeholder considerations (multiple user types, conflicting needs)
+   - Reference existing systems or legacy constraints
+
+2. **Decision-Making Requirements:**
+   - Task Requirements should include scenarios requiring trade-off decisions
+   - Example: "Design for both power users and beginners" (candidate must decide approach)
+   - Example: "Balance feature richness with development timeline" (prioritization required)
+
+3. **Enhanced Deliverables (Senior only):**
+   - Add "Design decision documentation explaining key trade-offs"
+   - Add "Migration strategy from current to new design" (if applicable)
+   - Add "Accessibility compliance approach (WCAG 2.1 AA)"
+   - Add "Responsive design specifications (mobile, tablet, desktop)"
+
+4. **Real-World Constraints:**
+   - Mention technical constraints: "Must integrate with existing authentication system"
+   - Mention resource constraints: "Development team of 3 engineers, 2-month timeline"
+   - Mention scale considerations: "System must support 100K+ daily active users"
+
+5. **Evaluation Emphasis:**
+   - Strategic thinking: 30% (increased from 25%)
+   - Decision rationale: Must be explicitly evaluated
+   - System thinking: Must consider long-term maintainability
+
+**Example Senior-Level Description Addition:**
+"The company has an existing legacy system that serves 50K users but has poor usability. The development team consists of 3 engineers with a 3-month timeline. The design must provide a migration path that doesn't disrupt current users while improving the experience for new users. The solution should consider both immediate MVP needs and future scalability."
+
+**Example Senior-Level Task Requirement:**
+"Design a permission system that works for both individual users and team administrators, considering that some organizations have complex hierarchies while others are flat. Document your approach to handling these different organizational structures."
+
 --------------------------------------------------
 
 ROLE-SPECIFIC TASK RULE (CRITICAL)
@@ -702,6 +811,16 @@ ADVANCED (6-8 sentences):
 
 Example:
 "A healthcare application helps adults aged 60+ track their medication schedules and health metrics. However, current solutions are complex and difficult for elderly users to navigate, leading to missed medications and poor health outcomes. The company aims to improve medication adherence and reduce hospital readmissions. Users need to easily view daily medication schedules, receive clear reminders, log health metrics, and share data with caregivers. The design goal is to create a simple, accessible mobile interface that prioritizes clarity and ease of use for elderly users with limited tech experience. The interface should reduce cognitive load and support users with visual or motor impairments."
+
+⚠️ SENIOR EXPERIENCE LEVEL (5+ years) - ADVANCED DESCRIPTION MUST ALSO INCLUDE:
+
+**Additional Context for Senior Candidates (add 2-3 more sentences):**
+9. Business/technical constraints (budget, timeline, team size, technical limitations)
+10. Existing system context (legacy systems, migration needs, current user base)
+11. Strategic considerations (scalability, future growth, market positioning)
+
+**Example Senior-Level Advanced Description:**
+"A healthcare application helps adults aged 60+ track their medication schedules and health metrics. However, current solutions are complex and difficult for elderly users to navigate, leading to missed medications and poor health outcomes. The company aims to improve medication adherence and reduce hospital readmissions. Users need to easily view daily medication schedules, receive clear reminders, log health metrics, and share data with caregivers. The design goal is to create a simple, accessible mobile interface that prioritizes clarity and ease of use for elderly users with limited tech experience. The interface should reduce cognitive load and support users with visual or motor impairments. **The company has an existing web platform with 50K active users that cannot be immediately deprecated. The development team consists of 4 engineers with a 4-month timeline. The design must provide a migration path from the legacy system while meeting WCAG 2.1 AA accessibility standards. The solution should consider both immediate MVP needs for mobile and future expansion to tablet and web platforms.**"
 
 --------------------------------------------------
 
