@@ -452,7 +452,11 @@ services:
       - microservices-network
     restart: unless-stopped
     healthcheck:
-      test:
+      test: ["CMD", "curl", "-f", "http://localhost:3008/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
 
 volumes:
   # mongo_data:  # Not needed when using Atlass
