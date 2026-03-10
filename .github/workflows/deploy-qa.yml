@@ -253,26 +253,46 @@ jobs:
               sleep 1
             fi
             
-            # Remove existing images to prevent conflicts
-            echo "🧹 Removing existing images to prevent conflicts..."
+            # Remove ALL existing images to prevent conflicts
+            echo "🧹 Removing ALL existing images to prevent conflicts..."
+            # Remove all gisul images (except aiml-agent-service if needed)
+            docker images --format "{{.Repository}}:{{.Tag}}" | grep "gisul-" | grep -v "gisul-aiml-agent-service" | while read image; do
+              echo "Removing image: $image"
+              docker rmi -f "$image" 2>/dev/null || true
+            done
+            
             # Remove images by exact tag to avoid conflicts
             for service in frontend api-gateway auth-service ai-assessment-service custom-mcq-service \
                           aiml-service aiml-agent-service dsa-service proctoring-service \
                           super-admin-service employee-service demo-service; do
               image_name="ghcr.io/local/gisul-${service}:latest"
-              if docker images --format "{{.Repository}}:{{.Tag}}" | grep -q "^${image_name}$"; then
-                echo "Removing image: ${image_name}"
-                docker rmi -f "${image_name}" 2>/dev/null || true
-              fi
+              echo "Force removing image: ${image_name}"
+              docker rmi -f "${image_name}" 2>/dev/null || true
             done
             
-            # Also remove any dangling images
-            echo "🧹 Removing dangling images..."
-            docker image prune -f 2>/dev/null || true
+            # Remove any dangling and unused images
+            echo "🧹 Removing dangling and unused images..."
+            docker image prune -af 2>/dev/null || true
+            
+            # Wait a moment for cleanup to complete
+            sleep 2
+            
+            # Verify images are removed
+            echo "🔍 Verifying image cleanup..."
+            remaining_images=$(docker images --format "{{.Repository}}:{{.Tag}}" | grep "gisul-" | grep -v "gisul-aiml-agent-service" | wc -l | tr -d ' ')
+            remaining_images=${remaining_images:-0}
+            if [ "$remaining_images" -gt 0 ] 2>/dev/null; then
+              echo "⚠️  Warning: Some images still exist, force removing again..."
+              docker images --format "{{.Repository}}:{{.Tag}}" | grep "gisul-" | grep -v "gisul-aiml-agent-service" | while read image; do
+                echo "Force removing: $image"
+                docker rmi -f "$image" 2>/dev/null || true
+              done
+              sleep 1
+            fi
             
             # Build and start services
             echo "🔨 Building services..."
-            docker compose build --no-cache --force-rm
+            docker compose build --no-cache --force-rm --pull
             
             # One more cleanup check before starting - use reliable method
             echo "🔍 Pre-start cleanup check..."
