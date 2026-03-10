@@ -85,9 +85,9 @@ jobs:
             echo "🧹 Removing old images..."
             docker images --format "{{.Repository}}:{{.Tag}}" | grep "ghcr.io/local/gisul-" | xargs -r docker rmi -f 2>/dev/null || true
             
-            # Clean up Docker system
+            # Clean up Docker system (preserve volumes)
             echo "🧹 Cleaning Docker system..."
-            docker system prune -af --volumes 2>/dev/null || true
+            docker system prune -af 2>/dev/null || true
             
             # Remove network if exists
             echo "🧹 Removing old network..."
@@ -103,7 +103,7 @@ jobs:
             
             # Wait for services to initialize
             echo "⏳ Waiting for services to initialize..."
-            sleep 15
+            sleep 30
             
             # Check service status
             echo "📊 Service status:"
