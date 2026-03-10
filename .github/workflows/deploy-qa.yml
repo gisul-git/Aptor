@@ -43,7 +43,7 @@ jobs:
             DEPLOY_PATH="/opt/aptor"
           fi
           
-          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no ${{ env.VM_USER }}@${{ env.VM_HOST }} bash << 'EOF'
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no ${{ env.VM_USER }}@${{ env.VM_HOST }} bash << EOF
             set -e
             
             echo "🚀 Starting QA deployment..."
