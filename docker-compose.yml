@@ -455,7 +455,7 @@ services:
       test:
 
 volumes:
-  # mongo_data:  # Not needed when using Atlas
+  # mongo_data:  # Not needed when using Atlass
   redis_data:
   aiml_agent_uploads:
 
