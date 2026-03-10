@@ -336,17 +336,84 @@ jobs:
               fi
             fi
             
-            # Verify clean state - use more reliable method
-            remaining_containers=$(docker ps -a --filter "name=gisul-" --format "{{.Names}}" | grep -v '^$' || true)
+            # Verify clean state - use polling loop to ensure Docker daemon has processed removals
+            echo "🔍 Final verification before docker-compose up..."
             
-            if [ -z "$remaining_containers" ]; then
-              echo "✅ Verified: Clean state achieved, no containers exist"
-            else
-              echo "❌ ERROR: Failed to achieve clean state, containers remain:"
-              echo "$remaining_containers"
+            # Poll for up to 30 seconds to ensure containers are gone
+            max_attempts=30
+            attempt=0
+            while [ $attempt -lt $max_attempts ]; do
+              remaining_containers=$(docker ps -a --filter "name=gisul-" --format "{{.Names}}" | grep -v '^$' || true)
+              
+              if [ -z "$remaining_containers" ]; then
+                echo "✅ Verified: Clean state achieved, no containers exist"
+                break
+              else
+                attempt=$((attempt + 1))
+                echo "⏳ Attempt $attempt/$max_attempts: Containers still exist, waiting for Docker daemon..."
+                echo "$remaining_containers"
+                # Force remove any remaining containers
+                echo "$remaining_containers" | while read container_name; do
+                  if [ -n "$container_name" ]; then
+                    docker rm -f "$container_name" 2>/dev/null || true
+                  fi
+                done
+                sleep 1
+              fi
+            done
+            
+            # Final check - fail if containers still exist
+            final_check=$(docker ps -a --filter "name=gisul-" --format "{{.Names}}" | grep -v '^$' || true)
+            if [ -n "$final_check" ]; then
+              echo "❌ ERROR: Failed to achieve clean state after $max_attempts attempts"
+              echo "Remaining containers:"
+              echo "$final_check"
               docker ps -a --filter "name=gisul-"
               exit 1
             fi
+            
+            # Poll for network removal - up to 15 seconds
+            echo "🔍 Verifying network is removed..."
+            network_attempts=15
+            network_attempt=0
+            while [ $network_attempt -lt $network_attempts ]; do
+              if ! docker network inspect aptor_microservices-network >/dev/null 2>&1; then
+                echo "✅ Verified: Network removed successfully"
+                break
+              else
+                network_attempt=$((network_attempt + 1))
+                echo "⏳ Network attempt $network_attempt/$network_attempts: Network still exists, removing..."
+                # Disconnect any containers that might be connected
+                connected=$(docker network inspect aptor_microservices-network --format '{{range .Containers}}{{.Name}} {{end}}' 2>/dev/null || echo "")
+                if [ -n "$connected" ]; then
+                  echo "Disconnecting containers: $connected"
+                  echo "$connected" | tr ' ' '\n' | while read container; do
+                    if [ -n "$container" ]; then
+                      docker network disconnect -f aptor_microservices-network "$container" 2>/dev/null || true
+                    fi
+                  done
+                fi
+                docker network rm -f aptor_microservices-network 2>/dev/null || true
+                sleep 1
+              fi
+            done
+            
+            # Final network check
+            if docker network inspect aptor_microservices-network >/dev/null 2>&1; then
+              echo "❌ ERROR: Network still exists after $network_attempts attempts"
+              docker network inspect aptor_microservices-network
+              # Try one last time with prune
+              docker network prune -f 2>/dev/null || true
+              sleep 2
+              if docker network inspect aptor_microservices-network >/dev/null 2>&1; then
+                echo "❌ CRITICAL: Cannot remove network, exiting"
+                exit 1
+              fi
+            fi
+            
+            # Extra wait to ensure Docker daemon has fully processed all removals
+            echo "⏳ Waiting 5 seconds for Docker daemon to stabilize..."
+            sleep 5
             
             # Remove Docker Compose state files to prevent stale state issues
             echo "🧹 Clearing Docker Compose state..."
