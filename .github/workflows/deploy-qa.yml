@@ -60,6 +60,12 @@ jobs:
             
             # Update code from repository
             echo "🔄 Updating code from QA branch..."
+            
+            # Clean up Git lock files and corrupted refs
+            echo "🧹 Cleaning up Git references..."
+            find .git/refs -type f -name "*.lock" -delete 2>/dev/null || true
+            rm -rf .git/refs/remotes/origin/* 2>/dev/null || true
+            
             git fetch origin --prune
             git stash push -m "Auto-stash before deployment $(date +%Y%m%d_%H%M%S)" 2>/dev/null || true
             git checkout QA
