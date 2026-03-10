@@ -171,6 +171,40 @@ export default function DevOpsCreateAssessmentPage() {
 
     setLoading(true);
     try {
+      const resolveExperienceFromSession = (): string | null => {
+        if (typeof window === "undefined") return null;
+        const candidates: unknown[] = [];
+        try {
+          const rawPayload = sessionStorage.getItem("devopsAIGeneratedPayload");
+          if (rawPayload) {
+            const parsed = JSON.parse(rawPayload) as { metadata?: Record<string, unknown> };
+            candidates.push(
+              parsed?.metadata?.yearsOfExperience,
+              parsed?.metadata?.years_of_experience,
+              parsed?.metadata?.experienceYears
+            );
+          }
+        } catch {
+          // Ignore malformed payload.
+        }
+        try {
+          const rawMeta = sessionStorage.getItem("devopsAIGenerationMeta");
+          if (rawMeta) {
+            const parsed = JSON.parse(rawMeta) as Record<string, unknown>;
+            candidates.push(parsed?.yearsOfExperience, parsed?.years_of_experience, parsed?.experienceYears);
+          }
+        } catch {
+          // Ignore malformed metadata.
+        }
+
+        for (const value of candidates) {
+          if (typeof value === "number" && Number.isFinite(value)) return String(Math.max(0, Math.floor(value)));
+          if (typeof value === "string" && value.trim()) return value.trim();
+        }
+        return null;
+      };
+
+      const yearsOfExperience = resolveExperienceFromSession();
       const durationForSchedule =
         timerMode === "PER_QUESTION" ? calculateTotalDuration() : formData.duration_minutes;
       const payload = {
@@ -186,6 +220,13 @@ export default function DevOpsCreateAssessmentPage() {
           startTime: formData.start_time || null,
           ...(examMode === "flexible" ? { endTime: formData.end_time || null } : {}),
           duration: durationForSchedule,
+          ...(yearsOfExperience
+            ? {
+                candidateRequirements: {
+                  yearsOfExperience,
+                },
+              }
+            : {}),
         },
         proctoringSettings: {
           aiProctoringEnabled,

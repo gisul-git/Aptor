@@ -329,6 +329,42 @@ function formatCountdown(totalSeconds: number): string {
   return `${mins}:${secs}`;
 }
 
+function createExecutionSessionId(seed?: string): string {
+  const cryptoObj = (globalThis as { crypto?: Crypto }).crypto;
+  if (cryptoObj?.randomUUID) return cryptoObj.randomUUID();
+  const _seed = String(seed || "assessment");
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (ch) => {
+    const rand = Math.random() * 16;
+    const value = ch === "x" ? rand : (rand % 4) + 8;
+    return Math.floor(value).toString(16);
+  });
+}
+
+function getExecutionSessionStorageKey(testId?: string): string {
+  return `devops_exec_session_${String(testId || "assessment")}`;
+}
+
+function normalizeReplayCommand(command: string): string {
+  const trimmed = command.trim();
+  if (!trimmed) return "";
+  // Make mkdir idempotent while replaying command history.
+  if (/^mkdir\s+/.test(trimmed) && !/^mkdir\s+-p\s+/.test(trimmed)) {
+    return trimmed.replace(/^mkdir\s+/, "mkdir -p ");
+  }
+  return trimmed;
+}
+
+function parseYearsOfExperience(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return Math.max(0, Math.floor(value));
+  }
+  if (typeof value === "string") {
+    const match = value.match(/\d+/);
+    if (match) return Math.max(0, Number(match[0]));
+  }
+  return null;
+}
+
 function evaluateSubmission(
   question: RuntimeQuestion,
   submittedContent: string,
@@ -432,11 +468,13 @@ export default function DevOpsTakePage() {
   const testId = typeof router.query.id === "string" ? router.query.id : undefined;
   const { data: testData, isLoading, error } = useDevOpsTest(testId);
   const thumbVideoRef = useRef<HTMLVideoElement>(null);
+  const terminalHistoryRef = useRef<HTMLDivElement>(null);
   const [cameraProctorEnabled, setCameraProctorEnabled] = useState(true);
   const [debugMode] = useState(false);
   const [aiGeneratedQuestions, setAiGeneratedQuestions] = useState<Array<Record<string, unknown>>>([]);
   const [isGeneratedLoading, setIsGeneratedLoading] = useState(false);
   const [generatedFetchError, setGeneratedFetchError] = useState<string | null>(null);
+  const [sessionExperienceYears, setSessionExperienceYears] = useState<number | null>(null);
   const isGeneratedRoute = testId === "ai-generated" || router.query.generated === "1";
 
   useEffect(() => {
@@ -537,6 +575,44 @@ export default function DevOpsTakePage() {
     };
   }, [isGeneratedRoute]);
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const candidates: unknown[] = [];
+    try {
+      const rawPayload = sessionStorage.getItem("devopsAIGeneratedPayload");
+      if (rawPayload) {
+        const payload = JSON.parse(rawPayload) as { metadata?: Record<string, unknown> };
+        candidates.push(
+          payload?.metadata?.yearsOfExperience,
+          payload?.metadata?.years_of_experience,
+          payload?.metadata?.experienceYears
+        );
+      }
+    } catch {
+      // Ignore malformed session payload.
+    }
+
+    try {
+      const rawMeta = sessionStorage.getItem("devopsAIGenerationMeta");
+      if (rawMeta) {
+        const meta = JSON.parse(rawMeta) as Record<string, unknown>;
+        candidates.push(meta?.yearsOfExperience, meta?.years_of_experience, meta?.experienceYears);
+      }
+    } catch {
+      // Ignore malformed session metadata.
+    }
+
+    for (const candidate of candidates) {
+      const parsed = parseYearsOfExperience(candidate);
+      if (parsed !== null) {
+        setSessionExperienceYears(parsed);
+        return;
+      }
+    }
+    setSessionExperienceYears(null);
+  }, []);
+
   const questions = useMemo(() => {
     if (aiGeneratedQuestions.length > 0) {
       return buildRuntimeQuestions(aiGeneratedQuestions);
@@ -559,8 +635,13 @@ export default function DevOpsTakePage() {
   const [editorByQuestion, setEditorByQuestion] = useState<Record<string, string>>({});
   const [attempts, setAttempts] = useState<Record<string, QuestionAttempt>>({});
   const [terminalByQuestion, setTerminalByQuestion] = useState<Record<string, TerminalLine[]>>({});
+  const [commandReplayByQuestion, setCommandReplayByQuestion] = useState<Record<string, string[]>>({});
   const [isRunning, setIsRunning] = useState(false);
   const [submission, setSubmission] = useState<SubmissionSummary | null>(null);
+  const [executionSessionId, setExecutionSessionId] = useState<string>(() =>
+    createExecutionSessionId(testId || "assessment")
+  );
+  const executionSessionIdRef = useRef<string>(executionSessionId);
   const submitted = !!submission;
   const [remainingSeconds, setRemainingSeconds] = useState(0);
 
@@ -724,6 +805,28 @@ export default function DevOpsTakePage() {
     }
   }, [currentIndex, questions.length]);
 
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      const nextId = createExecutionSessionId(testId || "assessment");
+      executionSessionIdRef.current = nextId;
+      setExecutionSessionId(nextId);
+      return;
+    }
+
+    const storageKey = getExecutionSessionStorageKey(testId);
+    const existing = sessionStorage.getItem(storageKey);
+    const nextId = existing && existing.trim() ? existing : createExecutionSessionId(testId || "assessment");
+    if (!existing) {
+      sessionStorage.setItem(storageKey, nextId);
+    }
+    executionSessionIdRef.current = nextId;
+    setExecutionSessionId(nextId);
+  }, [testId]);
+
+  useEffect(() => {
+    executionSessionIdRef.current = executionSessionId;
+  }, [executionSessionId]);
+
   const currentQuestion = questions[currentIndex];
   const currentValue = currentQuestion ? editorByQuestion[currentQuestion.id] || "" : "";
   const terminalLines = currentQuestion ? terminalByQuestion[currentQuestion.id] || [] : [];
@@ -742,6 +845,33 @@ export default function DevOpsTakePage() {
     return map;
   }, [testData]);
   const defaultDurationSeconds = Math.max(60, Number((testData as any)?.duration_minutes || 10) * 60);
+  const inferredExperienceYears = useMemo(() => {
+    const test = (testData as any) || {};
+    const candidates: unknown[] = [
+      test?.yearsOfExperience,
+      test?.years_of_experience,
+      test?.experienceYears,
+      test?.metadata?.yearsOfExperience,
+      test?.metadata?.years_of_experience,
+      test?.schedule?.candidateRequirements?.yearsOfExperience,
+      test?.schedule?.candidateRequirements?.years_of_experience,
+      sessionExperienceYears,
+    ];
+
+    if (Array.isArray(test?.questions)) {
+      test.questions.forEach((q: any) => {
+        candidates.push(q?.yearsOfExperience, q?.years_of_experience, q?.experienceYears);
+      });
+    }
+
+    const parsedYears = candidates
+      .map((value) => parseYearsOfExperience(value))
+      .filter((value): value is number => value !== null);
+
+    if (parsedYears.length === 0) return null;
+    return Math.max(...parsedYears);
+  }, [testData, sessionExperienceYears]);
+  const isSeniorScenarioMode = (inferredExperienceYears ?? 0) > 4;
 
   useEffect(() => {
     if (!currentQuestion || submitted) return;
@@ -762,45 +892,70 @@ export default function DevOpsTakePage() {
   }, [currentQuestion, submitted, remainingSeconds]);
 
   const runQuestion = async () => {
-    if (!currentQuestion || isRunning) return;
+    if (!currentQuestion || isRunning || remainingSeconds <= 0) return;
 
     setIsRunning(true);
     setSubmission(null);
 
     const content = editorByQuestion[currentQuestion.id] || "";
+    const effectiveCommand = content;
 
     const validationMode = currentQuestion.validationMode || "runtime";
     const shouldExecuteRuntime = validationMode !== "content";
     const payload: DevOpsRunPayload | null = shouldExecuteRuntime
       ? currentQuestion.kind === "command"
-        ? { mode: "command", command: content }
+        ? {
+            mode: "command",
+            session_id: executionSessionIdRef.current,
+            sessionId: executionSessionIdRef.current,
+            testId: testId || undefined,
+            candidateId: proctoringUserId || undefined,
+            command: effectiveCommand,
+          }
         : currentQuestion.kind === "terraform"
           ? {
               mode: "terraform",
+              session_id: executionSessionIdRef.current,
+              sessionId: executionSessionIdRef.current,
+              testId: testId || undefined,
+              candidateId: proctoringUserId || undefined,
               terraformAction: currentQuestion.terraformAction || "plan",
               terraformFiles: { "main.tf": content },
             }
           : {
               mode: "lint",
+              session_id: executionSessionIdRef.current,
+              sessionId: executionSessionIdRef.current,
+              testId: testId || undefined,
+              candidateId: proctoringUserId || undefined,
               lintType: currentQuestion.lintType || "docker",
               content,
             }
       : null;
 
-    const nextLines: TerminalLine[] = [
-      {
-        type: "cmd",
-        text:
-          currentQuestion.kind === "command"
-            ? `$ ${content}`
-            : currentQuestion.kind === "terraform"
-              ? `$ terraform ${currentQuestion.terraformAction || "plan"} (main.tf)`
-              : `$ lint:${currentQuestion.lintType || "docker"}`,
-      },
-    ];
+    const nextLines: TerminalLine[] =
+      currentQuestion.kind === "command"
+        ? []
+        : [
+            {
+              type: "cmd",
+              text:
+                currentQuestion.kind === "terraform"
+                  ? `$ terraform ${currentQuestion.terraformAction || "plan"} (main.tf)`
+                  : `$ lint:${currentQuestion.lintType || "docker"}`,
+            },
+          ];
 
     try {
       const result = payload ? await devopsRuntimeService.run(payload) : null;
+      const returnedSessionId = typeof result?.sessionId === "string" ? result.sessionId.trim() : "";
+      if (returnedSessionId && returnedSessionId !== executionSessionIdRef.current) {
+        executionSessionIdRef.current = returnedSessionId;
+        setExecutionSessionId(returnedSessionId);
+        if (typeof window !== "undefined") {
+          sessionStorage.setItem(getExecutionSessionStorageKey(testId), returnedSessionId);
+        }
+      }
       const evaluation = evaluateSubmission(currentQuestion, content, result);
 
       if (!result) {
@@ -816,20 +971,47 @@ export default function DevOpsTakePage() {
         (result.lintErrors || []).forEach((row) => nextLines.push({ type: "stderr", text: row }));
         (result.lintWarnings || []).forEach((row) => nextLines.push({ type: "stdout", text: row }));
       } else {
-        if (result.stdout) nextLines.push({ type: "stdout", text: result.stdout.trimEnd() });
-        if (result.stderr) nextLines.push({ type: "stderr", text: result.stderr.trimEnd() });
-        nextLines.push({
-          type: result.status === "success" ? "success" : "error",
-          text: `exit_code=${result.exitCode ?? "unknown"}`,
-        });
-      }
+        const exitCodeValue =
+          typeof result.exitCode === "number" && Number.isFinite(result.exitCode) ? result.exitCode : 1;
+        const outputType: TerminalLine["type"] = exitCodeValue === 0 ? "success" : "error";
+        const stdoutText = typeof result.stdout === "string" ? result.stdout.trimEnd() : "";
+        const stderrText = typeof result.stderr === "string" ? result.stderr.trimEnd() : "";
+        if (stdoutText) nextLines.push({ type: outputType, text: stdoutText });
+        if (stderrText) nextLines.push({ type: outputType, text: stderrText });
+        if (!stdoutText && !stderrText && result.message) {
+          nextLines.push({
+            type: outputType,
+            text: String(result.message),
+          });
+        } else if (!stdoutText && !stderrText && exitCodeValue === 0) {
+          nextLines.push({
+            type: "success",
+            text: "Command run successful",
+          });
+        }
+          if (exitCodeValue !== 0 && currentQuestion.kind !== "command") {
+            nextLines.push({
+              type: "error",
+              text: `exit_code=${result.exitCode ?? "unknown"}`,
+            });
+          }
+        }
 
-      evaluation.reasons.forEach((reason) =>
-        nextLines.push({
-          type: evaluation.passed ? "success" : "error",
-          text: evaluation.passed ? `SUCCESS: ${reason}` : `ERROR: ${reason}`,
-        })
-      );
+      const suppressSuccessReason =
+        evaluation.passed &&
+        !!result &&
+        result.engine !== "lint" &&
+        typeof result.exitCode === "number" &&
+        result.exitCode === 0;
+      const suppressEvaluationReasons = currentQuestion.kind === "command";
+      if (!suppressSuccessReason && !suppressEvaluationReasons) {
+        evaluation.reasons.forEach((reason) =>
+          nextLines.push({
+            type: evaluation.passed ? "success" : "error",
+            text: evaluation.passed ? `SUCCESS: ${reason}` : `ERROR: ${reason}`,
+          })
+        );
+      }
 
       setTerminalByQuestion((prev) => ({
         ...prev,
@@ -849,6 +1031,21 @@ export default function DevOpsTakePage() {
           },
         };
       });
+
+      if (currentQuestion.kind === "command" && result?.exitCode === 0) {
+        const replayCommand = normalizeReplayCommand(content);
+        if (replayCommand) {
+          setCommandReplayByQuestion((prev) => {
+            const history = prev[currentQuestion.id] || [];
+            // Keep bounded history to avoid oversized replay payloads.
+            const nextHistory = [...history, replayCommand].slice(-30);
+            return {
+              ...prev,
+              [currentQuestion.id]: nextHistory,
+            };
+          });
+        }
+      }
     } catch (runError: unknown) {
       const message = runError instanceof Error ? runError.message : "Run failed unexpectedly.";
       setTerminalByQuestion((prev) => ({
@@ -874,11 +1071,22 @@ export default function DevOpsTakePage() {
         };
       });
     } finally {
+      if (currentQuestion.kind === "command") {
+        setEditorByQuestion((prev) => ({
+          ...prev,
+          [currentQuestion.id]: "",
+        }));
+      }
       setIsRunning(false);
     }
   };
 
-  const submitAssessment = () => {
+  useEffect(() => {
+    if (currentQuestion?.kind !== "command") return;
+    terminalHistoryRef.current?.scrollTo({ top: terminalHistoryRef.current.scrollHeight });
+  }, [terminalLines, currentQuestion?.kind]);
+
+  const submitAssessment = async () => {
     const summary = questions.reduce(
       (acc, question) => {
         const attempt = attempts[question.id];
@@ -892,15 +1100,32 @@ export default function DevOpsTakePage() {
     );
 
     setSubmission(summary);
+    setCommandReplayByQuestion({});
+    const sessionToReset = executionSessionIdRef.current;
+    try {
+      await devopsRuntimeService.resetSession(sessionToReset);
+    } catch {
+      // Ignore reset failures.
+    }
   };
 
   const finishCurrentQuestion = () => {
     if (!currentQuestion) return;
     if (currentIndex < questions.length - 1) {
+      const previousSessionId = executionSessionIdRef.current;
+      void devopsRuntimeService.resetSession(previousSessionId).catch(() => {
+        // Ignore reset failures on question transition.
+      });
+      const nextSessionId = createExecutionSessionId(testId || "assessment");
+      executionSessionIdRef.current = nextSessionId;
+      setExecutionSessionId(nextSessionId);
+      if (typeof window !== "undefined") {
+        sessionStorage.setItem(getExecutionSessionStorageKey(testId), nextSessionId);
+      }
       setCurrentIndex((prev) => prev + 1);
       return;
     }
-    submitAssessment();
+    void submitAssessment();
   };
 
   if (isLoading || (isGeneratedRoute && isGeneratedLoading && aiGeneratedQuestions.length === 0)) {
@@ -958,12 +1183,10 @@ export default function DevOpsTakePage() {
             <h1 className={styles.title} style={{ fontFamily: "var(--font-devops-heading)" }}>
               {assessmentTitle}
             </h1>
-            <div className={styles.meta}>
-              <span className={styles.chip}>Scenario {currentIndex + 1}/{questions.length}</span>
-              <span className={styles.chip}>Mode {currentQuestion.kind}</span>
-              <span className={styles.chip}>Difficulty {currentQuestion.difficulty}</span>
-              <span className={styles.chip}>Time {formatCountdown(remainingSeconds)}</span>
-            </div>
+          </div>
+          <div className={styles.timerBlock}>
+            <span className={styles.timerLabel}>Time Left</span>
+            <span className={styles.timerValue}>{formatCountdown(remainingSeconds)}</span>
           </div>
         </motion.header>
 
@@ -1042,108 +1265,183 @@ export default function DevOpsTakePage() {
           >
             <div className={styles.editorBar}>
               <div className={styles.editorMeta}>
-                <span>{currentQuestion.kind === "command" ? "Shell Input" : "Workspace File"}</span>
+                <span>{isSeniorScenarioMode ? "Scenario Notepad" : currentQuestion.kind === "command" ? "Shell Input" : "Workspace File"}</span>
                 <span>Runs {currentAttempt?.runCount || 0}</span>
               </div>
 
               <div className={styles.btnRow}>
-                <button
-                  type="button"
-                  className={cx(styles.btn, styles.btnRun)}
-                  onClick={runQuestion}
-                  disabled={isRunning || remainingSeconds <= 0}
-                >
-                  {remainingSeconds <= 0 ? "Time Up" : isRunning ? "Running..." : "Run"}
-                </button>
+                {!isSeniorScenarioMode && (
+                  <button
+                    type="button"
+                    className={cx(styles.btn, styles.btnRun)}
+                    onClick={runQuestion}
+                    disabled={isRunning || remainingSeconds <= 0}
+                  >
+                    {remainingSeconds <= 0 ? "Time Up" : isRunning ? "Running..." : "Run"}
+                  </button>
+                )}
                 <button
                   type="button"
                   className={cx(styles.btn, styles.btnSubmit)}
                   onClick={finishCurrentQuestion}
                   disabled={isRunning}
                 >
-                  {currentIndex < questions.length - 1 ? "Finish Question" : "Finish Test"}
+                  {currentIndex < questions.length - 1
+                    ? isSeniorScenarioMode
+                      ? "Next Scenario"
+                      : "Finish Question"
+                    : isSeniorScenarioMode
+                      ? "Submit Assessment"
+                      : "Finish Test"}
                 </button>
               </div>
             </div>
 
             <div className={styles.editorWrap}>
-              <MonacoEditor
-                height="100%"
-                theme="vs-dark"
-                defaultLanguage={currentQuestion.kind === "command" ? "shell" : "yaml"}
-                language={currentQuestion.kind === "command" ? "shell" : "yaml"}
-                value={currentValue}
-                onChange={(value) =>
-                  setEditorByQuestion((prev) => ({
-                    ...prev,
-                    [currentQuestion.id]: value ?? "",
-                  }))
-                }
-                options={{
-                  minimap: { enabled: false },
-                  fontFamily: "var(--font-devops-mono)",
-                  fontSize: 14,
-                  lineNumbers: currentQuestion.kind === "command" ? "off" : "on",
-                  wordWrap: "on",
-                  scrollBeyondLastLine: false,
-                  automaticLayout: true,
-                  padding: { top: 16 },
-                }}
-              />
+              {isSeniorScenarioMode ? (
+                <div className={styles.scenarioWrap}>
+                  <textarea
+                    className={styles.scenarioNotepad}
+                    value={currentValue}
+                    onChange={(e) =>
+                      setEditorByQuestion((prev) => ({
+                        ...prev,
+                        [currentQuestion.id]: e.target.value ?? "",
+                      }))
+                    }
+                    placeholder="Write your scenario analysis, reasoning, and proposed solution approach..."
+                  />
+                </div>
+              ) : currentQuestion.kind === "command" ? (
+                <div className={styles.terminalEditor}>
+                  <div className={styles.terminalPromptRow}>
+                    <span className={styles.terminalPrompt}>$</span>
+                    <input
+                      type="text"
+                      className={styles.terminalInput}
+                      value={currentValue}
+                      onChange={(e) =>
+                        setEditorByQuestion((prev) => ({
+                          ...prev,
+                          [currentQuestion.id]: e.target.value ?? "",
+                        }))
+                      }
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          runQuestion();
+                        }
+                      }}
+                      placeholder="Type a command and press Enter"
+                      autoComplete="off"
+                      spellCheck={false}
+                    />
+                  </div>
+                  <div ref={terminalHistoryRef} className={styles.terminalHistory}>
+                    {terminalLines.length === 0 ? (
+                      <span className={styles.lineStdout}>No execution yet. Type command and press Enter.</span>
+                    ) : (
+                      terminalLines.map((line, idx) => (
+                        <span
+                          key={`${line.type}-${idx}`}
+                          className={cx(
+                            styles.line,
+                            line.type === "cmd" && styles.lineCmd,
+                            line.type === "stdout" && styles.lineStdout,
+                            line.type === "stderr" && styles.lineStderr,
+                            line.type === "success" && styles.lineSuccess,
+                            line.type === "error" && styles.lineError
+                          )}
+                        >
+                          {line.text}
+                          {"\n"}
+                        </span>
+                      ))
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <MonacoEditor
+                  key={currentQuestion.id}
+                  height="100%"
+                  theme="vs-dark"
+                  defaultLanguage={currentQuestion.kind === "command" ? "shell" : "yaml"}
+                  language={currentQuestion.kind === "command" ? "shell" : "yaml"}
+                  value={currentValue}
+                  onChange={(value) =>
+                    setEditorByQuestion((prev) => ({
+                      ...prev,
+                      [currentQuestion.id]: value ?? "",
+                    }))
+                  }
+                  options={{
+                    minimap: { enabled: false },
+                    fontFamily: "var(--font-devops-mono)",
+                    fontSize: 14,
+                    lineNumbers: currentQuestion.kind === "command" ? "off" : "on",
+                    wordWrap: "on",
+                    scrollBeyondLastLine: false,
+                    automaticLayout: true,
+                    padding: { top: 16 },
+                  }}
+                />
+              )}
             </div>
           </motion.section>
         </motion.section>
 
-        <motion.section
-          className={styles.terminalPanel}
-          variants={{ hidden: { y: 18, opacity: 0 }, show: { y: 0, opacity: 1 } }}
-        >
-          <div className={styles.terminalHead}>
-            <span>Execution Output</span>
-            <span>{currentAttempt?.passed ? "Validated" : "Awaiting validation"}</span>
-          </div>
+        {!isSeniorScenarioMode && currentQuestion.kind !== "command" && (
+          <motion.section
+            className={styles.terminalPanel}
+            variants={{ hidden: { y: 18, opacity: 0 }, show: { y: 0, opacity: 1 } }}
+          >
+            <div className={styles.terminalHead}>
+              <span>Execution Output</span>
+              <span>{currentAttempt?.passed ? "Validated" : "Awaiting validation"}</span>
+            </div>
 
-          <pre className={styles.terminalBody}>
-            {terminalLines.length === 0 ? (
-              <span className={styles.lineStdout}>No execution yet. Use Run to evaluate this question.</span>
-            ) : (
-              terminalLines.map((line, idx) => (
-                <span
-                  key={`${line.type}-${idx}`}
-                  className={cx(
-                    styles.line,
-                    line.type === "cmd" && styles.lineCmd,
-                    line.type === "stdout" && styles.lineStdout,
-                    line.type === "stderr" && styles.lineStderr,
-                    line.type === "success" && styles.lineSuccess,
-                    line.type === "error" && styles.lineError
-                  )}
+            <pre className={styles.terminalBody}>
+              {terminalLines.length === 0 ? (
+                <span className={styles.lineStdout}>No execution yet. Use Run to evaluate this question.</span>
+              ) : (
+                terminalLines.map((line, idx) => (
+                  <span
+                    key={`${line.type}-${idx}`}
+                    className={cx(
+                      styles.line,
+                      line.type === "cmd" && styles.lineCmd,
+                      line.type === "stdout" && styles.lineStdout,
+                      line.type === "stderr" && styles.lineStderr,
+                      line.type === "success" && styles.lineSuccess,
+                      line.type === "error" && styles.lineError
+                    )}
+                  >
+                    {line.text}
+                    {"\n"}
+                  </span>
+                ))
+              )}
+            </pre>
+
+            <AnimatePresence mode="wait">
+              {submission && (
+                <motion.div
+                  key={`${submission.passedCount}-${submission.totalCount}`}
+                  className={styles.submitResult}
+                  initial={{ opacity: 0, y: 6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: 6 }}
+                  transition={{ duration: 0.2 }}
                 >
-                  {line.text}
-                  {"\n"}
-                </span>
-              ))
-            )}
-          </pre>
-
-          <AnimatePresence mode="wait">
-            {submission && (
-              <motion.div
-                key={`${submission.passedCount}-${submission.totalCount}`}
-                className={styles.submitResult}
-                initial={{ opacity: 0, y: 6 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: 6 }}
-                transition={{ duration: 0.2 }}
-              >
-                <span>Submission completed.</span>
-                <span className={submission.passedCount === submission.totalCount ? styles.statusPass : styles.statusFail}>
-                  Validated {submission.passedCount} of {submission.totalCount}
-                </span>
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </motion.section>
+                  <span>Submission completed.</span>
+                  <span className={submission.passedCount === submission.totalCount ? styles.statusPass : styles.statusFail}>
+                    Validated {submission.passedCount} of {submission.totalCount}
+                  </span>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </motion.section>
+        )}
       </motion.div>
       {cameraProctorEnabled && (
         <FullscreenLockOverlay

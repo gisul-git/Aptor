@@ -45,7 +45,7 @@ export default function DashboardCard(props: DashboardCardProps) {
     } else if (props.type === 'cloud') {
       router.push(`/cloud/tests/${props.id}/edit`);
     } else if (props.type === 'devops') {
-      router.push(`/devops/tests/${props.id}/edit`);
+      router.push(`/devops/tests?testId=${props.id}`);
     } else if (displayStatus === 'draft') {
       if (props.type === 'custom_mcq') {
         router.push(`/custom-mcq/create?id=${props.id}`);

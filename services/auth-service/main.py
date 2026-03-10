@@ -99,19 +99,16 @@ async def log_requests(request, call_next):
 
 # CORS middleware
 settings = get_settings()
-if settings.cors_origins:
-    allowed_origins = [origin.strip() for origin in settings.cors_origins.split(",")]
-else:
-    allowed_origins = ["http://localhost:3000"]
+allowed_origins = ["*"]
 
 logger.info(f"✅ CORS allowed origins: {allowed_origins}")
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,
-    allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type", "Accept", "X-Requested-With", "X-User-Id", "X-Org-Id", "X-Role", "X-Correlation-ID"],
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
     max_age=600,
 )
 
@@ -155,4 +152,5 @@ async def health_check():
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=4000)
+
 

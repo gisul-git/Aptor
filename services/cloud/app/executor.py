@@ -9,7 +9,7 @@ from typing import List
 
 NSJAIL_CONFIG_PATH = os.getenv("NSJAIL_CONFIG_PATH", "/app/nsjail.cfg")
 DEFAULT_REGION = os.getenv("AWS_DEFAULT_REGION", "us-east-1")
-AWS_CLI_BIN = os.getenv("AWS_CLI_BIN", "/usr/bin/aws")
+AWS_CLI_BIN = os.getenv("AWS_CLI_BIN", "aws")
 TERRAFORM_BIN = os.getenv("TERRAFORM_BIN", "/usr/local/bin/terraform")
 TERRAFORM_WORKDIR_BASE = os.getenv("TERRAFORM_WORKDIR_BASE", "/tmp/cloud_engine_tf")
 MAX_COMMAND_LENGTH = int(os.getenv("MAX_COMMAND_LENGTH", "512"))

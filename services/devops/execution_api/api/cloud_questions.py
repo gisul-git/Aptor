@@ -1,5 +1,6 @@
 from datetime import datetime
 import json
+import re
 from typing import Any, Dict, List, Optional
 from urllib import error as urllib_error
 from urllib import request as urllib_request
@@ -26,6 +27,16 @@ _QUESTION_DIFFICULTY_ALIASES: Dict[str, str] = {
 
 def _normalize_question_difficulty(value: Any) -> str:
     return _QUESTION_DIFFICULTY_ALIASES.get(str(value or "").strip().lower(), "medium")
+
+
+def _parse_years(value: Any) -> int:
+    if isinstance(value, int):
+        return max(0, value)
+    if isinstance(value, str):
+        match = re.search(r"\d+", value)
+        if match:
+            return max(0, int(match.group(0)))
+    return 0
 
 
 def _normalize_doc(doc: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
@@ -83,13 +94,48 @@ def _sanitize_generated_questions(raw: Any, count: int) -> List[Dict[str, Any]]:
                     "Validate each step before proceeding.",
                 ],
             }
+        elif (
+            "context" in q
+            and "task" in q
+            and "description" not in q
+            and isinstance(q.get("task"), str)
+        ):
+            q = {
+                "id": q.get("id") or f"ai-cloud-{idx + 1}",
+                "title": q.get("title") or f"Cloud Question {idx + 1}",
+                "description": q.get("context") or "Solve this Cloud scenario.",
+                "difficulty": q.get("difficulty") or "medium",
+                "kind": "command",
+                "points": q.get("points") or 10,
+                "starterCode": "",
+                "validationMode": "content",
+                "questionType": "scenario",
+                "isScenarioBased": True,
+                "context": q.get("context") or "",
+                "task": q.get("task") or "",
+                "instructions": [str(q.get("task"))],
+                "constraints": [
+                    "Provide a clear cloud architecture/troubleshooting explanation.",
+                    "Focus on decision-making, risk, and trade-offs.",
+                ],
+                "hints": [
+                    "Explain assumptions and constraints clearly.",
+                    "Call out operational and security considerations.",
+                ],
+            }
 
         kind = str(q.get("kind") or "command").lower()
         if kind not in {"command", "terraform", "lint"}:
             kind = "command"
         difficulty = _normalize_question_difficulty(q.get("difficulty"))
         starter = q.get("starterCode")
-        if not isinstance(starter, str) or not starter.strip():
+        is_scenario = bool(
+            q.get("isScenarioBased")
+            or str(q.get("questionType") or q.get("question_type") or "").strip().lower() == "scenario"
+        )
+        if is_scenario:
+            starter = starter if isinstance(starter, str) else ""
+        elif not isinstance(starter, str) or not starter.strip():
             if kind == "terraform":
                 starter = 'terraform {\n  required_version = ">= 1.3.0"\n}\n'
             elif kind == "lint":
@@ -109,6 +155,10 @@ def _sanitize_generated_questions(raw: Any, count: int) -> List[Dict[str, Any]]:
                 "validationMode": q.get("validationMode")
                 if q.get("validationMode") in {"runtime", "content", "hybrid"}
                 else ("runtime" if kind == "lint" else "hybrid"),
+                "questionType": str(q.get("questionType") or q.get("question_type") or ""),
+                "isScenarioBased": bool(q.get("isScenarioBased")),
+                "context": str(q.get("context") or ""),
+                "task": str(q.get("task") or ""),
                 "lintType": q.get("lintType")
                 if q.get("lintType") in {"docker", "kubernetes", "github_actions"}
                 else None,
@@ -533,6 +583,159 @@ Ordered list of AWS resource setup steps including service names and resource na
  
 Important Output Rules
  
+- No commands
+
+- No solution code
+
+- No explanations
+
+- Only valid JSON
+""".strip()
+
+    if _parse_years(payload.yearsOfExperience) > 4:
+        system_prompt = """
+You generate scenario-based AWS cloud assessment questions designed for experienced engineers.
+ 
+Output MUST be strictly valid JSON.
+
+Do not include markdown.
+
+Do not include explanations.
+
+Do not include text outside JSON.
+ 
+Hard Rules:
+
+- Do not include commands.
+
+- Do not include solution code.
+
+- Do not include configuration solutions.
+
+- Only generate meaningful scenario descriptions and task instructions.
+ 
+All tasks must simulate realistic production cloud engineering situations.
+""".strip()
+
+        user_prompt = f"""
+Act as a Senior Cloud Engineer working at a FAANG company (Google, Amazon, Meta, Apple, or Netflix).
+ 
+Generate scenario-based AWS cloud assessment questions designed for candidates with more than 4 years of cloud experience.
+ 
+Examiner Inputs
+ 
+Role: {payload.jobRole}
+
+Years Of Experience: {payload.yearsOfExperience}
+
+Difficulty: {payload.difficulty}
+
+Focus Area: {payload.focusArea}
+
+Topics Required: {payload.topicsRequired}
+
+Assessment Time Limit: {payload.timeLimit} minutes
+
+Assessment Title: {payload.title}
+
+Assessment Description: {payload.description}
+ 
+Candidate Experience Requirement
+ 
+These questions are intended for candidates with more than 4 years of experience.
+ 
+Therefore questions must:
+ 
+- represent real production cloud scenarios
+
+- require engineering reasoning
+
+- require diagnosis and architecture thinking
+
+- avoid trivial setup tasks
+
+- require the candidate to explain their solution approach
+ 
+The candidate's answer will be evaluated using AI analysis of their written explanation.
+ 
+Answer Format Requirement
+ 
+Candidates will provide answers in natural human language.
+ 
+The answer may include:
+ 
+- explanation of the issue
+
+- reasoning steps
+
+- design decisions
+
+- proposed solution strategy
+
+- risks and mitigations
+ 
+STRICT Topic Control Rule
+ 
+Questions MUST only involve technologies listed in:
+ 
+{payload.topicsRequired}
+ 
+Do NOT introduce technologies not listed.
+ 
+Difficulty Enforcement Rule
+ 
+All generated questions must match the required difficulty level:
+ 
+{payload.difficulty}
+ 
+Scenario Construction Rules
+ 
+Each question must include:
+ 
+1. A realistic production cloud situation
+
+2. Context about the system/environment
+
+3. A clear problem statement
+
+4. A request to explain how they would solve it
+ 
+Avoid trivial tasks like:
+ 
+- create one bucket
+
+- create one queue
+
+- create basic IAM role
+ 
+Instead focus on:
+ 
+- troubleshooting
+
+- resilience improvements
+
+- reliability and scalability decisions
+
+- cost/performance trade-offs
+
+- cloud architecture reasoning
+ 
+Return STRICTLY this JSON format:
+ 
+{{
+  "questions": [
+    {{
+      "title": "",
+      "company": "",
+      "difficulty": "{payload.difficulty}",
+      "context": "",
+      "task": ""
+    }}
+  ]
+}}
+ 
+Important Output Rules
+
 - No commands
 
 - No solution code

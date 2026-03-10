@@ -6,6 +6,10 @@ type LintType = "docker" | "kubernetes" | "github_actions";
 interface RunRequestBody {
   mode: RunMode;
   command?: string;
+  session_id?: string;
+  sessionId?: string;
+  testId?: string;
+  candidateId?: string;
   terraformAction?: "init" | "plan" | "apply" | "destroy";
   terraformFiles?: Record<string, string>;
   autoApprove?: boolean;
@@ -17,6 +21,7 @@ interface UnifiedRunResponse {
   ok: boolean;
   status: "success" | "error";
   engine: "execution" | "terraform" | "lint";
+  sessionId?: string;
   stdout?: string;
   stderr?: string;
   exitCode?: number;
@@ -28,14 +33,147 @@ interface UnifiedRunResponse {
 }
 
 interface EngineLikeResponse {
+  session_id?: string;
+  sessionId?: string;
   stdout?: string;
   stderr?: string;
   exit_code?: number;
+  exitCode?: number;
+  code?: number;
+  status_code?: number;
+  status?: string;
+  success?: boolean;
+  output?: string;
+  error?: string;
+  result?: string;
   [key: string]: unknown;
+}
+
+function normalizeCommandInput(raw: string): string {
+  let command = String(raw || "").trim();
+
+  // Remove common shell prompt prefixes if user pasted the full prompt line.
+  command = command.replace(/^(?:\$\s+|#\s+|PS>\s+)/i, "");
+
+  // Remove accidental wrapping code fences.
+  command = command.replace(/^```[a-zA-Z]*\s*/, "").replace(/\s*```$/, "").trim();
+  return command;
+}
+
+function sanitizeTokenPart(value: string): string {
+  return value.replace(/[^a-zA-Z0-9_-]/g, "-").slice(0, 80);
+}
+
+function readCookie(req: NextApiRequest, key: string): string | null {
+  const cookieHeader = req.headers.cookie || "";
+  if (!cookieHeader) return null;
+  const rows = cookieHeader.split(";").map((row) => row.trim());
+  for (const row of rows) {
+    const idx = row.indexOf("=");
+    if (idx <= 0) continue;
+    const name = row.slice(0, idx).trim();
+    if (name !== key) continue;
+    const value = row.slice(idx + 1).trim();
+    try {
+      return decodeURIComponent(value || "");
+    } catch {
+      return value || "";
+    }
+  }
+  return null;
+}
+
+function generateSessionId(): string {
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (ch) => {
+    const rand = Math.random() * 16;
+    const value = ch === "x" ? rand : (rand % 4) + 8;
+    return Math.floor(value).toString(16);
+  });
+}
+
+function resolveExecutionSessionId(req: NextApiRequest, body: RunRequestBody): {
+  sessionId: string;
+  setCookie: boolean;
+} {
+  const querySession = Array.isArray(req.query.session_id)
+    ? req.query.session_id[0]
+    : req.query.session_id || req.query.sessionId;
+  const headerSession = req.headers["x-session-id"];
+  const explicit = String(
+    body.session_id ||
+      body.sessionId ||
+      querySession ||
+      (Array.isArray(headerSession) ? headerSession[0] : headerSession) ||
+      ""
+  ).trim();
+  if (explicit) return { sessionId: explicit, setCookie: false };
+
+  const cookieSession = readCookie(req, "devops_exec_session_id");
+  if (cookieSession) return { sessionId: cookieSession, setCookie: false };
+
+  const generated = generateSessionId();
+  return { sessionId: generated, setCookie: true };
+}
+
+function normalizeExecutionResponse(data: EngineLikeResponse): {
+  stdout: string;
+  stderr: string;
+  exitCode: number;
+} {
+  const asText = (value: unknown): string => {
+    if (typeof value === "string") return value;
+    if (Array.isArray(value)) {
+      return value
+        .map((row) => (typeof row === "string" ? row : JSON.stringify(row)))
+        .join("\n");
+    }
+    if (value && typeof value === "object") return JSON.stringify(value);
+    if (typeof value === "number" || typeof value === "boolean") return String(value);
+    return "";
+  };
+
+  const stdout =
+    asText(data.stdout) ||
+    asText(data.output) ||
+    asText(data.result);
+  const stderr =
+    asText(data.stderr) ||
+    asText(data.error);
+
+  const explicitExit =
+    typeof data.exit_code === "number"
+      ? data.exit_code
+      : typeof data.exitCode === "number"
+        ? data.exitCode
+        : typeof data.code === "number"
+          ? data.code
+          : typeof data.status_code === "number"
+            ? data.status_code
+          : null;
+
+  if (explicitExit !== null) {
+    return { stdout, stderr, exitCode: explicitExit };
+  }
+
+  const status = String(data.status || "").toLowerCase();
+  if (data.success === true || ["ok", "success", "passed"].includes(status)) {
+    return { stdout, stderr, exitCode: 0 };
+  }
+  if (data.success === false || ["error", "failed", "failure"].includes(status)) {
+    return { stdout, stderr, exitCode: 1 };
+  }
+
+  // Heuristic fallback for engines that omit exit code/status:
+  // if stderr/error text exists, treat as failure; otherwise success.
+  if (stderr.trim()) {
+    return { stdout, stderr, exitCode: 1 };
+  }
+  return { stdout, stderr, exitCode: 0 };
 }
 
 const EXECUTION_API_BASE =
   process.env.DEVOPS_EXECUTION_API_URL || "http://127.0.0.1:8010";
+const COMMAND_EXECUTION_URL = "http://192.168.1.18:4040/execute";
 const LINT_API_BASE = process.env.DEVOPS_LINT_API_URL || "http://127.0.0.1:8002";
 const EXECUTION_BASES = Array.from(
   new Set(
@@ -86,11 +224,18 @@ function lintGithubActionsFallback(content: string): {
 
 async function safeJsonParse(response: Response): Promise<Record<string, unknown>> {
   const contentType = response.headers.get("content-type") || "";
-  if (!contentType.includes("application/json")) {
-    const text = await response.text();
+  const text = await response.text();
+  if (!text.trim()) return {};
+
+  if (contentType.includes("application/json")) {
+    return JSON.parse(text) as Record<string, unknown>;
+  }
+
+  try {
+    return JSON.parse(text) as Record<string, unknown>;
+  } catch {
     return { detail: text };
   }
-  return response.json();
 }
 
 function extractDetail(data: Record<string, unknown>, fallback: string): string {
@@ -103,6 +248,12 @@ function extractDetail(data: Record<string, unknown>, fallback: string): string 
 
 function asEngineResponse(data: Record<string, unknown>): EngineLikeResponse {
   return data as EngineLikeResponse;
+}
+
+function resolveReturnedSessionId(data: EngineLikeResponse, fallback: string): string {
+  const raw = data.session_id || data.sessionId;
+  const parsed = typeof raw === "string" ? raw.trim() : "";
+  return parsed || fallback;
 }
 
 export default async function handler(
@@ -130,7 +281,9 @@ export default async function handler(
 
   try {
     if (body.mode === "command") {
-      if (!body.command?.trim()) {
+      const normalizedCommand = normalizeCommandInput(body.command || "");
+      const { sessionId: executionSessionId, setCookie } = resolveExecutionSessionId(req, body);
+      if (!normalizedCommand) {
         return res.status(400).json({
           ok: false,
           status: "error",
@@ -138,51 +291,38 @@ export default async function handler(
           message: "Command is required for mode=command",
         });
       }
-
-      let response: Response | null = null;
-      let data: Record<string, unknown> = {};
-      let lastError = "";
-
-      for (const base of EXECUTION_BASES) {
-        try {
-          response = await fetch(`${base}/api/execute`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ command: body.command }),
-          });
-          if (response.status === 404) {
-            response = await fetch(`${base}/execute`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ command: body.command }),
-            });
-          }
-          data = await safeJsonParse(response);
-          if (response.ok || response.status !== 422) break;
-
-          response = await fetch(`${base}/execute`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              session_id: `devops-${Date.now()}`,
-              mode: "aws",
-              command: body.command,
-            }),
-          });
-          data = await safeJsonParse(response);
-          if (response.ok) break;
-        } catch (err: any) {
-          lastError = err?.message || String(err);
-          response = null;
-        }
+      if (setCookie) {
+        res.setHeader(
+          "Set-Cookie",
+          `devops_exec_session_id=${encodeURIComponent(executionSessionId)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=86400`
+        );
       }
 
-      if (!response) {
+      let response: Response;
+      let data: Record<string, unknown> = {};
+      const commandForExecution = normalizedCommand;
+      try {
+        response = await fetch(COMMAND_EXECUTION_URL, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Session-ID": executionSessionId,
+            "X-Session-Id": executionSessionId,
+          },
+          body: JSON.stringify({
+            session_id: executionSessionId,
+            sessionId: executionSessionId,
+            cmd: commandForExecution,
+          }),
+        });
+        data = await safeJsonParse(response);
+      } catch (err: any) {
+        const lastError = err?.message || String(err);
         return res.status(503).json({
           ok: false,
           status: "error",
           engine: "execution",
-          message: `Execution engine unreachable. Tried: ${EXECUTION_BASES.join(", ")}. Last error: ${lastError}`,
+          message: `Execution engine unreachable at ${COMMAND_EXECUTION_URL}. Last error: ${lastError}`,
         });
       }
 
@@ -196,13 +336,16 @@ export default async function handler(
       }
 
       const engineData = asEngineResponse(data);
+      const normalized = normalizeExecutionResponse(engineData);
+      const resolvedSessionId = resolveReturnedSessionId(engineData, executionSessionId);
       return res.status(200).json({
         ok: true,
-        status: engineData.exit_code === 0 ? "success" : "error",
+        status: normalized.exitCode === 0 ? "success" : "error",
         engine: "execution",
-        stdout: String(engineData.stdout || ""),
-        stderr: String(engineData.stderr || ""),
-        exitCode: Number(engineData.exit_code ?? 1),
+        sessionId: resolvedSessionId,
+        stdout: normalized.stdout,
+        stderr: normalized.stderr,
+        exitCode: normalized.exitCode,
       });
     }
 

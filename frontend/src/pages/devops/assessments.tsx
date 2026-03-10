@@ -36,7 +36,8 @@ export default function DevOpsAssessmentsPage() {
     const byId = new Map<string, Assessment>();
     [...fallbackDevopsAssessments, ...devopsAssessments].forEach((item) => {
       if (!item?.id) return;
-      byId.set(String(item.id), item);
+      const existing = byId.get(String(item.id));
+      byId.set(String(item.id), { ...(existing || {}), ...item } as Assessment);
     });
     return Array.from(byId.values()).sort((a, b) => {
       const ta = new Date(a.createdAt || 0).getTime();
@@ -119,8 +120,19 @@ export default function DevOpsAssessmentsPage() {
         if (!response.ok) return;
         const rows = Array.isArray(json?.data) ? json.data : [];
         const mapped: Assessment[] = rows.map((test: any) => {
-          const schedule = test?.schedule || null;
+          const schedule = test?.schedule || {};
           const hasSchedule = !!(test?.start_time && test?.end_time);
+          const questionCount = Array.isArray(test?.question_ids)
+            ? test.question_ids.length
+            : Array.isArray(test?.questions)
+              ? test.questions.length
+              : 0;
+          const totalAssigned = Array.isArray(test?.invited_users) ? test.invited_users.length : 0;
+          const assignedCount = typeof test?.assignedCount === "number" ? test.assignedCount : null;
+          const avgScoreRaw = [test?.avg_score, test?.avgScore, test?.average_score, test?.averageScore].find(
+            (v) => typeof v === "number"
+          );
+
           let status: "draft" | "active" | "paused" = "draft";
           if (test?.pausedAt) status = "paused";
           else if (test?.is_published) status = "active";
@@ -129,20 +141,22 @@ export default function DevOpsAssessmentsPage() {
             title: test.title || "Untitled DevOps Test",
             status,
             hasSchedule,
-            scheduleStatus: hasSchedule
-              ? {
-                  startTime: test.start_time,
-                  endTime: test.end_time,
-                  duration: test.duration_minutes || 0,
-                  isActive: !!test.is_active,
-                }
-              : null,
+            scheduleStatus: {
+              startTime: test.start_time,
+              endTime: test.end_time,
+              duration: test.duration_minutes || test.duration || schedule?.duration || 0,
+              isActive: !!test.is_active,
+            },
             createdAt: test.created_at || null,
             updatedAt: test.updated_at || null,
             type: "devops" as const,
             is_published: !!test.is_published,
             is_active: !!test.is_active,
             pausedAt: test.pausedAt || undefined,
+            questionCount,
+            assignedCount,
+            totalAssigned,
+            avgScore: typeof avgScoreRaw === "number" ? avgScoreRaw : 0,
           };
         });
         if (active) setFallbackDevopsAssessments(mapped);

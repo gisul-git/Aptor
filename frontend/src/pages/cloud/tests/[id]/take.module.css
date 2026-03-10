@@ -46,6 +46,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 16px;
   padding: 14px 18px;
   border: 1px solid var(--dv-border);
   border-radius: 14px;
@@ -81,6 +82,35 @@
   font-size: 0.7rem;
   color: var(--dv-text);
   background: #f5fffa;
+}
+
+.timerBlock {
+  margin-left: auto;
+  border: 1px solid #8ecfa8;
+  background: linear-gradient(180deg, #f0fdf4, #dcfce7);
+  border-radius: 12px;
+  min-width: 180px;
+  padding: 10px 14px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  box-shadow: 0 8px 18px rgba(6, 95, 70, 0.12);
+}
+
+.timerLabel {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: #1e5a3b;
+  font-weight: 700;
+}
+
+.timerValue {
+  font-family: var(--font-cloud-mono);
+  font-size: clamp(1.7rem, 2.8vw, 2.4rem);
+  line-height: 1;
+  font-weight: 700;
+  color: #064e3b;
 }
 
 .mainGrid {
@@ -202,6 +232,85 @@
 
 .editorWrap {
   min-height: 0;
+  display: grid;
+  grid-template-rows: 1fr;
+}
+
+.terminalEditor {
+  min-height: 0;
+  height: 100%;
+  background: #0d1117;
+  color: #d9e6dc;
+  border: 1px solid #1f2937;
+  border-radius: 10px;
+  display: grid;
+  grid-template-rows: auto 1fr;
+  overflow: hidden;
+}
+
+.terminalHistory {
+  overflow: auto;
+  padding: 14px 16px;
+  white-space: pre-wrap;
+  font-family: var(--font-cloud-mono);
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+
+.terminalPromptRow {
+  border-bottom: 1px solid #1f2937;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  background: #111827;
+}
+
+.terminalPrompt {
+  color: #22c55e;
+  font-family: var(--font-cloud-mono);
+  font-weight: 700;
+}
+
+.terminalInput {
+  flex: 1;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: #e5e7eb;
+  font-family: var(--font-cloud-mono);
+  font-size: 0.9rem;
+}
+
+.terminalInput::placeholder {
+  color: #6b7280;
+}
+
+.scenarioWrap {
+  height: 100%;
+  padding: 12px;
+  background: #f7fffa;
+}
+
+.scenarioNotepad {
+  width: 100%;
+  height: 100%;
+  min-height: 280px;
+  resize: none;
+  border: 1px solid var(--dv-border);
+  border-radius: 10px;
+  background: #ffffff;
+  color: #064e3b;
+  padding: 14px 16px;
+  font-family: var(--font-cloud-mono);
+  font-size: 0.9rem;
+  line-height: 1.5;
+  outline: none;
+}
+
+.scenarioNotepad:focus {
+  border-color: #8ecfa8;
+  box-shadow: 0 0 0 3px rgba(15, 118, 110, 0.12);
 }
 
 .btnRow {
@@ -348,5 +457,17 @@
   .mainGrid {
     grid-template-columns: 1fr;
     grid-template-rows: minmax(360px, auto) minmax(420px, auto);
+  }
+}
+
+@media (max-width: 720px) {
+  .topbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .timerBlock {
+    margin-left: 0;
+    align-items: center;
   }
 }

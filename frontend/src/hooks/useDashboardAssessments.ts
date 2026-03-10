@@ -32,6 +32,11 @@ export interface Assessment {
   is_published?: boolean;
   is_active?: boolean;
   pausedAt?: string;
+  questionCount?: number | null;
+  assignedCount?: number | null;
+  totalAssigned?: number | null;
+  avgScore?: number | null;
+  progressPercent?: number | null;
 }
 
 export interface UseDashboardAssessmentsReturn {
@@ -441,27 +446,46 @@ export function useDashboardAssessments(): UseDashboardAssessmentsReturn {
           } else if (test.is_published) {
             status = 'active';
           }
-          
+
           const schedule = test.schedule;
-          const hasSchedule = schedule !== null && schedule !== undefined && !!(test.start_time && test.end_time);
-          
+          const hasSchedule = !!(test.start_time && test.end_time);
+          const questionCount = Array.isArray(test.question_ids)
+            ? test.question_ids.length
+            : Array.isArray(test.questions)
+              ? test.questions.length
+              : 0;
+          const totalAssigned = Array.isArray(test.invited_users) ? test.invited_users.length : 0;
+          const assignedCount = typeof test.assignedCount === "number" ? test.assignedCount : null;
+          const avgScoreCandidates = [
+            test.avg_score,
+            test.avgScore,
+            test.average_score,
+            test.averageScore,
+          ];
+          const avgScoreRaw = avgScoreCandidates.find((v) => typeof v === "number");
+          const avgScore = typeof avgScoreRaw === "number" ? avgScoreRaw : 0;
+
           return {
             id: test.id || test._id,
             title: test.title || 'Untitled DevOps Test',
             status: status as 'draft' | 'active' | 'paused',
             hasSchedule: hasSchedule,
-            scheduleStatus: hasSchedule ? {
+            scheduleStatus: {
               startTime: test.start_time,
               endTime: test.end_time,
-              duration: test.duration_minutes || 0,
+              duration: test.duration_minutes || test.duration || schedule?.duration || 0,
               isActive: test.is_active || false
-            } : null,
+            },
             createdAt: test.created_at || null,
             updatedAt: test.updated_at || null,
             type: 'devops' as const,
             is_published: test.is_published,
             is_active: test.is_active,
-            pausedAt: test.pausedAt
+            pausedAt: test.pausedAt,
+            questionCount,
+            assignedCount,
+            totalAssigned,
+            avgScore,
           };
         });
       allAssessments.push(...devopsTests);

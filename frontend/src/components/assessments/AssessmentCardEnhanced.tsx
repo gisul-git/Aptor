@@ -149,19 +149,22 @@ export default function AssessmentCardEnhanced(props: AssessmentCardEnhancedProp
   const updatedAgo = formatRelativeTime(props.updatedAt);
   const scheduledStr = formatScheduledTime(schedule.startTime);
   const questionCount = props.questionCount ?? null;
-  const totalAssigned = props.totalAssigned ?? 0;
-  const assignedCount = props.assignedCount ?? 0;
-  const hasAssigned = totalAssigned > 0;
+  const totalAssigned = props.totalAssigned ?? null;
+  const assignedCount = props.assignedCount ?? null;
+  const hasAssigned = totalAssigned !== null;
+  const totalAssignedCount = totalAssigned ?? 0;
   const assignedLabel = hasAssigned
-    ? `${assignedCount}/${totalAssigned}`
+    ? typeof assignedCount === 'number'
+      ? `${assignedCount}/${totalAssignedCount}`
+      : `${totalAssignedCount}`
     : '—';
   const avgScoreStr =
     props.avgScore != null ? `${Math.round(props.avgScore)}%` : '—';
   const progressPercent =
     props.progressPercent != null
       ? props.progressPercent
-      : hasAssigned && totalAssigned > 0
-        ? Math.round((assignedCount / totalAssigned) * 100)
+      : totalAssignedCount > 0
+        ? Math.round(((assignedCount ?? 0) / totalAssignedCount) * 100)
         : displayStatus === 'draft' || displayStatus === 'paused'
           ? 0
           : 73;
@@ -187,7 +190,7 @@ export default function AssessmentCardEnhanced(props: AssessmentCardEnhancedProp
     } else if (type === 'cloud') {
       router.push(`/cloud/tests/${props.id}/edit`);
     } else if (type === 'devops') {
-      router.push(`/devops/tests/${props.id}/edit`);
+      router.push(`/devops/tests?testId=${props.id}`);
     } else if (displayStatus === 'draft') {
       if (type === 'custom_mcq') {
         router.push(`/custom-mcq/create?id=${props.id}`);
@@ -471,11 +474,11 @@ export default function AssessmentCardEnhanced(props: AssessmentCardEnhancedProp
       </div>
 
       {/* Assigned to */}
-      {hasAssigned ? (
+      {totalAssignedCount > 0 ? (
         <div className="flex items-center gap-2 bg-mint-50 px-3 py-2 rounded-lg border border-mint-200">
           <Users className="w-4 h-4 text-primary flex-shrink-0" />
           <span className="text-sm font-medium text-primary">
-            {totalAssigned} Employee{totalAssigned !== 1 ? 's' : ''} assigned
+            {totalAssignedCount} Employee{totalAssignedCount !== 1 ? 's' : ''} assigned
           </span>
         </div>
       ) : (

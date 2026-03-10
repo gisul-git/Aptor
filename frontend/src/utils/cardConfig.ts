@@ -150,8 +150,10 @@ export function getNavigationPaths(type: AssessmentType, status: DisplayStatus, 
     paths.editPath = `/cloud/tests/${id}/edit`;
     paths.analyticsPath = `/cloud/tests/${id}/analytics`;
   } else if (type === 'devops') {
-    paths.editPath = `/devops/tests/${id}/edit`;
-    paths.analyticsPath = `/devops/tests/${id}/analytics`;
+    // DevOps uses the tests details page (AIML-style management UI)
+    // and filters by testId via query param.
+    paths.editPath = `/devops/tests?testId=${id}`;
+    paths.analyticsPath = `/devops/tests?testId=${id}`;
   } else {
     // Regular assessment
     paths.editPath = `/assessments/create-new?id=${id}`;
@@ -171,7 +173,7 @@ export function getAssignPath(type: AssessmentType, id: string): string {
   if (type === 'design') return `/design/tests/${id}/edit`;
   if (type === 'data_engineering') return `/data-engineering/tests/${id}/edit`;
   if (type === 'cloud') return `/cloud/tests/${id}/edit`;
-  if (type === 'devops') return `/devops/tests/${id}/edit`;
+  if (type === 'devops') return `/devops/tests?testId=${id}`;
   return `/assessments/${id}/configure`;
 }
 

@@ -46,6 +46,10 @@ interface CloudTestCard {
   test_token?: string;
   pausedAt?: string | null;
   schedule?: { startTime?: string; endTime?: string; duration?: number } | null;
+  questions?: Array<{ id?: string; title?: string; difficulty?: string; kind?: string }>;
+  created_by?: string;
+  test_type?: string;
+  candidateRequirements?: Record<string, any> | null;
   examMode?: "strict" | "flexible" | string;
   timer_mode?: "GLOBAL" | "PER_QUESTION" | string;
   question_timings?: Array<{ question_id: string; duration_minutes: number }>;
@@ -57,6 +61,32 @@ interface CloudTestCard {
   created_at?: string;
   updated_at?: string;
 }
+
+const mapCloudTest = (t: any): CloudTestCard => ({
+  id: String(t?.id || t?._id || ""),
+  title: t?.title || "",
+  description: t?.description || "",
+  duration_minutes: t?.duration_minutes || t?.duration || t?.schedule?.duration || 60,
+  start_time: t?.start_time || t?.schedule?.startTime || "",
+  end_time: t?.end_time || t?.schedule?.endTime || "",
+  is_active: t?.is_active !== undefined ? t.is_active : true,
+  is_published: t?.is_published || false,
+  invited_users: Array.isArray(t?.invited_users) ? t.invited_users : [],
+  question_ids: t?.question_ids || t?.questions?.map((q: any) => q?.id || q) || [],
+  questions: Array.isArray(t?.questions) ? t.questions : [],
+  test_token: t?.test_token || "",
+  pausedAt: t?.pausedAt || null,
+  schedule: t?.schedule || null,
+  created_by: t?.created_by || t?.createdBy || "",
+  test_type: t?.test_type || t?.type || "",
+  candidateRequirements: t?.schedule?.candidateRequirements || null,
+  examMode: t?.examMode,
+  timer_mode: t?.timer_mode,
+  question_timings: Array.isArray(t?.question_timings) ? t.question_timings : [],
+  proctoringSettings: t?.proctoringSettings || {},
+  created_at: t?.created_at || t?.createdAt,
+  updated_at: t?.updated_at || t?.updatedAt,
+});
 
 export default function CloudTestsListPage() {
   const router = useRouter();
@@ -71,32 +101,22 @@ export default function CloudTestsListPage() {
 
   useEffect(() => {
     const apiTests = Array.isArray(testsData) ? (testsData as any[]) : [];
-    const mapped: CloudTestCard[] = apiTests.map((t) => ({
-      id: String(t.id || t._id || ""),
-      title: t.title || "",
-      description: t.description || "",
-      duration_minutes: t.duration_minutes || t.duration || 60,
-      start_time: t.start_time || t.schedule?.startTime || "",
-      end_time: t.end_time || t.schedule?.endTime || "",
-      is_active: t.is_active !== undefined ? t.is_active : true,
-      is_published: t.is_published || false,
-      invited_users: t.invited_users || [],
-      question_ids: t.question_ids || t.questions?.map((q: any) => q.id || q) || [],
-      test_token: t.test_token || "",
-      pausedAt: t.pausedAt || null,
-      schedule: t.schedule || null,
-      examMode: t.examMode,
-      timer_mode: t.timer_mode,
-      question_timings: Array.isArray(t.question_timings) ? t.question_timings : [],
-      proctoringSettings: t.proctoringSettings || {},
-      created_at: t.created_at || t.createdAt,
-      updated_at: t.updated_at || t.updatedAt,
-    }));
-    setTests(mapped);
+    const mapped: CloudTestCard[] = apiTests.map(mapCloudTest);
+    setTests((prev) => {
+      const byId = new Map<string, CloudTestCard>();
+      [...mapped, ...prev].forEach((item) => {
+        if (!item?.id) return;
+        byId.set(String(item.id), { ...(byId.get(String(item.id)) || {}), ...item });
+      });
+      return Array.from(byId.values()).sort((a, b) => {
+        const ta = new Date(a.created_at || 0).getTime();
+        const tb = new Date(b.created_at || 0).getTime();
+        return tb - ta;
+      });
+    });
   }, [testsData]);
 
   useEffect(() => {
-    if (tests.length > 0) return;
     let active = true;
     const fetchAllFallback = async () => {
       try {
@@ -104,39 +124,30 @@ export default function CloudTestsListPage() {
         const json = await response.json().catch(() => ({}));
         if (!response.ok) return;
         const rows = Array.isArray(json?.data) ? json.data : [];
-        const mapped: CloudTestCard[] = rows.map((t: any) => ({
-          id: String(t.id || t._id || ""),
-          title: t.title || "",
-          description: t.description || "",
-          duration_minutes: t.duration_minutes || t.duration || 60,
-          start_time: t.start_time || t.schedule?.startTime || "",
-          end_time: t.end_time || t.schedule?.endTime || "",
-          is_active: t.is_active !== undefined ? t.is_active : true,
-          is_published: t.is_published || false,
-          invited_users: t.invited_users || [],
-          question_ids: t.question_ids || t.questions?.map((q: any) => q.id || q) || [],
-          test_token: t.test_token || "",
-          pausedAt: t.pausedAt || null,
-          schedule: t.schedule || null,
-          examMode: t.examMode,
-          timer_mode: t.timer_mode,
-          question_timings: Array.isArray(t.question_timings) ? t.question_timings : [],
-          proctoringSettings: t.proctoringSettings || {},
-          created_at: t.created_at || t.createdAt,
-          updated_at: t.updated_at || t.updatedAt,
-        }));
+        const mapped: CloudTestCard[] = rows.map(mapCloudTest);
         if (active && mapped.length > 0) {
-          setTests(mapped);
+          setTests((prev) => {
+            const byId = new Map<string, CloudTestCard>();
+            [...mapped, ...prev].forEach((item) => {
+              if (!item?.id) return;
+              byId.set(String(item.id), { ...(byId.get(String(item.id)) || {}), ...item });
+            });
+            return Array.from(byId.values()).sort((a, b) => {
+              const ta = new Date(a.created_at || 0).getTime();
+              const tb = new Date(b.created_at || 0).getTime();
+              return tb - ta;
+            });
+          });
         }
       } catch {
-        // keep existing empty state if fallback also fails
+        // Keep existing list if fallback fails
       }
     };
     fetchAllFallback();
     return () => {
       active = false;
     };
-  }, [tests.length]);
+  }, []);
 
   useEffect(() => {
     const q = router.query.testId;
@@ -151,28 +162,8 @@ export default function CloudTestsListPage() {
         const json = await response.json().catch(() => ({}));
         if (!response.ok) return;
         const t = json?.data || json;
-        if (!t || !t.id) return;
-        const mapped: CloudTestCard = {
-          id: String(t.id || t._id || ""),
-          title: t.title || "",
-          description: t.description || "",
-          duration_minutes: t.duration_minutes || t.duration || 60,
-          start_time: t.start_time || t.schedule?.startTime || "",
-          end_time: t.end_time || t.schedule?.endTime || "",
-          is_active: t.is_active !== undefined ? t.is_active : true,
-          is_published: t.is_published || false,
-          invited_users: t.invited_users || [],
-          question_ids: t.question_ids || t.questions?.map((q: any) => q.id || q) || [],
-          test_token: t.test_token || "",
-          pausedAt: t.pausedAt || null,
-          schedule: t.schedule || null,
-          examMode: t.examMode,
-          timer_mode: t.timer_mode,
-          question_timings: Array.isArray(t.question_timings) ? t.question_timings : [],
-          proctoringSettings: t.proctoringSettings || {},
-          created_at: t.created_at || t.createdAt,
-          updated_at: t.updated_at || t.updatedAt,
-        };
+        if (!t || !(t.id || t._id)) return;
+        const mapped: CloudTestCard = mapCloudTest(t);
         if (active) {
           setTests((prev) => {
             const idx = prev.findIndex((x) => String(x.id) === String(mapped.id));
@@ -388,6 +379,12 @@ export default function CloudTestsListPage() {
                     <div style={{ marginTop: "0.25rem", padding: "0.875rem", border: "1px solid #E5E7EB", borderRadius: "0.5rem", backgroundColor: "#FCFDFD" }}>
                       <div style={{ fontSize: "0.8rem", color: "#4B5563", marginBottom: "0.4rem", fontWeight: 700 }}>Assessment Details</div>
                       <div style={{ fontSize: "0.8rem", color: "#6B7280", lineHeight: 1.6 }}>
+                        Test ID: {test.id || "-"}
+                        <br />
+                        Owner: {test.created_by || "-"} | Type: {test.test_type || "cloud"}
+                        <br />
+                        Experience Requirement: {String(test.candidateRequirements?.yearsOfExperience || test.candidateRequirements?.years_of_experience || "-")}
+                        <br />
                         Start: {formatDate(test.schedule?.startTime || test.start_time) || "-"} | End: {formatDate(test.schedule?.endTime || test.end_time) || "-"}
                         <br />
                         AI Proctoring: {test.proctoringSettings?.aiProctoringEnabled ? "Enabled" : "Disabled"} | Face Mismatch: {test.proctoringSettings?.faceMismatchEnabled ? "Enabled" : "Disabled"} | Live Proctoring: {test.proctoringSettings?.liveProctoringEnabled ? "Enabled" : "Disabled"}
@@ -399,6 +396,12 @@ export default function CloudTestsListPage() {
                             Per-question timings: {Array.isArray(test.question_timings) && test.question_timings.length > 0
                               ? test.question_timings.map((qt) => `${qt.question_id}: ${qt.duration_minutes}m`).join(", ")
                               : "Not available"}
+                          </>
+                        )}
+                        {Array.isArray(test.questions) && test.questions.length > 0 && (
+                          <>
+                            <br />
+                            Question titles: {test.questions.map((q, idx) => q?.title || `Question ${idx + 1}`).join(" | ")}
                           </>
                         )}
                       </div>
