@@ -130,3 +130,13 @@ export const usePublishDesignQuestion = () => {
     },
   });
 };
+
+/**
+ * Send feedback to Design candidate mutation
+ */
+export const useSendDesignFeedback = () => {
+  return useMutation({
+    mutationFn: ({ testId, userId }: { testId: string; userId: string }) =>
+      designService.sendFeedback(testId, userId),
+  });
+};

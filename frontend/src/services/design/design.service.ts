@@ -154,5 +154,23 @@ export const designService = {
     console.log('[Design Service] Success result:', result);
     return { data: result };
   },
+
+  /**
+   * Send feedback to candidate
+   */
+  sendFeedback: async (testId: string, userId: string): Promise<ApiResponse<any>> => {
+    const response = await fetch(`${DESIGN_API_URL}/tests/${testId}/candidates/${userId}/send-feedback`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+    });
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Failed to send feedback: ${response.status} ${errorText}`);
+    }
+    
+    const result = await response.json();
+    return { data: result };
+  },
 };
 
