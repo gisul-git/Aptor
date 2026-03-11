@@ -267,7 +267,7 @@ services:
       - GEMINI_API_KEY=${GEMINI_API_KEY}
       - REDIS_HOST=redis
       - REDIS_PORT=6379
-      - FRONTEND_URL=http://localhost:3002
+      - FRONTEND_URL=http://localhost:3000
       - EMAIL_PROVIDER=${EMAIL_PROVIDER:-sendgrid}
       - SENDGRID_API_KEY=${SENDGRID_API_KEY}
       - SENDGRID_FROM_EMAIL=${SENDGRID_FROM_EMAIL}

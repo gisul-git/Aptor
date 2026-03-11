@@ -18,12 +18,13 @@ export default function DesignAssessmentTakePage() {
   const [questions, setQuestions] = useState<any[]>([]);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [workspaces, setWorkspaces] = useState<Record<string, any>>({});
-  const [completedQuestions, setCompletedQuestions] = useState<Set<string>>(new Set());
-  const [timeLeft, setTimeLeft] = useState(3600);
+  const [submittedQuestions, setSubmittedQuestions] = useState<Set<string>>(new Set());
+  const [timeLeft, setTimeLeft] = useState(0);
   const [questionPanelCollapsed, setQuestionPanelCollapsed] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [timerStarted, setTimerStarted] = useState(false);
 
-  const API_URL = process.env.NEXT_PUBLIC_DESIGN_SERVICE_URL || 'http://localhost:3007/api/v1/design';
+  const API_URL = process.env.NEXT_PUBLIC_DESIGN_SERVICE_URL || 'http://localhost:3006/api/v1/design';
 
   const currentQuestion = questions[currentQuestionIndex];
   const currentWorkspace = currentQuestion ? workspaces[currentQuestion._id || currentQuestion.id] : null;
@@ -64,13 +65,16 @@ export default function DesignAssessmentTakePage() {
         const allQuestions = await Promise.all(questionPromises);
         setQuestions(allQuestions);
 
-        // Set timer based on first question
+        // Set timer based on first question (per-question timer)
         if (allQuestions[0]?.time_limit_minutes) {
           setTimeLeft(allQuestions[0].time_limit_minutes * 60);
         }
 
         // Create workspace for first question
         await createWorkspaceForQuestion(allQuestions[0]);
+        
+        // Start timer for first question
+        setTimerStarted(true);
 
       } catch (err: any) {
         console.error('Assessment start error:', err);
@@ -94,6 +98,10 @@ export default function DesignAssessmentTakePage() {
 
     try {
       const candidateEmail = (email as string) || 'candidate_' + Date.now();
+      
+      console.log(`Creating workspace for question ${questionId}...`);
+      const startTime = Date.now();
+      
       const wResponse = await fetch(`${API_URL}/workspace/create`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -110,6 +118,9 @@ export default function DesignAssessmentTakePage() {
       }
       
       const workspaceData = await wResponse.json();
+      const elapsed = Date.now() - startTime;
+      console.log(`✅ Workspace created in ${elapsed}ms`);
+      
       setWorkspaces(prev => ({
         ...prev,
         [questionId]: workspaceData
@@ -121,12 +132,39 @@ export default function DesignAssessmentTakePage() {
       throw err;
     }
   };
+  
+  // Pre-create workspace for next question in background
+  useEffect(() => {
+    if (questions.length > 0 && currentQuestionIndex < questions.length - 1) {
+      const nextQuestion = questions[currentQuestionIndex + 1];
+      const nextQuestionId = nextQuestion._id || nextQuestion.id;
+      
+      // Only pre-create if current question is submitted and next workspace doesn't exist
+      if (submittedQuestions.has(currentQuestion?._id || currentQuestion?.id) && !workspaces[nextQuestionId]) {
+        console.log('Pre-creating workspace for next question...');
+        createWorkspaceForQuestion(nextQuestion).catch(err => {
+          console.warn('Failed to pre-create workspace:', err);
+        });
+      }
+    }
+  }, [submittedQuestions, currentQuestionIndex, questions]);
 
-  // Navigate to next question
+  // Navigate to next question (only if current is submitted)
   const handleNextQuestion = async () => {
+    const currentQuestionId = currentQuestion?._id || currentQuestion?.id;
+    
+    // Check if current question is submitted
+    if (!submittedQuestions.has(currentQuestionId)) {
+      alert('Please submit the current question before moving to the next one.');
+      return;
+    }
+    
     if (currentQuestionIndex < questions.length - 1) {
       const nextIndex = currentQuestionIndex + 1;
       const nextQuestion = questions[nextIndex];
+      
+      // Stop current timer
+      setTimerStarted(false);
       
       // Create workspace for next question if it doesn't exist
       if (!workspaces[nextQuestion._id || nextQuestion.id]) {
@@ -134,23 +172,32 @@ export default function DesignAssessmentTakePage() {
       }
       
       setCurrentQuestionIndex(nextIndex);
+      
+      // Reset timer for next question
+      if (nextQuestion?.time_limit_minutes) {
+        setTimeLeft(nextQuestion.time_limit_minutes * 60);
+        // Start timer after a brief delay to ensure state is updated
+        setTimeout(() => {
+          setTimerStarted(true);
+        }, 100);
+      }
     }
   };
 
-  // Navigate to previous question
+  // Navigate to previous question (disabled - view only)
   const handlePreviousQuestion = () => {
-    if (currentQuestionIndex > 0) {
-      setCurrentQuestionIndex(currentQuestionIndex - 1);
-    }
+    // Disabled to enforce sequential flow
+    alert('You cannot go back to previous questions.');
   };
 
-  // Timer countdown
+  // Timer countdown (per-question timer)
   useEffect(() => {
-    if (questions.length > 0 && timeLeft > 0) {
+    if (timerStarted && timeLeft > 0) {
       const timer = setInterval(() => {
         setTimeLeft((prev) => {
           if (prev <= 1) {
-            handleSubmitTest();
+            // Auto-submit when time runs out
+            handleSubmitQuestion();
             return 0;
           }
           return prev - 1;
@@ -158,11 +205,19 @@ export default function DesignAssessmentTakePage() {
       }, 1000);
       return () => clearInterval(timer);
     }
-  }, [questions, timeLeft]);
+  }, [timerStarted, timeLeft]);
 
   // Submit current question
   const handleSubmitQuestion = async () => {
     if (!currentQuestion || !currentWorkspace) return;
+
+    const currentQuestionId = currentQuestion._id || currentQuestion.id;
+    
+    // Check if already submitted
+    if (submittedQuestions.has(currentQuestionId)) {
+      alert('This question has already been submitted.');
+      return;
+    }
 
     try {
       const candidateEmail = (email as string) || currentWorkspace?.user_id || 'candidate-' + Date.now();
@@ -172,7 +227,7 @@ export default function DesignAssessmentTakePage() {
         body: JSON.stringify({
           session_id: currentWorkspace?.session_id,
           user_id: candidateEmail,
-          question_id: currentQuestion._id || currentQuestion.id,
+          question_id: currentQuestionId,
           file_id: currentWorkspace?.file_id,
           test_id: testId
         })
@@ -185,15 +240,19 @@ export default function DesignAssessmentTakePage() {
       const result = await response.json();
       console.log('✅ Question submitted:', result);
       
-      // Mark question as completed
-      setCompletedQuestions(prev => new Set([...prev, currentQuestion._id || currentQuestion.id]));
+      // Mark question as submitted
+      setSubmittedQuestions(prev => new Set([...prev, currentQuestionId]));
       
-      // Move to next question or finish
-      if (currentQuestionIndex < questions.length - 1) {
-        await handleNextQuestion();
-      } else {
-        // All questions completed
+      // Stop timer for current question
+      setTimerStarted(false);
+      
+      // Check if all questions are completed
+      if (currentQuestionIndex === questions.length - 1) {
+        // Last question submitted - show success
         setShowSuccessModal(true);
+      } else {
+        // Prompt to move to next question
+        alert('Question submitted successfully! Click "Next" to continue to the next question.');
       }
       
     } catch (error) {
@@ -204,12 +263,14 @@ export default function DesignAssessmentTakePage() {
 
   // Submit entire test
   const handleSubmitTest = async () => {
-    // Submit current question if not already submitted
-    if (currentQuestion && !completedQuestions.has(currentQuestion._id || currentQuestion.id)) {
-      await handleSubmitQuestion();
-    }
+    const currentQuestionId = currentQuestion?._id || currentQuestion?.id;
     
-    setShowSuccessModal(true);
+    // Submit current question if not already submitted
+    if (currentQuestion && !submittedQuestions.has(currentQuestionId)) {
+      await handleSubmitQuestion();
+    } else {
+      setShowSuccessModal(true);
+    }
   };
 
   // LOADING STATE
@@ -460,36 +521,45 @@ export default function DesignAssessmentTakePage() {
           </p>
           {questions.map((q, idx) => {
             const questionId = q._id || q.id;
-            const isCompleted = completedQuestions.has(questionId);
+            const isSubmitted = submittedQuestions.has(questionId);
             const isCurrent = idx === currentQuestionIndex;
+            const isAccessible = idx === 0 || submittedQuestions.has(questions[idx - 1]._id || questions[idx - 1].id);
             
             return (
               <button
                 key={questionId}
-                onClick={() => setCurrentQuestionIndex(idx)}
+                onClick={() => {
+                  if (!isAccessible) {
+                    alert('Please complete previous questions first.');
+                  } else {
+                    setCurrentQuestionIndex(idx);
+                  }
+                }}
+                disabled={!isAccessible}
                 style={{
                   width: '100%',
                   padding: '12px 8px',
                   marginBottom: '8px',
-                  background: isCurrent ? '#7C3AED' : isCompleted ? '#10b981' : '#F3F4F6',
-                  color: isCurrent || isCompleted ? 'white' : '#6b7280',
+                  background: isCurrent ? '#7C3AED' : isSubmitted ? '#10b981' : isAccessible ? '#F3F4F6' : '#E5E7EB',
+                  color: isCurrent || isSubmitted ? 'white' : isAccessible ? '#6b7280' : '#9ca3af',
                   border: 'none',
                   borderRadius: '8px',
                   fontSize: '14px',
                   fontWeight: 600,
-                  cursor: 'pointer',
+                  cursor: isAccessible ? 'pointer' : 'not-allowed',
                   transition: 'all 0.2s',
-                  position: 'relative'
+                  position: 'relative',
+                  opacity: isAccessible ? 1 : 0.5
                 }}
                 onMouseEnter={(e) => {
-                  if (!isCurrent && !isCompleted) e.currentTarget.style.background = '#E5E7EB'
+                  if (!isCurrent && !isSubmitted && isAccessible) e.currentTarget.style.background = '#E5E7EB'
                 }}
                 onMouseLeave={(e) => {
-                  if (!isCurrent && !isCompleted) e.currentTarget.style.background = '#F3F4F6'
+                  if (!isCurrent && !isSubmitted && isAccessible) e.currentTarget.style.background = '#F3F4F6'
                 }}
               >
                 Q{idx + 1}
-                {isCompleted && (
+                {isSubmitted && (
                   <div style={{
                     position: 'absolute',
                     top: '4px',
@@ -678,37 +748,39 @@ export default function DesignAssessmentTakePage() {
               }}>
                 <button
                   onClick={handlePreviousQuestion}
-                  disabled={currentQuestionIndex === 0}
+                  disabled={true}
                   style={{
                     flex: 1,
                     padding: '10px',
-                    background: currentQuestionIndex === 0 ? '#F3F4F6' : '#ffffff',
-                    color: currentQuestionIndex === 0 ? '#9ca3af' : '#374151',
+                    background: '#F3F4F6',
+                    color: '#9ca3af',
                     border: '1px solid #D1D5DB',
                     borderRadius: '8px',
                     fontSize: '14px',
                     fontWeight: 600,
-                    cursor: currentQuestionIndex === 0 ? 'not-allowed' : 'pointer',
-                    opacity: currentQuestionIndex === 0 ? 0.5 : 1
+                    cursor: 'not-allowed',
+                    opacity: 0.5
                   }}
+                  title="Previous questions are locked"
                 >
                   ← Previous
                 </button>
                 <button
                   onClick={handleNextQuestion}
-                  disabled={currentQuestionIndex >= questions.length - 1}
+                  disabled={!submittedQuestions.has(currentQuestion?._id || currentQuestion?.id) || currentQuestionIndex >= questions.length - 1}
                   style={{
                     flex: 1,
                     padding: '10px',
-                    background: currentQuestionIndex >= questions.length - 1 ? '#F3F4F6' : '#7C3AED',
-                    color: currentQuestionIndex >= questions.length - 1 ? '#9ca3af' : 'white',
+                    background: (!submittedQuestions.has(currentQuestion?._id || currentQuestion?.id) || currentQuestionIndex >= questions.length - 1) ? '#F3F4F6' : '#7C3AED',
+                    color: (!submittedQuestions.has(currentQuestion?._id || currentQuestion?.id) || currentQuestionIndex >= questions.length - 1) ? '#9ca3af' : 'white',
                     border: 'none',
                     borderRadius: '8px',
                     fontSize: '14px',
                     fontWeight: 600,
-                    cursor: currentQuestionIndex >= questions.length - 1 ? 'not-allowed' : 'pointer',
-                    opacity: currentQuestionIndex >= questions.length - 1 ? 0.5 : 1
+                    cursor: (!submittedQuestions.has(currentQuestion?._id || currentQuestion?.id) || currentQuestionIndex >= questions.length - 1) ? 'not-allowed' : 'pointer',
+                    opacity: (!submittedQuestions.has(currentQuestion?._id || currentQuestion?.id) || currentQuestionIndex >= questions.length - 1) ? 0.5 : 1
                   }}
+                  title={!submittedQuestions.has(currentQuestion?._id || currentQuestion?.id) ? 'Submit current question first' : ''}
                 >
                   Next →
                 </button>
@@ -716,22 +788,32 @@ export default function DesignAssessmentTakePage() {
               
               <button
                 onClick={handleSubmitQuestion}
+                disabled={submittedQuestions.has(currentQuestion?._id || currentQuestion?.id)}
                 style={{
                   width: '100%',
                   marginTop: '8px',
                   padding: '10px',
-                  background: '#10b981',
+                  background: submittedQuestions.has(currentQuestion?._id || currentQuestion?.id) ? '#9ca3af' : '#10b981',
                   color: 'white',
                   border: 'none',
                   borderRadius: '8px',
                   fontSize: '14px',
                   fontWeight: 600,
-                  cursor: 'pointer'
+                  cursor: submittedQuestions.has(currentQuestion?._id || currentQuestion?.id) ? 'not-allowed' : 'pointer',
+                  opacity: submittedQuestions.has(currentQuestion?._id || currentQuestion?.id) ? 0.5 : 1
                 }}
-                onMouseOver={(e) => e.currentTarget.style.background = '#059669'}
-                onMouseOut={(e) => e.currentTarget.style.background = '#10b981'}
+                onMouseOver={(e) => {
+                  if (!submittedQuestions.has(currentQuestion?._id || currentQuestion?.id)) {
+                    e.currentTarget.style.background = '#059669';
+                  }
+                }}
+                onMouseOut={(e) => {
+                  if (!submittedQuestions.has(currentQuestion?._id || currentQuestion?.id)) {
+                    e.currentTarget.style.background = '#10b981';
+                  }
+                }}
               >
-                Submit Question
+                {submittedQuestions.has(currentQuestion?._id || currentQuestion?.id) ? '✓ Submitted' : 'Submit Question'}
               </button>
             </>
           )}
@@ -757,12 +839,37 @@ export default function DesignAssessmentTakePage() {
           ) : (
             <div style={{
               display: 'flex',
+              flexDirection: 'column',
               alignItems: 'center',
               justifyContent: 'center',
               height: '100%',
-              color: '#9ca3af'
+              color: '#9ca3af',
+              gap: '16px'
             }}>
-              Loading workspace...
+              <div style={{
+                width: '64px',
+                height: '64px',
+                border: '4px solid #e5e7eb',
+                borderTop: '4px solid #7C3AED',
+                borderRadius: '50%',
+                animation: 'spin 1s linear infinite'
+              }} />
+              <div style={{ textAlign: 'center' }}>
+                <p style={{
+                  fontSize: '18px',
+                  fontWeight: 600,
+                  color: '#374151',
+                  marginBottom: '8px'
+                }}>
+                  Loading workspace...
+                </p>
+                <p style={{
+                  fontSize: '14px',
+                  color: '#6b7280'
+                }}>
+                  This may take 10-15 seconds
+                </p>
+              </div>
             </div>
           )}
         </div>

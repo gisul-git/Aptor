@@ -34,6 +34,9 @@ class PenpotRPCService:
         # Cache for auth session
         self._session_cookies = None
         
+        # Cache for project IDs to avoid repeated lookups
+        self._project_cache = {}
+        
         logger.info(f"Penpot RPC Service initialized")
         logger.info(f"API Base: {self.api_base}")
         logger.info(f"Public URI: {self.public_uri}")
@@ -129,11 +132,22 @@ class PenpotRPCService:
             
             # Create a new project for this assessment (or use existing)
             project_name = f"Design_Assessments_{assessment_id[:8]}"
-            template_project_id = await self._get_or_create_project(
-                template_team_id,
-                project_name,
-                cookies
-            )
+            
+            # Check cache first
+            if project_name in self._project_cache:
+                template_project_id = self._project_cache[project_name]
+                logger.info(f"Using cached project: {template_project_id}")
+            else:
+                template_project_id = await self._get_or_create_project(
+                    template_team_id,
+                    project_name,
+                    cookies
+                )
+                
+                if template_project_id:
+                    # Cache the project ID
+                    self._project_cache[project_name] = template_project_id
+                    logger.info(f"Cached project ID: {template_project_id}")
             
             if not template_project_id:
                 # Fallback: try to list projects and use the first one
@@ -197,7 +211,7 @@ class PenpotRPCService:
             New file ID or None if failed
         """
         try:
-            async with httpx.AsyncClient(timeout=60.0, follow_redirects=True) as client:
+            async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
                 create_url = f"{self.api_base}/api/rpc/command/create-file"
                 
                 # Encode request using Transit

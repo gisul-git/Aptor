@@ -208,18 +208,8 @@ export default function DesignQuestionCreatePage() {
         const topicLower = topic.toLowerCase()
         
         // Check for keywords in the topic (order matters - most specific first)
-        // Mobile app indicators (check BEFORE dashboard since some topics might have both)
-        if (topicLower.includes('mobile') || 
-            topicLower.includes('app ui') || 
-            topicLower.includes('mobile app') || 
-            topicLower.includes('onboarding') ||
-            topicLower.includes('checkout') ||
-            topicLower.includes('booking') ||
-            topicLower.includes('delivery app')) {
-          return 'mobile_app'
-        }
-        // Dashboard indicators
-        else if (topicLower.includes('dashboard') || topicLower.includes('analytics')) {
+        // Dashboard indicators (check FIRST since it's most specific)
+        if (topicLower.includes('dashboard') || topicLower.includes('analytics')) {
           return 'dashboard'
         }
         // Landing page indicators
@@ -233,6 +223,25 @@ export default function DesignQuestionCreatePage() {
         // Brand work
         else if (topicLower.includes('brand') || topicLower.includes('logo') || topicLower.includes('identity')) {
           return 'component'
+        }
+        // Mobile app indicators - check for app-related keywords
+        // This includes: mobile, app, onboarding, checkout, booking, scheduler, manager, tracker, etc.
+        else if (topicLower.includes('mobile') || 
+            topicLower.includes('app') || 
+            topicLower.includes('onboarding') ||
+            topicLower.includes('checkout') ||
+            topicLower.includes('booking') ||
+            topicLower.includes('scheduler') ||
+            topicLower.includes('manager') ||
+            topicLower.includes('tracker') ||
+            topicLower.includes('delivery') ||
+            topicLower.includes('subscription') ||
+            topicLower.includes('appointment') ||
+            topicLower.includes('fitness') ||
+            topicLower.includes('banking') ||
+            topicLower.includes('social') ||
+            topicLower.includes('entertainment')) {
+          return 'mobile_app'
         }
         // UX work
         else if (topicLower.includes('wireframe') || topicLower.includes('flow') || topicLower.includes('research')) {
