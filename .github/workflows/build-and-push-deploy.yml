@@ -1,0 +1,162 @@
+name: Build Push and Deploy
+
+on:
+  push:
+    branches:
+      - QA
+
+jobs:
+  build-push-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      # Detect changed services
+      - name: Detect changed services
+        id: changes
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            frontend:
+              - 'frontend/**'
+            api_gateway:
+              - 'services/api-gateway/**'
+            auth:
+              - 'services/auth-service/**'
+            ai_assessment:
+              - 'services/ai-assessment-service/**'
+            custom_mcq:
+              - 'services/custom-mcq-service/**'
+            aiml:
+              - 'services/aiml-service/**'
+            aiml_agent:
+              - 'services/aiml-agent-service/**'
+            dsa:
+              - 'services/dsa-service/**'
+            proctoring:
+              - 'services/proctoring-service/**'
+            super_admin:
+              - 'services/super-admin-service/**'
+            employee:
+              - 'services/employee-service/**'
+            demo:
+              - 'services/demo-service/**'
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # Build only changed services
+
+      - name: Build Frontend
+        if: steps.changes.outputs.frontend == 'true'
+        run: |
+          docker build -t gisul/gisul-frontend:latest ./frontend
+          docker push gisul/gisul-frontend:latest
+
+      - name: Build API Gateway
+        if: steps.changes.outputs.api_gateway == 'true'
+        run: |
+          docker build -t gisul/gisul-api-gateway:latest ./services/api-gateway
+          docker push gisul/gisul-api-gateway:latest
+
+      - name: Build Auth Service
+        if: steps.changes.outputs.auth == 'true'
+        run: |
+          docker build -t gisul/gisul-auth-service:latest ./services/auth-service
+          docker push gisul/gisul-auth-service:latest
+
+      - name: Build AI Assessment Service
+        if: steps.changes.outputs.ai_assessment == 'true'
+        run: |
+          docker build -t gisul/gisul-ai-assessment-service:latest ./services/ai-assessment-service
+          docker push gisul/gisul-ai-assessment-service:latest
+
+      - name: Build Custom MCQ Service
+        if: steps.changes.outputs.custom_mcq == 'true'
+        run: |
+          docker build -t gisul/gisul-custom-mcq-service:latest ./services/custom-mcq-service
+          docker push gisul/gisul-custom-mcq-service:latest
+
+      - name: Build AIML Service
+        if: steps.changes.outputs.aiml == 'true'
+        run: |
+          docker build -t gisul/gisul-aiml-service:latest ./services/aiml-service
+          docker push gisul/gisul-aiml-service:latest
+
+      - name: Build AIML Agent Service
+        if: steps.changes.outputs.aiml_agent == 'true'
+        run: |
+          docker build -t gisul/gisul-aiml-agent-service:latest ./services/aiml-agent-service
+          docker push gisul/gisul-aiml-agent-service:latest
+
+      - name: Build DSA Service
+        if: steps.changes.outputs.dsa == 'true'
+        run: |
+          docker build -t gisul/gisul-dsa-service:latest ./services/dsa-service
+          docker push gisul/gisul-dsa-service:latest
+
+      - name: Build Proctoring Service
+        if: steps.changes.outputs.proctoring == 'true'
+        run: |
+          docker build -t gisul/gisul-proctoring-service:latest ./services/proctoring-service
+          docker push gisul/gisul-proctoring-service:latest
+
+      - name: Build Super Admin Service
+        if: steps.changes.outputs.super_admin == 'true'
+        run: |
+          docker build -t gisul/gisul-super-admin-service:latest ./services/super-admin-service
+          docker push gisul/gisul-super-admin-service:latest
+
+      - name: Build Employee Service
+        if: steps.changes.outputs.employee == 'true'
+        run: |
+          docker build -t gisul/gisul-employee-service:latest ./services/employee-service
+          docker push gisul/gisul-employee-service:latest
+
+      - name: Build Demo Service
+        if: steps.changes.outputs.demo == 'true'
+        run: |
+          docker build -t gisul/gisul-demo-service:latest ./services/demo-service
+          docker push gisul/gisul-demo-service:latest
+
+      # Deploy only changed services
+
+      - name: Deploy to QA VM
+        env:
+          VM_HOST: ${{ secrets.QA_VM_HOST }}
+          VM_USER: ${{ secrets.QA_VM_USER }}
+          VM_SSH_KEY: ${{ secrets.QA_VM_SSH_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$VM_SSH_KEY" > ~/.ssh/key
+          chmod 600 ~/.ssh/key
+          ssh-keyscan -H $VM_HOST >> ~/.ssh/known_hosts
+
+          SERVICES=""
+
+          if [ "${{ steps.changes.outputs.frontend }}" == "true" ]; then SERVICES="$SERVICES frontend"; fi
+          if [ "${{ steps.changes.outputs.api_gateway }}" == "true" ]; then SERVICES="$SERVICES api-gateway"; fi
+          if [ "${{ steps.changes.outputs.auth }}" == "true" ]; then SERVICES="$SERVICES auth-service"; fi
+          if [ "${{ steps.changes.outputs.ai_assessment }}" == "true" ]; then SERVICES="$SERVICES ai-assessment-service"; fi
+          if [ "${{ steps.changes.outputs.custom_mcq }}" == "true" ]; then SERVICES="$SERVICES custom-mcq-service"; fi
+          if [ "${{ steps.changes.outputs.aiml }}" == "true" ]; then SERVICES="$SERVICES aiml-service"; fi
+          if [ "${{ steps.changes.outputs.aiml_agent }}" == "true" ]; then SERVICES="$SERVICES aiml-agent-service"; fi
+          if [ "${{ steps.changes.outputs.dsa }}" == "true" ]; then SERVICES="$SERVICES dsa-service"; fi
+          if [ "${{ steps.changes.outputs.proctoring }}" == "true" ]; then SERVICES="$SERVICES proctoring-service"; fi
+          if [ "${{ steps.changes.outputs.super_admin }}" == "true" ]; then SERVICES="$SERVICES super-admin-service"; fi
+          if [ "${{ steps.changes.outputs.employee }}" == "true" ]; then SERVICES="$SERVICES employee-service"; fi
+          if [ "${{ steps.changes.outputs.demo }}" == "true" ]; then SERVICES="$SERVICES demo-service"; fi
+
+          ssh -i ~/.ssh/key $VM_USER@$VM_HOST << EOF
+          cd /opt/aptor
+          echo "Deploying services: $SERVICES"
+          docker compose pull $SERVICES
+          docker compose up -d $SERVICES
+          docker image prune -f
+          echo "Deployment complete"
+          EOF
