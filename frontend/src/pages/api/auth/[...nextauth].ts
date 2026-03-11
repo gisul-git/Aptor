@@ -44,6 +44,8 @@ export const authOptions: NextAuthOptions = {
         tempToken: { label: "Temp Token", type: "text" }, // Temporary token from initial login
         mfaSetupComplete: { label: "MFA Setup Complete", type: "text" }, // For MFA setup completion
         mfaSetupToken: { label: "MFA Setup Token", type: "text" }, // For MFA setup completion
+        encryptedSecret: { label: "Encrypted Secret", type: "text" }, // For MFA setup completion
+        hashedBackupCodes: { label: "Hashed Backup Codes", type: "text" }, // For MFA setup completion
         mfaToken: { label: "MFA Token", type: "text" }, // For post-MFA login (super admin)
         refreshToken: { label: "Refresh Token", type: "text" }, // For post-MFA login
         encryptedSecret: { label: "Encrypted Secret", type: "text" }, // For MFA setup

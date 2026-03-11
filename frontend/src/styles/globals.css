@@ -2,7 +2,7 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
 
 /* Tailwind CSS directives - these are valid and processed by Tailwind */
-/* @tailwind directives are processed by PostCSS/Tailwind during build */
+/* @tailwind directives are processed by PostCSS/Tailwind during builds */
 @tailwind base;
 @tailwind components;
 @tailwind utilities;

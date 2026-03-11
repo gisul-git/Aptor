@@ -44,7 +44,7 @@ import {
 } from "@/hooks/api/useAssessments";
 
 
-import { User, Plus, X, Sparkles, FileType, CheckCircle2, ChevronRight, ArrowLeft, ArrowRight, Edit3, Link as LinkIcon, Copy, Lightbulb, BookOpen, FileText, Clock, FastForward, Check, Calendar, Globe, Info, Mail } from 'lucide-react';
+import { User, Plus, X, Sparkles, FileType, CheckCircle2, ChevronRight, ArrowLeft, ArrowRight, Edit3, Link as LinkIcon, Copy, Lightbulb, BookOpen, FileText, Clock, FastForward, Check, Calendar, Globe, Info, Mail, ChevronDown, RefreshCw } from 'lucide-react';
 // ============================================
 // QUESTION RENDERING COMPONENTS
 // ============================================
@@ -67,7 +67,7 @@ const renderMCQQuestion = (
             fontWeight: 600,
             color: "#1e293b",
           }}
-        >
+        >  
           Question:
         </label>
         <textarea
@@ -495,38 +495,6 @@ const renderCodingQuestion = (
       ? `${question.title}\n\n${question.description || question.problemStatement || ""}`
       : "");
 
-  // Debug logging to trace problem statement issue
-  if (!questionText || !questionText.trim()) {
-    console.warn("⚠️ Coding question missing problem statement:", {
-      hasQuestionText: !!question.questionText,
-      questionTextValue: question.questionText
-        ? question.questionText.substring(0, 100)
-        : null,
-      hasDescription: !!question.description,
-      descriptionValue: question.description
-        ? question.description.substring(0, 100)
-        : null,
-      hasQuestion: !!question.question,
-      hasProblemStatement: !!question.problemStatement,
-      hasTitle: !!question.title,
-      titleValue: question.title,
-      questionKeys: Object.keys(question),
-      fullQuestion: question, // Log full question for debugging
-    });
-  } else {
-    console.log("✅ Coding question has problem statement:", {
-      questionTextLength: questionText.length,
-      source: question.questionText
-        ? "questionText"
-        : question.description
-          ? "description"
-          : question.question
-            ? "question"
-            : question.problemStatement
-              ? "problemStatement"
-              : "title",
-    });
-  }
   const starterCode = question.starterCode || "";
   const visibleTestCases =
     question.visibleTestCases || (question.visibleTestCases ? [] : []);
@@ -1200,8 +1168,8 @@ const renderCodingQuestion = (
     );
   }
 
-  // ⭐ CRITICAL FIX: questionText exists (confirmed by console logs showing 402+ chars)
-  // Use questionText directly since we know it exists from the logs
+  // ⭐ CRITICAL FIX: Use questionText which contains title + description + examples
+  // Don't display description separately to avoid duplication
   const problemStatementText =
     question.questionText ||
     questionText ||
@@ -1211,21 +1179,13 @@ const renderCodingQuestion = (
     question.title ||
     "";
 
-  // Force render - we know questionText exists from logs
   const shouldShowProblemStatement = !!(
     problemStatementText && problemStatementText.trim()
   );
 
-  console.log("🎯 Final render check:", {
-    questionQuestionText: question.questionText?.substring(0, 50),
-    questionTextVar: questionText?.substring(0, 50),
-    problemStatementText: problemStatementText?.substring(0, 50),
-    shouldShow: shouldShowProblemStatement,
-  });
-
   return (
     <div>
-      {/* Problem Statement - Force render since we know questionText exists */}
+      {/* Problem Statement - Display ONCE (contains title + description + examples) */}
       {shouldShowProblemStatement ? (
         <div style={{ marginBottom: "1.5rem" }}>
           <div
@@ -1265,56 +1225,9 @@ const renderCodingQuestion = (
             color: "#991b1b",
           }}
         >
-          ⚠️ DEBUG: Problem statement not showing. question.questionText:{" "}
-          {question.questionText
-            ? `YES (${question.questionText.length} chars)`
-            : "NO"}
-          , questionText var:{" "}
-          {questionText ? `YES (${questionText.length} chars)` : "NO"}
+          ⚠️ Problem statement is missing. Please regenerate this question.
         </div>
       )}
-
-      {/* Debug: Show warning if problem statement is still empty */}
-      {!questionText &&
-        !question.description &&
-        !question.problemStatement &&
-        !question.question &&
-        !question.title && (
-          <div
-            style={{
-              marginBottom: "1.5rem",
-              padding: "1rem",
-              backgroundColor: "#fef3c7",
-              borderRadius: "0.5rem",
-              border: "1px solid #fbbf24",
-              color: "#92400e",
-            }}
-          >
-            ⚠️ Problem statement is empty. Check browser console for details.
-            Available fields: {Object.keys(question).join(", ")}
-          </div>
-        )}
-
-      {/* Debug: Show warning if problem statement is still empty */}
-      {!questionText &&
-        !question.description &&
-        !question.problemStatement &&
-        !question.question &&
-        !question.title && (
-          <div
-            style={{
-              marginBottom: "1.5rem",
-              padding: "1rem",
-              backgroundColor: "#fef3c7",
-              borderRadius: "0.5rem",
-              border: "1px solid #fbbf24",
-              color: "#92400e",
-            }}
-          >
-            ⚠️ Problem statement is empty. Available fields:{" "}
-            {JSON.stringify(Object.keys(question))}
-          </div>
-        )}
 
       {/* Starter Code (Readonly) */}
       {starterCode && (
@@ -1403,51 +1316,6 @@ const renderCodingQuestion = (
         </div>
       )}
 
-      {/* Problem Statement - Always show if available */}
-      {questionText && (
-        <div style={{ marginBottom: "1.5rem" }}>
-          <div
-            style={{
-              fontSize: "0.875rem",
-              fontWeight: 600,
-              color: "#64748b",
-              marginBottom: "0.5rem",
-            }}
-          >
-            Problem Statement:
-          </div>
-          <div
-            style={{
-              padding: "1.25rem",
-              backgroundColor: "#ffffff",
-              borderRadius: "0.75rem",
-              border: "1px solid #e2e8f0",
-              color: "#1e293b",
-              whiteSpace: "pre-wrap",
-              lineHeight: "1.7",
-              fontSize: "1rem",
-            }}
-          >
-            {questionText}
-          </div>
-        </div>
-      )}
-
-      {/* Fallback: Show title if questionText is empty */}
-      {!questionText && question.title && (
-        <div style={{ marginBottom: "1.5rem" }}>
-          <h2
-            style={{
-              fontSize: "1.25rem",
-              fontWeight: 700,
-              color: "#1e293b",
-              marginBottom: "1rem",
-            }}
-          >
-            {question.title}
-          </h2>
-        </div>
-      )}
       {/* Constraints */}
       {constraints && (
         <div style={{ marginBottom: "1.5rem" }}>
@@ -4017,8 +3885,10 @@ export default function CreateNewAssessmentPage() {
   >(null);
   const [regenerateQuestionFeedback, setRegenerateQuestionFeedback] =
     useState<string>("");
+  // Expanded question rows state for Station 4.5
+  const [expandedQuestionRows, setExpandedQuestionRows] = useState<Record<string, boolean>>({});
   // Schedule settings (Station 4)
- const [examMode, setExamMode] = useState<"strict" | "flexible" | "custom" | "scheduled">("strict");
+ const [examMode, setExamMode] = useState<"strict" | "flexible">("strict");
   const [duration, setDuration] = useState<string>("");
   const [visibilityMode, setVisibilityMode] = useState<string>("public");
   const [candidateRequirements, setCandidateRequirements] = useState<{
@@ -4065,41 +3935,110 @@ const handleCopyUrl = () => {
 };
 
 const handleStartCrafting = async () => {
+  console.log("🎬 handleStartCrafting CALLED");
+  console.log("  - assessmentId:", assessmentId);
+  console.log("  - examMode:", examMode);
+  console.log("  - startTime:", startTime);
+  console.log("  - endTime:", endTime);
+  console.log("  - duration:", duration);
+  console.log("  - candidates count:", candidates.length);
+  
   if (!assessmentId) {
-    console.error("Assessment ID is missing. URL cannot be generated.");
+    console.error("❌ Assessment ID is missing. URL cannot be generated.");
     return;
   }
 
-  setIsCrafting(true);
-  setCraftingProgress(0);
+  // Validate required fields before proceeding
+  if (!startTime) {
+    setError("Please enter a start time for the assessment");
+    return;
+  }
+  
+  if (!duration || parseInt(duration) <= 0) {
+    setError("Please enter a valid duration");
+    return;
+  }
+  
+  if (examMode === "flexible" && !endTime) {
+    setError("Please enter an end time for flexible mode");
+    return;
+  }
 
-  // 2. Generate dynamic URL
+  // Generate dynamic URL
   const token = Math.random().toString(36).substring(2, 15);
   const url = `${window.location.origin}/assessment/${assessmentId}/${token}`;
   setAssessmentUrl(url);
+  console.log("🔗 Generated assessment URL:", url);
 
-  // 3. Logic to calculate total duration - FIXED TS ERROR
-  const totalQs = topicsV2.reduce((acc, t) => 
-    acc + t.questionRows.reduce((sum, r) => sum + (r.questionsCount || 0), 0), 0
-  );
-  
-  // Update state with calculated duration string
-  setDuration(Math.round(totalQs * 2.5).toString());
-
-  // 4. Animation Engine
-  const interval = setInterval(() => {
-    setCraftingProgress((prev) => {
-      if (prev >= 100) {
-        clearInterval(interval);
-        setTimeout(() => {
-          setIsCrafting(false);
-          setShowFinalReview(true);
-        }, 600);
-        return 100;
+  // Save schedule and candidates to backend BEFORE showing animation
+  try {
+    console.log("💾 Saving schedule and candidates to backend...");
+    
+    // Normalize datetime strings
+    const normalizeDateTime = (dt: string): string => {
+      if (!dt) return dt;
+      if (dt.match(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/)) {
+        const dtWithSeconds = dt + ":00";
+        const istDate = new Date(dtWithSeconds + "+05:30");
+        if (!isNaN(istDate.getTime())) {
+          return istDate.toISOString();
+        } else {
+          return dt + ":00Z";
+        }
       }
-      return Math.min(prev + Math.floor(Math.random() * 8) + 2, 100);
+      if (dt.match(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/)) {
+        return dt + "Z";
+      }
+      return dt;
+    };
+
+    const scheduleData: any = {
+      examMode,
+      duration: parseInt(duration || "0"),
+    };
+
+    if (examMode === "strict") {
+      scheduleData.startTime = normalizeDateTime(startTime);
+    } else if (examMode === "flexible") {
+      scheduleData.startTime = normalizeDateTime(startTime);
+      scheduleData.endTime = normalizeDateTime(endTime);
+    }
+
+    console.log("📦 Schedule data to save:", scheduleData);
+
+    await updateScheduleAndCandidatesMutation.mutateAsync({
+      assessmentId,
+      ...scheduleData,
+      candidates: accessMode === "private" ? candidates : [],
+      assessmentUrl: url,
+      token,
+      accessMode: accessMode,
     });
-  }, 120);
+
+    console.log("✅ Schedule and candidates saved successfully");
+
+    // Now start the animation
+    setIsCrafting(true);
+    setCraftingProgress(0);
+
+    const interval = setInterval(() => {
+      setCraftingProgress((prev) => {
+        if (prev >= 100) {
+          clearInterval(interval);
+          setTimeout(() => {
+            setIsCrafting(false);
+            setShowFinalReview(true);
+          }, 600);
+          return 100;
+        }
+        return Math.min(prev + Math.floor(Math.random() * 8) + 2, 100);
+      });
+    }, 120);
+  } catch (err: any) {
+    console.error("❌ Error saving schedule:", err);
+    setError(err.message || "Failed to save schedule and candidates");
+    setIsCrafting(false);
+  }
 };
   
 const handleStartReviewProcess = () => {
@@ -5130,9 +5069,9 @@ const handleStartReviewProcess = () => {
 
           setTopicInputValues(initialTopicInputValues);
 
-          // Auto-navigate to Station 2 if topics exist
+          // Auto-navigate to Station 3 (skip Station 2)
           if (restoredTopicsV2.length > 0) {
-            setCurrentStation(2);
+            setCurrentStation(3);
           }
 
           console.log("✅ Topics_v2 fully restored:", {
@@ -5486,8 +5425,8 @@ const handleStartReviewProcess = () => {
           (assessment.topics_v2 && assessment.topics_v2.length > 0) ||
           (assessment.topics && assessment.topics.length > 0)
         ) {
-          // Navigate to Station 2 if topics exist (either format)
-          setCurrentStation(2);
+          // Navigate to Station 3 (skip Station 2)
+          setCurrentStation(3);
         } else {
           setCurrentStation(1);
         }
@@ -6065,8 +6004,17 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
 
     // Collect skills from all sources (optional - can be used to supplement requirements)
 
+    // Parse manual skill input (comma-separated)
+    const manualSkillsFromInput = manualSkillInput
+      .split(',')
+      .map(skill => skill.trim())
+      .filter(skill => skill.length > 0);
+
+    // Merge manual input skills with selectedSkills
+    const allSelectedSkills = [...new Set([...selectedSkills, ...manualSkillsFromInput])];
+
     // Method A (Role-based): Skills from topic cards (auto-generated from job designation)
-    const roleBasedSkills = selectedSkills
+    const roleBasedSkills = allSelectedSkills
       .filter((skill) => topicCards.includes(skill))
       .map((skill) => ({
         skill_name: skill.trim(),
@@ -6076,7 +6024,7 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
       }));
 
     // Method B (Manual): Skills manually entered that are NOT in topic cards
-    const manualSkills = selectedSkills
+    const manualSkills = allSelectedSkills
       .filter((skill) => !topicCards.includes(skill))
       .map((skill) => ({
         skill_name: skill.trim(),
@@ -6178,7 +6126,7 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
         setFullTopicRegenLocked(false);
         setAllQuestionsGenerated(false);
         setHasVisitedConfigureStation(true);
-        setCurrentStation(2);
+        setCurrentStation(3);
       } else {
         setError("Failed to generate topics");
       }
@@ -6253,8 +6201,8 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
         // Show success message
         setError(null);
         setCsvError(null);
-        // Navigate to Station 2 after successful generation
-        setCurrentStation(2);
+        // Navigate to Station 3 (skip Station 2)
+        setCurrentStation(3);
       } else {
         setCsvError("Failed to generate topics from requirements");
       }
@@ -6395,8 +6343,8 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
           );
         }
         setLoading(false);
-        // After generating topics in edit mode, navigate to Station 2
-        setCurrentStation(2);
+        // After generating topics in edit mode, navigate to Station 3 (skip Station 2)
+        setCurrentStation(3);
         return;
       }
 
@@ -6485,9 +6433,9 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
           }
         }
 
-        // Navigate to Station 2 after successful topic generation
+        // Navigate to Station 3 (skip Station 2)
         setHasVisitedConfigureStation(true);
-        setCurrentStation(2);
+        setCurrentStation(3);
       } else {
         setError("Failed to generate topics");
       }
@@ -6562,7 +6510,7 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
         setFullTopicRegenLocked(false);
         setAllQuestionsGenerated(false);
         setHasVisitedConfigureStation(true);
-        setCurrentStation(2);
+        setCurrentStation(3);
       } else {
         setError("Failed to generate topics");
       }
@@ -6920,12 +6868,18 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
   // ONLY generates for topics with status "pending" or "regenerated"
   // NEVER regenerates topics with status "generated" or "completed"
   const handleNextToReviewQuestions = async () => {
+    console.log("🚀 ========== QUESTION GENERATION START ==========");
+    console.log("📋 Assessment ID:", assessmentId);
+    console.log("📊 Total topics configured:", topicsV2?.length || 0);
+    
     if (!assessmentId) {
+      console.error("❌ ERROR: Assessment ID is required");
       setError("Assessment ID is required");
       return;
     }
 
     if (!topicsV2 || topicsV2.length === 0) {
+      console.error("❌ ERROR: No topics configured");
       setError("Please configure at least one topic");
       return;
     }
@@ -6936,20 +6890,24 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
       rows: Array<{ rowId: string; row: QuestionRow }>;
     }> = [];
 
-    topicsV2.forEach((topic) => {
+    console.log("🔍 Analyzing topics for generation...");
+    topicsV2.forEach((topic, index) => {
       const topicStatus = topic.status || "pending";
+      console.log(`  Topic ${index + 1}: "${topic.label}" - Status: ${topicStatus}`);
 
       // ONLY generate for topics with status "pending" or "regenerated"
       // SKIP topics with status "generated" or "completed"
       if (topicStatus === "pending" || topicStatus === "regenerated") {
         const rowsToGenerate: Array<{ rowId: string; row: QuestionRow }> = [];
 
-        topic.questionRows.forEach((row) => {
+        topic.questionRows.forEach((row, rowIndex) => {
           // Only generate for rows that don't have questions or are pending
           const needsGeneration =
             row.status === "pending" ||
             !row.questions ||
             row.questions.length === 0;
+
+          console.log(`    Row ${rowIndex + 1}: ${row.questionType} (${row.difficulty}) - Count: ${row.questionsCount} - Needs generation: ${needsGeneration} - Locked: ${row.locked || false}`);
 
           if (needsGeneration && !row.locked) {
             rowsToGenerate.push({
@@ -6960,17 +6918,25 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
         });
 
         if (rowsToGenerate.length > 0) {
+          console.log(`  ✅ Topic "${topic.label}" has ${rowsToGenerate.length} rows to generate`);
           topicsToGenerate.push({
             topic,
             rows: rowsToGenerate,
           });
+        } else {
+          console.log(`  ⏭️  Topic "${topic.label}" - All rows already generated or locked`);
         }
+      } else {
+        console.log(`  ⏭️  Topic "${topic.label}" - Skipped (status: ${topicStatus})`);
       }
     });
 
+    console.log(`\n📈 Summary: ${topicsToGenerate.length} topics need generation`);
+
     if (topicsToGenerate.length === 0) {
-      // All topics already have questions generated, just move to next station
-      setCurrentStation(3);
+      console.log("✅ All topics already have questions generated, moving to Review station");
+      // All topics already have questions generated, just move to Review station
+      setCurrentStation(4.5);
       return;
     }
 
@@ -6983,6 +6949,11 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
       (sum, { rows }) => sum + rows.length,
       0,
     );
+    
+    console.log(`\n🎯 Total question rows to generate: ${totalTasks}`);
+    console.log(`⚡ Concurrency limit: 5 parallel requests`);
+    console.log(`🔄 Max retries per row: 3`);
+    
     setGenerationProgress({
       total: totalTasks,
       completed: 0,
@@ -6994,10 +6965,12 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
     setShowGenerationSkeleton(true);
 
     const startTime = Date.now();
+    console.log(`⏰ Generation started at: ${new Date(startTime).toISOString()}\n`);
 
     try {
-      // ✅ SPEED OPTIMIZATION: Parallel generation with concurrency limit (5)
-      const CONCURRENCY_LIMIT = 5;
+      // ✅ SPEED OPTIMIZATION: Parallel generation with concurrency limit (3)
+      // Reduced from 5 to 3 to prevent OpenAI API timeout/cancellation issues
+      const CONCURRENCY_LIMIT = 3;
 
       // Create all tasks
       const allTasks: Array<{
@@ -7014,12 +6987,14 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
             rowId,
             row,
             task: async () => {
+              console.log(`\n🔨 Generating: "${topic.label}" > ${row.questionType} (${row.difficulty}) - ${row.questionsCount} questions`);
               let retries = 0;
               const maxRetries = 3;
               const baseDelay = 1000; // 1 second
 
               while (retries <= maxRetries) {
                 try {
+                  console.log(`  📤 API Call attempt ${retries + 1}/${maxRetries + 1}...`);
                   const response = await generateQuestionMutation.mutateAsync({
                     assessmentId: assessmentId || "",
                     topicId: topic.id,
@@ -7038,6 +7013,7 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
                   });
 
                   if (response?.success) {
+                    console.log(`  ✅ SUCCESS: Generated ${response.data?.row?.questions?.length || 0} questions`);
                     return {
                       success: true,
                       topic,
@@ -7046,11 +7022,16 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
                       response: response,
                     };
                   } else {
+                    console.error(`  ❌ FAILED: Response not successful`, response);
                     throw new Error(
                       `Failed to generate questions for topic ${topic.label}, row ${rowId}`,
                     );
                   }
                 } catch (err: any) {
+                  console.error(`  ⚠️  ERROR on attempt ${retries + 1}:`, err.message);
+                  console.error(`     Status: ${err.response?.status || 'N/A'}`);
+                  console.error(`     Error code: ${err.code || 'N/A'}`);
+                  
                   // ✅ SPEED OPTIMIZATION: Automatic backoff for rate limiting
                   if (
                     err.response?.status === 429 ||
@@ -7060,7 +7041,7 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
                     if (retries < maxRetries) {
                       const delay = baseDelay * Math.pow(2, retries);
                       console.warn(
-                        `Rate limit hit for ${topic.label}/${rowId}, retrying in ${delay}ms...`,
+                        `  🔄 Rate limit hit for ${topic.label}/${rowId}, retrying in ${delay}ms...`,
                       );
                       await new Promise((resolve) =>
                         setTimeout(resolve, delay),
@@ -7073,14 +7054,17 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
                   // Other errors or max retries reached
                   if (retries < maxRetries) {
                     const delay = baseDelay * Math.pow(2, retries);
+                    console.warn(`  🔄 Retrying in ${delay}ms...`);
                     await new Promise((resolve) => setTimeout(resolve, delay));
                     retries++;
                   } else {
+                    console.error(`  ❌ MAX RETRIES REACHED - Giving up on this row`);
                     throw err;
                   }
                 }
               }
 
+              console.error(`  ❌ FINAL FAILURE: Max retries reached without success`);
               return {
                 success: false,
                 topic,
@@ -7169,8 +7153,8 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
                 );
               } else {
                 failedCount++;
-                console.warn(
-                  `Failed to generate questions for topic ${result.topic.label}, row ${result.rowId}`,
+                console.error(
+                  `  ❌ FAILED: Topic "${result.topic.label}", row ${result.rowId} - Error: ${result.error || 'Unknown'}`,
                 );
               }
 
@@ -7205,7 +7189,7 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
               }));
 
               console.error(
-                `Error generating questions for topic ${taskData.topic.label}, row ${taskData.rowId}:`,
+                `  ❌ EXCEPTION: Topic "${taskData.topic.label}", row ${taskData.rowId}:`,
                 err,
               );
               return {
@@ -7220,9 +7204,14 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
       };
 
       // Process tasks in batches with concurrency limit
+      console.log(`\n🔄 Processing ${allTasks.length} tasks in batches of ${CONCURRENCY_LIMIT}...`);
       for (let i = 0; i < allTasks.length; i += CONCURRENCY_LIMIT) {
         const batch = allTasks.slice(i, i + CONCURRENCY_LIMIT);
+        const batchNumber = Math.floor(i / CONCURRENCY_LIMIT) + 1;
+        const totalBatches = Math.ceil(allTasks.length / CONCURRENCY_LIMIT);
+        console.log(`\n📦 Batch ${batchNumber}/${totalBatches} - Processing ${batch.length} tasks...`);
         await processBatch(batch);
+        console.log(`✅ Batch ${batchNumber}/${totalBatches} completed - Success: ${completedCount}, Failed: ${failedCount}`);
       }
 
       // Save draft after generation with updated statuses
@@ -7295,11 +7284,33 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
         });
       }
 
-      // Hide skeleton and move to Review Questions station
+      // Hide skeleton and move to Review Generated Questions station
+      const endTime = Date.now();
+      const totalTime = ((endTime - startTime) / 1000).toFixed(2);
+      
+      console.log(`\n🏁 ========== QUESTION GENERATION COMPLETE ==========`);
+      console.log(`⏱️  Total time: ${totalTime} seconds`);
+      console.log(`✅ Successfully generated: ${completedCount}/${totalTasks} rows`);
+      console.log(`❌ Failed: ${failedCount}/${totalTasks} rows`);
+      console.log(`📊 Success rate: ${((completedCount / totalTasks) * 100).toFixed(1)}%`);
+      
+      if (failedCount > 0) {
+        console.warn(`\n⚠️  WARNING: ${failedCount} question rows failed to generate`);
+        console.warn(`   You may need to regenerate these manually or try again`);
+      }
+      
+      console.log(`\n🎯 Navigating to Station 4.5 (Review Generated Questions)`);
+      console.log(`====================================================\n`);
+      
       setShowGenerationSkeleton(false);
-      setCurrentStation(3);
+      setCurrentStation(4.5);
     } catch (err: any) {
-      console.error("Error generating questions:", err);
+      console.error("\n❌ ========== GENERATION ERROR ==========");
+      console.error("Error details:", err);
+      console.error("Error message:", err.message);
+      console.error("Error response:", err.response?.data);
+      console.error("=========================================\n");
+      
       setError(
         err.response?.data?.message ||
           err.message ||
@@ -7308,6 +7319,7 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
       setShowGenerationSkeleton(false);
     } finally {
       setGeneratingAllQuestions(false);
+      console.log("🔚 Question generation process ended\n");
     }
   };
 
@@ -10000,7 +10012,7 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
               JSON.stringify(newTopicConfigs),
             );
           }
-          setCurrentStation(2);
+          setCurrentStation(3); // Skip Station 2
         } else {
           setError("Failed to generate topics");
         }
@@ -10023,7 +10035,7 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
           JSON.stringify(topicConfigs),
         );
       }
-      setCurrentStation(2);
+      setCurrentStation(3); // Skip Station 2
     }
   };
 
@@ -10517,28 +10529,71 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
       };
 
       // Prepare schedule data based on exam mode
+      // Backend exam modes:
+      // - "strict": All candidates start at exact startTime
+      // - "flexible": Candidates can start anytime between startTime and endTime
+      
+      console.log("=== SCHEDULE DATA PREPARATION START ===");
+      console.log("Current examMode:", examMode);
+      console.log("Current startTime:", startTime);
+      console.log("Current endTime:", endTime);
+      console.log("Current duration:", duration);
+      
       const scheduleData: any = {
         examMode,
         duration: parseInt(duration || "0"),
       };
 
-      // Add startTime if provided (required for both modes)
-      if (startTime) {
+      // Validate required fields based on exam mode
+      if (examMode === "strict") {
+        console.log("📋 STRICT MODE - Validating required fields...");
+        // Strict mode requires: startTime and duration
+        if (!startTime) {
+          console.error("❌ ERROR: Start time is required for strict mode");
+          throw new Error("Start time is required for this mode");
+        }
+        if (!duration || parseInt(duration) <= 0) {
+          console.error("❌ ERROR: Duration is required");
+          throw new Error("Duration is required");
+        }
         scheduleData.startTime = normalizeDateTime(startTime);
+        console.log("✅ Strict mode validation passed");
+        console.log("   - startTime (normalized):", scheduleData.startTime);
+        console.log("   - duration:", scheduleData.duration);
+      } else if (examMode === "flexible") {
+        console.log("📋 FLEXIBLE MODE - Validating required fields...");
+        // Flexible mode requires: startTime, endTime, and duration
+        if (!startTime) {
+          console.error("❌ ERROR: Start time is required");
+          throw new Error("Start time is required");
+        }
+        if (!endTime) {
+          console.error("❌ ERROR: End time is required for flexible mode");
+          throw new Error("End time is required for flexible mode");
+        }
+        if (!duration || parseInt(duration) <= 0) {
+          console.error("❌ ERROR: Duration is required");
+          throw new Error("Duration is required");
+        }
+        scheduleData.startTime = normalizeDateTime(startTime);
+        scheduleData.endTime = normalizeDateTime(endTime);
+        console.log("✅ Flexible mode validation passed");
+        console.log("   - startTime (normalized):", scheduleData.startTime);
+        console.log("   - endTime (normalized):", scheduleData.endTime);
+        console.log("   - duration:", scheduleData.duration);
       }
 
-      // Only include endTime based on exam mode
-      if (examMode === "flexible" && endTime) {
-        scheduleData.endTime = normalizeDateTime(endTime);
-      }
+      console.log("📦 Final scheduleData object:", JSON.stringify(scheduleData, null, 2));
 
       // Include section timers if enabled
       if (enablePerSectionTimers) {
         scheduleData.enablePerSectionTimers = true;
         scheduleData.sectionTimers = sectionTimers;
+        console.log("⏱️  Section timers enabled:", sectionTimers);
       }
 
-      await updateScheduleAndCandidatesMutation.mutateAsync({
+      console.log("🚀 Calling updateScheduleAndCandidatesMutation with payload:");
+      const payload = {
         assessmentId,
         ...scheduleData,
         candidates: accessMode === "private" ? candidates : [],
@@ -10547,7 +10602,13 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
         accessMode: accessMode,
         invitationTemplate:
           accessMode === "private" ? invitationTemplate : undefined,
-      });
+      };
+      console.log(JSON.stringify(payload, null, 2));
+
+      await updateScheduleAndCandidatesMutation.mutateAsync(payload);
+      
+      console.log("✅ updateScheduleAndCandidatesMutation completed successfully");
+      console.log("=== SCHEDULE DATA PREPARATION END ===");
     } catch (err: any) {
       console.error("Error saving schedule and candidates:", err);
       const errorMessage =
@@ -10683,7 +10744,16 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
                     className="create-new-btn-back"
                     onClick={() => {
                       if (currentStation > 1) {
-                        setCurrentStation(currentStation - 1);
+                        // Skip station 2 when going back
+                        if (currentStation === 3) {
+                          setCurrentStation(1);
+                        } else if (currentStation === 4.5) {
+                          setCurrentStation(4);
+                        } else if (currentStation === 5) {
+                          setCurrentStation(4.5);
+                        } else {
+                          setCurrentStation(currentStation - 1);
+                        }
                       } else {
                         handleBackToDashboard();
                       }
@@ -10695,7 +10765,18 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
                     <button
                       type="button"
                       className="create-new-btn-skip"
-                      onClick={() => setCurrentStation(currentStation + 1)}
+                      onClick={() => {
+                        // Skip station 2 when going forward
+                        if (currentStation === 1) {
+                          setCurrentStation(3);
+                        } else if (currentStation === 4) {
+                          setCurrentStation(4.5);
+                        } else if (currentStation === 4.5) {
+                          setCurrentStation(5);
+                        } else {
+                          setCurrentStation(currentStation + 1);
+                        }
+                      }}
                     >
                       Skip <FastForward size={18} strokeWidth={2.5} />
                     </button>
@@ -10741,11 +10822,18 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
               <div className="create-new-progress-track">
                 <div
                   className="create-new-progress-fill"
-                  style={{ width: `${(currentStation / 6) * 100}%` }}
+                  style={{ 
+                    width: `${(() => {
+                      // Map station numbers to step positions (1-6)
+                      const stationToStep: Record<number, number> = { 1: 1, 3: 2, 4: 3, 4.5: 4, 5: 5, 6: 6 };
+                      const currentStep = stationToStep[currentStation] || 1;
+                      return (currentStep / 6) * 100;
+                    })()}%` 
+                  }}
                 />
               </div>
               <div className="create-new-step-dots" aria-label="Progress">
-                {[1, 2, 3, 4, 5, 6].map((step) => (
+                {[1, 3, 4, 4.5, 5, 6].map((step) => (
                   <span
                     key={step}
                     className={`create-new-step-dot ${currentStation === step ? "active" : currentStation > step ? "done" : ""}`}
@@ -10801,17 +10889,81 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
                 </div>
                 <p className="create-new-hint" style={{ marginBottom: "1.5rem" }}>Be specific for better AI-generated questions.</p>
 
-                {/* Get AI Skills – secondary action */}
+                {/* Manual Skills Input */}
                 <div style={{ marginBottom: "1.5rem" }}>
-                  <button
-                    type="button"
-                    className="create-new-btn-secondary"
-                    onClick={handleGenerateTopicsUnified}
-                    disabled={loading || !jobDesignation.trim()}
-                  >
-                    <Sparkles size={16} /> {loading ? "Generating…" : "Get AI Skills"}
-                  </button>
+                  <label className="create-new-label" style={{ display: "block", marginBottom: "0.5rem", fontSize: "0.875rem", fontWeight: "500", color: "#374151" }}>
+                    Skills (Optional)
+                    <span style={{ fontSize: "0.875rem", fontWeight: "normal", color: "#6B7280", marginLeft: "0.5rem" }}>
+                      - Press Enter to add
+                    </span>
+                  </label>
+                  <input
+                    type="text"
+                    className="create-new-input"
+                    value={manualSkillInput}
+                    onChange={(e) => setManualSkillInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        const skills = manualSkillInput.split(',').map(s => s.trim()).filter(s => s.length > 0);
+                        if (skills.length > 0) {
+                          setSelectedSkills(prev => [...new Set([...prev, ...skills])]);
+                          setManualSkillInput('');
+                        }
+                      }
+                    }}
+                    placeholder="Type a skill and press Enter (e.g. Java, React, Docker)"
+                  />
+                  <p className="create-new-hint" style={{ marginTop: "0.5rem", marginBottom: "0" }}>Add specific skills to include in the assessment.</p>
                 </div>
+
+                {/* Selected Skills Display */}
+                {selectedSkills.length > 0 && (
+                  <div style={{ marginBottom: "1.5rem" }}>
+                    <label style={{ display: "block", marginBottom: "0.75rem", fontSize: "0.875rem", fontWeight: "600", color: "#1e293b" }}>
+                      Selected Skills
+                    </label>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem" }}>
+                      {selectedSkills.map((skill) => (
+                        <div
+                          key={skill}
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: "0.5rem",
+                            padding: "0.5rem 0.75rem",
+                            backgroundColor: "#ecfdf5",
+                            border: "1px solid #10b981",
+                            borderRadius: "2rem",
+                            fontSize: "0.875rem",
+                            fontWeight: "500",
+                            color: "#047857",
+                          }}
+                        >
+                          <span>{skill}</span>
+                          <button
+                            type="button"
+                            onClick={() => setSelectedSkills(prev => prev.filter(s => s !== skill))}
+                            style={{
+                              background: "none",
+                              border: "none",
+                              cursor: "pointer",
+                              padding: "0",
+                              display: "flex",
+                              alignItems: "center",
+                              color: "#047857",
+                              fontSize: "1rem",
+                              lineHeight: "1",
+                            }}
+                            aria-label={`Remove ${skill}`}
+                          >
+                            ×
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 {/* HIDDEN LOGIC PRESERVED: 
       The actual skills display (topicCards) is usually shown here. 
@@ -10832,7 +10984,7 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
                         color: "#1e293b",
                       }}
                     >
-                      Select Skills
+                      AI-Suggested Skills (Click to add)
                     </label>
                     <div
                       style={{
@@ -10947,119 +11099,11 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
               </div>
             )}
 
-            {/* Station 2: Configure Topics (NEW V2 IMPLEMENTATION) */}
-
-            {currentStation === 2 && (
-              <div style={{ maxWidth: "800px", margin: "0 auto", fontFamily: "Inter, sans-serif" }}>
-                <div className="create-new-step-badge">Step 2 of 6</div>
-                <h1 className="create-new-step-title">Which skills do you want to assess?</h1>
-                <p className="create-new-step-subtitle" style={{ marginBottom: "1.5rem" }}>Add topics or skills to include in this assessment.</p>
-
-                <div style={{ marginBottom: "0.5rem" }}>
-                  <input
-                    type="text"
-                    className="create-new-input"
-                    value={customTopicInputV2}
-                    onChange={(e) => setCustomTopicInputV2(e.target.value)}
-                    onKeyPress={(e) => {
-                      if (e.key === "Enter") handleAddCustomTopicV2(true, undefined, e);
-                    }}
-                    placeholder="e.g. React, TypeScript, Node.js, System Design…"
-                    disabled={loading || addingTopic}
-                  />
-                </div>
-                <p className="create-new-hint" style={{ marginBottom: "1.5rem" }}><Lightbulb size={14} style={{ verticalAlign: "middle", marginRight: "0.25rem" }} /> Add at least 2 skills (press Enter after each)</p>
-
-                {/* Active Skills Display (Chips) */}
-                {topicsV2 && topicsV2.length > 0 && (
-                  <div
-                    style={{
-                      marginBottom: "3rem",
-                      display: "flex",
-                      flexWrap: "wrap",
-                      gap: "0.75rem",
-                    }}
-                  >
-                    {topicsV2.map((topic) => (
-                      <div
-                        key={topic.id}
-                        style={{
-                          display: "inline-flex",
-                          alignItems: "center",
-                          gap: "0.5rem",
-                          padding: "0.6rem 1.25rem",
-                          backgroundColor: "#EBFAFD", // Mint 50
-                          border: "1.5px solid #C9F4D4", // Mint 100
-                          borderRadius: "2rem",
-                          color: "#1E5A3B", // Primary Text
-                          fontWeight: 700,
-                          fontSize: "0.9rem",
-                          transition: "transform 0.2s ease",
-                        }}
-                      >
-                        <span>{topic.label}</span>
-                        <button
-                          type="button"
-                          onClick={() => handleRemoveTopicV2(topic.id)}
-                          disabled={topic.locked}
-                          style={{
-                            background: "none",
-                            border: "none",
-                            color: "#10b981",
-                            cursor: "pointer",
-                            padding: "0 0.25rem",
-                            fontSize: "1.2rem",
-                            fontWeight: 800,
-                            display: "flex",
-                            alignItems: "center",
-                            lineHeight: 1,
-                          }}
-                        >
-                          ×
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                <div style={{ marginTop: "1.5rem" }}>
-                  <button
-                    type="button"
-                    className="create-new-btn-primary"
-                    onClick={() => setCurrentStation(3)}
-                    disabled={topicsV2 && topicsV2.length < 1}
-                  >
-                    Continue <ArrowRight size={18} />
-                  </button>
-                  <p className="create-new-hint" style={{ marginTop: "0.75rem", marginBottom: 0 }}>Press Enter ↵</p>
-                </div>
-
-                {/* Error Toast */}
-                {error && (
-                  <div
-                    style={{
-                      marginTop: "1.5rem",
-                      color: "#1E5A3B",
-                      fontSize: "0.95rem",
-                      fontWeight: 600,
-                      backgroundColor: "#fffbeb", // Warning Yellow
-                      padding: "1rem 1.5rem",
-                      borderRadius: "0.75rem",
-                      border: "1px solid #fcd34d",
-                    }}
-                  >
-                    ⚠️ {error}
-                  </div>
-                )}
-              </div>
-            )}
-            {/* Preview modals removed */}
-
             {/* Station 3: Review Questions */}
 
             {currentStation === 3 && (
               <div style={{ maxWidth: "800px", margin: "0 auto", fontFamily: "Inter, sans-serif" }}>
-                <div className="create-new-step-badge">Step 3 of 6</div>
+                <div className="create-new-step-badge">Step 2 of 6</div>
                 <h1 className="create-new-step-title">What experience level are you looking for?</h1>
                 <p className="create-new-step-subtitle" style={{ marginBottom: "1.5rem" }}>This helps us tailor difficulty and question depth.</p>
 
@@ -11170,7 +11214,7 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
             {/* Station 4: Configure topics and question types */}
             {currentStation === 4 && (
   <div style={{ maxWidth: "800px", margin: "0 auto", fontFamily: "Inter, sans-serif" }}>
-    <div className="create-new-step-badge">Step 4 of 6</div>
+    <div className="create-new-step-badge">Step 3 of 6</div>
     <h1 className="create-new-step-title">Configure topics and question types</h1>
     <p className="create-new-step-subtitle" style={{ marginBottom: "1.5rem" }}>Review and edit question counts, types, and difficulty per topic.</p>
 
@@ -11373,8 +11417,8 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
       );
     })()}
 
-    <button type="button" className="create-new-btn-primary" onClick={() => setCurrentStation(5)} style={{ width: "220px", display: "flex", alignItems: "center", justifyContent: "center", gap: "0.5rem" }}>
-      Continue <ArrowRight size={20} strokeWidth={2.5} />
+    <button type="button" className="create-new-btn-primary" onClick={handleNextToReviewQuestions} disabled={generatingAllQuestions} style={{ width: "220px", display: "flex", alignItems: "center", justifyContent: "center", gap: "0.5rem" }}>
+      {generatingAllQuestions ? "Generating..." : "Continue"} <ArrowRight size={20} strokeWidth={2.5} />
     </button>
   </div>
 )}
@@ -11436,9 +11480,292 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
                 </div>
               </div>
             )}
+
+            {/* Station 4.5: Review Generated Questions */}
+            {currentStation === 4.5 && (
+              <div style={{ maxWidth: "900px", margin: "0 auto", fontFamily: "Inter, sans-serif" }}>
+                <div className="create-new-step-badge">Step 4 of 6</div>
+                <h1 className="create-new-step-title">Review Generated Questions</h1>
+                <p className="create-new-step-subtitle" style={{ marginBottom: "1.5rem" }}>Review the AI-generated questions for each topic. You can regenerate individual questions if needed.</p>
+
+                {/* Summary */}
+                {(() => {
+                  const totalQuestions = topicsV2.reduce(
+                    (acc, t) =>
+                      acc +
+                      t.questionRows.reduce(
+                        (sum, r) => sum + (r.questions?.length || 0),
+                        0,
+                      ),
+                    0,
+                  );
+
+                  return (
+                    <div className="create-new-step-section" style={{ display: "flex", alignItems: "center", gap: "1rem", marginBottom: "1.5rem", flexWrap: "wrap" }}>
+                      <span style={{ fontWeight: 600, color: "#475569", display: "flex", alignItems: "center", gap: "0.5rem" }}><BookOpen size={18} strokeWidth={2.5} /> {topicsV2.length} topics</span>
+                      <span className="create-new-hint" style={{ margin: 0 }}>•</span>
+                      <span style={{ fontWeight: 600, color: "#475569", display: "flex", alignItems: "center", gap: "0.5rem" }}><FileText size={18} strokeWidth={2.5} /> {totalQuestions} questions generated</span>
+                    </div>
+                  );
+                })()}
+
+                {/* Topics with Questions */}
+                <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem", marginBottom: "2rem" }}>
+                  {topicsV2.map((topic) => {
+                    const totalQs = topic.questionRows.reduce(
+                      (sum, row) => sum + (row.questions?.length || 0),
+                      0,
+                    );
+                    
+                    return (
+                      <div key={topic.id} className="create-new-step-section">
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem" }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+                            <span style={{ fontSize: "1.25rem" }}>⚡</span>
+                            <h3 style={{ margin: 0, fontSize: "1.125rem", fontWeight: 700, color: "#334155" }}>{topic.label}</h3>
+                            <span className="create-new-hint" style={{ margin: 0 }}>({totalQs} questions)</span>
+                          </div>
+                        </div>
+
+                        {/* Question Rows */}
+                        <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+                          {topic.questionRows.map((row) => {
+                            const rowKey = `${topic.id}_${row.rowId}`;
+                            const isExpanded = expandedQuestionRows[rowKey];
+                            
+                            return (
+                              <div key={row.rowId}>
+                                {/* Row Header */}
+                                <div
+                                  style={{
+                                    padding: "1rem",
+                                    backgroundColor: "#f8fafc",
+                                    borderRadius: "0.5rem",
+                                    border: "1px solid #e2e8f0",
+                                    cursor: "pointer",
+                                  }}
+                                  onClick={() => {
+                                    setExpandedQuestionRows(prev => ({
+                                      ...prev,
+                                      [rowKey]: !prev[rowKey]
+                                    }));
+                                  }}
+                                >
+                                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                                    <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                                      <span style={{ fontWeight: 600, color: "#334155" }}>{row.questionType}</span>
+                                      <span className="create-new-hint" style={{ margin: 0 }}>•</span>
+                                      <span className="create-new-hint" style={{ margin: 0 }}>{row.difficulty}</span>
+                                      <span className="create-new-hint" style={{ margin: 0 }}>•</span>
+                                      <span className="create-new-hint" style={{ margin: 0 }}>{row.questions?.length || 0} questions</span>
+                                    </div>
+                                    <ChevronDown 
+                                      size={20} 
+                                      style={{ 
+                                        transform: isExpanded ? "rotate(180deg)" : "rotate(0deg)",
+                                        transition: "transform 0.2s ease",
+                                        color: "#64748b"
+                                      }} 
+                                    />
+                                  </div>
+                                </div>
+
+                                {/* Expanded Questions */}
+                                {isExpanded && row.questions && row.questions.length > 0 && (
+                                  <div style={{ marginTop: "0.75rem", display: "flex", flexDirection: "column", gap: "1rem", paddingLeft: "1rem" }}>
+                                    {row.questions.map((question, qIndex) => {
+                                      const questionId = `${topic.id}_${row.rowId}_${qIndex}`;
+                                      const isRegenerating = regeneratingQuestionId === questionId;
+                                      
+                                      return (
+                                        <div
+                                          key={qIndex}
+                                          style={{
+                                            padding: "1.5rem",
+                                            backgroundColor: "#ffffff",
+                                            borderRadius: "0.5rem",
+                                            border: "1px solid #e2e8f0",
+                                            boxShadow: "0 1px 3px rgba(0, 0, 0, 0.05)",
+                                          }}
+                                        >
+                                          {/* Question Header */}
+                                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem" }}>
+                                            <span style={{ fontWeight: 600, color: "#64748b", fontSize: "0.875rem" }}>
+                                              Question {qIndex + 1}
+                                            </span>
+                                            <button
+                                              type="button"
+                                              onClick={() => {
+                                                setRegeneratingQuestionId(questionId);
+                                                setRegenerateQuestionFeedback("");
+                                              }}
+                                              disabled={isRegenerating}
+                                              style={{
+                                                padding: "0.5rem 1rem",
+                                                backgroundColor: isRegenerating ? "#e2e8f0" : "#ffffff",
+                                                border: "1px solid #e2e8f0",
+                                                borderRadius: "0.375rem",
+                                                fontSize: "0.875rem",
+                                                fontWeight: 600,
+                                                color: isRegenerating ? "#94a3b8" : "#0f766e",
+                                                cursor: isRegenerating ? "not-allowed" : "pointer",
+                                                display: "flex",
+                                                alignItems: "center",
+                                                gap: "0.5rem",
+                                              }}
+                                            >
+                                              <RefreshCw size={16} />
+                                              {isRegenerating ? "Regenerating..." : "Regenerate"}
+                                            </button>
+                                          </div>
+
+                                          {/* Question Content */}
+                                          <div>
+                                            {row.questionType === "MCQ" && renderMCQQuestion(question, false)}
+                                            {row.questionType === "Coding" && renderCodingQuestion(question, false)}
+                                            {row.questionType === "Subjective" && renderSubjectiveQuestion(question, false)}
+                                            {row.questionType === "PseudoCode" && renderPseudoCodeQuestion(question, false)}
+                                            {row.questionType === "SQL" && renderSqlQuestion(question, false)}
+                                          </div>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Continue Button */}
+                <button 
+                  type="button" 
+                  className="create-new-btn-primary" 
+                  onClick={() => {
+                    console.log("📍 Navigating from Station 4.5 to Station 5 (Schedule)");
+                    setCurrentStation(5);
+                  }} 
+                  style={{ width: "220px", display: "flex", alignItems: "center", justifyContent: "center", gap: "0.5rem" }}
+                >
+                  Continue to Schedule <ArrowRight size={20} strokeWidth={2.5} />
+                </button>
+              </div>
+            )}
+
+            {/* Regenerate Question Modal */}
+            {regeneratingQuestionId && (
+              <div
+                style={{
+                  position: "fixed",
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  backgroundColor: "rgba(0, 0, 0, 0.5)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  zIndex: 9999,
+                }}
+                onClick={() => {
+                  setRegeneratingQuestionId(null);
+                  setRegenerateQuestionFeedback("");
+                }}
+              >
+                <div
+                  style={{
+                    backgroundColor: "#ffffff",
+                    borderRadius: "0.75rem",
+                    padding: "2rem",
+                    maxWidth: "500px",
+                    width: "90%",
+                    boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.1)",
+                  }}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <h3 style={{ margin: 0, marginBottom: "1rem", fontSize: "1.25rem", fontWeight: 700, color: "#1e293b" }}>
+                    Regenerate Question
+                  </h3>
+                  <p style={{ margin: 0, marginBottom: "1.5rem", color: "#64748b", fontSize: "0.875rem" }}>
+                    Provide feedback to improve the regenerated question (optional)
+                  </p>
+                  <textarea
+                    value={regenerateQuestionFeedback}
+                    onChange={(e) => setRegenerateQuestionFeedback(e.target.value)}
+                    placeholder="e.g., Make it more challenging, focus on practical scenarios..."
+                    style={{
+                      width: "100%",
+                      minHeight: "100px",
+                      padding: "0.75rem",
+                      border: "1px solid #e2e8f0",
+                      borderRadius: "0.5rem",
+                      fontSize: "0.875rem",
+                      marginBottom: "1.5rem",
+                      fontFamily: "Inter, sans-serif",
+                    }}
+                  />
+                  <div style={{ display: "flex", gap: "0.75rem", justifyContent: "flex-end" }}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setRegeneratingQuestionId(null);
+                        setRegenerateQuestionFeedback("");
+                      }}
+                      style={{
+                        padding: "0.625rem 1.25rem",
+                        backgroundColor: "#ffffff",
+                        border: "1px solid #e2e8f0",
+                        borderRadius: "0.5rem",
+                        fontSize: "0.875rem",
+                        fontWeight: 600,
+                        color: "#64748b",
+                        cursor: "pointer",
+                      }}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleRegenerateQuestion}
+                      disabled={regenerateQuestionMutation.isPending}
+                      style={{
+                        padding: "0.625rem 1.25rem",
+                        backgroundColor: regenerateQuestionMutation.isPending ? "#94a3b8" : "#0f766e",
+                        border: "none",
+                        borderRadius: "0.5rem",
+                        fontSize: "0.875rem",
+                        fontWeight: 600,
+                        color: "#ffffff",
+                        cursor: regenerateQuestionMutation.isPending ? "not-allowed" : "pointer",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "0.5rem",
+                      }}
+                    >
+                      <RefreshCw size={16} />
+                      {regenerateQuestionMutation.isPending ? "Regenerating..." : "Regenerate"}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Station 5: Schedule */}
             {currentStation === 5 && (
               <div style={{ maxWidth: "800px", margin: "0 auto", fontFamily: "Inter, sans-serif" }}>
+                {(() => {
+                  console.log("🏁 STATION 5 (Schedule) - Current State:");
+                  console.log("  - examMode:", examMode);
+                  console.log("  - startTime:", startTime);
+                  console.log("  - endTime:", endTime);
+                  console.log("  - duration:", duration);
+                  console.log("  - assessmentId:", assessmentId);
+                  return null;
+                })()}
                 <div className="create-new-step-badge">Step 5 of 6</div>
                 <h1 className="create-new-step-title">Schedule assessment availability</h1>
                 <p className="create-new-step-subtitle" style={{ marginBottom: "1.5rem" }}>Choose when candidates can take this assessment.</p>
@@ -11454,19 +11781,14 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
                   >
                     {[
                       {
-                        id: "flexible",
+                        id: "strict",
                         label: "Available Immediately (Default)",
-                        sub: "Candidates can start as soon as they receive invite",
+                        sub: "All candidates start at the scheduled time and have the specified duration to complete",
                       },
                       {
-                        id: "scheduled",
+                        id: "flexible",
                         label: "Schedule Specific Window",
-                        sub: "Set start and end dates/times",
-                      },
-                      {
-                        id: "custom",
-                        label: "Custom Schedule Per Candidate",
-                        sub: "Set individual time slots (configure in next step)",
+                        sub: "Set start and end dates - candidates can start anytime within the window",
                       },
                       ].map((mode) => (
                       <label
@@ -11506,10 +11828,33 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
                       <div style={{ display: "flex", gap: "0.5rem" }}>
                         <div style={{ flex: 1, position: "relative", display: "flex", alignItems: "center" }}>
                           <Calendar size={18} style={{ position: "absolute", left: "12px", color: "#64748b", pointerEvents: "none" }} />
-                          <input type="datetime-local" value={endTime} onChange={(e) => setEndTime(e.target.value)} disabled={examMode === "flexible" || examMode === "custom"} className="create-new-input" style={{ paddingLeft: "2.5rem", opacity: examMode !== "scheduled" ? 0.6 : 1 }} />
+                          <input type="datetime-local" value={endTime} onChange={(e) => setEndTime(e.target.value)} disabled={examMode === "strict"} className="create-new-input" style={{ paddingLeft: "2.5rem", opacity: examMode === "strict" ? 0.6 : 1 }} />
                         </div>
                         <div className="create-new-hint" style={{ padding: "0.75rem 1rem", margin: 0, alignSelf: "center", display: "flex", alignItems: "center", gap: "0.375rem" }}><Globe size={16} /> IST +05:30</div>
                       </div>
+                    </div>
+                    <div>
+                      <label style={{ display: "block", marginBottom: "0.5rem", fontWeight: 600, color: "#334155" }}>Assessment Duration</label>
+                      <p className="create-new-hint" style={{ marginTop: "0.25rem", marginBottom: "0.75rem" }}>How long candidates have to complete the assessment once they start</p>
+                      <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
+                        <Clock size={18} style={{ position: "absolute", left: "12px", color: "#64748b", pointerEvents: "none" }} />
+                        <input 
+                          type="number" 
+                          value={duration} 
+                          onChange={(e) => setDuration(e.target.value)} 
+                          placeholder="60" 
+                          min="1"
+                          className="create-new-input" 
+                          style={{ paddingLeft: "2.5rem", paddingRight: "5rem" }} 
+                        />
+                        <span style={{ position: "absolute", right: "12px", color: "#64748b", fontWeight: 600, fontSize: "0.875rem" }}>minutes</span>
+                      </div>
+                      <p className="create-new-hint" style={{ marginTop: "0.5rem", marginBottom: 0, display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                        <Info size={16} /> 
+                        {examMode === "strict" 
+                          ? "All candidates must start at the scheduled time and complete within this duration" 
+                          : "Candidates can start anytime before the end date and will have this duration to complete"}
+                      </p>
                     </div>
                   </div>
                 </div>
@@ -11529,51 +11874,16 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
                   <p className="create-new-hint" style={{ marginTop: "0.75rem", marginBottom: 0, display: "flex", alignItems: "center", gap: "0.5rem" }}><Info size={16} /> Candidates will see times in their local timezone.</p>
                 </div>
 
-                <div className="create-new-step-section" style={{ marginBottom: "1.5rem" }}>
-                  <h2 style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}><Mail size={20} color="#64748b" /> Candidate email preview</h2>
-                  <div
-                    style={{
-                      padding: "1.25rem",
-                      border: "1px dashed #e2e8f0",
-                      borderRadius: "0.75rem",
-                      color: "#475569",
-                      lineHeight: 1.6,
-                      backgroundColor: "#f8fafc",
-                      fontSize: "0.9375rem",
-                    }}
-                  >
-                    You have been invited to take the{" "}
-                    <strong style={{ color: "#334155" }}>
-                      {jobDesignation
-                        ? `${jobDesignation} Assessment`
-                        : "Full Stack Developer Assessment"}
-                    </strong>
-                    .<br />
-                    Available from:{" "}
-                    <strong style={{ color: "#334155" }}>
-                      {startTime
-                        ? new Date(startTime).toLocaleString("en-IN", {
-                            dateStyle: "medium",
-                            timeStyle: "short",
-                          }) + " IST"
-                        : "Feb 17, 2026, 9:00 AM IST"}
-                    </strong>
-                    <br />
-                    Duration: <strong style={{ color: "#334155" }}>{duration} minutes</strong>
-                    <br />
-                    <br />
-                    <span
-                      className="create-new-btn-primary"
-                      style={{ maxWidth: "none", display: "inline-flex", padding: "0.5rem 1rem", fontSize: "0.875rem" }}
-                    >
-                      Start Assessment
-                    </span>
-                  </div>
-                </div>
-
                 <div style={{ display: "flex", gap: "1rem", flexWrap: "wrap" }}>
                   <button type="button" className="create-new-btn-secondary" onClick={() => setCurrentStation(4)}>Back</button>
-                  <button type="button" className="create-new-btn-primary" onClick={() => setCurrentStation(6)} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: "0.5rem" }}>
+                  <button type="button" className="create-new-btn-primary" onClick={() => {
+                    console.log("📍 Navigating from Station 5 to Station 6 (Add Candidates)");
+                    console.log("  - Current examMode:", examMode);
+                    console.log("  - Current startTime:", startTime);
+                    console.log("  - Current endTime:", endTime);
+                    console.log("  - Current duration:", duration);
+                    setCurrentStation(6);
+                  }} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: "0.5rem" }}>
                     Continue to Add Candidates <ArrowRight size={20} strokeWidth={2.5} />
                   </button>
                 </div>
@@ -11622,8 +11932,13 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
                 <label style={{ display: "block", marginBottom: "0.5rem" }}>Email</label>
                 <input type="email" value={candidateEmail} onChange={(e) => setCandidateEmail(e.target.value)} placeholder="john.doe@example.com" className="create-new-input" />
               </div>
-              <button type="button" className="create-new-btn-secondary" onClick={handleAddCandidate} style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "0.5rem" }}>
-                <Plus size={18} /> Add another candidate
+              <button 
+                type="button" 
+                className="create-new-btn-primary" 
+                onClick={handleAddCandidate} 
+                style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "0.5rem" }}
+              >
+                <Plus size={18} /> Add Candidate
               </button>
             </div>
           </div>
@@ -11657,9 +11972,28 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
           )}
         </div>
 
-        <button type="button" className="create-new-btn-primary" onClick={handleStartCrafting} style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: "0.5rem" }}>
+        <button 
+          type="button" 
+          className="create-new-btn-primary" 
+          onClick={handleStartCrafting} 
+          disabled={candidates.length === 0}
+          style={{ 
+            width: "100%", 
+            display: "flex", 
+            alignItems: "center", 
+            justifyContent: "center", 
+            gap: "0.5rem",
+            opacity: candidates.length === 0 ? 0.5 : 1,
+            cursor: candidates.length === 0 ? "not-allowed" : "pointer"
+          }}
+        >
           Review Assessment <ChevronRight size={24} />
         </button>
+        {candidates.length === 0 && (
+          <p style={{ color: "#ef4444", fontSize: "0.875rem", marginTop: "0.5rem", textAlign: "center" }}>
+            Please add at least one candidate before reviewing
+          </p>
+        )}
       </>
     )}
 
@@ -11721,9 +12055,14 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
         ? assessmentUrl 
         : "Generating secure link...";
 
-                  function normalizeDateTime(startTime: string): any {
-                    throw new Error("Function not implemented.");
-                  }
+    // Normalize datetime strings to ISO format with timezone
+    const normalizeDateTime = (dt: string): string => {
+        if (!dt) return dt;
+        if (dt.match(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/)) {
+            return dt + ':00+05:30';
+        }
+        return dt;
+    };
 
     return (
         <div style={{ paddingBottom: '5rem' }}>
@@ -11872,46 +12211,67 @@ SQL Queries,"JOIN operations and subqueries; indexing strategies",High`;
     </div>
 )}
 
-
-
-            {/* AI Warning Box */}
-            <div style={{ padding: "1.5rem", backgroundColor: "#fffbeb", border: "1px solid #fcd34d", borderRadius: "1.25rem", color: "#1E5A3B", marginBottom: "2.5rem" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginBottom: "1rem" }}>
-                    <Sparkles size={20} color="#b45309" />
-                    <strong style={{ fontSize: "1.15rem" }}>AI will generate:</strong>
-                </div>
-                <ul style={{ listStyle: "none", padding: 0, margin: 0, fontWeight: 600, display: "grid", gap: "0.6rem" }}>
-                    <li>• {totalQuestionsCount} questions across {topicsV2.length} topics configured</li>
-                    <li>• Estimated time: ~{formatTime(calculatedMinutes)}</li>
-                    <li>• Questions will be generated based on your configuration</li>
-                </ul>
-            </div>
-
             {/* Navigation Buttons */}
-            <div style={{ display: "flex", gap: "1.5rem", justifyContent: 'center' }}>
-                <button onClick={() => setShowFinalReview(false)} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: "1rem 2rem", border: "1.5px solid #E2E8F0", borderRadius: "1rem", backgroundColor: "#ffffff", color: "#1E5A3B", fontWeight: 800 }}>
+            <div style={{ display: "flex", gap: "1.5rem", justifyContent: 'center', marginTop: "2rem" }}>
+                <button 
+                    onClick={() => setShowFinalReview(false)} 
+                    style={{ 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        gap: '8px', 
+                        padding: "1rem 2rem", 
+                        border: "1.5px solid #E2E8F0", 
+                        borderRadius: "1rem", 
+                        backgroundColor: "#ffffff", 
+                        color: "#64748b", 
+                        fontWeight: 600,
+                        cursor: "pointer"
+                    }}
+                >
                     <ArrowLeft size={20} /> Back to Edit
                 </button>
                 <button 
                     onClick={async () => {
                         setLoading(true);
-                        if (assessmentId) {
-                            await updateScheduleAndCandidatesMutation.mutateAsync({ 
-                                assessmentId, 
-                                examMode, 
-                                duration: calculatedMinutes, 
-                                startTime: startTime ? normalizeDateTime(startTime) : undefined, 
-                                endTime: endTime ? normalizeDateTime(endTime) : undefined, 
-                                candidates: accessMode === "private" ? candidates : [], 
-                                complete: true, 
-                                accessMode 
-                            });
-                            router.push("/dashboard?refresh=" + Date.now());
+                        try {
+                            if (assessmentId) {
+                                await updateScheduleAndCandidatesMutation.mutateAsync({ 
+                                    assessmentId, 
+                                    examMode, 
+                                    duration: calculatedMinutes, 
+                                    startTime: startTime ? normalizeDateTime(startTime) : undefined, 
+                                    endTime: endTime ? normalizeDateTime(endTime) : undefined, 
+                                    candidates: accessMode === "private" ? candidates : [], 
+                                    complete: true, 
+                                    accessMode 
+                                });
+                                // Redirect to assessments dashboard
+                                router.push("/assessments");
+                            }
+                        } catch (error) {
+                            console.error("Error finalizing assessment:", error);
+                            setError("Failed to finalize assessment. Please try again.");
+                        } finally {
+                            setLoading(false);
                         }
                     }}
-                    style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: "1rem 2.5rem", backgroundColor: "#10b981", color: "#ffffff", fontSize: "1.1rem", fontWeight: 900, border: "none", borderRadius: "1rem", cursor: "pointer", boxShadow: "0 10px 20px rgba(16, 185, 129, 0.2)" }}
+                    disabled={loading}
+                    style={{ 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        gap: '8px', 
+                        padding: "1rem 2.5rem", 
+                        backgroundColor: loading ? "#94a3b8" : "#10b981", 
+                        color: "#ffffff", 
+                        fontSize: "1.1rem", 
+                        fontWeight: 900, 
+                        border: "none", 
+                        borderRadius: "1rem", 
+                        cursor: loading ? "not-allowed" : "pointer", 
+                        boxShadow: "0 10px 20px rgba(16, 185, 129, 0.2)" 
+                    }}
                 >
-                    Continue to Candidates <ChevronRight size={20} />
+                    {loading ? "Finalizing..." : "Finish"} <CheckCircle2 size={20} />
                 </button>
             </div>
         </div>
