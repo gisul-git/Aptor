@@ -13,7 +13,7 @@ from app.models.question import Question, QuestionDifficulty
 from app.models.execution import ExecutionResult, ExecutionStatus, ExecutionMode
 from app.models.user import UserProgress, Solution
 from app.services.question_generator import QuestionGeneratorService
-from app.services.execution_engine import ExecutionEngine
+from app.services.execution_client import execution_client  # New enterprise execution client
 from app.services.validation_engine import ValidationEngine
 from app.services.code_reviewer import CodeReviewer
 from app.services.progress_analytics import ProgressAnalyticsService
@@ -39,7 +39,7 @@ class IntegrationService:
     def __init__(
         self,
         question_generator: Optional[QuestionGeneratorService],
-        execution_engine: Optional[ExecutionEngine],
+        execution_engine: Optional[Any] = None,  # Not used - using enterprise client
         validation_engine: Optional[ValidationEngine],
         code_reviewer: Optional[CodeReviewer],
         progress_analytics: Optional[ProgressAnalyticsService],
@@ -53,7 +53,7 @@ class IntegrationService:
         execution_repo: Optional[ExecutionRepository]
     ):
         self.question_generator = question_generator
-        self.execution_engine = execution_engine
+        self.execution_engine = None  # Using enterprise execution client instead
         self.validation_engine = validation_engine
         self.code_reviewer = code_reviewer
         self.progress_analytics = progress_analytics

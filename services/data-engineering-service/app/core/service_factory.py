@@ -8,7 +8,6 @@ from typing import Optional
 
 from app.services.integration_service import IntegrationService, set_integration_service
 from app.services.question_generator import QuestionGeneratorService
-from app.services.execution_engine import ExecutionEngine
 from app.services.validation_engine import ValidationEngine
 from app.services.code_reviewer import CodeReviewer
 from app.services.progress_analytics import ProgressAnalyticsService
@@ -181,8 +180,7 @@ class ServiceFactory:
     
     async def _initialize_execution_services(self):
         """Initialize code execution services."""
-        # Execution engine - handles its own configuration
-        self._services['execution_engine'] = ExecutionEngine()
+        # Note: Execution engine removed - will be rebuilt
         
         logger.info("Execution services initialized")
     
@@ -211,7 +209,7 @@ class ServiceFactory:
         try:
             integration_service = IntegrationService(
                 question_generator=self._services.get('question_generator'),
-                execution_engine=self._services.get('execution_engine'),
+                execution_engine=None,  # Will be rebuilt
                 validation_engine=self._services.get('validation_engine'),
                 code_reviewer=self._services.get('code_reviewer'),
                 progress_analytics=self._services.get('progress_analytics'),
@@ -266,11 +264,9 @@ class ServiceFactory:
             if 'integration' in self._services:
                 await self._services['integration'].cleanup_resources()
             
-            # Cleanup execution engine
-            if 'execution_engine' in self._services:
-                await self._services['execution_engine'].cleanup()
+            # Cleanup execution engine - removed
             
-            # Cleanup auto scaler
+            # Cleanup auto scaler - removed
             if 'auto_scaler' in self._services:
                 await self._services['auto_scaler'].cleanup()
             

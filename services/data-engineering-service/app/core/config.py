@@ -50,11 +50,11 @@ class Settings(BaseSettings):
     OPENAI_API_BASE_URL: str = "https://api.openai.com/v1"
     OPENAI_MODEL: str = "gpt-4o-mini"  # Cost-effective and high quality
     
-    # Docker Configuration
-    DOCKER_SOCKET: str = "unix:///var/run/docker.sock"
-    EXECUTION_IMAGE: str = "data-engineering-service/pyspark-executor:latest"
-    CONTAINER_TIMEOUT: int = 60  # 60 seconds - aggressive timeout for fast feedback
-    CONTAINER_MEMORY_LIMIT: str = "768m"  # Reduced from 1g for faster startup
+    # Execution Engine Configuration
+    EXECUTION_ENGINE_URL: str = "http://localhost:8001"  # Changed from 8000 to 8001
+    EXECUTION_TIMEOUT: int = 30  # Default execution timeout
+    EXECUTION_MEMORY_LIMIT: str = "512m"  # Default memory limit
+    EXECUTION_CPU_LIMIT: float = 1.0  # Default CPU limit
     CONTAINER_CPU_LIMIT: str = "1.0"
     
     # Container Pool Configuration

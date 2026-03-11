@@ -11,6 +11,7 @@ redis>=5.0.1
 
 # AI and HTTP client dependencies
 httpx==0.25.2
+httpx==0.25.2
 openai==1.54.0  # Latest OpenAI SDK
 
 # Data processing dependencies
