@@ -1,4 +1,4 @@
-name: Build and Push Docker Images
+name: Build Push and Deploy
 
 on:
   push:
@@ -6,7 +6,7 @@ on:
       - QA
 
 jobs:
-  build-and-push:
+  build-push-deploy:
     runs-on: ubuntu-latest
 
     steps:
@@ -19,6 +19,7 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
+      # Build & push images
       - name: Build and Push Frontend
         run: |
           docker build -t gisul/gisul-frontend:latest ./frontend
@@ -78,3 +79,31 @@ jobs:
         run: |
           docker build -t gisul/gisul-demo-service:latest ./services/demo-service
           docker push gisul/gisul-demo-service:latest
+
+
+      # Deploy to VM
+      - name: Deploy to QA VM
+        env:
+          VM_HOST: ${{ secrets.QA_VM_HOST }}
+          VM_USER: ${{ secrets.QA_VM_USER }}
+          VM_SSH_KEY: ${{ secrets.QA_VM_SSH_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$VM_SSH_KEY" > ~/.ssh/key
+          chmod 600 ~/.ssh/key
+          ssh-keyscan -H $VM_HOST >> ~/.ssh/known_hosts
+
+          ssh -i ~/.ssh/key $VM_USER@$VM_HOST << 'EOF'
+            cd /opt/aptor
+
+            echo "Pulling images..."
+            docker compose pull
+
+            echo "Restarting services..."
+            docker compose up -d
+
+            echo "Cleaning unused images..."
+            docker image prune -f
+
+            echo "Deployment complete"
+          EOF
