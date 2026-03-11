@@ -1,5 +1,5 @@
 version: '3.8'
-
+ 
 services:
   # Redis
   redis:
@@ -17,7 +17,7 @@ services:
       timeout: 3s
       retries: 3
       start_period: 5s
-
+ 
   # Frontend
   frontend:
     build:
@@ -53,7 +53,7 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
-
+ 
   # API Gateway
   api-gateway:
     build:
@@ -87,7 +87,7 @@ services:
       timeout: 5s
       retries: 3
       start_period: 20s
-
+ 
   # Auth Service
   auth-service:
     build:
@@ -131,7 +131,7 @@ services:
       timeout: 5s
       retries: 3
       start_period: 30s
-
+ 
   # AI Assessment Service
   ai-assessment-service:
     build:
@@ -170,7 +170,7 @@ services:
       timeout: 5s
       retries: 3
       start_period: 30s
-
+ 
   # Custom MCQ Service
   custom-mcq-service:
     build:
@@ -202,7 +202,7 @@ services:
       timeout: 5s
       retries: 3
       start_period: 30s
-
+ 
   # AIML Service
   aiml-service:
     build:
@@ -241,7 +241,7 @@ services:
       timeout: 5s
       retries: 3
       start_period: 30s
-
+ 
   # AIML Agent Service
   aiml-agent-service:
     build:
@@ -259,12 +259,12 @@ services:
       - microservices-network
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:8889/health"]
       interval: 15s
       timeout: 5s
       retries: 3
       start_period: 30s
-
+ 
   # DSA Service
   dsa-service:
     build:
@@ -304,7 +304,7 @@ services:
       timeout: 5s
       retries: 3
       start_period: 30s
-
+ 
   # Proctoring Service
   proctoring-service:
     build:
@@ -335,7 +335,7 @@ services:
       timeout: 5s
       retries: 3
       start_period: 30s
-
+ 
   # Super Admin Service
   super-admin-service:
     build:
@@ -368,7 +368,7 @@ services:
       timeout: 5s
       retries: 3
       start_period: 30s
-
+ 
   # Employee Service
   employee-service:
     build:
@@ -410,7 +410,7 @@ services:
       timeout: 5s
       retries: 3
       start_period: 30s
-
+ 
   # Demo Service
   demo-service:
     build:
@@ -444,11 +444,11 @@ services:
       timeout: 5s
       retries: 3
       start_period: 30s
-
+ 
 volumes:
   redis_data:
   aiml_agent_uploads:
-
+ 
 networks:
   microservices-network:
     driver: bridge
