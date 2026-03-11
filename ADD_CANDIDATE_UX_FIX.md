@@ -1,6 +1,6 @@
 # Add Candidate UX Fix
 
-## Issue
+## Issues
 In Step 6 (Add Candidates), there was no clear "Add Candidate" button. Users had to click "+ Add another candidate" even when adding the first candidate, which was confusing.
 
 ## Problem
