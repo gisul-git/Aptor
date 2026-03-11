@@ -379,29 +379,78 @@ export default function TestTakePage() {
     
     switch (langLower) {
       case 'python':
-        return `def ${funcName}(${paramsStr}):\n    # Your code here\n    ${isVoid ? 'pass' : 'return None'}\n`
-      case 'javascript':
-        return `function ${funcName}(${paramsStr}) {\n    // Your code here\n    ${isVoid ? '' : `return ${defaultReturn}`}\n}\n`
-      case 'typescript':
-        return `function ${funcName}(${paramsStr}): ${mappedReturnType} {\n    // Your code here\n    ${isVoid ? '' : `return ${defaultReturn}`}\n}\n`
-      case 'cpp':
-      case 'c++':
-        return `#include <iostream>\nusing namespace std;\n\n${mappedReturnType} ${funcName}(${paramsStr}) {\n    // Your code here\n    ${isVoid ? '' : `return ${defaultReturn}`}\n}\n`
-      case 'java':
-        return `public class Main {\n    public static ${mappedReturnType} ${funcName}(${paramsStr}) {\n        // Your code here\n        ${isVoid ? '' : `return ${defaultReturn}`}\n    }\n    public static void main(String[] args) {\n        // You can test your function here\n    }\n}\n`
-      case 'c':
-        return `#include <stdio.h>\n\n${mappedReturnType} ${funcName}(${paramsStr}) {\n    // Your code here\n    ${isVoid ? '' : `return ${defaultReturn}`}\n}\n`
-      case 'go':
-        return `package main\n\nfunc ${funcName}(${paramsStr})${isVoid ? '' : ` ${mappedReturnType}`} {\n    // Your code here\n    ${isVoid ? '' : `return ${defaultReturn}`}\n}\n`
-      case 'rust':
-        return `fn ${funcName}(${paramsStr})${isVoid ? '' : ` -> ${mappedReturnType}`} {\n    // Your code here\n    ${isVoid ? '' : defaultReturn}\n}\n`
-      case 'kotlin':
-        return `fun ${funcName}(${paramsStr})${isVoid ? '' : `: ${mappedReturnType}`} {\n    // Your code here\n    ${isVoid ? '' : `return ${defaultReturn}`}\n}\n`
-      case 'csharp':
-      case 'c#':
-        return `using System;\n\npublic class Solution {\n    public static ${mappedReturnType} ${funcName}(${paramsStr}) {\n        // Your code here\n        ${isVoid ? '' : `return ${defaultReturn}`}\n    }\n}\n`
-      default:
-        return `// Your code here\n`
+  return `def ${funcName}(${paramsStr}):
+    # Your code here
+    ${isVoid ? 'pass' : 'return None'}
+`
+case 'javascript':
+  return `function ${funcName}(${paramsStr}) {
+    // Your code here
+    ${isVoid ? '' : `return ${defaultReturn}`}
+}
+`
+case 'typescript':
+  return `function ${funcName}(${paramsStr}): ${mappedReturnType} {
+    // Your code here
+    ${isVoid ? '' : `return ${defaultReturn}`}
+}
+`
+case 'cpp':
+case 'c++':
+  return `
+
+${mappedReturnType} ${funcName}(${paramsStr}) {
+    // Your code here
+    ${isVoid ? '' : `return ${defaultReturn}`}
+}
+`
+case 'java':
+  return `class Solution {
+    public static ${mappedReturnType} ${funcName}(${paramsStr}) {
+        // Your code here
+        ${isVoid ? '' : `return ${defaultReturn}`}
+    }
+}
+`
+case 'c':
+  return `
+
+${mappedReturnType} ${funcName}(${paramsStr}) {
+    // Your code here
+    ${isVoid ? '' : `return ${defaultReturn}`}
+}
+`
+case 'go':
+  return `
+func ${funcName}(${paramsStr})${isVoid ? '' : ` ${mappedReturnType}`} {
+    // Your code here
+    ${isVoid ? '' : `return ${defaultReturn}`}
+}
+`
+case 'rust':
+  return `fn ${funcName}(${paramsStr})${isVoid ? '' : ` -> ${mappedReturnType}`} {
+    // Your code here
+    ${isVoid ? '' : defaultReturn}
+}
+`
+case 'kotlin':
+  return `fun ${funcName}(${paramsStr})${isVoid ? '' : `: ${mappedReturnType}`} {
+    // Your code here
+    ${isVoid ? '' : `return ${defaultReturn}`}
+}
+`
+case 'csharp':
+case 'c#':
+  return `public class Solution {
+    public static ${mappedReturnType} ${funcName}(${paramsStr}) {
+        // Your code here
+        ${isVoid ? '' : `return ${defaultReturn}`}
+    }
+}
+`
+default:
+  return `// Your code here
+`
     }
   }
 

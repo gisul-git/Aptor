@@ -10,7 +10,7 @@ import json
 import logging
 from dotenv import load_dotenv
 from typing import Dict, Any, Optional, List, Union
-
+from .testcase_verifier import verify_and_fix_testcases
 from openai import OpenAI
 
 load_dotenv()
@@ -391,41 +391,40 @@ async def generate_question(
             concepts_str = str(concepts)
     
     # Build system prompt
-    system_prompt = """You are a JSON-only coding question generator.
+    # Build system prompt
+    # Build system prompt
+    system_prompt = """You are an expert technical interviewer, system architect, and JSON-only coding question generator.
 
 CORE PRINCIPLES:
-- Simplicity over complexity
-- Determinism over creativity
-- Correctness over cleverness
-- NO hardcoding tricks
-- NO dynamic generation inside JSON
+- Scenario-Driven: Wrap core algorithms in highly engaging, real-world, or hypothetical narratives. 
+- High Entropy (NO REPETITION): DO NOT generate standard "Two Sum", "Knapsack", or "Dijkstra on a grid" stories. Force yourself to use highly specific, uncommon domains (e.g., astrobotany, deep-sea logistics, quantum routing, medieval taxation).
+- Determinism over pure creativity: The underlying algorithm must be standard, solvable, and logically sound, even if the story is wildly creative.
+- Correctness over cleverness: The math/logic must perfectly align with the story.
+- NO hardcoding tricks.
 
- CRITICAL: ZERO MISMATCHES ALLOWED 
+🚨 CRITICAL: ZERO MISMATCHES ALLOWED 🚨
 The title, description, example, and ALL testcases MUST describe the EXACT SAME problem.
-If you generate testcases for one problem but description for another, that is a CRITICAL ERROR.
-You MUST generate correctly from the start - validation is a safety net, not a fix.
-
-GENERATION RULE:
-Generate testcases FIRST, then write title/description/example to match those testcases.
-Do NOT write description first and then testcases - this causes mismatches.
+If you generate testcases for one problem but the description for another, that is a CRITICAL ERROR.
 
 STRICT OUTPUT RULES:
-- Output MUST be valid JSON only
-- No markdown, no explanations outside JSON
-- Response MUST start with '{' and end with '}'
-- All values must be literal strings
-- NO code execution or expressions inside JSON
-- NO placeholders like "e.g." or dummy values
+- Output MUST be a SINGLE, valid JSON object.
+- ABSOLUTELY NO markdown formatting. Do NOT wrap the output in ```json or any other formatting.
+- The very first character of your response MUST be '{' and the last MUST be '}'.
+- ABSOLUTELY NO conversational text, preambles, or postscripts outside the JSON.
+- All keys and string values MUST use double quotes.
+- NO code execution or expressions inside JSON.
 
 FAIL-SAFE:
-If you cannot guarantee correctness or consistency, return:
+If you cannot guarantee correctness, consistency, or valid JSON, return exactly:
 {"error":"CANNOT_GENERATE_CLEAN_QUESTION"}"""
     
     # Build languages list for prompt
     languages_str = ", ".join(languages) if languages else "all supported languages"
     
     # Build user prompt - STRICT GENERATION ORDER TO PREVENT MISMATCHES
-    user_prompt = f"""Generate a complete DSA coding question.
+    # Build user prompt - STRICT GENERATION ORDER TO PREVENT MISMATCHES
+    # Build user prompt - STRICT GENERATION ORDER TO PREVENT MISMATCHES
+    user_prompt = f"""Generate a highly unique, scenario-based DSA coding question.
 
 INPUTS:
 Topic: {topic or "General"}
@@ -433,130 +432,78 @@ Concepts: {concepts_str or "General"}
 Difficulty: {difficulty}
 Languages: {languages_str}
 
-🚨 MANDATORY GENERATION ORDER (FOLLOW EXACTLY) 🚨
-You MUST generate in this order to prevent mismatches:
+SCENARIO & ALGORITHMIC DIFFICULTY MAPPING ({difficulty.upper()} LEVEL):
+You MUST restrict your algorithmic complexity and scenario scope based strictly on the {difficulty.upper()} level:
+- EASY: 
+  * Algorithms/Data Structures: Basic arrays, string manipulation, simple loops, straightforward counting/math, basic hash maps.
+  * Scenario: Relatable but niche everyday situations (e.g., organizing a vintage record collection, tracking coffee shop inventory). 
+- MEDIUM: 
+  * Algorithms/Data Structures: Two pointers, sliding window, stacks/queues, basic trees/graphs (BFS/DFS), greedy algorithms, complex hash map logic.
+  * Scenario: Complex business or technical logic (e.g., balancing load on orbital satellites, optimizing delivery routes for drone fleets).
+- HARD: 
+  * Algorithms/Data Structures: Dynamic programming (1D/2D), backtracking, advanced graphs (Dijkstra, topological sort), tries, segment trees, complex disjoint sets.
+  * Scenario: Highly abstract, sci-fi, or complex system design hypotheticals (e.g., intergalactic neural network synchronization, preventing multi-dimensional timeline collapses).
 
-STEP 1: DECIDE THE PROBLEM
-- Choose ONE specific problem type (e.g., matrix transpose, prime checking, array rotation)
-- Write down what problem you chose: "I am generating a [PROBLEM TYPE] problem"
+🚨 MANDATORY GENERATION ORDER (INSIDE THE JSON) 🚨
+To prevent structural mismatches and ensure perfect JSON, you MUST process your thoughts inside the "_thinking" key of the JSON object FIRST. Do NOT output anything outside the JSON.
 
-STEP 2: GENERATE TESTCASES FIRST
-- Generate public_testcases (3 testcases) for the chosen problem
-- Generate hidden_testcases (3 testcases) for the chosen problem
-- These testcases DEFINE what problem you're solving
-- Look at your testcases: What problem do they actually test? Write it down.
+Inside the "_thinking" string, you must document these exact steps:
+"STEP 1 (Entropy): I am selecting a random, highly uncommon domain: [DOMAIN]. 
+STEP 2 (Algorithm & Difficulty): The requested difficulty is {difficulty.upper()}. I am choosing [SPECIFIC ALGORITHM] which perfectly fits this difficulty.
+STEP 3 (Mapping): The parameters will be named [PARAM1], [PARAM2] to fit the domain. 
+STEP 4 (Testcases): Generating the raw inputs/outputs first to define the math... 
+STEP 5 (Narrative Check): Verifying the story mathematically matches the testcases 1:1. If testcases show tree traversal, the story explains a hierarchical structure."
 
-STEP 3: GENERATE TITLE
-- Title MUST match what the testcases test
-- If testcases show matrix operations → title must mention "matrix"
-- If testcases show prime checking → title must mention "prime"
-- Verify: Does title match testcases? If NO, fix it.
-
-STEP 4: GENERATE DESCRIPTION
-- Description MUST explain EXACTLY what the testcases test
-- Read your testcases again - what operation are they testing?
-- Write description that explains THAT operation, NOT a different one
-- Verify: Does description explain what testcases test? If NO, rewrite it.
-
-STEP 5: GENERATE EXAMPLE
-- Example MUST demonstrate the SAME problem as testcases
-- Look at testcase input format - does it use multi-line? single integer? array?
-- Example input MUST use the SAME format as testcases
-- Example output MUST follow the SAME logic as testcases
-- Verify: Does example show same problem as testcases? If NO, fix it.
-
-STEP 6: FINAL CHECK
-Before returning JSON, verify:
-1. All testcases test the SAME problem type
-2. Title mentions that problem type
-3. Description explains that problem type
-4. Example demonstrates that problem type
-5. Input formats match (if testcases use multi-line, example uses multi-line)
-6. Output formats match (if testcases output matrices, example outputs matrix)
-
-If ANY check fails, DO NOT return the JSON. Fix it first or return {{"error":"CANNOT_GENERATE_CLEAN_QUESTION"}}
-
-REQUIRED OUTPUT (JSON ONLY):
+REQUIRED OUTPUT FORMAT (STRICTLY JSON ONLY):
 {{
-  "title": string,
-  "difficulty": "easy" | "medium" | "hard",
-  "description": string,
+  "_thinking": "Your step-by-step logic and consistency checks go here as a single string.",
+  "title": string (Must reflect the creative scenario, NOT the algorithm name),
+  "difficulty": "{difficulty}",
+  "description": string (Write a descriptive, scenario-based narrative. Put the user in the shoes of an engineer solving this specific problem. Explain EXACTLY what the testcases test, mapped to the story elements.),
   "examples": [
-    {{"input": string, "output": string, "explanation": string}}
+    {{"input": string, "output": string, "explanation": string (Explain the output using the context of the story)}}
   ],
   "constraints": [string, string, ...],
   "public_testcases": [
-    {{"input": {{"param1": value1, "param2": value2}}, "expected_output": jsonValue, "is_hidden": false}},
-    {{"input": {{"param1": value1, "param2": value2}}, "expected_output": jsonValue, "is_hidden": false}},
-    {{"input": {{"param1": value1, "param2": value2}}, "expected_output": jsonValue, "is_hidden": false}}
+    {{"input": {{"domainParam1": value1, "domainParam2": value2}}, "expected_output": jsonValue, "is_hidden": false}},
+    {{"input": {{"domainParam1": value1, "domainParam2": value2}}, "expected_output": jsonValue, "is_hidden": false}},
+    {{"input": {{"domainParam1": value1, "domainParam2": value2}}, "expected_output": jsonValue, "is_hidden": false}}
   ],
   "hidden_testcases": [
-    {{"input": {{"param1": value1, "param2": value2}}, "expected_output": jsonValue, "is_hidden": true}},
-    {{"input": {{"param1": value1, "param2": value2}}, "expected_output": jsonValue, "is_hidden": true}},
-    {{"input": {{"param1": value1, "param2": value2}}, "expected_output": jsonValue, "is_hidden": true}}
+    {{"input": {{"domainParam1": value1, "domainParam2": value2}}, "expected_output": jsonValue, "is_hidden": true}},
+    {{"input": {{"domainParam1": value1, "domainParam2": value2}}, "expected_output": jsonValue, "is_hidden": true}},
+    {{"input": {{"domainParam1": value1, "domainParam2": value2}}, "expected_output": jsonValue, "is_hidden": true}}
   ],
   "function_signature": {{
-    "name": "functionName",
+    "name": "domainSpecificFunctionName",
     "parameters": [
-      {{"name": "param1", "type": "int[]"}},
-      {{"name": "param2", "type": "int"}}
+      {{"name": "domainParam1", "type": "int[]"}},
+      {{"name": "domainParam2", "type": "int"}}
     ],
     "return_type": "int[]"
   }},
   "starter_code": {{
-    // Generate starter code ONLY for the selected languages: {languages_str}
-    // Example (only include languages from the list):
-    "python": "def functionName(params):\n    pass",
-    "java": "class Solution {{\n    public returnType functionName(params) {{\n        \n    }}\n}}"
-    // DO NOT include languages not in the selected list
+    // Generate starter code ONLY for these languages: {languages_str}
+    "python": "def domainSpecificFunctionName(domainParam1, domainParam2):\n    pass",
+    "java": "class Solution {{\n    public returnType domainSpecificFunctionName(type domainParam1, type domainParam2) {{\n        \n    }}\n}}"
   }}
 }}
 
-IMPORTANT: The starter_code examples above show the SIMPLE format you must use.
-- Use appropriate function name based on the problem (e.g., countPrimes, transposeMatrix, findMax)
-- Use appropriate parameters based on testcase inputs (e.g., nums: List[int], matrix: List[List[int]])
-- Use appropriate return type based on testcase outputs (e.g., int, List[int], void)
-- Keep it SIMPLE - just function signatures, NO full programs, NO stdin reading, NO main() functions
-
 TECHNICAL RULES - TESTCASE INPUT FORMAT (CRITICAL - JSON FORMAT):
-- Test cases MUST use JSON format for inputs and outputs
-- Input format: JSON object with parameter names as keys
-  * Example: {{"nums": [2,7,11,15], "target": 9}}
-  * Example: {{"n": 5}}
-  * Example: {{"s": "hello", "k": 2}}
-- Expected output format: JSON value (not string)
+- Test cases MUST use JSON format for inputs and outputs.
+- Input format: JSON object with narrative parameter names as keys.
+  * Example: {{"energyGrids": [2,7,11,15], "targetOutput": 9}}
+- Expected output format: JSON value (not string).
   * Example: [0,1] (not "[0,1]")
-  * Example: 42 (not "42")
-  * Example: true (not "true")
-- DO NOT use string-based formats:
-  * ❌ "nums = [1,2,3], target = 5"
-  * ❌ "5\n"
-  * ❌ "[1,2,3]"
-- Expected outputs MUST be logically computed, NOT guessed
-- NO placeholders like "e.g." or dummy values
-- ALL values must be proper JSON (arrays, objects, primitives)
-- LeetCode-style execution → function-only code, system handles I/O
+- Expected outputs MUST be logically computed, NOT guessed.
+- ALL values must be proper JSON (arrays, objects, primitives).
 
 STARTER CODE REQUIREMENTS:
 - Generate starter code ONLY for these selected languages: {languages_str}
-- DO NOT generate starter code for languages not in the list above
-- Starter code must be SIMPLE function signatures ONLY - NO full programs, NO stdin reading, NO main() functions
-- Based on your testcases, determine the function signature (function name, parameters, return type)
-- Generate function signatures in the format appropriate for each language:
-  * Python: def functionName(params): followed by pass
-  * JavaScript: function functionName(params) {{ }}
-  * TypeScript: function functionName(params): returnType {{ }}
-  * C++: returnType functionName(params) {{ }}
-  * Java: public returnType functionName(params) {{ }}
-  * C: returnType functionName(params) {{ }}
-  * Go: func functionName(params) returnType {{ }}
-  * Rust: fn functionName(params) -> returnType {{ }}
-  * C#: public returnType FunctionName(params) {{ }}
-  * Kotlin: fun functionName(params): returnType {{ }}
-- Use literal strings only - NO dynamic generation in starter code values
-- Keep it SIMPLE - just function signatures with proper parameters and return types, nothing more
+- Starter code must be SIMPLE function signatures ONLY. NO main() functions, NO stdin reading.
+- Use narrative-appropriate function names (e.g., calibrateCore, optimizeFleet).
 
-Return ONLY the JSON object. No markdown. No explanations."""
+START YOUR RESPONSE DIRECTLY WITH {{ AND END WITH }}. DO NOT INCLUDE ANY OTHER TEXT."""
     
     # Call OpenAI
     openai_api_key = os.getenv("OPENAI_API_KEY")
@@ -837,6 +784,8 @@ Return ONLY the JSON object. No markdown. No explanations."""
             logger.info(f"Title: {question_data.get('title', 'Unknown')}")
             logger.info("=" * 80)
             
+
+            verify_and_fix_testcases(question_data, client)
             return question_data
             
         except ValueError:
