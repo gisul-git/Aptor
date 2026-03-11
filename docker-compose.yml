@@ -9,12 +9,7 @@ services:
       - redis_data:/data
     networks:
       - microservices-network
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 3s
-      retries: 3
-      start_period: 5s
+    restart: unless-stopped
 
 
   frontend:
@@ -27,7 +22,9 @@ services:
       - NEXT_TELEMETRY_DISABLED=1
       - NEXTAUTH_URL=${NEXTAUTH_URL:-https://qa.aaptor.com}
       - NEXTAUTH_SECRET=${NEXTAUTH_SECRET}
-      - NEXT_PUBLIC_API_URL=https://qa.aaptor.com
+      # Remove NEXT_PUBLIC_API_URL to use relative URLs (same origin)
+      # This ensures browser requests go through Next.js proxy to API Gateway
+      # - NEXT_PUBLIC_API_URL=https://qa.aaptor.com
       - API_GATEWAY_URL=http://api-gateway:80
       - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
       - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
@@ -35,8 +32,7 @@ services:
       - AZURE_AD_CLIENT_SECRET=${AZURE_AD_CLIENT_SECRET}
       - AZURE_AD_TENANT_ID=${AZURE_AD_TENANT_ID:-common}
     depends_on:
-      api-gateway:
-        condition: service_healthy
+      - api-gateway
     networks:
       - microservices-network
     restart: unless-stopped
@@ -59,8 +55,7 @@ services:
       - DEMO_SERVICE_URL=http://demo-service:3008
       - EMPLOYEE_SERVICE_URL=http://employee-service:4005
     depends_on:
-      auth-service:
-        condition: service_healthy
+      - auth-service
     networks:
       - microservices-network
     restart: unless-stopped
@@ -77,8 +72,7 @@ services:
       - JWT_SECRET=${JWT_SECRET}
       - REDIS_URL=redis://redis:6379/0
     depends_on:
-      redis:
-        condition: service_healthy
+      - redis
     networks:
       - microservices-network
     restart: unless-stopped
@@ -93,9 +87,17 @@ services:
       - MONGO_URI=${MONGO_URI}
       - MONGO_DB=ai_assessment_db
       - REDIS_URL=redis://redis:6379/0
+      - JWT_SECRET=${JWT_SECRET}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - GEMINI_MODEL_SUMMARY=${GEMINI_MODEL_SUMMARY}
+      - EMAIL_PROVIDER=${EMAIL_PROVIDER}
+      - SENDGRID_API_KEY=${SENDGRID_API_KEY}
+      - SENDGRID_FROM_EMAIL=${SENDGRID_FROM_EMAIL}
+      - SENDGRID_FROM_NAME=${SENDGRID_FROM_NAME}
+      - FRONTEND_URL=${FRONTEND_URL}
     depends_on:
-      redis:
-        condition: service_healthy
+      - redis
     networks:
       - microservices-network
     restart: unless-stopped
@@ -106,9 +108,17 @@ services:
     container_name: gisul-custom-mcq-service
     ports:
       - "3002:3002"
+    environment:
+      - MONGO_URI=${MONGO_URI}
+      - MONGO_DB=custom_mcq_db
+      - JWT_SECRET=${JWT_SECRET}
+      - REDIS_URL=redis://redis:6379/0
+      - EMAIL_PROVIDER=${EMAIL_PROVIDER}
+      - SENDGRID_API_KEY=${SENDGRID_API_KEY}
+      - SENDGRID_FROM_EMAIL=${SENDGRID_FROM_EMAIL}
+      - FRONTEND_URL=${FRONTEND_URL}
     depends_on:
-      redis:
-        condition: service_healthy
+      - redis
     networks:
       - microservices-network
     restart: unless-stopped
@@ -119,11 +129,18 @@ services:
     container_name: gisul-aiml-service
     ports:
       - "3003:3003"
+    environment:
+      - MONGO_URI=${MONGO_URI}
+      - MONGO_DB=aiml_db
+      - JWT_SECRET=${JWT_SECRET}
+      - REDIS_URL=redis://redis:6379/0
+      - EMAIL_PROVIDER=${EMAIL_PROVIDER}
+      - SENDGRID_API_KEY=${SENDGRID_API_KEY}
+      - SENDGRID_FROM_EMAIL=${SENDGRID_FROM_EMAIL}
+      - FRONTEND_URL=${FRONTEND_URL}
     depends_on:
-      redis:
-        condition: service_healthy
-      aiml-agent-service:
-        condition: service_healthy
+      - redis
+      - aiml-agent-service
     networks:
       - microservices-network
     restart: unless-stopped
@@ -147,9 +164,21 @@ services:
     container_name: gisul-dsa-service
     ports:
       - "3004:3004"
+    environment:
+      - MONGO_URI=${MONGO_URI}
+      - MONGO_DB=dsa_db
+      - JWT_SECRET=${JWT_SECRET}
+      - REDIS_URL=redis://redis:6379/0
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - JUDGE0_URL=${JUDGE0_URL}
+      - JUDGE0_API_KEY=${JUDGE0_API_KEY}
+      - EMAIL_PROVIDER=${EMAIL_PROVIDER}
+      - SENDGRID_API_KEY=${SENDGRID_API_KEY}
+      - SENDGRID_FROM_EMAIL=${SENDGRID_FROM_EMAIL}
+      - FRONTEND_URL=${FRONTEND_URL}
     depends_on:
-      redis:
-        condition: service_healthy
+      - redis
     networks:
       - microservices-network
     restart: unless-stopped
@@ -160,9 +189,18 @@ services:
     container_name: gisul-proctoring-service
     ports:
       - "3005:3005"
+    environment:
+      - MONGO_URI=${MONGO_URI}
+      - MONGO_DB=proctoring_db
+      - JWT_SECRET=${JWT_SECRET}
+      - REDIS_URL=redis://redis:6379/0
+      - AWS_ACCESS_KEY=${AWS_ACCESS_KEY}
+      - AWS_SECRET_KEY=${AWS_SECRET_KEY}
+      - AWS_REGION=${AWS_REGION}
+      - AWS_S3_BUCKET=${AWS_S3_BUCKET}
+      - FRONTEND_URL=${FRONTEND_URL}
     depends_on:
-      redis:
-        condition: service_healthy
+      - redis
     networks:
       - microservices-network
     restart: unless-stopped
@@ -173,9 +211,14 @@ services:
     container_name: gisul-super-admin-service
     ports:
       - "3006:3006"
+    environment:
+      - MONGO_URI=${MONGO_URI}
+      - MONGO_DB=super_admin_db
+      - JWT_SECRET=${JWT_SECRET}
+      - REDIS_URL=redis://redis:6379/0
+      - FRONTEND_URL=${FRONTEND_URL}
     depends_on:
-      redis:
-        condition: service_healthy
+      - redis
     networks:
       - microservices-network
     restart: unless-stopped
@@ -186,9 +229,14 @@ services:
     container_name: gisul-employee-service
     ports:
       - "4005:4005"
+    environment:
+      - MONGO_URI=${MONGO_URI}
+      - MONGO_DB=employee_db
+      - JWT_SECRET=${JWT_SECRET}
+      - REDIS_URL=redis://redis:6379/0
+      - FRONTEND_URL=${FRONTEND_URL}
     depends_on:
-      redis:
-        condition: service_healthy
+      - redis
     networks:
       - microservices-network
     restart: unless-stopped
@@ -199,9 +247,18 @@ services:
     container_name: gisul-demo-service
     ports:
       - "3008:3008"
+    environment:
+      - MONGO_URI=${MONGO_URI}
+      - MONGO_DB=demo_db
+      - JWT_SECRET=${JWT_SECRET}
+      - REDIS_URL=redis://redis:6379/0
+      - EMAIL_PROVIDER=${EMAIL_PROVIDER}
+      - SENDGRID_API_KEY=${SENDGRID_API_KEY}
+      - SENDGRID_FROM_EMAIL=${SENDGRID_FROM_EMAIL}
+      - NOTIFICATION_EMAIL=${NOTIFICATION_EMAIL}
+      - FRONTEND_URL=${FRONTEND_URL}
     depends_on:
-      redis:
-        condition: service_healthy
+      - redis
     networks:
       - microservices-network
     restart: unless-stopped
