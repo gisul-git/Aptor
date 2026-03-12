@@ -1,0 +1,110 @@
+name: Build Push and Deploy
+
+on:
+  push:
+    branches:
+      - QA
+
+jobs:
+  build-push-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # Build & push images
+      - name: Build and Push Frontend
+        run: |
+          docker build -t gisul/gisul-frontend:latest ./frontend
+          docker push gisul/gisul-frontend:latest
+
+      - name: Build and Push API Gateway
+        run: |
+          docker build -t gisul/gisul-api-gateway:latest ./services/api-gateway
+          docker push gisul/gisul-api-gateway:latest
+
+      - name: Build and Push Auth Service
+        run: |
+          docker build -t gisul/gisul-auth-service:latest ./services/auth-service
+          docker push gisul/gisul-auth-service:latest
+
+      - name: Build and Push AI Assessment Service
+        run: |
+          docker build -t gisul/gisul-ai-assessment-service:latest ./services/ai-assessment-service
+          docker push gisul/gisul-ai-assessment-service:latest
+
+      - name: Build and Push Custom MCQ Service
+        run: |
+          docker build -t gisul/gisul-custom-mcq-service:latest ./services/custom-mcq-service
+          docker push gisul/gisul-custom-mcq-service:latest
+
+      - name: Build and Push AIML Service
+        run: |
+          docker build -t gisul/gisul-aiml-service:latest ./services/aiml-service
+          docker push gisul/gisul-aiml-service:latest
+
+      - name: Build and Push AIML Agent Service
+        run: |
+          docker build -t gisul/gisul-aiml-agent-service:latest ./services/aiml-agent-service
+          docker push gisul/gisul-aiml-agent-service:latest
+
+      - name: Build and Push DSA Service
+        run: |
+          docker build -t gisul/gisul-dsa-service:latest ./services/dsa-service
+          docker push gisul/gisul-dsa-service:latest
+
+      - name: Build and Push Proctoring Service
+        run: |
+          docker build -t gisul/gisul-proctoring-service:latest ./services/proctoring-service
+          docker push gisul/gisul-proctoring-service:latest
+
+      - name: Build and Push Super Admin Service
+        run: |
+          docker build -t gisul/gisul-super-admin-service:latest ./services/super-admin-service
+          docker push gisul/gisul-super-admin-service:latest
+
+      - name: Build and Push Employee Service
+        run: |
+          docker build -t gisul/gisul-employee-service:latest ./services/employee-service
+          docker push gisul/gisul-employee-service:latest
+
+      - name: Build and Push Demo Service
+        run: |
+          docker build -t gisul/gisul-demo-service:latest ./services/demo-service
+          docker push gisul/gisul-demo-service:latest
+
+
+      # Deploy to VM
+      - name: Deploy to QA VM
+        env:
+          VM_HOST: ${{ secrets.QA_VM_HOST }}
+          VM_USER: ${{ secrets.QA_VM_USER }}
+          VM_SSH_KEY: ${{ secrets.QA_VM_SSH_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$VM_SSH_KEY" > ~/.ssh/key
+          chmod 600 ~/.ssh/key
+          ssh-keyscan -H $VM_HOST >> ~/.ssh/known_hosts
+
+          ssh -i ~/.ssh/key $VM_USER@$VM_HOST << 'EOF'
+            cd /opt/aptor
+
+            echo "Pulling images..."
+            docker compose pull
+
+            echo "Restarting services..."
+            docker compose up -d
+
+            echo "Cleaning unused images..."
+            docker image prune -f
+
+            echo "Deployment complete"
+          EOF
+

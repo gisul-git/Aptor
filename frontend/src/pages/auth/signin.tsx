@@ -591,7 +591,7 @@ export default function SignInPage({ providers }: SignInPageProps) {
 
     try {
       await axios.post(
-        `${process.env.NEXT_PUBLIC_API_URL}/api/v1/auth/mfa/send-email-otp`,
+        `/api/v1/auth/mfa/send-email-otp`,
         {
           email: mfaEmail,
           temp_token: tempToken,
@@ -619,7 +619,7 @@ export default function SignInPage({ providers }: SignInPageProps) {
 
     try {
       const response = await axios.post(
-        `${process.env.NEXT_PUBLIC_API_URL}/api/v1/auth/mfa/setup`,
+        `/api/v1/auth/mfa/setup`,
         {},
         {
           headers: {
@@ -650,7 +650,7 @@ export default function SignInPage({ providers }: SignInPageProps) {
 
     try {
       const response = await axios.post(
-        `${process.env.NEXT_PUBLIC_API_URL}/api/v1/auth/mfa/verify-setup`,
+        `/api/v1/auth/mfa/verify-setup`,
         {
           code: mfaCode,
           secret: totpSecret,
@@ -748,7 +748,7 @@ export default function SignInPage({ providers }: SignInPageProps) {
       console.log("🔐 [SignIn] Calling backend login with payload:", { email, org_id: loginPayload.org_id });
       
       const loginResponse = await axios.post(
-        `${process.env.NEXT_PUBLIC_API_URL}/api/v1/auth/login`,
+        `/api/v1/auth/login`,
         loginPayload
       );
 
