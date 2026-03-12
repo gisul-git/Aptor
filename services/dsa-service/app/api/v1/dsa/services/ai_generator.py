@@ -339,6 +339,50 @@ def _validate_question_consistency(question_data: Dict[str, Any]) -> Optional[st
         return "; ".join(issues)
     return None
 
+def _repair_json(content: str) -> str:
+    """
+    Attempt to fix common JSON issues returned by LLMs.
+    """
+    import re
+
+    # Remove trailing commas before } or ]
+    content = re.sub(r',\s*([}\]])', r'\1', content)
+
+    # Replace smart/curly quotes with straight quotes
+    content = content.replace('\u201c', '"').replace('\u201d', '"')
+    content = content.replace('\u2018', "'").replace('\u2019', "'")
+
+    # Fix unescaped newlines inside string values
+    # Replace literal newlines inside JSON strings with \n
+    def fix_newlines_in_strings(s: str) -> str:
+        result = []
+        in_string = False
+        escape_next = False
+        for char in s:
+            if escape_next:
+                result.append(char)
+                escape_next = False
+                continue
+            if char == '\\':
+                escape_next = True
+                result.append(char)
+                continue
+            if char == '"':
+                in_string = not in_string
+                result.append(char)
+                continue
+            if in_string and char == '\n':
+                result.append('\\n')
+                continue
+            if in_string and char == '\t':
+                result.append('\\t')
+                continue
+            result.append(char)
+        return ''.join(result)
+
+    content = fix_newlines_in_strings(content)
+
+    return content
 
 async def generate_question(
     difficulty: str = "medium", 
@@ -584,6 +628,7 @@ START YOUR RESPONSE DIRECTLY WITH {{ AND END WITH }}. DO NOT INCLUDE ANY OTHER T
             
             # Parse JSON
             try:
+                content = _repair_json(content)
                 question_data = json.loads(content)
 
                 # Best-effort normalization of testcase formats (stringified JSON -> proper JSON)
@@ -785,7 +830,7 @@ START YOUR RESPONSE DIRECTLY WITH {{ AND END WITH }}. DO NOT INCLUDE ANY OTHER T
             logger.info("=" * 80)
             
 
-            verify_and_fix_testcases(question_data, client)
+            await verify_and_fix_testcases(question_data, client)
             return question_data
             
         except ValueError:
