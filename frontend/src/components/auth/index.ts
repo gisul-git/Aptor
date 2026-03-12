@@ -1,5 +1,5 @@
 /**
- * Auth Components
+ * Auth Componentss
  */
 
 export { default as PostSignupRedirect } from './PostSignupRedirect';
