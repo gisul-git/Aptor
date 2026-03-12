@@ -592,7 +592,7 @@ export default function DesignAssessmentPage() {
           }`}
         >
           {questionPanelCollapsed ? (
-            /* Collapsed State - Show Toggle Button Only */
+            // Collapsed State - Show Toggle Button Only
             <div className="h-full flex items-center justify-center">
               <button
                 onClick={() => setQuestionPanelCollapsed(false)}
@@ -605,7 +605,7 @@ export default function DesignAssessmentPage() {
               </button>
             </div>
           ) : (
-            /* Expanded State - Show Full Content */
+            // Expanded State - Show Full Content
             <div className="p-6">
               <div className="flex items-center justify-between mb-4">
                 <h2 className="text-lg font-semibold text-gray-800">Question Details</h2>
@@ -686,6 +686,7 @@ export default function DesignAssessmentPage() {
                   Your design activity is being recorded for evaluation purposes.
                 </div>
               </div>
+            </div>
             </div>
           )}
         </div>
