@@ -804,7 +804,12 @@ Provide a short explanation for the following:
 
 If the user provided additional requirements in the "open_requirements" field, you MUST include them as a separate section called "Additional Design Requirements".
 
-⚠️ CRITICAL: Do NOT skip user-provided requirements. They are MANDATORY.
+⚠️ CRITICAL RULES:
+• Do NOT skip user-provided requirements under ANY circumstances
+• They are MANDATORY and HIGHEST PRIORITY
+• Copy them EXACTLY as provided - do NOT rewrite or paraphrase
+• This section MUST appear in the output if requirements were provided
+• Place this section AFTER Constraints and BEFORE Deliverables
 
 Format:
 ```
@@ -825,6 +830,8 @@ Additional Design Requirements
 ```
 
 These requirements should also influence the constraints section (e.g., if user says "use pastel colors", add a color constraint).
+
+⚠️ VALIDATION: If open_requirements field is not empty, the output JSON MUST include "additional_requirements" field with the exact text.
 
 --------------------------------------------------
 
@@ -1701,9 +1708,13 @@ Return ONLY JSON in this exact structure:
 • For BEGINNER: Use simple structure (no design_challenges, no product_context)
 • For INTERMEDIATE: Add design_challenges section
 • For ADVANCED + SENIOR: Add product_context, design_challenges, edge_cases, and design_decisions
-• If user provided additional requirements, include them in "additional_requirements" field
+• If user provided additional requirements (open_requirements not empty), you MUST include them in "additional_requirements" field with EXACT text
 • DO NOT include warning text like "MANDATORY FIELD" in the actual output - that's for your reference only
-⚠️ CRITICAL: The "task_requirements" field MUST contain a numbered list of screens/components.
+
+⚠️ CRITICAL VALIDATION RULES:
+1. The "task_requirements" field MUST contain a numbered list of screens/components
+2. If open_requirements was provided, "additional_requirements" field MUST be present and contain the exact text
+3. Additional requirements should also be reflected in the constraints list
 ⚠️ DO NOT leave "task_requirements" empty or null.
 ⚠️ DO NOT skip the "task_requirements" field.
 ⚠️ DO NOT include warning text like "MANDATORY FIELD" in the actual output - that's for your reference only.
@@ -2073,6 +2084,15 @@ Generate ONE design challenge following ALL rules above. Return ONLY the JSON ob
                 )
             
             logger.info(f"✅ Task Requirements validation PASSED - Length: {len(task_requirements)}")
+            
+            # CRITICAL VALIDATION: Additional Requirements must be present if user provided them
+            # Check if open_requirements was passed in the original request
+            # We need to pass this through from the generate_question call
+            # For now, log if additional_requirements is present
+            if additional_requirements:
+                logger.info(f"✅ Additional Requirements included - Length: {len(additional_requirements)}")
+            else:
+                logger.info(f"ℹ️ No additional requirements in AI response")
             
             # Also apply to constraints, deliverables, and evaluation criteria if they contain text
             constraints = [self._neutralize_language(c) if isinstance(c, str) else c for c in data.get("constraints", [])]

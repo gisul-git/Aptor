@@ -13,6 +13,7 @@ interface Question {
   task_type: string;
   time_limit_minutes: number;
   constraints: string[];
+  additional_requirements?: string;
   deliverables: string[];
   evaluation_criteria: string[];
   created_at: string;
@@ -110,6 +111,15 @@ export default function PreviewQuestionPage() {
                 <li key={index} style={{ marginBottom: '0.25rem' }}>{constraint}</li>
               ))}
             </ul>
+          </div>
+        )}
+
+        {question.additional_requirements && (
+          <div style={{ marginBottom: '1.5rem' }}>
+            <h2 style={{ fontSize: '1.25rem', fontWeight: '600', marginBottom: '0.5rem', color: '#9333EA' }}>Additional Design Requirements</h2>
+            <div style={{ color: '#4B5563', lineHeight: '1.6', whiteSpace: 'pre-wrap' }}>
+              {question.additional_requirements}
+            </div>
           </div>
         )}
 

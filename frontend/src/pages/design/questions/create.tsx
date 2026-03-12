@@ -915,7 +915,7 @@ export default function DesignQuestionCreatePage() {
                       marginTop: "0.5rem",
                       fontWeight: 500
                     }}>
-                      ✓ Additional requirements will be incorporated into the generated question
+                      ✓ These requirements will appear in the generated challenge
                     </p>
                   )}
                 </div>
