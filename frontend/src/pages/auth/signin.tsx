@@ -418,7 +418,7 @@ export default function SignInPage({ providers }: SignInPageProps) {
       // Redirect to error page which will handle the signup redirect
       router.push(`/auth/error?error=${encodeURIComponent(error)}`);
     }
-  }, [router.query.error, router]);
+  }, [router.query.error]); // Removed 'router' from dependencies to prevent infinite loop
 
   // Countdown timer effect
   useEffect(() => {

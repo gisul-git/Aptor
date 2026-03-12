@@ -179,9 +179,9 @@ export default function AssessmentCardEnhanced(props: AssessmentCardEnhancedProp
     if (type === 'dsa') {
       router.push(`/dsa/tests/${props.id}/edit`);
     } else if (type === 'aiml') {
-      router.push(`/aiml/tests/${props.id}/edit`);
+      router.push(`/aiml/tests/${props.id}/analytics`);
     } else if (type === 'design') {
-      router.push(`/design/tests/${props.id}/edit`);
+      router.push(`/design/tests/${props.id}/analytics`);
     } else if (type === 'data_engineering') {
       router.push(`/data-engineering/tests/${props.id}/edit`);
     } else if (type === 'cloud') {
