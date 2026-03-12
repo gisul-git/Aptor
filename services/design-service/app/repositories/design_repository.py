@@ -52,6 +52,24 @@ class DesignRepository:
             )
             if question_data:
                 question_data["_id"] = str(question_data["_id"])
+                
+                # Migrate old experience_level values to new format
+                if "experience_level" in question_data:
+                    old_value = question_data["experience_level"]
+                    if old_value == "senior" or old_value == "5+":
+                        question_data["experience_level"] = "9-12 years"
+                    elif old_value == "fresher" or old_value == "0-2":
+                        question_data["experience_level"] = "0-2 years"
+                    elif old_value == "1-3":
+                        question_data["experience_level"] = "3-5 years"
+                    elif old_value == "3-5":
+                        question_data["experience_level"] = "3-5 years"
+                
+                # Handle old task_type values
+                if "task_type" in question_data:
+                    if question_data["task_type"] == "dashboard":
+                        question_data["task_type"] = "desktop_dashboard"
+                
                 return DesignQuestionModel(**question_data)
             return None
         except Exception as e:
@@ -81,7 +99,29 @@ class DesignRepository:
             
             async for question_data in cursor:
                 question_data["_id"] = str(question_data["_id"])
-                questions.append(DesignQuestionModel(**question_data))
+                
+                # Migrate old experience_level values to new format
+                if "experience_level" in question_data:
+                    old_value = question_data["experience_level"]
+                    if old_value == "senior" or old_value == "5+":
+                        question_data["experience_level"] = "9-12 years"
+                    elif old_value == "fresher" or old_value == "0-2":
+                        question_data["experience_level"] = "0-2 years"
+                    elif old_value == "1-3":
+                        question_data["experience_level"] = "3-5 years"
+                    elif old_value == "3-5":
+                        question_data["experience_level"] = "3-5 years"
+                
+                # Handle old task_type values
+                if "task_type" in question_data:
+                    if question_data["task_type"] == "dashboard":
+                        question_data["task_type"] = "desktop_dashboard"
+                
+                try:
+                    questions.append(DesignQuestionModel(**question_data))
+                except Exception as parse_error:
+                    logger.warning(f"Skipping question {question_data.get('_id')} due to validation error: {parse_error}")
+                    continue
             
             return questions
         except Exception as e:

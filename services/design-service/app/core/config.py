@@ -15,6 +15,10 @@ class Settings(BaseSettings):
     DEBUG: bool = False
     PORT: int = 3006
     
+    # MongoDB URL override
+    MONGODB_URL: str = "mongodb+srv://gisul2102_db_user:5cNJ1DcNCxwaJDaU@cluster0.dwcfp0l.mongodb.net/?appName=Cluster0"
+    MONGODB_DB_NAME: str = "aptor_design"
+    
     # MongoDB
     MONGODB_URL: str = "mongodb://localhost:27017"
     MONGODB_DB_NAME: str = "aptor_design"

@@ -13,7 +13,8 @@ const DESIGN_ROLES = [
 const TASK_TYPES = [
   { value: 'landing_page', label: 'Landing Page' },
   { value: 'mobile_app', label: 'Mobile App' },
-  { value: 'dashboard', label: 'Dashboard' },
+  { value: 'desktop_dashboard', label: 'Desktop Dashboard' },
+  { value: 'web_app', label: 'Web Application' },
   { value: 'component', label: 'Component' },
 ]
 
@@ -24,18 +25,20 @@ const DIFFICULTY_LEVELS = [
 ]
 
 const EXPERIENCE_LEVELS = [
-  { value: 'fresher', label: 'Fresher' },
-  { value: '1-3 years', label: '1-3 years' },
-  { value: '3-5 years', label: '3-5 years' },
-  { value: 'senior', label: 'Senior' },
+  { value: '0-2 years', label: '0-2 years (Beginner)' },
+  { value: '3-5 years', label: '3-5 years (Junior)' },
+  { value: '6-8 years', label: '6-8 years (Mid-Level)' },
+  { value: '9-12 years', label: '9-12 years (Senior)' },
+  { value: '13-15 years', label: '13-15 years (Lead)' },
 ]
 
 // Helper function to convert years to experience level string
 const getExperienceLevelFromYears = (years: number): string => {
-  if (years === 0) return 'fresher'
-  if (years <= 3) return '1-3 years'
+  if (years <= 2) return '0-2 years'
   if (years <= 5) return '3-5 years'
-  return 'senior'
+  if (years <= 8) return '6-8 years'
+  if (years <= 12) return '9-12 years'
+  return '13-15 years'
 }
 
 export default function DesignQuestionCreatePage() {
@@ -111,7 +114,7 @@ export default function DesignQuestionCreatePage() {
           role: normalizedRole,
           difficulty: aiDifficulty,
           experience_years: aiExperienceYears,
-          task_type: 'dashboard', // Default, will be replaced by suggestions
+          task_type: 'desktop_dashboard', // Default, will be replaced by suggestions
         }),
       })
 
@@ -202,15 +205,26 @@ export default function DesignQuestionCreatePage() {
       }
       
       // Extract task type from topic name
-      // Topics like "Fitness tracking dashboard" -> "dashboard"
+      // Topics like "Fitness tracking dashboard" -> "desktop_dashboard"
       // Topics like "Recipe discovery mobile app" -> "mobile_app"
       const extractTaskType = (topic: string): string => {
         const topicLower = topic.toLowerCase()
         
         // Check for keywords in the topic (order matters - most specific first)
         // Dashboard indicators (check FIRST since it's most specific)
-        if (topicLower.includes('dashboard') || topicLower.includes('analytics')) {
-          return 'dashboard'
+        if (topicLower.includes('dashboard') || 
+            topicLower.includes('analytics') ||
+            topicLower.includes('admin panel') ||
+            topicLower.includes('admin console') ||
+            topicLower.includes('console') ||
+            topicLower.includes('platform') ||
+            topicLower.includes('portal') ||
+            topicLower.includes('management system') ||
+            topicLower.includes('crm') ||
+            topicLower.includes('erp') ||
+            topicLower.includes('saas') ||
+            topicLower.includes('automation')) {
+          return 'desktop_dashboard'
         }
         // Landing page indicators
         else if (topicLower.includes('landing') || topicLower.includes('website') || topicLower.includes('page')) {
@@ -324,10 +338,11 @@ export default function DesignQuestionCreatePage() {
       const taskTypeMap: Record<string, string> = {
         'landing page': 'landing_page',
         'mobile app': 'mobile_app',
-        'dashboard': 'dashboard',
+        'dashboard': 'desktop_dashboard',
+        'desktop dashboard': 'desktop_dashboard',
         'component': 'component',
+        'web app': 'web_app',
         'website': 'landing_page',
-        'web app': 'mobile_app',
         'e-commerce': 'landing_page',
         'ecommerce': 'landing_page',
         'onboarding flow': 'mobile_app',
@@ -671,11 +686,11 @@ export default function DesignQuestionCreatePage() {
                     textAlign: "center",
                     fontWeight: 500
                   }}>
-                    {aiExperienceYears === 0 && "Fresher / Entry Level"}
-                    {aiExperienceYears > 0 && aiExperienceYears <= 3 && "Junior Designer"}
-                    {aiExperienceYears > 3 && aiExperienceYears <= 5 && "Mid-Level Designer"}
-                    {aiExperienceYears > 5 && aiExperienceYears <= 10 && "Senior Designer"}
-                    {aiExperienceYears > 10 && "Expert / Lead Designer"}
+                    {aiExperienceYears <= 2 && "0-2 years — Beginner Designer"}
+                    {aiExperienceYears > 2 && aiExperienceYears <= 5 && "3-5 years — Junior Designer"}
+                    {aiExperienceYears > 5 && aiExperienceYears <= 8 && "6-8 years — Mid-Level Designer"}
+                    {aiExperienceYears > 8 && aiExperienceYears <= 12 && "9-12 years — Senior Designer"}
+                    {aiExperienceYears > 12 && "13-15 years — Lead Designer"}
                   </div>
                 </div>
               </div>

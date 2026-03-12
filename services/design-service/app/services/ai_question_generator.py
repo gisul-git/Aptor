@@ -21,6 +21,108 @@ class AIQuestionGenerator:
         self.provider = settings.AI_PROVIDER
         self._setup_ai_client()
     
+    def _get_experience_years_from_level(self, experience_level: str) -> int:
+        """Convert experience level string to years for scaling logic"""
+        if not experience_level:
+            return 3  # Default to junior
+        
+        # Extract years from strings like "3-5 years", "9-12 years", etc.
+        if "-" in experience_level:
+            # Get the middle value
+            parts = experience_level.split("-")
+            try:
+                low = int(parts[0].strip())
+                high = int(parts[1].split()[0].strip())
+                return (low + high) // 2
+            except:
+                return 3
+        
+        # Handle old format
+        if "fresher" in experience_level.lower() or "0-2" in experience_level:
+            return 1
+        elif "1-3" in experience_level:
+            return 2
+        elif "3-5" in experience_level:
+            return 4
+        elif "senior" in experience_level.lower() or "5+" in experience_level:
+            return 8
+        
+        return 3
+    
+    def _get_scaling_config(self, experience_years: int) -> dict:
+        """Get configuration for question generation based on experience years"""
+        
+        if experience_years <= 2:
+            # 0-2 years: Beginner Designer
+            return {
+                "screens": "2-3 screens",
+                "include_product_context": False,
+                "include_design_challenges": False,
+                "include_edge_cases": False,
+                "include_cross_channel": False,
+                "include_decision_reasoning": False,
+                "deliverables_complexity": "basic",
+                "evaluation_focus": ["Layout consistency", "Visual hierarchy", "Basic usability"],
+                "time_minutes": 45,
+                "recommended_time": "45-60 minutes"
+            }
+        elif experience_years <= 5:
+            # 3-5 years: Junior Designer
+            return {
+                "screens": "3-5 screens",
+                "include_product_context": False,
+                "include_design_challenges": True,
+                "include_edge_cases": False,
+                "include_cross_channel": False,
+                "include_decision_reasoning": False,
+                "deliverables_complexity": "intermediate",
+                "evaluation_focus": ["User flow clarity", "Component consistency", "Interaction design"],
+                "time_minutes": 60,
+                "recommended_time": "60-90 minutes"
+            }
+        elif experience_years <= 8:
+            # 6-8 years: Mid-Level Designer
+            return {
+                "screens": "4-6 screens",
+                "include_product_context": True,
+                "include_design_challenges": True,
+                "include_edge_cases": False,
+                "include_cross_channel": False,
+                "include_decision_reasoning": True,
+                "deliverables_complexity": "advanced",
+                "evaluation_focus": ["Product thinking", "System scalability", "User flow clarity", "Design decisions"],
+                "time_minutes": 90,
+                "recommended_time": "90-120 minutes"
+            }
+        elif experience_years <= 12:
+            # 9-12 years: Senior Designer
+            return {
+                "screens": "5-8 screens",
+                "include_product_context": True,
+                "include_design_challenges": True,
+                "include_edge_cases": True,
+                "include_cross_channel": True,
+                "include_decision_reasoning": True,
+                "deliverables_complexity": "senior",
+                "evaluation_focus": ["Product thinking", "System scalability", "Information hierarchy", "User flow clarity", "Constraint compliance", "Design decision reasoning"],
+                "time_minutes": 120,
+                "recommended_time": "90-120 minutes"
+            }
+        else:
+            # 13-15 years: Lead Designer
+            return {
+                "screens": "6-10 screens",
+                "include_product_context": True,
+                "include_design_challenges": True,
+                "include_edge_cases": True,
+                "include_cross_channel": True,
+                "include_decision_reasoning": True,
+                "deliverables_complexity": "lead",
+                "evaluation_focus": ["Strategic thinking", "Business impact", "System scalability", "Team collaboration", "Design decision reasoning", "Feature prioritization"],
+                "time_minutes": 150,
+                "recommended_time": "120-150 minutes"
+            }
+    
     def _setup_ai_client(self):
         """Setup AI client based on provider"""
         if self.provider == "openai":
@@ -222,7 +324,7 @@ Generate 10 DIVERSE topics for {role_str} ({difficulty_str}, {experience_level})
             
             # Return fallback DIVERSE topics based on experience level
             fallback_topics = {
-                TaskType.DASHBOARD: [
+                TaskType.DESKTOP_DASHBOARD: [
                     "Fitness tracking dashboard",
                     "E-commerce analytics dashboard",
                     "Project management dashboard",
@@ -272,7 +374,7 @@ Generate 10 DIVERSE topics for {role_str} ({difficulty_str}, {experience_level})
                 ]
             }
             
-            return fallback_topics.get(task_type, fallback_topics[TaskType.DASHBOARD])
+            return fallback_topics.get(task_type, fallback_topics[TaskType.DESKTOP_DASHBOARD])
     
     async def generate_question(
         self,
@@ -337,7 +439,11 @@ Generate 10 DIVERSE topics for {role_str} ({difficulty_str}, {experience_level})
         experience_level: str = None,
         open_requirements: str = None
     ) -> str:
-        """Build the AI generation prompt using professional design assessment framework"""
+        """Build the AI generation prompt using professional design assessment framework with experience-based scaling"""
+        
+        # Get experience years and scaling config
+        experience_years = self._get_experience_years_from_level(experience_level or "3-5 years")
+        scaling_config = self._get_scaling_config(experience_years)
         
         # Map internal enums to prompt format
         role_mapping = {
@@ -356,7 +462,8 @@ Generate 10 DIVERSE topics for {role_str} ({difficulty_str}, {experience_level})
         task_type_mapping = {
             TaskType.LANDING_PAGE: "Landing Page",
             TaskType.MOBILE_APP: "Mobile App",
-            TaskType.DASHBOARD: "Dashboard",
+            TaskType.DESKTOP_DASHBOARD: "Desktop Dashboard (1440px)",
+            TaskType.WEB_APP: "Web Application",
             TaskType.COMPONENT: "Component"
         }
         
@@ -364,8 +471,8 @@ Generate 10 DIVERSE topics for {role_str} ({difficulty_str}, {experience_level})
         difficulty_str = difficulty_mapping.get(difficulty, "Intermediate")
         task_str = task_type_mapping.get(task_type, "Dashboard")
         topic_str = topic if topic else task_str
-        experience_str = experience_level if experience_level else "1-3 years"
-        time_limit = 45 if difficulty == DifficultyLevel.BEGINNER else 60 if difficulty == DifficultyLevel.INTERMEDIATE else 90
+        experience_str = experience_level if experience_level else "3-5 years"
+        time_limit = scaling_config["time_minutes"]
         
         # Build additional requirements section if provided
         additional_requirements_section = ""
@@ -1697,6 +1804,25 @@ Before returning the JSON, verify that "task_requirements" contains a numbered l
 If "task_requirements" is empty or missing, the output is INVALID.
 DO NOT return a challenge without Task Requirements.
 
+--------------------------------------------------
+
+EXPERIENCE-BASED SECTION REQUIREMENTS (CRITICAL)
+
+Based on the experience level ({experience_str}, approximately {experience_years} years), you MUST include these sections:
+
+Number of screens to design: {scaling_config["screens"]}
+Recommended completion time: {scaling_config["recommended_time"]}
+
+{"✅ INCLUDE Product Context section with business goals and current problems" if scaling_config["include_product_context"] else "❌ SKIP Product Context section"}
+{"✅ INCLUDE Design Challenges section with real product tensions" if scaling_config["include_design_challenges"] else "❌ SKIP Design Challenges section"}
+{"✅ INCLUDE Edge Cases section with system states to handle" if scaling_config["include_edge_cases"] else "❌ SKIP Edge Cases section"}
+{"✅ INCLUDE Cross-Channel Requirements for multi-platform thinking" if scaling_config["include_cross_channel"] else "❌ SKIP Cross-Channel Requirements"}
+{"✅ REQUIRE Design Decision Documentation in deliverables" if scaling_config["include_decision_reasoning"] else ""}
+
+Evaluation criteria focus: {", ".join(scaling_config["evaluation_focus"])}
+
+--------------------------------------------------
+
 Generate ONE design challenge following ALL rules above. Return ONLY the JSON object."""
         
         return base_prompt.strip()
@@ -1803,7 +1929,7 @@ Generate ONE design challenge following ALL rules above. Return ONLY the JSON ob
         # Define correct canvas widths for each task type
         correct_widths = {
             TaskType.MOBILE_APP: "Canvas width: 375px mobile layout",
-            TaskType.DASHBOARD: "Canvas width: 1440px desktop layout",
+            TaskType.DESKTOP_DASHBOARD: "Canvas width: 1440px desktop layout",
             TaskType.LANDING_PAGE: "Canvas width: 1440px desktop layout",
             TaskType.COMPONENT: "Canvas width: 1440px desktop layout"
         }
@@ -1976,10 +2102,20 @@ Generate ONE design challenge following ALL rules above. Return ONLY the JSON ob
                 else:
                     evaluation_criteria.append(str(e))
             
+            # Get experience years for scaling
+            experience_years = self._get_experience_years_from_level(experience_level or "3-5 years")
+            scaling_config = self._get_scaling_config(experience_years)
+            
+            # DEBUG: Log what we're about to pass to the model
+            logger.info(f"🔍 Creating DesignQuestionModel with task_type: {task_type}")
+            logger.info(f"🔍 task_type type: {type(task_type)}")
+            logger.info(f"🔍 task_type value: {task_type.value if hasattr(task_type, 'value') else task_type}")
+            
             return DesignQuestionModel(
                 role=role,
                 difficulty=difficulty,
                 experience_level=experience_level,
+                experience_years=experience_years,
                 task_type=task_type,
                 title=data["title"],
                 description=description,
@@ -1987,12 +2123,14 @@ Generate ONE design challenge following ALL rules above. Return ONLY the JSON ob
                 task_requirements=task_requirements if task_requirements else None,
                 design_challenges=design_challenges if design_challenges else None,
                 edge_cases=edge_cases if edge_cases else None,
+                cross_channel_requirements=data.get("cross_channel_requirements"),
                 constraints=constraints,
                 additional_requirements=additional_requirements if additional_requirements else None,
                 deliverables=deliverables,
                 design_decisions=design_decisions if design_decisions else None,
                 evaluation_criteria=evaluation_criteria,
-                time_limit_minutes=data.get("time_limit_minutes", 60),
+                time_limit_minutes=data.get("time_limit_minutes", scaling_config["time_minutes"]),
+                recommended_time_minutes=scaling_config["recommended_time"],
                 created_by=created_by
             )
             

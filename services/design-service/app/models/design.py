@@ -25,18 +25,20 @@ class DifficultyLevel(str, Enum):
 
 
 class ExperienceLevel(str, Enum):
-    """Experience levels"""
-    FRESHER = "fresher"
-    ONE_TO_THREE = "1-3 years"
-    THREE_TO_FIVE = "3-5 years"
-    SENIOR = "senior"
+    """Experience levels mapped to years"""
+    BEGINNER = "0-2 years"  # Beginner Designer
+    JUNIOR = "3-5 years"     # Junior Designer
+    MID_LEVEL = "6-8 years"  # Mid-Level Designer
+    SENIOR = "9-12 years"    # Senior Designer
+    LEAD = "13-15 years"     # Lead Designer
 
 
 class TaskType(str, Enum):
-    """Task types"""
+    """Task types / Platform types"""
     LANDING_PAGE = "landing_page"
     MOBILE_APP = "mobile_app"
-    DASHBOARD = "dashboard"
+    DESKTOP_DASHBOARD = "desktop_dashboard"  # For complex tools like marketing automation
+    WEB_APP = "web_app"
     COMPONENT = "component"
 
 
@@ -46,19 +48,22 @@ class DesignQuestionModel(BaseModel):
     role: DesignRole
     difficulty: DifficultyLevel
     experience_level: Optional[ExperienceLevel] = None
+    experience_years: Optional[int] = None  # Actual years (0-15) for scaling logic
     task_type: TaskType
     title: str
     description: str
-    product_context: Optional[str] = None  # New field for business context (Advanced + Senior)
+    product_context: Optional[str] = None  # Business context and goals (for 5+ years)
     task_requirements: Optional[str] = None  # Explicit task instructions
-    design_challenges: Optional[str] = None  # New field for design tensions (Intermediate & Advanced)
-    edge_cases: Optional[str] = None  # New field for edge case handling (Advanced)
+    design_challenges: Optional[str] = None  # Real product problems to solve (for 5+ years)
+    edge_cases: Optional[str] = None  # System states to handle (for 8+ years)
+    cross_channel_requirements: Optional[str] = None  # Cross-platform complexity (for 8+ years)
     constraints: List[str] = []
-    additional_requirements: Optional[str] = None  # New field for user-provided requirements
+    additional_requirements: Optional[str] = None  # User-provided requirements
     deliverables: List[str] = []
-    design_decisions: Optional[str] = None  # New field for decision reasoning (Advanced + Senior)
+    design_decisions: Optional[str] = None  # Decision reasoning requirement (for 8+ years)
     evaluation_criteria: List[str] = []
     time_limit_minutes: int = 60
+    recommended_time_minutes: Optional[str] = None  # e.g., "90-120 minutes"
     created_by: str
     created_at: datetime = Field(default_factory=datetime.utcnow)
     is_published: bool = False
@@ -68,14 +73,18 @@ class DesignQuestionModel(BaseModel):
         populate_by_name = True
         json_schema_extra = {
             "example": {
-                "role": "ui_designer",
-                "difficulty": "intermediate",
-                "experience_level": "1-3 years",
-                "task_type": "landing_page",
-                "title": "E-commerce Landing Page",
-                "description": "Design a modern landing page",
-                "task_requirements": "Design the landing page including: 1. Hero section 2. Features section 3. Footer",
-                "time_limit_minutes": 60
+                "role": "product_designer",
+                "difficulty": "advanced",
+                "experience_level": "9-12 years",
+                "experience_years": 10,
+                "task_type": "desktop_dashboard",
+                "title": "Marketing Automation Dashboard",
+                "description": "Design a cross-channel marketing automation platform",
+                "product_context": "The platform is used by digital marketing teams...",
+                "design_challenges": "Marketing teams manage dozens of campaigns...",
+                "edge_cases": "Handle campaigns with no engagement data...",
+                "time_limit_minutes": 120,
+                "recommended_time_minutes": "90-120 minutes"
             }
         }
 
