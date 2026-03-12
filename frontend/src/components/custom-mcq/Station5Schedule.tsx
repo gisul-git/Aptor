@@ -128,7 +128,7 @@ export default function Station5Schedule({ assessmentData, updateAssessmentData,
 
   useEffect(() => {
     if (enablePerSectionTimers && sectionTimers) {
-      const totalMinutes = (sectionTimers.MCQ || 0) + (sectionTimers.Subjective || 0);
+      const totalMinutes = (sectionTimers.MCQ || 0) + (sectionTimers.Subjective || 0) + (sectionTimers.Coding || 0);
       if (totalMinutes > 0) setDuration(totalMinutes.toString());
     }
   }, [enablePerSectionTimers, sectionTimers]);
@@ -144,7 +144,7 @@ export default function Station5Schedule({ assessmentData, updateAssessmentData,
     if (isUpdatingFromParentRef.current) return;
     let finalDuration = duration ? parseInt(duration) : undefined;
     if (enablePerSectionTimers && sectionTimers) {
-      const totalMinutes = (sectionTimers.MCQ || 0) + (sectionTimers.Subjective || 0);
+      const totalMinutes = (sectionTimers.MCQ || 0) + (sectionTimers.Subjective || 0) + (sectionTimers.Coding || 0);
       if (totalMinutes > 0) finalDuration = totalMinutes;
     }
     const existingSchedule = scheduleRef.current || {};

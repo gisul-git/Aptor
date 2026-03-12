@@ -53,7 +53,29 @@ from ..assessments.services.unified_ai_evaluation import (
 
 logger = logging.getLogger(__name__)
 
+
+
 router = APIRouter(prefix="/api/v1/custom-mcq", tags=["custom-mcq"])
+
+REQUIRED_CSV_COLUMNS = {
+    "mcq":        {"section", "question", "optiona", "optionb", "optionc", "optiond", "correctan", "answertype", "marks"},
+    "subjective": {"question", "marks"},
+    "coding":     {"section", "question", "marks"},
+}
+
+def _normalize_col(col: str) -> str:
+    return "".join(c for c in col.lower() if c.isalnum())
+
+def _validate_csv_columns(csv_data: list, question_type: str) -> None:
+    if not csv_data:
+        return
+    actual_cols = {_normalize_col(k) for k in csv_data[0].keys()}
+    required_cols = REQUIRED_CSV_COLUMNS.get(question_type, REQUIRED_CSV_COLUMNS["mcq"])
+    missing = required_cols - actual_cols
+    if missing:
+        raise ValueError(
+            f"Invalid CSV format for {question_type.upper()} questions. "
+        )
 
 
 def _now_utc() -> datetime:
@@ -224,6 +246,12 @@ async def validate_csv(
     """Validate CSV data and parse it into questions"""
     try:
         question_type_lower = questionType.lower()
+
+        try:
+            _validate_csv_columns(request.csvData, question_type_lower)
+        except ValueError as ve:
+            return error_response(str(ve), status_code=400)
+
         if question_type_lower == "subjective":
             questions = _parse_csv_to_subjective_questions(request.csvData)
         elif question_type_lower == "coding":
@@ -234,7 +262,6 @@ async def validate_csv(
         if not questions:
             return error_response("No valid questions found in CSV", status_code=400)
         
-        # Return parsed questions for review
         questions_dict = [q.model_dump() for q in questions]
         
         return success_response(
@@ -268,8 +295,12 @@ async def upload_csv(
         if not csv_data:
             return error_response("CSV file is empty", status_code=400)
         
-        # Validate and parse questions based on type
         question_type_lower = questionType.lower()
+        try:
+            _validate_csv_columns(csv_data, question_type_lower)
+        except ValueError as ve:
+            return error_response(str(ve), status_code=400)
+
         if question_type_lower == "subjective":
             questions = _parse_csv_to_subjective_questions(csv_data)
         elif question_type_lower == "coding":
