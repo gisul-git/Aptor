@@ -22,9 +22,9 @@ services:
       - NEXT_TELEMETRY_DISABLED=1
       - NEXTAUTH_URL=${NEXTAUTH_URL:-https://qa.aaptor.com}
       - NEXTAUTH_SECRET=${NEXTAUTH_SECRET}
-      # Remove NEXT_PUBLIC_API_URL to use relative URLs (same origin)
-      # This ensures browser requests go through Next.js proxy to API Gateway
-      # - NEXT_PUBLIC_API_URL=https://qa.aaptor.com
+      # Public-facing API Gateway URL for browser requests
+      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-https://qa.aaptor.com}
+      # Internal Docker network URL for server-side requests
       - API_GATEWAY_URL=http://api-gateway:80
       - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
       - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
