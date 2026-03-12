@@ -86,11 +86,12 @@ class AIQuestionGenerator:
                 "screens": "4-6 screens",
                 "include_product_context": True,
                 "include_design_challenges": True,
-                "include_edge_cases": False,
+                "include_edge_cases": True,  # Start edge cases at mid-level for senior candidates
                 "include_cross_channel": False,
                 "include_decision_reasoning": True,
+                "include_data_complexity": True,  # Add data complexity consideration
                 "deliverables_complexity": "advanced",
-                "evaluation_focus": ["Product thinking", "System scalability", "User flow clarity", "Design decisions"],
+                "evaluation_focus": ["Product thinking", "System scalability", "User flow clarity", "Design decisions", "Information architecture"],
                 "time_minutes": 90,
                 "recommended_time": "90-120 minutes"
             }
@@ -103,13 +104,16 @@ class AIQuestionGenerator:
                 "include_edge_cases": True,
                 "include_cross_channel": True,
                 "include_decision_reasoning": True,
+                "include_data_complexity": True,
+                "include_technical_constraints": True,  # Add technical constraints for senior
+                "include_business_context": True,  # Add business context
                 "deliverables_complexity": "senior",
-                "evaluation_focus": ["Product thinking", "System scalability", "Information hierarchy", "User flow clarity", "Constraint compliance", "Design decision reasoning"],
+                "evaluation_focus": ["Strategic thinking", "Product thinking", "System scalability", "Information hierarchy", "User flow clarity", "Constraint compliance", "Design decision reasoning"],
                 "time_minutes": 120,
                 "recommended_time": "90-120 minutes"
             }
         else:
-            # 13-15 years: Lead Designer
+            # 13-15+ years: Lead Designer
             return {
                 "screens": "6-10 screens",
                 "include_product_context": True,
@@ -117,8 +121,13 @@ class AIQuestionGenerator:
                 "include_edge_cases": True,
                 "include_cross_channel": True,
                 "include_decision_reasoning": True,
+                "include_data_complexity": True,
+                "include_technical_constraints": True,
+                "include_business_context": True,
+                "include_stakeholder_management": True,  # Add stakeholder considerations
+                "include_migration_strategy": True,  # Add migration/legacy considerations
                 "deliverables_complexity": "lead",
-                "evaluation_focus": ["Strategic thinking", "Business impact", "System scalability", "Team collaboration", "Design decision reasoning", "Feature prioritization"],
+                "evaluation_focus": ["Strategic thinking", "Business impact", "System scalability", "Team collaboration", "Design decision reasoning", "Feature prioritization", "Technical feasibility"],
                 "time_minutes": 150,
                 "recommended_time": "120-150 minutes"
             }
@@ -488,17 +497,20 @@ The user has provided specific additional requirements that MUST be incorporated
 {open_requirements.strip()}
 
 ⚠️ MANDATORY ACTIONS:
-• These requirements are MANDATORY and MUST be added to the Constraints section
-• If the requirement is about colors, spacing, typography, or design style → ADD IT AS A CONSTRAINT
+• These requirements are MANDATORY and MUST be integrated into the appropriate sections
+• If the requirement is about colors, spacing, typography, or design style → ADD IT AS A CONSTRAINT (do NOT create separate "Additional Design Requirements" section)
 • If the requirement is about features or functionality → ADD IT TO Task Requirements or Description
 • If the requirement is about deliverables → ADD IT TO Deliverables section
+• Do NOT create a duplicate "Additional Design Requirements" section if the requirement is already added to Constraints
 • Do NOT ignore or skip these requirements under any circumstances
 • If they conflict with standard rules, prioritize these user requirements
 
 EXAMPLE:
-If user says "use pastel colors only" → Add constraint: "Color palette: Pastel colors only (soft, muted tones with low saturation)"
-If user says "must support dark mode" → Add constraint: "Dark mode support required with proper contrast ratios"
-If user says "include animations" → Add to Task Requirements or Deliverables
+If user says "use pastel colors only" → Add constraint: "Color palette: Pastel colors only (soft, muted tones with low saturation)" (NO separate section needed)
+If user says "must support dark mode" → Add constraint: "Dark mode support required with proper contrast ratios" (NO separate section needed)
+If user says "include animations" → Add to Task Requirements or Deliverables (NO separate section needed)
+
+CRITICAL: Only create "Additional Design Requirements" section if the requirements are complex and cannot be integrated into existing sections.
 
 --------------------------------------------------
 """
@@ -516,12 +528,16 @@ Constraints must be MEASURABLE and VERIFIABLE so that automated evaluation can a
 The evaluation engine checks: alignment, spacing consistency, typography hierarchy, color contrast, visual hierarchy, and component consistency.
 Therefore, constraints must define SPECIFIC VALUES (exact pixels, ratios, counts) that map directly to these scoring rules.
 
+⚠️ DATA COMPLEXITY CONSIDERATION:
+For analytics dashboards, admin panels, and data-heavy interfaces, the platform may display thousands of data points across multiple charts and metrics. This requires careful information hierarchy, progressive disclosure, and scalable design patterns that work with both small and large datasets.
+
 Each challenge must:
 • clearly describe the design problem
 • specify what the candidate must design
 • define measurable constraints that map to evaluation scoring
 • specify concrete deliverables
 • define how the submission will be evaluated
+• consider data scale and complexity for dashboard/analytics interfaces
 
 Use professional and neutral language.
 
@@ -748,19 +764,21 @@ The solution should address the following challenges:
 • Navigation must be intuitive for first-time users while efficient for power users
 ```
 
-**3. EDGE CASES TO CONSIDER SECTION (ADVANCED ONLY)**
+**3. EDGE CASES TO CONSIDER SECTION (INTERMEDIATE & ADVANCED)**
 
-For Advanced difficulty, include an "Edge Cases to Consider" section that tests system thinking.
+For Intermediate and Advanced difficulty, include an "Edge Cases to Consider" section that tests system thinking.
+
+**INTERMEDIATE LEVEL (3-5 years experience):**
+Focus on common edge cases that most products encounter:
 
 Format:
 ```
 Edge Cases to Consider
 
 The design should handle at least two of the following situations:
-• [Edge case 1 - scale/volume]
-• [Edge case 2 - conflicts/errors]
-• [Edge case 3 - empty/loading states]
-• [Edge case 4 - extreme scenarios]
+• [Edge case 1 - empty/loading states]
+• [Edge case 2 - error conditions]
+• [Edge case 3 - data volume variations]
 ```
 
 Example:
@@ -768,10 +786,65 @@ Example:
 Edge Cases to Consider
 
 The design should handle at least two of the following situations:
-• Very large user lists (1000+ users)
-• Permission conflicts between roles
-• Suspicious activity alerts requiring immediate attention
-• Empty analytics states when no data exists
+• Empty state when no data is available
+• Loading states during data fetching
+• Error messages when operations fail
+• Very long text content that exceeds expected lengths
+```
+
+**ADVANCED LEVEL (5+ years experience):**
+Focus on complex system-level edge cases that require strategic thinking:
+
+**For UX Designer - Advanced Level:**
+Format:
+```
+Edge Cases to Consider
+
+The design should handle at least three of the following complex scenarios:
+• [Edge case 1 - accessibility/usability extremes]
+• [Edge case 2 - user behavior variations]
+• [Edge case 3 - system integration failures]
+• [Edge case 4 - multi-user/caregiver scenarios]
+• [Edge case 5 - emergency/critical situations]
+```
+
+Example for UX Designer (Healthcare):
+```
+Edge Cases to Consider
+
+The design should handle at least three of the following complex scenarios:
+• Users with severe visual impairments relying entirely on screen readers and voice commands
+• Multiple chronic conditions requiring complex medication schedules with potential drug interactions
+• Emergency situations where caregivers need immediate access to medical data without user authentication
+• Elderly users experiencing cognitive decline who may forget how to use previously learned interface patterns
+• System failures during critical medication reminder times requiring offline functionality
+• Family caregivers with different technical skill levels needing varying degrees of interface complexity
+```
+
+**For Product Designer - Advanced Level:**
+Format:
+```
+Edge Cases to Consider
+
+The design should handle at least three of the following complex scenarios:
+• [Edge case 1 - scale/volume extremes]
+• [Edge case 2 - system conflicts/errors]
+• [Edge case 3 - multi-user scenarios]
+• [Edge case 4 - integration failures]
+• [Edge case 5 - compliance/security scenarios]
+```
+
+Example for Senior Candidates:
+```
+Edge Cases to Consider
+
+The design should handle at least three of the following complex scenarios:
+• Organizations with 1000+ users across multiple departments and geographic locations
+• Permission conflicts when users belong to multiple teams with different access levels
+• Temporary contractors who need limited access that automatically expires
+• Compliance audits requiring detailed access logs and permission change history
+• System downtime scenarios where users need offline access to critical functions
+• Data migration from legacy systems with inconsistent permission structures
 ```
 
 **4. DESIGN DECISIONS SECTION (ADVANCED + SENIOR ONLY)**
@@ -948,6 +1021,50 @@ CRITICAL RULES:
 
 --------------------------------------------------
 
+INDUSTRY-SPECIFIC CONTEXT (AUTOMATIC ENHANCEMENT)
+
+Based on the topic, automatically include relevant industry context and considerations:
+
+**ANALYTICS/DASHBOARD TOPICS:**
+- Emphasize data visualization, information hierarchy, and scalability
+- Include considerations for large datasets (thousands of data points)
+- Focus on progressive disclosure and filtering capabilities
+- Consider real-time data updates and refresh patterns
+
+**E-COMMERCE TOPICS:**
+- Emphasize conversion optimization and checkout flow efficiency
+- Include trust signals, security indicators, and payment confidence
+- Focus on product discovery, comparison, and purchase decision support
+- Consider mobile-first design and responsive considerations
+
+**HEALTHCARE TOPICS:**
+- Emphasize accessibility (WCAG 2.1 AA), clarity, and error prevention
+- Include considerations for elderly users and limited tech experience
+- Focus on critical information hierarchy and emergency scenarios
+- Consider privacy (HIPAA) and security requirements
+
+**ENTERPRISE/B2B TOPICS:**
+- Emphasize efficiency, bulk operations, and power user workflows
+- Include considerations for complex permissions and role-based access
+- Focus on collaboration features and multi-user scenarios
+- Consider integration with existing enterprise tools (CRM, ERP, SSO)
+
+**FINTECH/BANKING TOPICS:**
+- Emphasize security, trust, and regulatory compliance
+- Include considerations for transaction clarity and audit trails
+- Focus on error prevention and confirmation patterns
+- Consider accessibility and financial literacy levels
+
+**EDUCATION TOPICS:**
+- Emphasize accessibility, progressive disclosure, and learning paths
+- Include considerations for different skill levels and age groups
+- Focus on engagement patterns and progress tracking
+- Consider offline capabilities and low-bandwidth scenarios
+
+This context should influence the description, constraints, and edge cases automatically based on topic detection.
+
+--------------------------------------------------
+
 CRITICAL DIFFICULTY RULES
 
 BEGINNER DIFFICULTY MUST:
@@ -1023,37 +1140,49 @@ CRITICAL ADVANCED RULES:
 ⚠️ SENIOR EXPERIENCE LEVEL (5+ years) ADVANCED QUESTIONS MUST ALSO INCLUDE:
 
 **Additional Complexity for Senior Candidates:**
-1. **Strategic Context:**
-   - Mention business constraints (budget, timeline, technical limitations)
-   - Include stakeholder considerations (multiple user types, conflicting needs)
-   - Reference existing systems or legacy constraints
+1. **Strategic Business Context:**
+   - Mention specific business metrics (user growth, revenue impact, cost reduction targets)
+   - Include competitive landscape considerations and market positioning
+   - Reference business model constraints and stakeholder considerations
+   - Include multiple user types with conflicting needs (end users vs admins vs executives)
 
-2. **Decision-Making Requirements:**
+2. **Technical & Resource Constraints:**
+   - Development team size and timeline constraints with specific numbers
+   - Technical debt and legacy system integration requirements
+   - Performance and scalability requirements (user volume, data scale)
+   - Platform limitations (existing tech stack, API constraints, compliance requirements)
+
+3. **Decision-Making Requirements:**
    - Task Requirements should include scenarios requiring trade-off decisions
    - Example: "Design for both power users and beginners" (candidate must decide approach)
    - Example: "Balance feature richness with development timeline" (prioritization required)
+   - Include ambiguous requirements that require candidate to make assumptions and document them
 
-3. **Enhanced Deliverables (Senior only):**
-   - Add "Design decision documentation explaining key trade-offs"
-   - Add "Migration strategy from current to new design" (if applicable)
-   - Add "Accessibility compliance approach (WCAG 2.1 AA)"
-   - Add "Responsive design specifications (mobile, tablet, desktop)"
+4. **Enhanced Deliverables (Senior only):**
+   - Add "Design decision documentation explaining key trade-offs and rationale"
+   - Add "Migration strategy from current to new design with phased rollout plan"
+   - Add "Accessibility compliance approach (WCAG 2.1 AA) with specific considerations"
+   - Add "Responsive design specifications (mobile, tablet, desktop) with breakpoint strategy"
+   - Add "Performance considerations and optimization strategy for scale"
 
-4. **Real-World Constraints:**
-   - Mention technical constraints: "Must integrate with existing authentication system"
-   - Mention resource constraints: "Development team of 3 engineers, 2-month timeline"
-   - Mention scale considerations: "System must support 100K+ daily active users"
+5. **Real-World Complexity:**
+   - Multi-stakeholder scenarios (end users, admins, managers, executives, compliance)
+   - Cross-platform considerations (web, mobile, tablet, API integrations)
+   - Data privacy and security considerations (GDPR, SOC 2, enterprise security)
+   - Internationalization and localization needs for global markets
+   - Integration with existing workflows and enterprise tools (CRM, ERP, SSO)
 
-5. **Evaluation Emphasis:**
+6. **Evaluation Emphasis:**
    - Strategic thinking: 30% (increased from 25%)
-   - Decision rationale: Must be explicitly evaluated
-   - System thinking: Must consider long-term maintainability
+   - Decision rationale: Must be explicitly evaluated with detailed explanations
+   - System thinking: Must consider long-term maintainability and scalability
+   - Business impact: Must demonstrate understanding of business goals and constraints
 
 **Example Senior-Level Description Addition:**
-"The company has an existing legacy system that serves 50K users but has poor usability. The development team consists of 3 engineers with a 3-month timeline. The design must provide a migration path that doesn't disrupt current users while improving the experience for new users. The solution should consider both immediate MVP needs and future scalability."
+"The company has an existing legacy system that serves 50K users but has poor usability metrics (40% task completion rate, 60% support ticket volume). The development team consists of 3 engineers with a 3-month timeline and limited budget for major infrastructure changes. The design must provide a migration path that doesn't disrupt current users while improving the experience for new users. The solution should consider both immediate MVP needs and future scalability to 200K users. Key stakeholders include customer success (wants reduced support tickets), sales (wants faster user onboarding), and engineering (wants maintainable code). The design must integrate with existing Salesforce CRM and comply with SOC 2 security requirements."
 
 **Example Senior-Level Task Requirement:**
-"Design a permission system that works for both individual users and team administrators, considering that some organizations have complex hierarchies while others are flat. Document your approach to handling these different organizational structures."
+"Design a permission system that works for both individual users (freelancers) and team administrators (enterprise customers with 500+ users), considering that some organizations have complex hierarchies while others are flat. The system must handle role inheritance, temporary access grants, and audit trails for compliance. Document your approach to handling these different organizational structures and explain how the interface scales from 5-user teams to 500-user enterprises."
 
 --------------------------------------------------
 
@@ -1142,47 +1271,60 @@ The design goal is to create [interface type] that allows users to:
 
 DESCRIPTION REQUIREMENTS BY DIFFICULTY
 
-BEGINNER (3-4 sentences):
-1. Product context (what the product does)
-2. User problem (what users struggle with)
-3. Design goal (what the interface should achieve)
-4. Keep it simple and problem-focused
+BEGINNER (4-5 sentences):
+1. Product context (what the product does and who uses it)
+2. User problem (what users struggle with - be specific)
+3. User needs (1-2 key needs)
+4. Design goal (what the interface should achieve)
+5. Expected outcome (how it will help users)
 
 Example:
-"A task management application allows users to organize their daily tasks. However, users struggle to quickly see their most important tasks for the day. The design goal is to create a simple dashboard that highlights priority tasks and upcoming deadlines."
+"A task management application allows users to organize their daily tasks and track productivity across personal and work projects. However, users struggle to quickly see their most important tasks for the day and often miss deadlines because information is scattered across different screens. Users need to easily identify priority tasks and view upcoming deadlines at a glance without navigating through multiple menus. The design goal is to create a simple dashboard that highlights priority tasks and upcoming deadlines with clear visual hierarchy. The improved interface should help users stay organized and reduce missed deadlines through better information presentation."
 
-INTERMEDIATE (4-5 sentences):
-1. Product context (what the product does)
+INTERMEDIATE (5-7 sentences):
+1. Product context (what the product does and its purpose)
 2. User problem (specific pain points users face - be specific about what they struggle with)
 3. Business goal (what the company aims to achieve - e.g., reduce time by X%, improve Y metric)
-4. User needs (2-3 key needs)
-5. Design goal (what the interface should achieve)
-
-Example:
-"A food delivery application allows users to browse restaurants and order meals online. However, frequent users struggle to quickly identify available time slots and manage multiple orders across different restaurants. The company aims to reduce booking time by 30% and improve order visibility through a clearer and more structured interface. Users need to quickly track ongoing orders, reorder favorite meals, and access order history easily. The design goal is to create a mobile interface that streamlines the ordering and tracking experience."
-
-ADVANCED (6-8 sentences):
-1. Product/service context (what it is, why it exists)
-2. User problem (detailed pain points)
-3. Business goals (what the company wants to achieve)
-4. User needs (3-4 specific needs)
-5. Key features or functionality required
+4. User needs (2-3 key needs with context)
+5. Current solution limitations (what's not working)
 6. Design goal (what the interface should achieve)
-7. Expected outcome (with context)
-8. Additional context (market, competitors, constraints)
+7. Expected impact (how it will improve the user experience)
 
 Example:
-"A healthcare application helps adults aged 60+ track their medication schedules and health metrics. However, current solutions are complex and difficult for elderly users to navigate, leading to missed medications and poor health outcomes. The company aims to improve medication adherence and reduce hospital readmissions. Users need to easily view daily medication schedules, receive clear reminders, log health metrics, and share data with caregivers. The design goal is to create a simple, accessible mobile interface that prioritizes clarity and ease of use for elderly users with limited tech experience. The interface should reduce cognitive load and support users with visual or motor impairments."
+"A food delivery application allows users to browse restaurants and order meals online across multiple cities and cuisines. However, frequent users struggle to quickly identify available time slots during peak hours, manage multiple orders across different restaurants, and track delivery progress effectively, leading to 35% order abandonment rates. The company aims to reduce booking time by 30%, improve order visibility through a clearer and more structured interface, and increase customer retention by 20%. Users need to quickly track ongoing orders with real-time updates, reorder favorite meals with one-click functionality, and access comprehensive order history with ratings and reviews. Current solutions fail because they overwhelm users with too many options and lack clear visual hierarchy for order status. The design goal is to create a mobile interface that streamlines the ordering and tracking experience while reducing cognitive load. The improved interface should increase order completion rates and enhance user satisfaction through better information organization and clearer visual feedback."
+
+ADVANCED (12-15 sentences):
+1. Product/service context (what it is, why it exists, market position)
+2. User problem (detailed pain points with specific examples and statistics)
+3. Business goals (what the company wants to achieve with specific metrics)
+4. User needs (3-4 specific needs with detailed context)
+5. Current challenges (what's not working in existing solutions with examples)
+6. Key features or functionality required (detailed requirements)
+7. Design goal (what the interface should achieve with specific outcomes)
+8. Expected outcome (with measurable impact and success criteria)
+9. Additional context (market, competitors, constraints, user research insights)
+10. Success criteria (how success will be measured with specific KPIs)
+11. Technical and business constraints (integration, compliance, budget considerations)
+12. Strategic considerations (long-term vision, scalability, competitive positioning)
+13. Competitive landscape analysis (how solution compares to existing market players)
+14. User research insights (specific findings from studies, surveys, or analytics)
+15. Implementation considerations (rollout strategy, user adoption, change management)
+
+Example:
+"A healthcare application helps adults aged 60+ track their medication schedules and health metrics across multiple chronic conditions including diabetes, hypertension, and heart disease affecting over 85% of the target demographic. However, current solutions are complex and difficult for elderly users to navigate, leading to missed medications (affecting 65% of users), poor health outcomes, and increased emergency room visits costing an average of $15,000 per incident, with medication non-adherence contributing to 125,000 deaths annually in the US. The company aims to improve medication adherence by 40% and reduce hospital readmissions by 25% within 6 months of launch, potentially saving the healthcare system $2.3 million annually while improving quality of life for thousands of elderly patients. Users need to easily view daily medication schedules with large, clear text and intuitive iconography, receive clear reminders with visual and audio cues that work with hearing aids and assistive devices, log health metrics like blood pressure and glucose levels with minimal input steps and voice commands, and share comprehensive data with caregivers and healthcare providers through secure, HIPAA-compliant channels that maintain patient privacy. Existing solutions like MyMedSchedule and PillPack fail because they use small fonts (average 12px vs required 18px+), complex navigation requiring 4+ taps to access key features, and assume high digital literacy that 78% of elderly users lack, with 91% abandoning tasks requiring more than 3 steps. The design goal is to create a simple, accessible mobile interface that prioritizes clarity and ease of use for elderly users with limited tech experience, reducing cognitive load through progressive disclosure and supporting users with visual or motor impairments through voice commands, high contrast modes, and haptic feedback. The interface should achieve 90% task completion rates (vs current 35%), reduce medication errors by 50%, maintain user engagement with daily active usage above 80%, and demonstrate measurable improvement in health outcomes within 3 months. Success will be measured by task completion rates, medication adherence tracking through connected pill dispensers and smart bottles, user satisfaction scores (target: 4.5/5), reduction in emergency room visits among user cohort, and Net Promoter Score improvements from current -12 to +40. The solution must compete with established players like MyMedSchedule, PillPack, and Medisafe while addressing their accessibility shortcomings and integrating with major EHR systems like Epic, Cerner, and AllScripts used by partner healthcare providers. The application must comply with HIPAA regulations, support FDA-approved medical devices, work seamlessly across iOS and Android platforms while maintaining consistent user experience, and prepare for future integration with Apple Health and Google Fit ecosystems. Competitive analysis reveals that existing solutions focus primarily on younger, tech-savvy users, leaving a significant gap in the elderly market where 73% of users report feeling overwhelmed by current medication management apps and 68% prefer paper-based systems despite their limitations. User research conducted with 450 elderly participants across 12 metropolitan areas revealed that successful medication adherence correlates strongly with interface simplicity (r=0.78), font size above 18px (preferred by 89% of users), and voice command availability (requested by 76% of participants with arthritis or motor skill limitations). The phased rollout strategy will begin with a pilot program in 3 assisted living facilities, followed by gradual expansion to independent living seniors, with comprehensive caregiver training programs and 24/7 technical support to ensure successful adoption and sustained engagement across diverse user groups with varying levels of digital literacy and cognitive function."
 
 ⚠️ SENIOR EXPERIENCE LEVEL (5+ years) - ADVANCED DESCRIPTION MUST ALSO INCLUDE:
 
-**Additional Context for Senior Candidates (add 2-3 more sentences):**
-9. Business/technical constraints (budget, timeline, team size, technical limitations)
-10. Existing system context (legacy systems, migration needs, current user base)
-11. Strategic considerations (scalability, future growth, market positioning)
+**Additional Context for Senior Candidates (add 5-6 more sentences):**
+13. Business/technical constraints (budget, timeline, team size, technical limitations, compliance requirements)
+14. Existing system context (legacy systems, migration needs, current user base with demographics)
+15. Strategic considerations (scalability, future growth, market positioning, competitive analysis)
+16. **For UX Designer**: User research insights, usability testing requirements, information architecture challenges
+17. Stakeholder ecosystem (multiple user types, conflicting needs, approval processes)
+18. Technical integration requirements (APIs, third-party services, device compatibility)
 
-**Example Senior-Level Advanced Description:**
-"A healthcare application helps adults aged 60+ track their medication schedules and health metrics. However, current solutions are complex and difficult for elderly users to navigate, leading to missed medications and poor health outcomes. The company aims to improve medication adherence and reduce hospital readmissions. Users need to easily view daily medication schedules, receive clear reminders, log health metrics, and share data with caregivers. The design goal is to create a simple, accessible mobile interface that prioritizes clarity and ease of use for elderly users with limited tech experience. The interface should reduce cognitive load and support users with visual or motor impairments. **The company has an existing web platform with 50K active users that cannot be immediately deprecated. The development team consists of 4 engineers with a 4-month timeline. The design must provide a migration path from the legacy system while meeting WCAG 2.1 AA accessibility standards. The solution should consider both immediate MVP needs for mobile and future expansion to tablet and web platforms.**"
+**Example Senior-Level Advanced Description for UX Designer:**
+"A healthcare application helps adults aged 60+ track their medication schedules and health metrics across multiple chronic conditions including diabetes, hypertension, and heart disease affecting over 85% of the target demographic. However, current solutions are complex and difficult for elderly users to navigate, leading to missed medications (affecting 65% of users), poor health outcomes, and increased emergency room visits costing an average of $15,000 per incident, with medication non-adherence contributing to 125,000 deaths annually in the US. The company aims to improve medication adherence by 40% and reduce hospital readmissions by 25% within 6 months of launch, potentially saving the healthcare system $2.3 million annually while improving quality of life for thousands of elderly patients. Users need to easily view daily medication schedules with large, clear text and intuitive iconography, receive clear reminders with visual and audio cues that work with hearing aids and assistive devices, log health metrics like blood pressure and glucose levels with minimal input steps and voice commands, and share comprehensive data with caregivers and healthcare providers through secure, HIPAA-compliant channels that maintain patient privacy. Existing solutions like MyMedSchedule and PillPack fail because they use small fonts (average 12px vs required 18px+), complex navigation requiring 4+ taps to access key features, and assume high digital literacy that 78% of elderly users lack, with 91% abandoning tasks requiring more than 3 steps. The design goal is to create a simple, accessible mobile interface that prioritizes clarity and ease of use for elderly users with limited tech experience, reducing cognitive load through progressive disclosure and supporting users with visual or motor impairments through voice commands, high contrast modes, and haptic feedback. The interface should achieve 90% task completion rates (vs current 35%), reduce medication errors by 50%, maintain user engagement with daily active usage above 80%, and demonstrate measurable improvement in health outcomes within 3 months. Success will be measured by task completion rates, medication adherence tracking through connected pill dispensers and smart bottles, user satisfaction scores (target: 4.5/5), reduction in emergency room visits among user cohort, and Net Promoter Score improvements from current -12 to +40. The solution must compete with established players like MyMedSchedule, PillPack, and Medisafe while addressing their accessibility shortcomings and integrating with major EHR systems like Epic, Cerner, and AllScripts used by partner healthcare providers. The application must comply with HIPAA regulations, support FDA-approved medical devices, work seamlessly across iOS and Android platforms while maintaining consistent user experience, and prepare for future integration with Apple Health and Google Fit ecosystems. **The company currently serves 125,000 elderly patients across 8 metropolitan areas with an average age of 72 and varying levels of digital literacy (45% are first-time smartphone users, 23% have never used apps before). The UX team consists of 2 senior researchers and 3 designers who must conduct usability testing with actual elderly users in clinical settings, requiring IRB approval and specialized accessibility testing protocols that account for cognitive decline and motor skill limitations. The system must integrate with existing EHR platforms used by 15 partner healthcare providers, support 12 different connected medical devices (blood pressure monitors, glucose meters, smart pill dispensers, weight scales), and accommodate caregivers who may be adult children (ages 45-65) with different technical comfort levels and varying involvement in daily care routines. User research has revealed that 68% of elderly users prefer voice commands over touch input, 82% need font sizes above 18px, 91% abandon tasks requiring more than 3 steps, and 76% rely on family members for technical support, creating a complex multi-user ecosystem. The design must account for progressive cognitive decline affecting 15% of users, arthritis affecting touch precision in 67% of users, and varying visual acuity with 43% using reading glasses, while maintaining WCAG 2.1 AAA compliance for critical health functions and ensuring the interface works effectively in various lighting conditions including low-light environments common in elderly living situations.**"
 
 --------------------------------------------------
 
@@ -1364,12 +1506,19 @@ Do NOT skip user-provided requirements. They are MANDATORY.
    Allowed spacing values: 8px, 16px, 24px, 32px, 40px, 48px
    All margins and padding must follow this spacing scale
 
-**REQUIRED ACCESSIBILITY CONSTRAINTS (all difficulty levels):**
+**REQUIRED ACCESSIBILITY CONSTRAINTS (platform-specific):**
 
+For Mobile Interfaces:
 4. Minimum contrast ratio: 4.5:1 (WCAG AA)
    All text elements must meet accessibility contrast standards
 5. Minimum touch target size: 44px × 44px
    All buttons and interactive elements must follow this rule
+
+For Desktop Interfaces:
+4. Minimum contrast ratio: 4.5:1 (WCAG AA)
+   All text elements must meet accessibility contrast standards
+5. Interactive elements: Minimum 32px height for comfortable mouse interaction
+   All buttons and clickable elements must be easily targetable with mouse
 
 **REQUIRED TYPOGRAPHY CONSTRAINT (all difficulty levels):**
 
@@ -1415,6 +1564,13 @@ Required 6 + Choose 6 from:
 • Accessibility: WCAG AA compliance for all interactive elements
 • Loading states: skeleton screens or spinners for async operations
 • [ADD USER-PROVIDED ADDITIONAL REQUIREMENTS HERE IF ANY]
+
+ADVANCED VISUAL DESIGNER (SENIOR 5+ YEARS) - Additional Cross-Platform Constraints:
+• Cross-platform consistency: Visual elements must adapt appropriately for print (300 DPI) and digital (72 DPI) outputs
+• Template scalability: Design system must support both simple single-page and complex multi-page layouts
+• Brand governance: Visual hierarchy must enforce brand compliance across different user skill levels
+• File optimization: Consider export requirements for different platforms (web, print, social media)
+• Responsive visual elements: Icons and graphics must scale appropriately across different screen densities
 
 --------------------------------------------------
 
@@ -1494,6 +1650,15 @@ UX Designer:
 • Interaction specifications
 • Light persona (1 persona)
 
+UX Designer (ADVANCED + SENIOR 5+ YEARS):
+• 5-8 wireframe screens with detailed annotations
+• Complete user journey with multiple touchpoints
+• Comprehensive interaction specifications including accessibility considerations
+• User research insights and testing methodology
+• Information architecture documentation
+• Accessibility compliance strategy (WCAG 2.1 AA)
+• Usability testing plan with success metrics
+
 Product Designer:
 • 5-8 high-fidelity product screens
 • User journey flow diagram
@@ -1505,6 +1670,14 @@ Visual Designer:
 • Complete visual system
 • Custom illustrations
 • Brand guidelines
+
+Visual Designer (ADVANCED + SENIOR 5+ YEARS):
+• 5-8 visual mockups
+• Complete visual system with cross-platform specifications
+• Custom illustrations and iconography
+• Comprehensive brand guidelines with governance rules
+• Cross-platform adaptation guide (print, web, mobile, social media)
+• Template system architecture documentation
 
 Interaction Designer:
 • 5-8 screens with interactions
@@ -1592,6 +1765,64 @@ Product Designer (BEGINNER/INTERMEDIATE):
 • Product thinking — 20%
   Quality of feature decisions and product experience
 
+Visual Designer (ADVANCED + SENIOR 5+ YEARS):
+• Strategic thinking — 25%
+  Brand system scalability and cross-platform consistency approach
+• System scalability — 20%
+  Visual system demonstrates scalability across platforms and use cases
+• Visual hierarchy — 20%
+  Clear prioritization using typography, spacing, color, and visual elements
+• Brand consistency — 20%
+  Adherence to brand guidelines and systematic visual approach
+• Design decision reasoning — 15%
+  Quality of visual design decisions and cross-platform adaptation rationale
+
+Visual Designer (INTERMEDIATE/ADVANCED 3-5 YEARS):
+• Visual hierarchy — 25%
+  Clear prioritization using typography, spacing, color, and visual elements
+• Brand consistency — 20%
+  Adherence to brand guidelines and systematic visual approach
+• System scalability — 20%
+  Visual system demonstrates reusability and consistency
+• Layout consistency — 20%
+  Alignment, spacing consistency, and grid usage
+• Constraint compliance — 15%
+  Adherence to grid, spacing, and accessibility rules
+
+UX Designer (ADVANCED + SENIOR 5+ YEARS):
+• User experience strategy — 25%
+  Understanding of user needs, research insights, and strategic UX decisions
+• Information architecture — 20%
+  Logical organization of content and navigation structure for complex systems
+• Accessibility & usability — 20%
+  WCAG compliance, inclusive design, and usability for diverse user groups
+• User flow clarity — 20%
+  Logical sequence with clear user journeys and edge case handling
+• Research & testing methodology — 15%
+  Quality of user research approach and usability testing considerations
+  Adherence to brand guidelines and systematic visual approach
+• System scalability — 20%
+  Visual system demonstrates reusability and consistency
+• Layout consistency — 20%
+  Alignment, spacing consistency, and grid usage
+• Constraint compliance — 15%
+  Adherence to grid, spacing, and accessibility rules
+
+Visual Designer (BEGINNER):
+• Visual hierarchy — 25%
+  Clear prioritization using typography, spacing, and color
+• Layout consistency — 25%
+  Alignment, spacing consistency, and grid usage
+• Brand consistency — 20%
+  Basic adherence to brand guidelines and visual consistency
+• Component quality — 15%
+  Quality of visual components and reusable elements
+• Constraint compliance — 15%
+  Adherence to grid, spacing, and accessibility rules
+  Adherence to grid, spacing, and accessibility rules
+• Product thinking — 20%
+  Quality of feature decisions and product experience
+
 UI Designer (ADVANCED + SENIOR 5+ YEARS):
 • System scalability — 25%
   Design demonstrates scalability and reusable components
@@ -1644,6 +1875,19 @@ Interaction Designer:
 
 --------------------------------------------------
 
+⚠️ CRITICAL DESCRIPTION LENGTH REQUIREMENT
+
+For ADVANCED difficulty questions, the description MUST contain exactly 12-15 sentences. This is MANDATORY and NON-NEGOTIABLE.
+
+The AI MUST count sentences carefully and ensure the description meets this requirement:
+• BEGINNER: 3-4 sentences
+• INTERMEDIATE: 5-7 sentences  
+• ADVANCED: 12-15 sentences (CRITICAL - DO NOT GENERATE SHORTER DESCRIPTIONS)
+
+For Advanced questions, if the generated description is shorter than 12 sentences, the AI MUST expand it with additional business context, user research insights, competitive analysis, technical constraints, and implementation considerations until it reaches 12-15 sentences.
+
+--------------------------------------------------
+
 OUTPUT FORMAT
 
 Return ONLY JSON in this exact structure:
@@ -1687,7 +1931,7 @@ Return ONLY JSON in this exact structure:
 **FOR ADVANCED (ESPECIALLY SENIOR 5+ YEARS):**
 {{
     "title": "[Topic] — [Role] Challenge",
-    "description": "[6-8 sentences - product/service context, problems, business goals, user needs]",
+    "description": "[12-15 sentences - comprehensive product/service context, detailed problems with statistics, business goals with metrics, user needs, current challenges, design goals, expected outcomes, success criteria, competitive landscape, user research insights, technical constraints, strategic considerations, implementation considerations]",
     "product_context": "The [product] currently serves [metrics].\n\n[User type] frequently report difficulty:\n• [Problem 1]\n• [Problem 2]\n• [Problem 3]\n\nThe company aims to [business goal 1] and [business goal 2].",
     "task_requirements": "Design the following screens:\n\n1️⃣ [Screen name]\n[Detailed description]\nInclude:\n• [Feature 1]\n• [Feature 2]\n• [Feature 3]\n\n2️⃣ [Screen name]\n[Detailed description]\nInclude:\n• [Feature 1]\n• [Feature 2]",
     "design_challenges": "The solution should address the following challenges:\n\n• [Challenge 1 - trade-off]\n• [Challenge 2 - tension]\n• [Challenge 3 - complexity]\n• [Challenge 4 - scalability]",
