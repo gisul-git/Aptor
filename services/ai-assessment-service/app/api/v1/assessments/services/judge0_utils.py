@@ -324,7 +324,7 @@ def _get_starter_code_template(language: str) -> str:
         "python": """def solve():
     # Write your logic here
     pass""",
-        "java": """public class Solution {
+        "java": """class Solution {
     public static void solve() {
         // Write your logic here
     }
