@@ -1,20 +1,5 @@
-version: '3.8'
-
 services:
-  # MongoDB - Commented out, using MongoDB Atlas instead
-  # mongo:
-  #   image: mongo:7.0
-  #   container_name: gisul-mongo
-  #   ports:
-  #     - "27017:27017"
-  #   volumes:
-  #     - mongo_data:/data/db
-  #   environment:
-  #     - MONGO_INITDB_DATABASE=ai_assessment
-  #   networks:
-  #     - microservices-network
 
-  # Redis
   redis:
     image: redis:7-alpine
     container_name: gisul-redis
@@ -24,14 +9,11 @@ services:
       - redis_data:/data
     networks:
       - microservices-network
+    restart: unless-stopped
 
-  # Frontend
+
   frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
-      args:
-        - NEXT_PUBLIC_AIML_AGENT_URL=${NEXT_PUBLIC_AIML_AGENT_URL}
+    image: gisul/gisul-frontend:latest
     container_name: gisul-frontend
     ports:
       - "3000:3000"
@@ -40,7 +22,9 @@ services:
       - NEXT_TELEMETRY_DISABLED=1
       - NEXTAUTH_URL=${NEXTAUTH_URL:-https://qa.aaptor.com}
       - NEXTAUTH_SECRET=${NEXTAUTH_SECRET}
-      - NEXT_PUBLIC_API_URL=https://qa.aaptor.com
+      # Public-facing API Gateway URL for browser requests
+      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-https://qa.aaptor.com}
+      # Internal Docker network URL for server-side requests
       - API_GATEWAY_URL=http://api-gateway:80
       - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
       - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
@@ -53,11 +37,9 @@ services:
       - microservices-network
     restart: unless-stopped
 
-  # API Gateway
+
   api-gateway:
-    build:
-      context: ./services/api-gateway
-      dockerfile: Dockerfile
+    image: gisul/gisul-api-gateway:latest
     container_name: gisul-api-gateway
     ports:
       - "80:80"
@@ -72,19 +54,16 @@ services:
       - DESIGN_SERVICE_URL=http://design-service:3006
       - SUPER_ADMIN_SERVICE_URL=http://super-admin-service:3006
       - DEMO_SERVICE_URL=http://demo-service:3008
-      - CORS_ORIGINS=${CORS_ORIGINS:-https://qa.aaptor.com,http://frontend:3000,http://localhost:3000,http://localhost:3001}
-      - EMPLOYEE_SERVICE_URL=${EMPLOYEE_SERVICE_URL:-http://employee-service:4005}
+      - EMPLOYEE_SERVICE_URL=http://employee-service:4005
     depends_on:
       - auth-service
     networks:
       - microservices-network
     restart: unless-stopped
 
-  # Auth Service
+
   auth-service:
-    build:
-      context: ./services/auth-service
-      dockerfile: Dockerfile
+    image: gisul/gisul-auth-service:latest
     container_name: gisul-auth-service
     ports:
       - "4000:4000"
@@ -92,35 +71,16 @@ services:
       - MONGO_URI=${MONGO_URI}
       - MONGO_DB=auth_db
       - JWT_SECRET=${JWT_SECRET}
-      - JWT_ALGORITHM=HS256
-      - JWT_EXP_MINUTES=60
-      - JWT_REFRESH_EXP_DAYS=30
-      - JWT_RSA_PRIVATE_KEY_PATH=${JWT_RSA_PRIVATE_KEY_PATH}
-      - JWT_RSA_PUBLIC_KEY_PATH=${JWT_RSA_PUBLIC_KEY_PATH}
-      - CORS_ORIGINS=${CORS_ORIGINS:-https://qa.aaptor.com,http://localhost:3000,http://frontend:3000}
-      - EMAIL_PROVIDER=${EMAIL_PROVIDER:-sendgrid}
-      - SENDGRID_API_KEY=${SENDGRID_API_KEY}
-      - SENDGRID_FROM_EMAIL=${SENDGRID_FROM_EMAIL}
-      - SENDGRID_FROM_NAME=${SENDGRID_FROM_NAME:-AI Assessment Platform}
-      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
       - REDIS_URL=redis://redis:6379/0
-      - AWS_ACCESS_KEY=${AWS_ACCESS_KEY}
-      - AWS_SECRET_KEY=${AWS_SECRET_KEY}
-      - AWS_REGION=${AWS_REGION}
-      - AWS_EMAIL_SOURCE=${AWS_EMAIL_SOURCE}
-      - AZURE_COMM_CONNECTION_STRING=${AZURE_COMM_CONNECTION_STRING}
-      - AZURE_COMM_SENDER_ADDRESS=${AZURE_COMM_SENDER_ADDRESS}
     depends_on:
       - redis
     networks:
       - microservices-network
     restart: unless-stopped
 
-  # AI Assessment Service
+
   ai-assessment-service:
-    build:
-      context: ./services/ai-assessment-service
-      dockerfile: Dockerfile
+    image: gisul/gisul-ai-assessment-service:latest
     container_name: gisul-ai-assessment-service
     ports:
       - "3001:3001"
@@ -128,73 +88,57 @@ services:
       - MONGO_URI=${MONGO_URI}
       - MONGO_DB=ai_assessment_db
       - REDIS_URL=redis://redis:6379/0
+      - JWT_SECRET=${JWT_SECRET}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - GEMINI_API_KEY=${GEMINI_API_KEY}
-      - GEMINI_MODEL_SUMMARY=${GEMINI_MODEL_SUMMARY:-gemini-pro}
-      - CORS_ORIGINS=${CORS_ORIGINS:-https://qa.aaptor.com,http://localhost:3000,http://frontend:3000}
-      - AIML_SERVICE_URL=${AIML_SERVICE_URL:-http://aiml-service:3003}
-      - DSA_SERVICE_URL=${DSA_SERVICE_URL:-http://dsa-service:3004}
-      - AWS_ACCESS_KEY=${AWS_ACCESS_KEY}
-      - AWS_SECRET_KEY=${AWS_SECRET_KEY}
-      - AWS_REGION=${AWS_REGION}
-      - EMAIL_PROVIDER=${EMAIL_PROVIDER:-sendgrid}
+      - GEMINI_MODEL_SUMMARY=${GEMINI_MODEL_SUMMARY}
+      - EMAIL_PROVIDER=${EMAIL_PROVIDER}
       - SENDGRID_API_KEY=${SENDGRID_API_KEY}
       - SENDGRID_FROM_EMAIL=${SENDGRID_FROM_EMAIL}
-      - DEBUG=${DEBUG:-false}
+      - SENDGRID_FROM_NAME=${SENDGRID_FROM_NAME}
+      - FRONTEND_URL=${FRONTEND_URL}
     depends_on:
       - redis
     networks:
       - microservices-network
     restart: unless-stopped
-    # Note: Service routes need to be copied from backend/app/api/v1/assessments/*
 
-  # Custom MCQ Service
+
   custom-mcq-service:
-    build:
-      context: ./services/custom-mcq-service
-      dockerfile: Dockerfile
+    image: gisul/gisul-custom-mcq-service:latest
     container_name: gisul-custom-mcq-service
     ports:
       - "3002:3002"
     environment:
       - MONGO_URI=${MONGO_URI}
       - MONGO_DB=custom_mcq_db
+      - JWT_SECRET=${JWT_SECRET}
       - REDIS_URL=redis://redis:6379/0
-      - CORS_ORIGINS=${CORS_ORIGINS:-https://qa.aaptor.com,http://localhost:3000,http://frontend:3000}
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - EMAIL_PROVIDER=${EMAIL_PROVIDER:-sendgrid}
+      - EMAIL_PROVIDER=${EMAIL_PROVIDER}
       - SENDGRID_API_KEY=${SENDGRID_API_KEY}
       - SENDGRID_FROM_EMAIL=${SENDGRID_FROM_EMAIL}
-      - SENDGRID_FROM_NAME=${SENDGRID_FROM_NAME:-AI Assessment Platform}
+      - FRONTEND_URL=${FRONTEND_URL}
     depends_on:
       - redis
     networks:
       - microservices-network
     restart: unless-stopped
 
-  # AIML Service
+
   aiml-service:
-    build:
-      context: ./services/aiml-service
-      dockerfile: Dockerfile
+    image: gisul/gisul-aiml-service:latest
     container_name: gisul-aiml-service
     ports:
       - "3003:3003"
     environment:
       - MONGO_URI=${MONGO_URI}
       - MONGO_DB=aiml_db
+      - JWT_SECRET=${JWT_SECRET}
       - REDIS_URL=redis://redis:6379/0
-      - CORS_ORIGINS=${CORS_ORIGINS:-https://qa.aaptor.com,http://localhost:3000,http://frontend:3000}
-      - EMAIL_PROVIDER=${EMAIL_PROVIDER:-sendgrid}
+      - EMAIL_PROVIDER=${EMAIL_PROVIDER}
       - SENDGRID_API_KEY=${SENDGRID_API_KEY}
       - SENDGRID_FROM_EMAIL=${SENDGRID_FROM_EMAIL}
-      - SENDGRID_FROM_NAME=${SENDGRID_FROM_NAME:-AI Assessment Platform}
-      - AWS_ACCESS_KEY=${AWS_ACCESS_KEY}
-      - AWS_SECRET_KEY=${AWS_SECRET_KEY}
-      - AWS_REGION=${AWS_REGION}
-      - AWS_EMAIL_SOURCE=${AWS_EMAIL_SOURCE}
-      - AZURE_COMM_CONNECTION_STRING=${AZURE_COMM_CONNECTION_STRING}
-      - AZURE_COMM_SENDER_ADDRESS=${AZURE_COMM_SENDER_ADDRESS}
+      - FRONTEND_URL=${FRONTEND_URL}
     depends_on:
       - redis
       - aiml-agent-service
@@ -202,48 +146,38 @@ services:
       - microservices-network
     restart: unless-stopped
 
-  # AIML Agent Service
+
   aiml-agent-service:
-    build:
-      context: ./services/aiml-agent-service
-      dockerfile: Dockerfile
+    image: gisul/gisul-aiml-agent-service:latest
     container_name: gisul-aiml-agent-service
     ports:
       - "8889:8889"
+      - "8080:8080"
     volumes:
       - aiml_agent_uploads:/app/agent/uploads
-    environment:
-      - PYTHONPATH=/app
     networks:
       - microservices-network
     restart: unless-stopped
 
-  # DSA Service
+
   dsa-service:
-    build:
-      context: ./services/dsa-service
-      dockerfile: Dockerfile
+    image: gisul/gisul-dsa-service:latest
     container_name: gisul-dsa-service
     ports:
       - "3004:3004"
     environment:
       - MONGO_URI=${MONGO_URI}
       - MONGO_DB=dsa_db
+      - JWT_SECRET=${JWT_SECRET}
       - REDIS_URL=redis://redis:6379/0
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
       - JUDGE0_URL=${JUDGE0_URL}
       - JUDGE0_API_KEY=${JUDGE0_API_KEY}
-      - JUDGE0_TIMEOUT=${JUDGE0_TIMEOUT:-60}
-      - JUDGE0_POLL_INTERVAL=${JUDGE0_POLL_INTERVAL:-1.5}
-      - JUDGE0_MAX_POLLS=${JUDGE0_MAX_POLLS:-20}
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - CUSTOM_PYTHON_ENGINE_URL=${CUSTOM_PYTHON_ENGINE_URL:-http://localhost:9000}
-      - USE_CUSTOM_ENGINE=${USE_CUSTOM_ENGINE:-true}
-      - SQL_ENGINE_URL=${SQL_ENGINE_URL}
-      - CORS_ORIGINS=${CORS_ORIGINS:-https://qa.aaptor.com,http://localhost:3000,http://frontend:3000}
-      - EMAIL_PROVIDER=${EMAIL_PROVIDER:-sendgrid}
+      - EMAIL_PROVIDER=${EMAIL_PROVIDER}
       - SENDGRID_API_KEY=${SENDGRID_API_KEY}
       - SENDGRID_FROM_EMAIL=${SENDGRID_FROM_EMAIL}
-      - SENDGRID_FROM_NAME=${SENDGRID_FROM_NAME:-AI Assessment Platform}
+      - FRONTEND_URL=${FRONTEND_URL}
     depends_on:
       - redis
     networks:
@@ -285,114 +219,86 @@ services:
 
   # Proctoring Service
   proctoring-service:
-    build:
-      context: ./services/proctoring-service
-      dockerfile: Dockerfile
+    image: gisul/gisul-proctoring-service:latest
     container_name: gisul-proctoring-service
     ports:
       - "3005:3005"
     environment:
       - MONGO_URI=${MONGO_URI}
       - MONGO_DB=proctoring_db
-      - REDIS_URL=redis://redis:6379/1
-      - CORS_ORIGINS=${CORS_ORIGINS:-https://qa.aaptor.com,http://localhost:3000,http://frontend:3000}
+      - JWT_SECRET=${JWT_SECRET}
+      - REDIS_URL=redis://redis:6379/0
       - AWS_ACCESS_KEY=${AWS_ACCESS_KEY}
       - AWS_SECRET_KEY=${AWS_SECRET_KEY}
       - AWS_REGION=${AWS_REGION}
       - AWS_S3_BUCKET=${AWS_S3_BUCKET}
+      - FRONTEND_URL=${FRONTEND_URL}
     depends_on:
       - redis
     networks:
       - microservices-network
     restart: unless-stopped
 
-  # Super Admin Service
+
   super-admin-service:
-    build:
-      context: ./services/super-admin-service
-      dockerfile: Dockerfile
+    image: gisul/gisul-super-admin-service:latest
     container_name: gisul-super-admin-service
     ports:
       - "3006:3006"
     environment:
       - MONGO_URI=${MONGO_URI}
-      - MONGO_DB=auth_db
+      - MONGO_DB=super_admin_db
       - JWT_SECRET=${JWT_SECRET}
-      - JWT_ALGORITHM=HS256
-      - JWT_EXP_MINUTES=60
-      - JWT_REFRESH_EXP_DAYS=30
-      - JWT_RSA_PRIVATE_KEY_PATH=${JWT_RSA_PRIVATE_KEY_PATH}
-      - JWT_RSA_PUBLIC_KEY_PATH=${JWT_RSA_PUBLIC_KEY_PATH}
-      - CORS_ORIGINS=${CORS_ORIGINS:-https://qa.aaptor.com,http://localhost:3000,http://frontend:3000}
-      - DEBUG=${DEBUG:-false}
+      - REDIS_URL=redis://redis:6379/0
+      - FRONTEND_URL=${FRONTEND_URL}
     depends_on:
       - redis
     networks:
       - microservices-network
     restart: unless-stopped
 
-  # Employee Service
+
   employee-service:
-    build:
-      context: ./services/employee-service
-      dockerfile: Dockerfile
+    image: gisul/gisul-employee-service:latest
     container_name: gisul-employee-service
     ports:
       - "4005:4005"
     environment:
       - MONGO_URI=${MONGO_URI}
       - MONGO_DB=employee_db
-      - ORG_ADMINS_DB=org_admins_db
-      - ORGANIZATION_MONGO_DB=organization_db
       - JWT_SECRET=${JWT_SECRET}
-      - JWT_ALGORITHM=HS256
-      - CORS_ORIGINS=${CORS_ORIGINS:-https://qa.aaptor.com,http://localhost:3000,http://frontend:3000}
-      - NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL:-http://localhost:3000}
-      - EMAIL_PROVIDER=${EMAIL_PROVIDER:-sendgrid}
-      - SENDGRID_API_KEY=${SENDGRID_API_KEY}
-      - SENDGRID_FROM_EMAIL=${SENDGRID_FROM_EMAIL}
-      - SENDGRID_FROM_NAME=${SENDGRID_FROM_NAME:-AI Assessment Platform}
-      - AWS_ACCESS_KEY=${AWS_ACCESS_KEY}
-      - AWS_SECRET_KEY=${AWS_SECRET_KEY}
-      - AWS_REGION=${AWS_REGION}
-      - AWS_EMAIL_SOURCE=${AWS_EMAIL_SOURCE}
-      - AZURE_COMM_CONNECTION_STRING=${AZURE_COMM_CONNECTION_STRING}
-      - AZURE_COMM_SENDER_ADDRESS=${AZURE_COMM_SENDER_ADDRESS}
-      - DEBUG=${DEBUG:-false}
+      - REDIS_URL=redis://redis:6379/0
+      - FRONTEND_URL=${FRONTEND_URL}
     depends_on:
       - redis
     networks:
       - microservices-network
     restart: unless-stopped
 
-  # Demo Service
+
   demo-service:
-    build:
-      context: ./services/demo-service
-      dockerfile: Dockerfile
+    image: gisul/gisul-demo-service:latest
     container_name: gisul-demo-service
     ports:
       - "3008:3008"
     environment:
-      - PORT=3008
-      - NODE_ENV=production
       - MONGO_URI=${MONGO_URI}
       - MONGO_DB=demo_db
+      - JWT_SECRET=${JWT_SECRET}
+      - REDIS_URL=redis://redis:6379/0
+      - EMAIL_PROVIDER=${EMAIL_PROVIDER}
       - SENDGRID_API_KEY=${SENDGRID_API_KEY}
       - SENDGRID_FROM_EMAIL=${SENDGRID_FROM_EMAIL}
-      - SENDGRID_FROM_NAME=${SENDGRID_FROM_NAME:-Aaptor Platform}
-      - NOTIFICATION_EMAIL=${NOTIFICATION_EMAIL:-info@aaptor.com}
-      - CORS_ORIGINS=${CORS_ORIGINS:-https://qa.aaptor.com,http://localhost:3000,http://frontend:3000}
-      - RATE_LIMIT_WINDOW_MS=${RATE_LIMIT_WINDOW_MS:-900000}
-      - RATE_LIMIT_MAX_REQUESTS=${RATE_LIMIT_MAX_REQUESTS:-5}
+      - NOTIFICATION_EMAIL=${NOTIFICATION_EMAIL}
+      - FRONTEND_URL=${FRONTEND_URL}
     depends_on:
       - redis
     networks:
       - microservices-network
     restart: unless-stopped
 
+
 volumes:
-  # mongo_data:  # Not needed when using Atlas
   redis_data:
   aiml_agent_uploads:
 
