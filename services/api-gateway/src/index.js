@@ -7,6 +7,7 @@ const rateLimit = require('express-rate-limit');
 const { v4: uuidv4 } = require('uuid');
 const axios = require('axios');
 const jwt = require('jsonwebtoken');
+const { createTerminalProxy } = require('./terminalProxy');
 require('dotenv').config();
 
 const app = express();
@@ -1393,6 +1394,11 @@ const aimlAgentWsProxy = createProxyMiddleware({
 // Apply WebSocket proxy to /ws/aiml-agent route
 app.use('/ws/aiml-agent', aimlAgentWsProxy);
 
+// Create HTTP server explicitly to handle WebSocket upgrades
+const http = require('http');
+const server = http.createServer(app);
+const terminalProxy = createTerminalProxy({ app, server, services: SERVICES });
+
 // 404 handler
 app.use((req, res) => {
   res.status(404).json({
@@ -1412,13 +1418,12 @@ app.use((err, req, res, next) => {
   });
 });
 
-// Create HTTP server explicitly to handle WebSocket upgrades
-const http = require('http');
-const server = http.createServer(app);
-
 // Handle WebSocket upgrade events
 // http-proxy-middleware requires explicit attachment to server upgrade event
 server.on('upgrade', (req, socket, head) => {
+  if (terminalProxy.handleUpgrade(req, socket, head)) {
+    return;
+  }
   // Check if this is a WebSocket request for the AIML agent
   if (req.url && req.url.startsWith('/ws/aiml-agent')) {
     console.log('🟢 [API Gateway] WebSocket upgrade request received:', {

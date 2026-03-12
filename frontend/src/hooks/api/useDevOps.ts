@@ -102,3 +102,58 @@ export const useCloneDevOpsTest = () => {
   });
 };
 
+export interface DevOpsQuestionAnalytics {
+  question_id: string;
+  question_title?: string;
+  status?: string;
+  score?: number;
+  ai_feedback?: any;
+  [key: string]: any;
+}
+
+export interface DevOpsCandidateAnalytics {
+  candidate?: {
+    name?: string;
+    email?: string;
+    [key: string]: any;
+  };
+  submission?: {
+    score?: number;
+    started_at?: string;
+    submitted_at?: string;
+    [key: string]: any;
+  };
+  question_analytics?: DevOpsQuestionAnalytics[];
+  [key: string]: any;
+}
+
+export const useDevOpsCandidates = (testId: string | undefined) => {
+  return useQuery({
+    queryKey: [...QUERY_KEYS.test(testId || ''), 'candidates'] as const,
+    queryFn: async () => {
+      if (!testId) throw new Error('Test ID is required');
+      const candidates = await devopsService.getCandidates(testId);
+      return Array.isArray(candidates) ? candidates : [];
+    },
+    enabled: !!testId,
+    staleTime: 30 * 1000,
+    retry: 1,
+  });
+};
+
+export const useDevOpsCandidateAnalytics = (testId: string | undefined, userId: string | undefined) => {
+  return useQuery<DevOpsCandidateAnalytics>({
+    queryKey: [...QUERY_KEYS.test(testId || ''), 'analytics', userId] as const,
+    queryFn: async (): Promise<DevOpsCandidateAnalytics> => {
+      if (!testId || !userId) throw new Error('Test ID and User ID are required');
+      const response = await devopsService.getCandidateAnalytics(testId, userId);
+      const data = (response as any)?.data !== undefined ? (response as any).data : response;
+      if (!data) throw new Error('Analytics data is unavailable');
+      return data as DevOpsCandidateAnalytics;
+    },
+    enabled: !!testId && !!userId,
+    staleTime: 10 * 1000,
+    retry: 1,
+  });
+};
+

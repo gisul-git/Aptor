@@ -11,6 +11,7 @@ import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
 import Lenis from "lenis";
 
 import "@/styles/globals.css";
+import "@xterm/xterm/css/xterm.css";
 import ViolationToast from "@/components/ViolationToast";
 import "@/lib/monaco-config"; // Configure Monaco Editor CDN before components load
 

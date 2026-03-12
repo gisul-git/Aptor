@@ -31,6 +31,46 @@ const SUGGESTED_TOPICS_BY_DIFFICULTY: Record<DevopsDifficulty, string[]> = {
   ],
 };
 
+function shuffleArray<T>(items: T[]): T[] {
+  const arr = [...items];
+  for (let i = arr.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+}
+
+function uniqueItems(items: string[]): string[] {
+  return Array.from(new Set(items.map((item) => item.trim()).filter(Boolean)));
+}
+
+function buildMixedSuggestedTopics(
+  selectedDifficulty: DevopsDifficulty,
+  backendTopics: string[],
+): string[] {
+  const localPrimary = SUGGESTED_TOPICS_BY_DIFFICULTY[selectedDifficulty];
+  const primaryPool = uniqueItems([...backendTopics, ...localPrimary]);
+  const mediumAndAdvancedPool = uniqueItems([
+    ...SUGGESTED_TOPICS_BY_DIFFICULTY.intermediate,
+    ...SUGGESTED_TOPICS_BY_DIFFICULTY.advanced,
+  ]).filter((topic) => !primaryPool.includes(topic));
+
+  if (selectedDifficulty === "beginner") {
+    const beginnerPicks = shuffleArray(primaryPool).slice(0, 3);
+    const mixedHarderPicks = shuffleArray(mediumAndAdvancedPool).slice(0, 3);
+    return shuffleArray(uniqueItems([...beginnerPicks, ...mixedHarderPicks]));
+  }
+
+  const crossDifficultyPool = uniqueItems([
+    ...SUGGESTED_TOPICS_BY_DIFFICULTY.beginner,
+    ...mediumAndAdvancedPool,
+  ]).filter((topic) => !primaryPool.includes(topic));
+
+  const primaryPicks = shuffleArray(primaryPool).slice(0, 4);
+  const crossPicks = shuffleArray(crossDifficultyPool).slice(0, 2);
+  return shuffleArray(uniqueItems([...primaryPicks, ...crossPicks]));
+}
+
 async function persistQuestions(questions: QuestionLike[]): Promise<QuestionLike[]> {
   const response = await fetch("/api/devops/save-questions", {
     method: "POST",
@@ -81,9 +121,9 @@ export default function DevOpsQuestionCreatePage() {
           `/api/devops/suggested-topics?yearsOfExperience=${experienceYears}&difficulty=${encodeURIComponent(difficulty)}`
         );
         const json = await response.json().catch(() => ({}));
-        const topics = json?.data?.topics;
-        if (mounted && Array.isArray(topics) && topics.length > 0) {
-          setSuggestedTopics(topics.slice(0, 5));
+        const topics = Array.isArray(json?.data?.topics) ? (json.data.topics as string[]) : [];
+        if (mounted) {
+          setSuggestedTopics(buildMixedSuggestedTopics(difficulty, topics));
           return;
         }
       } catch (_err) {
@@ -91,7 +131,7 @@ export default function DevOpsQuestionCreatePage() {
       }
 
       if (mounted) {
-        setSuggestedTopics(SUGGESTED_TOPICS_BY_DIFFICULTY[difficulty]);
+        setSuggestedTopics(buildMixedSuggestedTopics(difficulty, []));
       }
     };
 

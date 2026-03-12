@@ -173,7 +173,8 @@ function normalizeExecutionResponse(data: EngineLikeResponse): {
 
 const EXECUTION_API_BASE =
   process.env.DEVOPS_EXECUTION_API_URL || "http://127.0.0.1:8010";
-const COMMAND_EXECUTION_URL = "http://192.168.1.18:4040/execute";
+const COMMAND_EXECUTION_WS_URL =
+  process.env.DEVOPS_EXECUTION_WS_URL || "ws://192.168.1.18:4040/terminal";
 const LINT_API_BASE = process.env.DEVOPS_LINT_API_URL || "http://127.0.0.1:8002";
 const EXECUTION_BASES = Array.from(
   new Set(
@@ -256,6 +257,87 @@ function resolveReturnedSessionId(data: EngineLikeResponse, fallback: string): s
   return parsed || fallback;
 }
 
+function normalizeWsPayload(raw: unknown): Record<string, unknown> {
+  if (raw && typeof raw === "object") return raw as Record<string, unknown>;
+  if (typeof raw === "string") {
+    try {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === "object") return parsed as Record<string, unknown>;
+      return { output: raw };
+    } catch {
+      return { output: raw };
+    }
+  }
+  if (raw === null || raw === undefined) return {};
+  return { output: String(raw) };
+}
+
+async function requestExecutionOverWebSocket(
+  wsUrl: string,
+  payload: Record<string, unknown>,
+  timeoutMs = 25000
+): Promise<Record<string, unknown>> {
+  return await new Promise((resolve, reject) => {
+    const ws = new WebSocket(wsUrl);
+    let settled = false;
+    const timeout = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      try {
+        ws.close();
+      } catch {
+        // Ignore close errors.
+      }
+      reject(new Error(`Execution engine timeout after ${timeoutMs}ms`));
+    }, timeoutMs);
+
+    const finish = (fn: () => void) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      fn();
+    };
+
+    ws.onopen = () => {
+      try {
+        ws.send(JSON.stringify(payload));
+      } catch (error: unknown) {
+        finish(() => reject(error instanceof Error ? error : new Error("Failed to send websocket payload")));
+      }
+    };
+
+    ws.onmessage = (event) => {
+      finish(() => {
+        const normalized = normalizeWsPayload(event.data);
+        try {
+          ws.close();
+        } catch {
+          // Ignore close errors.
+        }
+        resolve(normalized);
+      });
+    };
+
+    ws.onerror = () => {
+      finish(() => {
+        try {
+          ws.close();
+        } catch {
+          // Ignore close errors.
+        }
+        reject(new Error(`Execution engine websocket error at ${wsUrl}`));
+      });
+    };
+
+    ws.onclose = (event) => {
+      if (settled) return;
+      finish(() => {
+        reject(new Error(`Execution engine websocket closed before response (code=${event.code})`));
+      });
+    };
+  });
+}
+
 export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse<UnifiedRunResponse>
@@ -298,55 +380,36 @@ export default async function handler(
         );
       }
 
-      let response: Response;
-      let data: Record<string, unknown> = {};
       const commandForExecution = normalizedCommand;
       try {
-        response = await fetch(COMMAND_EXECUTION_URL, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "X-Session-ID": executionSessionId,
-            "X-Session-Id": executionSessionId,
-          },
-          body: JSON.stringify({
-            session_id: executionSessionId,
-            sessionId: executionSessionId,
-            cmd: commandForExecution,
-          }),
+        const data = await requestExecutionOverWebSocket(COMMAND_EXECUTION_WS_URL, {
+          session_id: executionSessionId,
+          sessionId: executionSessionId,
+          cmd: commandForExecution,
+          command: commandForExecution,
+          action: "execute",
         });
-        data = await safeJsonParse(response);
+        const engineData = asEngineResponse(data);
+        const normalized = normalizeExecutionResponse(engineData);
+        const resolvedSessionId = resolveReturnedSessionId(engineData, executionSessionId);
+        return res.status(200).json({
+          ok: true,
+          status: normalized.exitCode === 0 ? "success" : "error",
+          engine: "execution",
+          sessionId: resolvedSessionId,
+          stdout: normalized.stdout,
+          stderr: normalized.stderr,
+          exitCode: normalized.exitCode,
+        });
       } catch (err: any) {
         const lastError = err?.message || String(err);
         return res.status(503).json({
           ok: false,
           status: "error",
           engine: "execution",
-          message: `Execution engine unreachable at ${COMMAND_EXECUTION_URL}. Last error: ${lastError}`,
+          message: `Execution engine unreachable at ${COMMAND_EXECUTION_WS_URL}. Last error: ${lastError}`,
         });
       }
-
-      if (!response.ok) {
-        return res.status(response.status).json({
-          ok: false,
-          status: "error",
-          engine: "execution",
-          message: extractDetail(data, "Execution engine request failed"),
-        });
-      }
-
-      const engineData = asEngineResponse(data);
-      const normalized = normalizeExecutionResponse(engineData);
-      const resolvedSessionId = resolveReturnedSessionId(engineData, executionSessionId);
-      return res.status(200).json({
-        ok: true,
-        status: normalized.exitCode === 0 ? "success" : "error",
-        engine: "execution",
-        sessionId: resolvedSessionId,
-        stdout: normalized.stdout,
-        stderr: normalized.stderr,
-        exitCode: normalized.exitCode,
-      });
     }
 
     if (body.mode === "terraform") {

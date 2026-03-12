@@ -36,6 +36,17 @@ export interface CreateDevOpsTestDto {
   questions?: Omit<DevOpsQuestion, 'id'>[];
 }
 
+export interface DevOpsCandidate {
+  user_id: string;
+  name: string;
+  email: string;
+  has_submitted?: boolean;
+  submission_score?: number;
+  status?: string;
+  created_at?: string;
+  submitted_at?: string;
+}
+
 export const devopsService = {
   /**
    * List all DevOps tests
@@ -104,6 +115,22 @@ export const devopsService = {
       `/api/v1/devops/tests/${testId}/clone`,
       data
     );
+    return response.data;
+  },
+
+  /**
+   * Get candidates for a DevOps test
+   */
+  getCandidates: async (testId: string): Promise<DevOpsCandidate[]> => {
+    const response = await apiClient.get<DevOpsCandidate[]>(`/api/v1/devops/tests/${testId}/candidates`);
+    return response.data;
+  },
+
+  /**
+   * Get candidate analytics for a DevOps test
+   */
+  getCandidateAnalytics: async (testId: string, userId: string): Promise<any> => {
+    const response = await apiClient.get<any>(`/api/v1/devops/tests/${testId}/candidates/${userId}/analytics`);
     return response.data;
   },
 };

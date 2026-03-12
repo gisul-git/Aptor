@@ -5,11 +5,17 @@ interface ResetRequestBody {
   sessionId?: string;
 }
 
-const COMMAND_EXECUTION_URL = "http://192.168.1.18:4040/execute";
+const COMMAND_EXECUTION_WS_URL =
+  process.env.DEVOPS_EXECUTION_WS_URL || "ws://192.168.1.18:4040/terminal";
 
 function resolveBaseFromExecuteUrl(url: string): string {
   const cleaned = String(url || "").replace(/\/+$/, "");
-  return cleaned.replace(/\/execute$/i, "");
+  return cleaned.replace(/\/execute$/i, "").replace(/\/terminal$/i, "");
+}
+
+function wsToHttpBase(wsUrl: string): string {
+  const normalized = String(wsUrl || "").replace(/^wss:\/\//i, "https://").replace(/^ws:\/\//i, "http://");
+  return resolveBaseFromExecuteUrl(normalized);
 }
 
 async function safeText(response: Response): Promise<string> {
@@ -18,6 +24,82 @@ async function safeText(response: Response): Promise<string> {
   } catch {
     return "";
   }
+}
+
+async function safeJson(response: Response): Promise<Record<string, unknown>> {
+  try {
+    const text = await response.text();
+    if (!text.trim()) return {};
+    return JSON.parse(text) as Record<string, unknown>;
+  } catch {
+    return {};
+  }
+}
+
+async function resetOverWebSocket(wsUrl: string, sessionId: string, timeoutMs = 15000): Promise<boolean> {
+  return await new Promise((resolve) => {
+    const ws = new WebSocket(wsUrl);
+    let settled = false;
+    const timeout = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      try {
+        ws.close();
+      } catch {
+        // Ignore close errors.
+      }
+      resolve(false);
+    }, timeoutMs);
+
+    const finish = (ok: boolean) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      try {
+        ws.close();
+      } catch {
+        // Ignore close errors.
+      }
+      resolve(ok);
+    };
+
+    ws.onopen = () => {
+      try {
+        ws.send(
+          JSON.stringify({
+            action: "reset",
+            session_id: sessionId,
+            sessionId,
+            session: sessionId,
+          })
+        );
+      } catch {
+        finish(false);
+      }
+    };
+
+    ws.onmessage = (event) => {
+      let payload: Record<string, unknown> | string | null = null;
+      if (typeof event.data === "string") {
+        try {
+          payload = JSON.parse(event.data) as Record<string, unknown>;
+        } catch {
+          payload = { output: event.data } as Record<string, unknown>;
+        }
+      } else {
+        payload = String(event.data ?? "");
+      }
+      const isObjectPayload = typeof payload === "object" && payload !== null;
+      const ok =
+        (isObjectPayload && payload.ok === true) ||
+        (isObjectPayload && payload.success === true) ||
+        (isObjectPayload && String(payload.status || "").toLowerCase() === "success");
+      finish(ok);
+    };
+
+    ws.onerror = () => finish(false);
+    ws.onclose = () => finish(false);
+  });
 }
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
@@ -31,7 +113,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(400).json({ ok: false, message: "session_id is required" });
   }
 
-  const base = resolveBaseFromExecuteUrl(COMMAND_EXECUTION_URL);
+  const wsResetOk = await resetOverWebSocket(COMMAND_EXECUTION_WS_URL, sessionId);
+  if (wsResetOk) {
+    return res.status(200).json({ ok: true, message: "Session reset successful" });
+  }
+
+  const base = wsToHttpBase(COMMAND_EXECUTION_WS_URL);
   const candidates: Array<{
     url: string;
     method: "POST" | "DELETE";
@@ -57,7 +144,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       method: "DELETE",
     },
     {
-      url: COMMAND_EXECUTION_URL,
+      url: `${base}/terminal`,
       method: "POST",
       body: { action: "reset", session_id: sessionId, sessionId, session: sessionId },
     },
@@ -77,7 +164,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       });
 
       if (response.ok) {
-        return res.status(200).json({ ok: true, message: "Session reset successful" });
+        const data = await safeJson(response);
+        const nextSessionId = String(data?.session_id || data?.sessionId || "").trim();
+        return res.status(200).json({
+          ok: true,
+          message: "Session reset successful",
+          session_id: nextSessionId || undefined,
+        });
       }
 
       const text = await safeText(response);

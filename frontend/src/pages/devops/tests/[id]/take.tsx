@@ -34,6 +34,8 @@ const monoFont = JetBrains_Mono({
   variable: "--font-devops-mono",
 });
 
+const DEVOPS_TERMINAL_WS_URL = "ws://192.168.1.18:4040/terminal";
+
 type QuestionKind = "command" | "terraform" | "lint";
 type Difficulty = "easy" | "medium" | "hard";
 type LintType = "docker" | "kubernetes" | "github_actions";
@@ -329,29 +331,8 @@ function formatCountdown(totalSeconds: number): string {
   return `${mins}:${secs}`;
 }
 
-function createExecutionSessionId(seed?: string): string {
-  const cryptoObj = (globalThis as { crypto?: Crypto }).crypto;
-  if (cryptoObj?.randomUUID) return cryptoObj.randomUUID();
-  const _seed = String(seed || "assessment");
-  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (ch) => {
-    const rand = Math.random() * 16;
-    const value = ch === "x" ? rand : (rand % 4) + 8;
-    return Math.floor(value).toString(16);
-  });
-}
-
 function getExecutionSessionStorageKey(testId?: string): string {
   return `devops_exec_session_${String(testId || "assessment")}`;
-}
-
-function normalizeReplayCommand(command: string): string {
-  const trimmed = command.trim();
-  if (!trimmed) return "";
-  // Make mkdir idempotent while replaying command history.
-  if (/^mkdir\s+/.test(trimmed) && !/^mkdir\s+-p\s+/.test(trimmed)) {
-    return trimmed.replace(/^mkdir\s+/, "mkdir -p ");
-  }
-  return trimmed;
 }
 
 function parseYearsOfExperience(value: unknown): number | null {
@@ -468,7 +449,9 @@ export default function DevOpsTakePage() {
   const testId = typeof router.query.id === "string" ? router.query.id : undefined;
   const { data: testData, isLoading, error } = useDevOpsTest(testId);
   const thumbVideoRef = useRef<HTMLVideoElement>(null);
-  const terminalHistoryRef = useRef<HTMLDivElement>(null);
+  const terminalViewportRef = useRef<HTMLDivElement>(null);
+  const xtermRef = useRef<any>(null);
+  const fitAddonRef = useRef<any>(null);
   const [cameraProctorEnabled, setCameraProctorEnabled] = useState(true);
   const [debugMode] = useState(false);
   const [aiGeneratedQuestions, setAiGeneratedQuestions] = useState<Array<Record<string, unknown>>>([]);
@@ -635,13 +618,27 @@ export default function DevOpsTakePage() {
   const [editorByQuestion, setEditorByQuestion] = useState<Record<string, string>>({});
   const [attempts, setAttempts] = useState<Record<string, QuestionAttempt>>({});
   const [terminalByQuestion, setTerminalByQuestion] = useState<Record<string, TerminalLine[]>>({});
-  const [commandReplayByQuestion, setCommandReplayByQuestion] = useState<Record<string, string[]>>({});
   const [isRunning, setIsRunning] = useState(false);
+  const [isResettingSession, setIsResettingSession] = useState(false);
   const [submission, setSubmission] = useState<SubmissionSummary | null>(null);
-  const [executionSessionId, setExecutionSessionId] = useState<string>(() =>
-    createExecutionSessionId(testId || "assessment")
-  );
+  const [executionSessionId, setExecutionSessionId] = useState<string>("");
+  const [terminalReady, setTerminalReady] = useState(false);
+  const [terminalConnectionState, setTerminalConnectionState] = useState<
+    "connecting" | "connected" | "disconnected"
+  >("disconnected");
   const executionSessionIdRef = useRef<string>(executionSessionId);
+  const terminalByQuestionRef = useRef<Record<string, TerminalLine[]>>({});
+  const terminalSocketRef = useRef<WebSocket | null>(null);
+  const terminalSocketSessionRef = useRef<string>("");
+  const terminalInputDisposableRef = useRef<{ dispose: () => void } | null>(null);
+  const terminalConnectPromiseRef = useRef<Promise<WebSocket> | null>(null);
+  const terminalReconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const terminalReconnectAttemptRef = useRef<number>(0);
+  const pendingTerminalInputRef = useRef<string>("");
+  const pendingInitialOutputRef = useRef<string>("");
+  const currentQuestionIdRef = useRef<string>("");
+  const currentQuestionKindRef = useRef<QuestionKind | "">("");
+  const activeCommandQuestionIdRef = useRef<string>("");
   const submitted = !!submission;
   const [remainingSeconds, setRemainingSeconds] = useState(0);
 
@@ -807,29 +804,511 @@ export default function DevOpsTakePage() {
 
   useEffect(() => {
     if (typeof window === "undefined") {
-      const nextId = createExecutionSessionId(testId || "assessment");
-      executionSessionIdRef.current = nextId;
-      setExecutionSessionId(nextId);
+      executionSessionIdRef.current = "";
+      setExecutionSessionId("");
       return;
     }
 
-    const storageKey = getExecutionSessionStorageKey(testId);
-    const existing = sessionStorage.getItem(storageKey);
-    const nextId = existing && existing.trim() ? existing : createExecutionSessionId(testId || "assessment");
-    if (!existing) {
-      sessionStorage.setItem(storageKey, nextId);
-    }
-    executionSessionIdRef.current = nextId;
-    setExecutionSessionId(nextId);
+    // First websocket connect should start without session_id.
+    // Backend returns a fresh session via {"type":"session","session_id":"..."}.
+    executionSessionIdRef.current = "";
+    setExecutionSessionId("");
   }, [testId]);
 
   useEffect(() => {
     executionSessionIdRef.current = executionSessionId;
   }, [executionSessionId]);
 
+  useEffect(() => {
+    terminalByQuestionRef.current = terminalByQuestion;
+  }, [terminalByQuestion]);
+
+  const persistExecutionSessionId = useCallback(
+    (nextId: string) => {
+      executionSessionIdRef.current = nextId;
+      setExecutionSessionId(nextId);
+      if (typeof window !== "undefined") {
+        sessionStorage.setItem(getExecutionSessionStorageKey(testId), nextId);
+      }
+    },
+    [testId]
+  );
+
+  useEffect(() => {
+    let isMounted = true;
+    let initTimer: ReturnType<typeof setInterval> | null = null;
+
+    const setupTerminal = async () => {
+      if (!terminalViewportRef.current || xtermRef.current || typeof window === "undefined") return;
+      const [{ Terminal }, { FitAddon }] = await Promise.all([
+        import("@xterm/xterm"),
+        import("@xterm/addon-fit"),
+      ]);
+      if (!isMounted || !terminalViewportRef.current || xtermRef.current) return;
+
+      const terminal = new Terminal({
+        cursorBlink: true,
+        cursorStyle: "block",
+        cursorInactiveStyle: "block",
+        disableStdin: false,
+        fontFamily: "var(--font-devops-mono), 'JetBrains Mono', monospace",
+        fontSize: 14,
+        lineHeight: 1.4,
+        convertEol: false,
+        theme: {
+          background: "#0b1220",
+          foreground: "#39ff14",
+          cursor: "#39ff14",
+          selectionBackground: "rgba(148, 163, 184, 0.35)",
+          black: "#111827",
+          red: "#ef4444",
+          green: "#39ff14",
+          yellow: "#f59e0b",
+          blue: "#3b82f6",
+          magenta: "#a855f7",
+          cyan: "#06b6d4",
+          white: "#39ff14",
+          brightBlack: "#6b7280",
+          brightRed: "#f87171",
+          brightGreen: "#7fff00",
+          brightYellow: "#fbbf24",
+          brightBlue: "#60a5fa",
+          brightMagenta: "#c084fc",
+          brightCyan: "#22d3ee",
+          brightWhite: "#b6ff9f",
+        },
+      });
+      const fitAddon = new FitAddon();
+      terminal.loadAddon(fitAddon);
+      terminal.open(terminalViewportRef.current);
+      fitAddon.fit();
+      terminal.focus();
+      xtermRef.current = terminal;
+      fitAddonRef.current = fitAddon;
+      setTerminalReady(true);
+    };
+
+    void setupTerminal();
+    if (typeof window !== "undefined") {
+      initTimer = window.setInterval(() => {
+        if (!isMounted || xtermRef.current) return;
+        void setupTerminal();
+      }, 200);
+    }
+
+    return () => {
+      isMounted = false;
+      if (initTimer) {
+        clearInterval(initTimer);
+        initTimer = null;
+      }
+      if (terminalReconnectTimerRef.current) {
+        clearTimeout(terminalReconnectTimerRef.current);
+        terminalReconnectTimerRef.current = null;
+      }
+      try {
+        terminalInputDisposableRef.current?.dispose();
+      } catch {
+        // Ignore dispose errors.
+      }
+      terminalInputDisposableRef.current = null;
+      try {
+        xtermRef.current?.dispose();
+      } catch {
+        // Ignore dispose errors.
+      }
+      xtermRef.current = null;
+      fitAddonRef.current = null;
+      setTerminalReady(false);
+    };
+  }, []);
+
+  const emitTerminalResize = useCallback((socket: WebSocket) => {
+    if (typeof window === "undefined") return;
+    try {
+      fitAddonRef.current?.fit();
+    } catch {
+      // Ignore fit errors.
+    }
+    const terminal = xtermRef.current;
+    const cols = Math.max(terminal?.cols || 0, 80);
+    const rows = Math.max(terminal?.rows || 0, 24);
+    if (socket.readyState === WebSocket.OPEN) {
+      socket.send(JSON.stringify({ type: "resize", cols, rows }));
+    }
+  }, []);
+
+  const appendTerminalChunk = useCallback((questionId: string, chunk: string) => {
+    if (!chunk) return;
+    if (!questionId) {
+      pendingInitialOutputRef.current += chunk;
+      if (currentQuestionKindRef.current === "command" && xtermRef.current) {
+        xtermRef.current.write(chunk);
+      }
+      return;
+    }
+    if (
+      questionId === currentQuestionIdRef.current &&
+      currentQuestionKindRef.current === "command" &&
+      xtermRef.current
+    ) {
+      xtermRef.current.write(chunk);
+    }
+    setTerminalByQuestion((prev) => ({
+      ...prev,
+      [questionId]: [...(prev[questionId] || []), { type: "stdout", text: chunk }],
+    }));
+  }, []);
+
+  const decodeWsMessageData = useCallback(async (raw: unknown): Promise<string> => {
+    if (typeof raw === "string") return raw;
+    if (raw instanceof Blob) {
+      try {
+        return await raw.text();
+      } catch {
+        return "";
+      }
+    }
+    if (raw instanceof ArrayBuffer) {
+      try {
+        return new TextDecoder().decode(raw);
+      } catch {
+        return "";
+      }
+    }
+    return String(raw ?? "");
+  }, []);
+
+  const buildTerminalWsUrls = useCallback((): string[] => {
+    const fallback =
+      typeof window !== "undefined"
+        ? `${window.location.protocol === "https:" ? "wss" : "ws"}://${window.location.host}/terminal`
+        : "";
+    return [DEVOPS_TERMINAL_WS_URL, fallback].filter(Boolean);
+  }, []);
+
+  const ensureTerminalSocket = useCallback(
+    async (_sessionId: string): Promise<WebSocket> => {
+      if (terminalConnectPromiseRef.current) {
+        return await terminalConnectPromiseRef.current;
+      }
+
+      const existing = terminalSocketRef.current;
+      if (existing && existing.readyState === WebSocket.OPEN) {
+        return existing;
+      }
+      if (existing && existing.readyState === WebSocket.CONNECTING) {
+        const connectPromise = terminalConnectPromiseRef.current;
+        if (connectPromise) return await connectPromise;
+      }
+
+      if (
+        existing &&
+        (existing.readyState === WebSocket.CONNECTING || existing.readyState === WebSocket.OPEN)
+      ) {
+        // Keep the active socket alive; avoid churn from re-connect calls.
+      } else if (existing) {
+        try {
+          existing.close();
+        } catch {
+          // Ignore close errors.
+        }
+      }
+
+      setTerminalConnectionState("connecting");
+      const connectPromise = (async () => {
+        const urls = buildTerminalWsUrls();
+        let lastError: Error | null = null;
+
+        for (const url of urls) {
+          try {
+            const ws = await new Promise<WebSocket>((resolve, reject) => {
+              const candidate = new WebSocket(url);
+              terminalSocketRef.current = candidate;
+              terminalSocketSessionRef.current = "";
+              const openTimer = window.setTimeout(() => {
+                try {
+                  candidate.close();
+                } catch {
+                  // Ignore close errors.
+                }
+                reject(new Error("Terminal websocket connection timed out"));
+              }, 12000);
+
+              candidate.onopen = () => {
+                window.clearTimeout(openTimer);
+                emitTerminalResize(candidate);
+                setTerminalConnectionState("connected");
+                resolve(candidate);
+              };
+
+              candidate.onmessage = async (event) => {
+                const rawText = await decodeWsMessageData(event.data);
+                let payload: any = null;
+                try {
+                  payload = JSON.parse(String(rawText || "{}"));
+                } catch {
+                  payload = { type: "output", data: String(rawText || "") };
+                }
+
+                if (payload?.type === "session" && typeof payload?.session_id === "string") {
+                  const returnedSessionId = payload.session_id.trim();
+                  if (returnedSessionId) {
+                    terminalSocketSessionRef.current = returnedSessionId;
+                    if (returnedSessionId !== executionSessionIdRef.current) {
+                      persistExecutionSessionId(returnedSessionId);
+                    }
+                  }
+                  return;
+                }
+
+                if (payload?.type === "output") {
+                  const outputChunk = String(payload?.data ?? "");
+                  const targetQuestionId =
+                    activeCommandQuestionIdRef.current || currentQuestionIdRef.current;
+                  appendTerminalChunk(targetQuestionId, outputChunk);
+                }
+              };
+
+              candidate.onerror = () => {
+                window.clearTimeout(openTimer);
+                reject(new Error("Terminal websocket connection failed."));
+              };
+
+              candidate.onclose = () => {
+                if (terminalSocketRef.current === candidate) {
+                  terminalSocketRef.current = null;
+                  setTerminalConnectionState("disconnected");
+                }
+              };
+            });
+            terminalReconnectAttemptRef.current = 0;
+            return ws;
+          } catch (err) {
+            lastError = err instanceof Error ? err : new Error("Terminal websocket connection failed.");
+          }
+        }
+
+        const targetQuestionId = activeCommandQuestionIdRef.current || currentQuestionIdRef.current;
+        if (targetQuestionId) {
+          appendTerminalChunk(targetQuestionId, "\r\n[terminal] Connection failed.\r\n");
+        }
+        setTerminalConnectionState("disconnected");
+        throw lastError || new Error("Terminal websocket connection failed.");
+      })();
+      terminalConnectPromiseRef.current = connectPromise;
+      try {
+        return await connectPromise;
+      } finally {
+        terminalConnectPromiseRef.current = null;
+      }
+    },
+    [
+      appendTerminalChunk,
+      buildTerminalWsUrls,
+      decodeWsMessageData,
+      emitTerminalResize,
+      persistExecutionSessionId,
+    ]
+  );
+
+  useEffect(() => {
+    const terminal = xtermRef.current;
+    if (!terminal || terminalInputDisposableRef.current) return;
+    terminalInputDisposableRef.current = terminal.onData((data: string) => {
+      if (currentQuestionKindRef.current !== "command") return;
+      const existing = terminalSocketRef.current;
+      if (existing && existing.readyState === WebSocket.OPEN) {
+        try {
+          existing.send(JSON.stringify({ type: "input", data }));
+        } catch {
+          // Fall back to buffered reconnect path below.
+        }
+        return;
+      }
+      pendingTerminalInputRef.current += data;
+      void (async () => {
+        try {
+          const socket = await ensureTerminalSocket(executionSessionIdRef.current);
+          const chunk = pendingTerminalInputRef.current;
+          pendingTerminalInputRef.current = "";
+          if (chunk) {
+            socket.send(JSON.stringify({ type: "input", data: chunk }));
+          }
+        } catch {
+          // Keep typing non-blocking when socket is unavailable.
+        }
+      })();
+    });
+
+    return () => {
+      try {
+        terminalInputDisposableRef.current?.dispose();
+      } catch {
+        // Ignore dispose errors.
+      }
+      terminalInputDisposableRef.current = null;
+    };
+  }, [ensureTerminalSocket, terminalReady]);
+
+  useEffect(() => {
+    if (!terminalReady) return;
+    void ensureTerminalSocket(executionSessionIdRef.current).catch(() => {
+      // Connection status and error output are handled elsewhere.
+    });
+  }, [terminalReady, ensureTerminalSocket]);
+
+  useEffect(() => {
+    if (!terminalReady) return;
+    if (submitted || isResettingSession) return;
+    if (terminalConnectionState !== "disconnected") return;
+    if (terminalConnectPromiseRef.current) return;
+    if (terminalReconnectTimerRef.current) return;
+
+    const attempt = terminalReconnectAttemptRef.current + 1;
+    terminalReconnectAttemptRef.current = attempt;
+    const delayMs = Math.min(1000 * 2 ** Math.min(attempt - 1, 4), 10000);
+
+    terminalReconnectTimerRef.current = setTimeout(() => {
+      terminalReconnectTimerRef.current = null;
+      void ensureTerminalSocket(executionSessionIdRef.current).catch(() => {
+        // keep retry loop alive while disconnected
+      });
+    }, delayMs);
+
+    return () => {
+      if (terminalReconnectTimerRef.current) {
+        clearTimeout(terminalReconnectTimerRef.current);
+        terminalReconnectTimerRef.current = null;
+      }
+    };
+  }, [
+    terminalReady,
+    submitted,
+    isResettingSession,
+    terminalConnectionState,
+    ensureTerminalSocket,
+  ]);
+
+  const submitExecutionSession = useCallback(async (sessionId: string) => {
+    const safeSessionId = String(sessionId || "").trim();
+    if (!safeSessionId) return;
+    try {
+      await fetch("/api/devops/submit-session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ session_id: safeSessionId }),
+      });
+    } catch {
+      // Keep assessment flow non-blocking if submit API is temporarily unavailable.
+    }
+  }, []);
+
+  const resetExecutionSession = useCallback(async (sessionId: string): Promise<string> => {
+    const safeSessionId = String(sessionId || "").trim();
+    if (!safeSessionId) return "";
+    try {
+      const response = await fetch("/api/devops/reset-session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ session_id: safeSessionId }),
+      });
+      if (!response.ok) return "";
+      const data = await response.json().catch(() => ({}));
+      const nextSessionId = String(data?.session_id || data?.sessionId || "").trim();
+      return nextSessionId;
+    } catch {
+      return "";
+    }
+  }, []);
+
+  const rotateExecutionSession = useCallback(async () => {
+    const previousSessionId = executionSessionIdRef.current;
+    const nextSessionId = await resetExecutionSession(previousSessionId);
+    persistExecutionSessionId(nextSessionId);
+    terminalConnectPromiseRef.current = null;
+    pendingTerminalInputRef.current = "";
+    pendingInitialOutputRef.current = "";
+    terminalReconnectAttemptRef.current = 0;
+    if (terminalReconnectTimerRef.current) {
+      clearTimeout(terminalReconnectTimerRef.current);
+      terminalReconnectTimerRef.current = null;
+    }
+    setTerminalConnectionState("disconnected");
+    const socket = terminalSocketRef.current;
+    if (socket) {
+      try {
+        socket.close();
+      } catch {
+        // Ignore close errors.
+      }
+      terminalSocketRef.current = null;
+    }
+    terminalSocketSessionRef.current = "";
+    return { previousSessionId, nextSessionId, resetOk: true, resetError: "" };
+  }, [persistExecutionSessionId, resetExecutionSession]);
+
   const currentQuestion = questions[currentIndex];
   const currentValue = currentQuestion ? editorByQuestion[currentQuestion.id] || "" : "";
   const terminalLines = currentQuestion ? terminalByQuestion[currentQuestion.id] || [] : [];
+
+  useEffect(() => {
+    currentQuestionIdRef.current = currentQuestion?.id || "";
+    currentQuestionKindRef.current = currentQuestion?.kind || "";
+  }, [currentQuestion?.id, currentQuestion?.kind]);
+
+  useEffect(() => {
+    const handleResize = () => {
+      const socket = terminalSocketRef.current;
+      if (!socket || socket.readyState !== WebSocket.OPEN) return;
+      emitTerminalResize(socket);
+    };
+    window.addEventListener("resize", handleResize);
+    return () => {
+      window.removeEventListener("resize", handleResize);
+      const socket = terminalSocketRef.current;
+      if (socket) {
+        try {
+          socket.close();
+        } catch {
+          // Ignore close errors.
+        }
+        terminalSocketRef.current = null;
+      }
+      setTerminalConnectionState("disconnected");
+    };
+  }, [emitTerminalResize]);
+
+  useEffect(() => {
+    if (currentQuestion?.kind !== "command") return;
+    const terminal = xtermRef.current;
+    if (!terminal) return;
+    terminal.reset();
+    const history = terminalByQuestionRef.current[currentQuestion.id] || [];
+    if (history.length > 0) {
+      terminal.write(history.map((line) => line.text).join(""));
+    }
+    const pendingInitial = pendingInitialOutputRef.current;
+    if (pendingInitial) {
+      terminal.write(pendingInitial);
+      setTerminalByQuestion((prev) => ({
+        ...prev,
+        [currentQuestion.id]: [...(prev[currentQuestion.id] || []), { type: "stdout", text: pendingInitial }],
+      }));
+      pendingInitialOutputRef.current = "";
+    }
+    try {
+      fitAddonRef.current?.fit();
+    } catch {
+      // Ignore fit errors.
+    }
+    try {
+      terminal.focus();
+    } catch {
+      // Ignore focus errors.
+    }
+  }, [currentQuestion?.id, currentQuestion?.kind, terminalReady]);
+
   const timerMode = String((testData as any)?.timer_mode || "GLOBAL").toUpperCase();
   const isPerQuestionTimer = timerMode === "PER_QUESTION";
   const questionTimingMap = useMemo(() => {
@@ -892,7 +1371,7 @@ export default function DevOpsTakePage() {
   }, [currentQuestion, submitted, remainingSeconds]);
 
   const runQuestion = async () => {
-    if (!currentQuestion || isRunning || remainingSeconds <= 0) return;
+    if (!currentQuestion || isRunning || isResettingSession || remainingSeconds <= 0) return;
 
     setIsRunning(true);
     setSubmission(null);
@@ -900,19 +1379,77 @@ export default function DevOpsTakePage() {
     const content = editorByQuestion[currentQuestion.id] || "";
     const effectiveCommand = content;
 
+    if (currentQuestion.kind === "command") {
+      if (!effectiveCommand.trim()) {
+        setIsRunning(false);
+        return;
+      }
+      try {
+        const socket = await ensureTerminalSocket(executionSessionIdRef.current);
+        activeCommandQuestionIdRef.current = currentQuestion.id;
+        socket.send(
+          JSON.stringify({
+            type: "input",
+            data: `${effectiveCommand}\n`,
+          })
+        );
+
+        const evaluation = evaluateSubmission(
+          { ...currentQuestion, validationMode: "content" },
+          content,
+          null
+        );
+
+        setAttempts((prev) => {
+          const before = prev[currentQuestion.id];
+          return {
+            ...prev,
+            [currentQuestion.id]: {
+              runCount: (before?.runCount || 0) + 1,
+              passed: evaluation.passed,
+              score: evaluation.score,
+              reasons: evaluation.reasons,
+              lastRun: null,
+            },
+          };
+        });
+
+      } catch (runError: unknown) {
+        const message = runError instanceof Error ? runError.message : "Terminal command failed unexpectedly.";
+        setTerminalByQuestion((prev) => ({
+          ...prev,
+          [currentQuestion.id]: [
+            ...(prev[currentQuestion.id] || []),
+            { type: "error", text: `ERROR: ${message}` },
+          ],
+        }));
+        setAttempts((prev) => {
+          const before = prev[currentQuestion.id];
+          return {
+            ...prev,
+            [currentQuestion.id]: {
+              runCount: (before?.runCount || 0) + 1,
+              passed: false,
+              score: 0,
+              reasons: [message],
+              lastRun: null,
+            },
+          };
+        });
+      } finally {
+        setEditorByQuestion((prev) => ({
+          ...prev,
+          [currentQuestion.id]: "",
+        }));
+        setIsRunning(false);
+      }
+      return;
+    }
+
     const validationMode = currentQuestion.validationMode || "runtime";
     const shouldExecuteRuntime = validationMode !== "content";
     const payload: DevOpsRunPayload | null = shouldExecuteRuntime
-      ? currentQuestion.kind === "command"
-        ? {
-            mode: "command",
-            session_id: executionSessionIdRef.current,
-            sessionId: executionSessionIdRef.current,
-            testId: testId || undefined,
-            candidateId: proctoringUserId || undefined,
-            command: effectiveCommand,
-          }
-        : currentQuestion.kind === "terraform"
+      ? currentQuestion.kind === "terraform"
           ? {
               mode: "terraform",
               session_id: executionSessionIdRef.current,
@@ -934,17 +1471,15 @@ export default function DevOpsTakePage() {
       : null;
 
     const nextLines: TerminalLine[] =
-      currentQuestion.kind === "command"
-        ? []
-        : [
-            {
-              type: "cmd",
-              text:
-                currentQuestion.kind === "terraform"
-                  ? `$ terraform ${currentQuestion.terraformAction || "plan"} (main.tf)`
-                  : `$ lint:${currentQuestion.lintType || "docker"}`,
-            },
-          ];
+      [
+        {
+          type: "cmd",
+          text:
+            currentQuestion.kind === "terraform"
+              ? `$ terraform ${currentQuestion.terraformAction || "plan"} (main.tf)`
+              : `$ lint:${currentQuestion.lintType || "docker"}`,
+        },
+      ];
 
     try {
       const result = payload ? await devopsRuntimeService.run(payload) : null;
@@ -973,14 +1508,13 @@ export default function DevOpsTakePage() {
       } else {
         const exitCodeValue =
           typeof result.exitCode === "number" && Number.isFinite(result.exitCode) ? result.exitCode : 1;
-        const outputType: TerminalLine["type"] = exitCodeValue === 0 ? "success" : "error";
         const stdoutText = typeof result.stdout === "string" ? result.stdout.trimEnd() : "";
         const stderrText = typeof result.stderr === "string" ? result.stderr.trimEnd() : "";
-        if (stdoutText) nextLines.push({ type: outputType, text: stdoutText });
-        if (stderrText) nextLines.push({ type: outputType, text: stderrText });
+        if (stdoutText) nextLines.push({ type: "stdout", text: stdoutText });
+        if (stderrText) nextLines.push({ type: "stderr", text: stderrText });
         if (!stdoutText && !stderrText && result.message) {
           nextLines.push({
-            type: outputType,
+            type: exitCodeValue === 0 ? "success" : "error",
             text: String(result.message),
           });
         } else if (!stdoutText && !stderrText && exitCodeValue === 0) {
@@ -1032,20 +1566,6 @@ export default function DevOpsTakePage() {
         };
       });
 
-      if (currentQuestion.kind === "command" && result?.exitCode === 0) {
-        const replayCommand = normalizeReplayCommand(content);
-        if (replayCommand) {
-          setCommandReplayByQuestion((prev) => {
-            const history = prev[currentQuestion.id] || [];
-            // Keep bounded history to avoid oversized replay payloads.
-            const nextHistory = [...history, replayCommand].slice(-30);
-            return {
-              ...prev,
-              [currentQuestion.id]: nextHistory,
-            };
-          });
-        }
-      }
     } catch (runError: unknown) {
       const message = runError instanceof Error ? runError.message : "Run failed unexpectedly.";
       setTerminalByQuestion((prev) => ({
@@ -1081,11 +1601,6 @@ export default function DevOpsTakePage() {
     }
   };
 
-  useEffect(() => {
-    if (currentQuestion?.kind !== "command") return;
-    terminalHistoryRef.current?.scrollTo({ top: terminalHistoryRef.current.scrollHeight });
-  }, [terminalLines, currentQuestion?.kind]);
-
   const submitAssessment = async () => {
     const summary = questions.reduce(
       (acc, question) => {
@@ -1100,32 +1615,32 @@ export default function DevOpsTakePage() {
     );
 
     setSubmission(summary);
-    setCommandReplayByQuestion({});
-    const sessionToReset = executionSessionIdRef.current;
+    await submitExecutionSession(executionSessionIdRef.current);
+    await rotateExecutionSession();
+  };
+
+  const handleManualSessionReset = async () => {
+    if (!currentQuestion || isRunning || isResettingSession) return;
+    setIsResettingSession(true);
     try {
-      await devopsRuntimeService.resetSession(sessionToReset);
-    } catch {
-      // Ignore reset failures.
+      await rotateExecutionSession();
+      setTerminalByQuestion((prev) => ({
+        ...prev,
+        [currentQuestion.id]: [],
+      }));
+    } finally {
+      setIsResettingSession(false);
     }
   };
 
-  const finishCurrentQuestion = () => {
+  const finishCurrentQuestion = async () => {
     if (!currentQuestion) return;
     if (currentIndex < questions.length - 1) {
-      const previousSessionId = executionSessionIdRef.current;
-      void devopsRuntimeService.resetSession(previousSessionId).catch(() => {
-        // Ignore reset failures on question transition.
-      });
-      const nextSessionId = createExecutionSessionId(testId || "assessment");
-      executionSessionIdRef.current = nextSessionId;
-      setExecutionSessionId(nextSessionId);
-      if (typeof window !== "undefined") {
-        sessionStorage.setItem(getExecutionSessionStorageKey(testId), nextSessionId);
-      }
+      await rotateExecutionSession();
       setCurrentIndex((prev) => prev + 1);
       return;
     }
-    void submitAssessment();
+    await submitAssessment();
   };
 
   if (isLoading || (isGeneratedRoute && isGeneratedLoading && aiGeneratedQuestions.length === 0)) {
@@ -1267,24 +1782,49 @@ export default function DevOpsTakePage() {
               <div className={styles.editorMeta}>
                 <span>{isSeniorScenarioMode ? "Scenario Notepad" : currentQuestion.kind === "command" ? "Shell Input" : "Workspace File"}</span>
                 <span>Runs {currentAttempt?.runCount || 0}</span>
+                {currentQuestion.kind === "command" && (
+                  <span>
+                    {terminalConnectionState === "connected"
+                      ? "Terminal Connected"
+                      : terminalConnectionState === "connecting"
+                        ? "Terminal Connecting..."
+                        : "Terminal Disconnected"}
+                  </span>
+                )}
               </div>
 
               <div className={styles.btnRow}>
-                {!isSeniorScenarioMode && (
+                {!isSeniorScenarioMode && currentQuestion.kind !== "command" && (
                   <button
                     type="button"
                     className={cx(styles.btn, styles.btnRun)}
-                    onClick={runQuestion}
-                    disabled={isRunning || remainingSeconds <= 0}
+                    onClick={() => {
+                      void runQuestion();
+                    }}
+                    disabled={isRunning || isResettingSession || remainingSeconds <= 0}
                   >
                     {remainingSeconds <= 0 ? "Time Up" : isRunning ? "Running..." : "Run"}
+                  </button>
+                )}
+                {!isSeniorScenarioMode && (
+                  <button
+                    type="button"
+                    className={cx(styles.btn, styles.btnReset)}
+                    onClick={() => {
+                      void handleManualSessionReset();
+                    }}
+                    disabled={isRunning || isResettingSession || remainingSeconds <= 0}
+                  >
+                    {isResettingSession ? "Resetting..." : "Reset"}
                   </button>
                 )}
                 <button
                   type="button"
                   className={cx(styles.btn, styles.btnSubmit)}
-                  onClick={finishCurrentQuestion}
-                  disabled={isRunning}
+                  onClick={() => {
+                    void finishCurrentQuestion();
+                  }}
+                  disabled={isRunning || isResettingSession}
                 >
                   {currentIndex < questions.length - 1
                     ? isSeniorScenarioMode
@@ -1314,51 +1854,17 @@ export default function DevOpsTakePage() {
                 </div>
               ) : currentQuestion.kind === "command" ? (
                 <div className={styles.terminalEditor}>
-                  <div className={styles.terminalPromptRow}>
-                    <span className={styles.terminalPrompt}>$</span>
-                    <input
-                      type="text"
-                      className={styles.terminalInput}
-                      value={currentValue}
-                      onChange={(e) =>
-                        setEditorByQuestion((prev) => ({
-                          ...prev,
-                          [currentQuestion.id]: e.target.value ?? "",
-                        }))
+                  <div
+                    ref={terminalViewportRef}
+                    className={styles.terminalViewport}
+                    onClick={() => {
+                      try {
+                        xtermRef.current?.focus();
+                      } catch {
+                        // Ignore focus errors.
                       }
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") {
-                          e.preventDefault();
-                          runQuestion();
-                        }
-                      }}
-                      placeholder="Type a command and press Enter"
-                      autoComplete="off"
-                      spellCheck={false}
-                    />
-                  </div>
-                  <div ref={terminalHistoryRef} className={styles.terminalHistory}>
-                    {terminalLines.length === 0 ? (
-                      <span className={styles.lineStdout}>No execution yet. Type command and press Enter.</span>
-                    ) : (
-                      terminalLines.map((line, idx) => (
-                        <span
-                          key={`${line.type}-${idx}`}
-                          className={cx(
-                            styles.line,
-                            line.type === "cmd" && styles.lineCmd,
-                            line.type === "stdout" && styles.lineStdout,
-                            line.type === "stderr" && styles.lineStderr,
-                            line.type === "success" && styles.lineSuccess,
-                            line.type === "error" && styles.lineError
-                          )}
-                        >
-                          {line.text}
-                          {"\n"}
-                        </span>
-                      ))
-                    )}
-                  </div>
+                    }}
+                  />
                 </div>
               ) : (
                 <MonacoEditor

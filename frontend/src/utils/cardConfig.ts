@@ -153,7 +153,7 @@ export function getNavigationPaths(type: AssessmentType, status: DisplayStatus, 
     // DevOps uses the tests details page (AIML-style management UI)
     // and filters by testId via query param.
     paths.editPath = `/devops/tests?testId=${id}`;
-    paths.analyticsPath = `/devops/tests?testId=${id}`;
+    paths.analyticsPath = `/devops/tests/${id}/analytics`;
   } else {
     // Regular assessment
     paths.editPath = `/assessments/create-new?id=${id}`;

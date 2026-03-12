@@ -9,6 +9,7 @@ from api.questions import router as questions_router
 from api.cloud_questions import router as cloud_questions_router
 from api.tests import router as tests_router
 from api.cloud_tests import router as cloud_tests_router
+from api.terminal_sessions import router as terminal_sessions_router
 
 app = FastAPI(title="Execution Engine")
 logger = logging.getLogger(__name__)
@@ -20,6 +21,7 @@ app.include_router(questions_router)
 app.include_router(cloud_questions_router)
 app.include_router(tests_router)
 app.include_router(cloud_tests_router)
+app.include_router(terminal_sessions_router)
 
 @app.on_event("startup")
 async def startup_event() -> None:

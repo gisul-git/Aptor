@@ -29,6 +29,8 @@
     "@tensorflow-models/face-landmarks-detection": "^1.0.6",
     "@tensorflow/tfjs": "^4.22.0",
     "@vladmandic/face-api": "^1.7.15",
+    "@xterm/addon-fit": "^0.10.0",
+    "@xterm/xterm": "^5.5.0",
     "agora-rtc-sdk-ng": "^4.24.2",
     "axios": "^1.7.7",
     "class-variance-authority": "^0.7.1",

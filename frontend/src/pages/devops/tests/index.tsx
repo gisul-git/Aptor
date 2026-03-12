@@ -490,10 +490,7 @@ export default function DevOpsTestsListPage() {
 
                     <button
                       onClick={() => {
-                        const target = test.test_token
-                          ? `/devops/tests/${test.id}/take?token=${encodeURIComponent(test.test_token)}`
-                          : `/devops/tests/${test.id}/take`;
-                        router.push(target);
+                        router.push("/devops/assesments");
                       }}
                       disabled={!test.is_published}
                       style={{
