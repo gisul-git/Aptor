@@ -6,185 +6,105 @@ on:
       - QA
 
 jobs:
-  detect-changes:
+  build-push-deploy:
     runs-on: ubuntu-latest
-    outputs:
-      frontend: ${{ steps.filter.outputs.frontend }}
-      api-gateway: ${{ steps.filter.outputs.api-gateway }}
-      auth-service: ${{ steps.filter.outputs.auth-service }}
-      ai-assessment-service: ${{ steps.filter.outputs.ai-assessment-service }}
-      custom-mcq-service: ${{ steps.filter.outputs.custom-mcq-service }}
-      aiml-service: ${{ steps.filter.outputs.aiml-service }}
-      aiml-agent-service: ${{ steps.filter.outputs.aiml-agent-service }}
-      dsa-service: ${{ steps.filter.outputs.dsa-service }}
-      proctoring-service: ${{ steps.filter.outputs.proctoring-service }}
-      super-admin-service: ${{ steps.filter.outputs.super-admin-service }}
-      employee-service: ${{ steps.filter.outputs.employee-service }}
-      demo-service: ${{ steps.filter.outputs.demo-service }}
+
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v4
-
-      - name: Detect Changed Services
-        uses: dorny/paths-filter@v3
-        id: filter
-        with:
-          filters: |
-            frontend:
-              - 'frontend/**'
-            api-gateway:
-              - 'services/api-gateway/**'
-            auth-service:
-              - 'services/auth-service/**'
-            ai-assessment-service:
-              - 'services/ai-assessment-service/**'
-            custom-mcq-service:
-              - 'services/custom-mcq-service/**'
-            aiml-service:
-              - 'services/aiml-service/**'
-            aiml-agent-service:
-              - 'services/aiml-agent-service/**'
-            dsa-service:
-              - 'services/dsa-service/**'
-            proctoring-service:
-              - 'services/proctoring-service/**'
-            super-admin-service:
-              - 'services/super-admin-service/**'
-            employee-service:
-              - 'services/employee-service/**'
-            demo-service:
-              - 'services/demo-service/**'
-
-  build-push:
-    needs: detect-changes
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        include:
-          - name: frontend
-            context: ./frontend
-            image: gisul/gisul-frontend
-            changed: ${{ needs.detect-changes.outputs.frontend }}
-          - name: api-gateway
-            context: ./services/api-gateway
-            image: gisul/gisul-api-gateway
-            changed: ${{ needs.detect-changes.outputs.api-gateway }}
-          - name: auth-service
-            context: ./services/auth-service
-            image: gisul/gisul-auth-service
-            changed: ${{ needs.detect-changes.outputs.auth-service }}
-          - name: ai-assessment-service
-            context: ./services/ai-assessment-service
-            image: gisul/gisul-ai-assessment-service
-            changed: ${{ needs.detect-changes.outputs.ai-assessment-service }}
-          - name: custom-mcq-service
-            context: ./services/custom-mcq-service
-            image: gisul/gisul-custom-mcq-service
-            changed: ${{ needs.detect-changes.outputs.custom-mcq-service }}
-          - name: aiml-service
-            context: ./services/aiml-service
-            image: gisul/gisul-aiml-service
-            changed: ${{ needs.detect-changes.outputs.aiml-service }}
-          - name: aiml-agent-service
-            context: ./services/aiml-agent-service
-            image: gisul/gisul-aiml-agent-service
-            changed: ${{ needs.detect-changes.outputs.aiml-agent-service }}
-          - name: dsa-service
-            context: ./services/dsa-service
-            image: gisul/gisul-dsa-service
-            changed: ${{ needs.detect-changes.outputs.dsa-service }}
-          - name: proctoring-service
-            context: ./services/proctoring-service
-            image: gisul/gisul-proctoring-service
-            changed: ${{ needs.detect-changes.outputs.proctoring-service }}
-          - name: super-admin-service
-            context: ./services/super-admin-service
-            image: gisul/gisul-super-admin-service
-            changed: ${{ needs.detect-changes.outputs.super-admin-service }}
-          - name: employee-service
-            context: ./services/employee-service
-            image: gisul/gisul-employee-service
-            changed: ${{ needs.detect-changes.outputs.employee-service }}
-          - name: demo-service
-            context: ./services/demo-service
-            image: gisul/gisul-demo-service
-            changed: ${{ needs.detect-changes.outputs.demo-service }}
-
-    steps:
-      - name: Skip if unchanged
-        if: matrix.changed != 'true'
-        run: echo "No changes in ${{ matrix.name }}, skipping."
-
-      - name: Checkout Code
-        if: matrix.changed == 'true'
         uses: actions/checkout@v4
 
       - name: Login to Docker Hub
-        if: matrix.changed == 'true'
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Build and Push ${{ matrix.name }}
-        if: matrix.changed == 'true'
+      # Build & push images
+      - name: Build and Push Frontend
         run: |
-          docker build -t ${{ matrix.image }}:latest ${{ matrix.context }}
-          docker push ${{ matrix.image }}:latest
+          docker build -t gisul/gisul-frontend:latest ./frontend
+          docker push gisul/gisul-frontend:latest
 
-  deploy:
-    needs: [detect-changes, build-push]
-    runs-on: ubuntu-latest
-    env:
-      VM_HOST: ${{ secrets.QA_VM_HOST }}
-      VM_USER: ${{ secrets.QA_VM_USER }}
-      VM_SSH_KEY: ${{ secrets.QA_VM_SSH_KEY }}
-    steps:
-      - name: Setup SSH
+      - name: Build and Push API Gateway
+        run: |
+          docker build -t gisul/gisul-api-gateway:latest ./services/api-gateway
+          docker push gisul/gisul-api-gateway:latest
+
+      - name: Build and Push Auth Service
+        run: |
+          docker build -t gisul/gisul-auth-service:latest ./services/auth-service
+          docker push gisul/gisul-auth-service:latest
+
+      - name: Build and Push AI Assessment Service
+        run: |
+          docker build -t gisul/gisul-ai-assessment-service:latest ./services/ai-assessment-service
+          docker push gisul/gisul-ai-assessment-service:latest
+
+      - name: Build and Push Custom MCQ Service
+        run: |
+          docker build -t gisul/gisul-custom-mcq-service:latest ./services/custom-mcq-service
+          docker push gisul/gisul-custom-mcq-service:latest
+
+      - name: Build and Push AIML Service
+        run: |
+          docker build -t gisul/gisul-aiml-service:latest ./services/aiml-service
+          docker push gisul/gisul-aiml-service:latest
+
+      - name: Build and Push AIML Agent Service
+        run: |
+          docker build -t gisul/gisul-aiml-agent-service:latest ./services/aiml-agent-service
+          docker push gisul/gisul-aiml-agent-service:latest
+
+      - name: Build and Push DSA Service
+        run: |
+          docker build -t gisul/gisul-dsa-service:latest ./services/dsa-service
+          docker push gisul/gisul-dsa-service:latest
+
+      - name: Build and Push Proctoring Service
+        run: |
+          docker build -t gisul/gisul-proctoring-service:latest ./services/proctoring-service
+          docker push gisul/gisul-proctoring-service:latest
+
+      - name: Build and Push Super Admin Service
+        run: |
+          docker build -t gisul/gisul-super-admin-service:latest ./services/super-admin-service
+          docker push gisul/gisul-super-admin-service:latest
+
+      - name: Build and Push Employee Service
+        run: |
+          docker build -t gisul/gisul-employee-service:latest ./services/employee-service
+          docker push gisul/gisul-employee-service:latest
+
+      - name: Build and Push Demo Service
+        run: |
+          docker build -t gisul/gisul-demo-service:latest ./services/demo-service
+          docker push gisul/gisul-demo-service:latest
+
+
+      # Deploy to VM
+      - name: Deploy to QA VM
+        env:
+          VM_HOST: ${{ secrets.QA_VM_HOST }}
+          VM_USER: ${{ secrets.QA_VM_USER }}
+          VM_SSH_KEY: ${{ secrets.QA_VM_SSH_KEY }}
         run: |
           mkdir -p ~/.ssh
           echo "$VM_SSH_KEY" > ~/.ssh/key
           chmod 600 ~/.ssh/key
           ssh-keyscan -H $VM_HOST >> ~/.ssh/known_hosts
 
-      - name: Deploy Changed Services to QA VM
-        run: |
-          CHANGED_SERVICES=""
-
-          [ "${{ needs.detect-changes.outputs.frontend }}" == "true" ]              && CHANGED_SERVICES="$CHANGED_SERVICES frontend"
-          [ "${{ needs.detect-changes.outputs.api-gateway }}" == "true" ]           && CHANGED_SERVICES="$CHANGED_SERVICES api-gateway"
-          [ "${{ needs.detect-changes.outputs.auth-service }}" == "true" ]          && CHANGED_SERVICES="$CHANGED_SERVICES auth-service"
-          [ "${{ needs.detect-changes.outputs.ai-assessment-service }}" == "true" ] && CHANGED_SERVICES="$CHANGED_SERVICES ai-assessment-service"
-          [ "${{ needs.detect-changes.outputs.custom-mcq-service }}" == "true" ]    && CHANGED_SERVICES="$CHANGED_SERVICES custom-mcq-service"
-          [ "${{ needs.detect-changes.outputs.aiml-service }}" == "true" ]          && CHANGED_SERVICES="$CHANGED_SERVICES aiml-service"
-          [ "${{ needs.detect-changes.outputs.aiml-agent-service }}" == "true" ]    && CHANGED_SERVICES="$CHANGED_SERVICES aiml-agent-service"
-          [ "${{ needs.detect-changes.outputs.dsa-service }}" == "true" ]           && CHANGED_SERVICES="$CHANGED_SERVICES dsa-service"
-          [ "${{ needs.detect-changes.outputs.proctoring-service }}" == "true" ]    && CHANGED_SERVICES="$CHANGED_SERVICES proctoring-service"
-          [ "${{ needs.detect-changes.outputs.super-admin-service }}" == "true" ]   && CHANGED_SERVICES="$CHANGED_SERVICES super-admin-service"
-          [ "${{ needs.detect-changes.outputs.employee-service }}" == "true" ]      && CHANGED_SERVICES="$CHANGED_SERVICES employee-service"
-          [ "${{ needs.detect-changes.outputs.demo-service }}" == "true" ]          && CHANGED_SERVICES="$CHANGED_SERVICES demo-service"
-
-          CHANGED_SERVICES=$(echo $CHANGED_SERVICES | xargs)
-
-          if [ -z "$CHANGED_SERVICES" ]; then
-            echo "No services changed. Nothing to deploy."
-            exit 0
-          fi
-
-          echo "Deploying services: $CHANGED_SERVICES"
-
-          ssh -i ~/.ssh/key $VM_USER@$VM_HOST bash << ENDSSH
-            set -e
+          ssh -i ~/.ssh/key $VM_USER@$VM_HOST << 'EOF'
             cd /opt/aptor
 
-            echo "Pulling updated images for: $CHANGED_SERVICES"
-            docker compose pull $CHANGED_SERVICES
+            echo "Pulling images..."
+            docker compose pull
 
-            echo "Restarting changed services..."
-            docker compose up -d $CHANGED_SERVICES
+            echo "Restarting services..."
+            docker compose up -d
 
             echo "Cleaning unused images..."
             docker image prune -f
 
-            echo "Deployment complete for: $CHANGED_SERVICES"
-          ENDSSH
+            echo "Deployment complete"
+          EOF
+
