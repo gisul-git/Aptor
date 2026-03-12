@@ -1153,13 +1153,13 @@ Example:
 
 INTERMEDIATE (4-5 sentences):
 1. Product context (what the product does)
-2. User problem (specific pain points users face)
-3. User needs (2-3 key needs)
-4. Design goal (what the interface should achieve)
-5. Expected outcome (simple goal)
+2. User problem (specific pain points users face - be specific about what they struggle with)
+3. Business goal (what the company aims to achieve - e.g., reduce time by X%, improve Y metric)
+4. User needs (2-3 key needs)
+5. Design goal (what the interface should achieve)
 
 Example:
-"A food delivery application allows users to browse restaurants and order meals online. However, frequent users struggle to quickly track active orders or reorder meals they previously purchased. Users need to quickly track ongoing orders, reorder favorite meals, and access order history easily. The design goal is to create a mobile interface that streamlines the ordering and tracking experience."
+"A food delivery application allows users to browse restaurants and order meals online. However, frequent users struggle to quickly identify available time slots and manage multiple orders across different restaurants. The company aims to reduce booking time by 30% and improve order visibility through a clearer and more structured interface. Users need to quickly track ongoing orders, reorder favorite meals, and access order history easily. The design goal is to create a mobile interface that streamlines the ordering and tracking experience."
 
 ADVANCED (6-8 sentences):
 1. Product/service context (what it is, why it exists)
@@ -1394,6 +1394,8 @@ Required 6 + Choose 4 from:
 • Information hierarchy must clearly separate primary, secondary, and supporting content
   Primary content must be visually dominant using size, weight, or spacing
 • Reusable UI components must be used for repeated elements (cards, buttons, inputs)
+• At least one screen should include a system state (loading, empty state, or error state)
+• Primary call-to-action buttons must be visually prominent and easily identifiable
 • Shadow system: 3 elevation levels (subtle, medium, prominent)
 • [ADD USER-PROVIDED ADDITIONAL REQUIREMENTS HERE IF ANY]
 
@@ -1535,10 +1537,10 @@ UI Designer:
   Clear prioritization using typography, spacing, and color
 • Component quality — 20%
   Reusable components with proper states
+• Usability & interaction clarity — 20%
+  Clear interactions, button states, and user-friendly interface
 • Constraint compliance — 20%
   Adherence to grid, spacing, and accessibility rules
-• Visual quality — 20%
-  Overall aesthetics and attention to detail
 
 UX Designer:
 • Layout consistency — 20%

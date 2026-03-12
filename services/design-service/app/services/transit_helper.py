@@ -55,13 +55,13 @@ class TransitEncoder:
         Transit maps are encoded as: ["^ ", "key1", "value1", "key2", "value2", ...]
         Keys with hyphens are treated as keywords and prefixed with ~:
         """
-        result = ["^ "]
+        result = ["^ "]  # Note: space after ^
         for key, value in data.items():
             # Convert Python keys to Transit keywords
             if "-" in key or key in ["id", "name", "email", "password", "project-id", "is-shared"]:
                 transit_key = f"~:{key}"
             else:
-                transit_key = key
+                transit_key = f"~:{key}"  # All keys should be keywords in Penpot
             
             result.append(transit_key)
             result.append(self._encode_value(value))

@@ -121,48 +121,6 @@ async def health():
     }
 
 
-# Legacy Penpot session endpoint for backward compatibility
-@app.post("/api/v1/design/penpot-session")
-async def create_penpot_session_legacy(candidate_id: str, test_id: str):
-    """Legacy endpoint for Penpot session creation"""
-    from app.services.penpot_service import penpot_service
-    
-    try:
-        session = await penpot_service.create_candidate_workspace(
-            user_id=candidate_id,
-            assessment_id=test_id,
-            question_id="legacy",
-            question_title="Design Challenge"
-        )
-        
-        return {
-            "candidate_id": candidate_id,
-            "test_id": test_id,
-            "session_id": session.session_token,
-            "iframe_url": session.workspace_url,
-            "storage_path": f"/tmp/penpot_submissions/{candidate_id}/{session.session_token}",
-            "team_id": None,
-            "project_id": None,
-            "file_id": None,
-        }
-        
-    except Exception as e:
-        logger.error(f"Legacy Penpot session creation failed: {e}")
-        # Fallback response
-        import uuid
-        session_id = str(uuid.uuid4())
-        return {
-            "candidate_id": candidate_id,
-            "test_id": test_id,
-            "session_id": session_id,
-            "iframe_url": f"{settings.PENPOT_URL}/#/workspace?token={session_id}&embed=true",
-            "storage_path": f"/tmp/penpot_submissions/{candidate_id}/{session_id}",
-            "team_id": None,
-            "project_id": None,
-            "file_id": None,
-        }
-
-
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(

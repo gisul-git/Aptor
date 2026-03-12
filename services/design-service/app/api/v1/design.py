@@ -129,15 +129,13 @@ async def get_topic_suggestions(request: TopicSuggestionsRequest):
 
 # Helper function to convert years to experience level
 def getExperienceLevelFromYears(years: int) -> str:
-    if years <= 2:
-        return '0-2 years'
+    if years == 0:
+        return 'fresher'
+    if years <= 3:
+        return '1-3 years'
     if years <= 5:
         return '3-5 years'
-    if years <= 8:
-        return '6-8 years'
-    if years <= 12:
-        return '9-12 years'
-    return '13-15 years'
+    return 'senior'
 
 
 @router.post("/questions/generate", response_model=DesignQuestionModel)

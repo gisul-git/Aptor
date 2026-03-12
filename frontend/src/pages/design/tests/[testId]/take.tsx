@@ -23,6 +23,8 @@ export default function DesignAssessmentTakePage() {
   const [questionPanelCollapsed, setQuestionPanelCollapsed] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [timerStarted, setTimerStarted] = useState(false);
+  const [questionTimers, setQuestionTimers] = useState<Record<string, number>>({});
+  const [currentQuestionStartTime, setCurrentQuestionStartTime] = useState<Date | null>(null);
 
   const API_URL = process.env.NEXT_PUBLIC_DESIGN_SERVICE_URL || 'http://localhost:3006/api/v1/design';
 
@@ -67,7 +69,20 @@ export default function DesignAssessmentTakePage() {
 
         // Set timer based on first question (per-question timer)
         if (allQuestions[0]?.time_limit_minutes) {
-          setTimeLeft(allQuestions[0].time_limit_minutes * 60);
+          const firstQuestionId = allQuestions[0]._id || allQuestions[0].id;
+          const timeLimit = allQuestions[0].time_limit_minutes * 60;
+          
+          // Initialize question timers for all questions
+          const initialTimers: Record<string, number> = {};
+          allQuestions.forEach(q => {
+            const qId = q._id || q.id;
+            initialTimers[qId] = q.time_limit_minutes ? q.time_limit_minutes * 60 : 0;
+          });
+          setQuestionTimers(initialTimers);
+          
+          // Set current question timer
+          setTimeLeft(timeLimit);
+          setCurrentQuestionStartTime(new Date());
         }
 
         // Create workspace for first question
@@ -162,21 +177,26 @@ export default function DesignAssessmentTakePage() {
     if (currentQuestionIndex < questions.length - 1) {
       const nextIndex = currentQuestionIndex + 1;
       const nextQuestion = questions[nextIndex];
+      const nextQuestionId = nextQuestion._id || nextQuestion.id;
       
       // Stop current timer
       setTimerStarted(false);
       
       // Create workspace for next question if it doesn't exist
-      if (!workspaces[nextQuestion._id || nextQuestion.id]) {
+      if (!workspaces[nextQuestionId]) {
         await createWorkspaceForQuestion(nextQuestion);
       }
       
+      // Move to next question
       setCurrentQuestionIndex(nextIndex);
       
-      // Reset timer for next question
+      // Reset timer for next question with fresh time
       if (nextQuestion?.time_limit_minutes) {
-        setTimeLeft(nextQuestion.time_limit_minutes * 60);
-        // Start timer after a brief delay to ensure state is updated
+        const freshTimeLimit = nextQuestion.time_limit_minutes * 60;
+        setTimeLeft(freshTimeLimit);
+        setCurrentQuestionStartTime(new Date());
+        
+        // Start timer after state updates
         setTimeout(() => {
           setTimerStarted(true);
         }, 100);
@@ -190,22 +210,55 @@ export default function DesignAssessmentTakePage() {
     alert('You cannot go back to previous questions.');
   };
 
-  // Timer countdown (per-question timer)
+  // Timer countdown (per-question timer with proper reset)
   useEffect(() => {
-    if (timerStarted && timeLeft > 0) {
-      const timer = setInterval(() => {
-        setTimeLeft((prev) => {
-          if (prev <= 1) {
-            // Auto-submit when time runs out
-            handleSubmitQuestion();
-            return 0;
-          }
-          return prev - 1;
-        });
+    let timer: NodeJS.Timeout | null = null;
+    
+    if (timerStarted && timeLeft > 0 && currentQuestionStartTime) {
+      timer = setInterval(() => {
+        const now = new Date();
+        const elapsed = Math.floor((now.getTime() - currentQuestionStartTime.getTime()) / 1000);
+        const currentQuestionId = currentQuestion?._id || currentQuestion?.id;
+        const originalTime = questionTimers[currentQuestionId] || 0;
+        const remaining = Math.max(0, originalTime - elapsed);
+        
+        setTimeLeft(remaining);
+        
+        if (remaining <= 0) {
+          // Auto-submit when time runs out
+          handleSubmitQuestion();
+          setTimerStarted(false);
+        }
       }, 1000);
-      return () => clearInterval(timer);
     }
-  }, [timerStarted, timeLeft]);
+    
+    return () => {
+      if (timer) {
+        clearInterval(timer);
+      }
+    };
+  }, [timerStarted, currentQuestionStartTime, currentQuestion, questionTimers]);
+
+  // Reset timer when question changes
+  useEffect(() => {
+    if (currentQuestion?.time_limit_minutes && currentQuestionIndex >= 0) {
+      const currentQuestionId = currentQuestion._id || currentQuestion.id;
+      
+      // Only reset if this is a new question (not already submitted)
+      if (!submittedQuestions.has(currentQuestionId)) {
+        // Stop any existing timer
+        setTimerStarted(false);
+        
+        // Reset time for the new question
+        const newTimeLimit = currentQuestion.time_limit_minutes * 60;
+        setTimeLeft(newTimeLimit);
+        setCurrentQuestionStartTime(new Date());
+        
+        // Start timer immediately
+        setTimerStarted(true);
+      }
+    }
+  }, [currentQuestionIndex, currentQuestion, submittedQuestions]);
 
   // Submit current question
   const handleSubmitQuestion = async () => {
@@ -251,8 +304,21 @@ export default function DesignAssessmentTakePage() {
         // Last question submitted - show success
         setShowSuccessModal(true);
       } else {
-        // Prompt to move to next question
-        alert('Question submitted successfully! Click "Next" to continue to the next question.');
+        // Auto-navigate to next question immediately
+        const nextIndex = currentQuestionIndex + 1;
+        const nextQuestion = questions[nextIndex];
+        const nextQuestionId = nextQuestion._id || nextQuestion.id;
+        
+        // Create workspace for next question if it doesn't exist
+        if (!workspaces[nextQuestionId]) {
+          createWorkspaceForQuestion(nextQuestion).then(() => {
+            // Move to next question after workspace is ready
+            setCurrentQuestionIndex(nextIndex);
+          });
+        } else {
+          // Move to next question immediately
+          setCurrentQuestionIndex(nextIndex);
+        }
       }
       
     } catch (error) {

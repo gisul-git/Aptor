@@ -15,10 +15,6 @@ class Settings(BaseSettings):
     DEBUG: bool = False
     PORT: int = 3006
     
-    # MongoDB URL override
-    MONGODB_URL: str = "mongodb+srv://gisul2102_db_user:5cNJ1DcNCxwaJDaU@cluster0.dwcfp0l.mongodb.net/?appName=Cluster0"
-    MONGODB_DB_NAME: str = "aptor_design"
-    
     # MongoDB
     MONGODB_URL: str = "mongodb://localhost:27017"
     MONGODB_DB_NAME: str = "aptor_design"
@@ -47,9 +43,9 @@ class Settings(BaseSettings):
     
     # Penpot Configuration
     PENPOT_URL: str = "http://localhost:9001"
-    PENPOT_API_URL: str = "http://localhost:6060"
+    PENPOT_API_URL: str = "http://aptor-penpot-backend-1:6060"
     PENPOT_ACCESS_TOKEN: str = ""
-    PENPOT_ADMIN_EMAIL: str = "admin@penpot.app"
+    PENPOT_ADMIN_EMAIL: str = "admin"
     PENPOT_ADMIN_PASSWORD: str = "12312312"
     
     # Redis

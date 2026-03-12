@@ -34,9 +34,6 @@ class PenpotRPCService:
         # Cache for auth session
         self._session_cookies = None
         
-        # Cache for project IDs to avoid repeated lookups
-        self._project_cache = {}
-        
         logger.info(f"Penpot RPC Service initialized")
         logger.info(f"API Base: {self.api_base}")
         logger.info(f"Public URI: {self.public_uri}")
@@ -121,77 +118,59 @@ class PenpotRPCService:
         Each candidate gets their own blank file for true isolation.
         """
         
-        try:
-            session_id = str(uuid.uuid4())
-            
-            # Authenticate with Penpot
-            cookies = await self.authenticate()
-            
-            # Use the team ID from authentication
-            template_team_id = "08f5f2c6-f89a-81a5-8007-9a55a628c47c"
-            
-            # Create a new project for this assessment (or use existing)
-            project_name = f"Design_Assessments_{assessment_id[:8]}"
-            
-            # Check cache first
-            if project_name in self._project_cache:
-                template_project_id = self._project_cache[project_name]
-                logger.info(f"Using cached project: {template_project_id}")
-            else:
-                template_project_id = await self._get_or_create_project(
-                    template_team_id,
-                    project_name,
-                    cookies
-                )
-                
-                if template_project_id:
-                    # Cache the project ID
-                    self._project_cache[project_name] = template_project_id
-                    logger.info(f"Cached project ID: {template_project_id}")
-            
-            if not template_project_id:
-                # Fallback: try to list projects and use the first one
-                logger.warning("Could not create project, will try to use existing project")
-                template_project_id = await self._get_first_project(template_team_id, cookies)
-            
-            if not template_project_id:
-                raise Exception("No project available to create file")
-            
-            logger.info(f"Creating isolated workspace for user {user_id}")
-            logger.info(f"Using project: {template_project_id}")
-            
-            # Create new file in the project
-            new_file_id = await self._create_file_with_transit(
-                template_project_id,
-                f"{question_title}_{user_id[:8]}_{session_id[:8]}",
-                cookies
-            )
-            
-            if new_file_id:
-                logger.info(f"✅ Created isolated file: {new_file_id}")
-                workspace_url = f"{self.public_uri}/#/workspace?team-id={template_team_id}&project-id={template_project_id}&file-id={new_file_id}"
-                
-                session = PenpotSessionModel(
-                    user_id=user_id,
-                    assessment_id=assessment_id,
-                    question_id=question_id,
-                    workspace_url=workspace_url,
-                    session_token=session_id,
-                    file_id=new_file_id,
-                    project_id=template_project_id
-                )
-                
-                logger.info(f"✅ Isolated workspace created successfully!")
-                logger.info(f"Workspace URL: {workspace_url}")
-                return session
-            else:
-                raise Exception("Failed to create file")
-            
-        except Exception as e:
-            logger.error(f"❌ Failed to create workspace: {e}")
-            import traceback
-            logger.error(f"Traceback: {traceback.format_exc()}")
-            raise
+        session_id = str(uuid.uuid4())
+        
+        # Authenticate with Penpot
+        cookies = await self.authenticate()
+        
+        # Use the team ID from authentication
+        template_team_id = "08f5f2c6-f89a-81a5-8007-9a55a628c47c"
+        
+        # Create a new project for this assessment (or use existing)
+        project_name = f"Design_Assessments_{assessment_id[:8]}"
+        template_project_id = await self._get_or_create_project(
+            template_team_id,
+            project_name,
+            cookies
+        )
+        
+        if not template_project_id:
+            # Try to list projects and use the first one
+            logger.warning("Could not create project, will try to use existing project")
+            template_project_id = await self._get_first_project(template_team_id, cookies)
+        
+        if not template_project_id:
+            raise Exception("No project available to create file")
+        
+        logger.info(f"Creating isolated workspace for user {user_id}")
+        logger.info(f"Using project: {template_project_id}")
+        
+        # Create new file in the project
+        new_file_id = await self._create_file_with_transit(
+            template_project_id,
+            f"{question_title}_{user_id[:8]}_{session_id[:8]}",
+            cookies
+        )
+        
+        if not new_file_id:
+            raise Exception("Failed to create file")
+        
+        logger.info(f"✅ Created isolated file: {new_file_id}")
+        workspace_url = f"{self.public_uri}/#/workspace?team-id={template_team_id}&project-id={template_project_id}&file-id={new_file_id}"
+        
+        session = PenpotSessionModel(
+            user_id=user_id,
+            assessment_id=assessment_id,
+            question_id=question_id,
+            workspace_url=workspace_url,
+            session_token=session_id,
+            file_id=new_file_id,
+            project_id=template_project_id
+        )
+        
+        logger.info(f"✅ Isolated workspace created successfully!")
+        logger.info(f"Workspace URL: {workspace_url}")
+        return session
     
     async def _create_file_with_transit(
         self,
@@ -211,7 +190,7 @@ class PenpotRPCService:
             New file ID or None if failed
         """
         try:
-            async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
+            async with httpx.AsyncClient(timeout=60.0, follow_redirects=True) as client:
                 create_url = f"{self.api_base}/api/rpc/command/create-file"
                 
                 # Encode request using Transit
