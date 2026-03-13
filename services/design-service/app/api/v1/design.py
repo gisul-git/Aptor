@@ -171,7 +171,151 @@ async def generate_question(request: GenerateQuestionRequest):
         except Exception as e:
             logger.warning(f"Could not save question to database: {e}")
         
-        return question
+        # 🚨 APPLY FILTERING TO GENERATED QUESTION RESPONSE 🚨
+        q_dict = question.model_dump()
+        
+        # 🚨 DEBUG: Check if additional_requirements is in the model_dump output
+        logger.info(f"🔍 DEBUG: model_dump() keys: {list(q_dict.keys())}")
+        if "additional_requirements" in q_dict:
+            logger.warning(f"🚨 DEBUG: additional_requirements found in model_dump(): {q_dict['additional_requirements']}")
+        else:
+            logger.info(f"✅ DEBUG: additional_requirements NOT found in model_dump()")
+        
+        # 🚨 INTEGRATE OPEN REQUIREMENTS DIRECTLY INTO EXISTING SECTIONS 🚨
+        if request.open_requirements and request.open_requirements.strip():
+            additional_req = request.open_requirements.strip()
+            logger.info(f"🔄 INTEGRATING OPEN REQUIREMENTS: {additional_req}")
+            
+            # Determine where to integrate based on content
+            additional_req_lower = additional_req.lower()
+            
+            if any(word in additional_req_lower for word in ["company", "working", "google", "sigmoid", "gisul", "organization", "business"]):
+                # Company/context → integrate into description with professional language
+                if "google" in additional_req_lower:
+                    q_dict["description"] += " The design should reflect Google's clean, user-focused design principles and accessibility standards."
+                elif "sigmoid" in additional_req_lower:
+                    q_dict["description"] += " The design should reflect a professional analytics-focused environment similar to products built at Sigmoid."
+                elif "gisul" in additional_req_lower:
+                    q_dict["description"] += " The design should reflect a professional, modern interface approach suitable for enterprise-level applications."
+                else:
+                    # Rewrite raw input professionally
+                    professional_context = additional_req.replace("Think you are working in", "The design should reflect the standards and principles of")
+                    q_dict["description"] += f" {professional_context}."
+                logger.info(f"✅ INTEGRATED INTO DESCRIPTION: {additional_req}")
+                
+            elif any(word in additional_req_lower for word in ["color", "pastel", "theme", "contrast", "font", "typography", "accessibility"]):
+                # Visual/design rules → integrate into constraints
+                if isinstance(q_dict.get("constraints"), list):
+                    if "pastel" in additional_req_lower:
+                        q_dict["constraints"].append("Color palette: Pastel colors only (soft, muted tones with low saturation)")
+                    elif "color" in additional_req_lower:
+                        q_dict["constraints"].append(f"Color requirements: {additional_req}")
+                    else:
+                        q_dict["constraints"].append(additional_req)
+                    logger.info(f"✅ INTEGRATED INTO CONSTRAINTS: {additional_req}")
+                    
+            else:
+                # Default: add to constraints with professional language
+                if isinstance(q_dict.get("constraints"), list):
+                    q_dict["constraints"].append(additional_req)
+                    logger.info(f"✅ INTEGRATED INTO CONSTRAINTS (DEFAULT): {additional_req}")
+        
+        # 🚨 COMPREHENSIVE REMOVAL OF FORBIDDEN FIELDS FROM RESPONSE 🚨
+        logger.info(f"🔍 DEBUG GENERATE: Processing question with keys: {list(q_dict.keys())}")
+        
+        forbidden_fields = [
+            "additional_requirements",
+            "additional_design_requirements", 
+            "special_requirements",
+            "user_requirements",
+            "extra_requirements",
+            "special_instructions",
+            "user_instructions",
+            "additional_instructions"
+        ]
+        
+        # Remove exact matches
+        for field in forbidden_fields:
+            if field in q_dict:
+                logger.info(f"🚨 FILTERED OUT FORBIDDEN FIELD: '{field}' from generate question response")
+                logger.info(f"🚨 Field value was: {q_dict[field]}")
+                del q_dict[field]
+            else:
+                logger.info(f"✅ Field '{field}' not found in generate question")
+        
+        # Remove fields matching forbidden patterns
+        fields_to_remove = []
+        for field in q_dict.keys():
+            field_lower = field.lower()
+            forbidden_patterns = [
+                ("additional" in field_lower and "requirement" in field_lower),
+                ("special" in field_lower and "requirement" in field_lower),
+                ("user" in field_lower and "requirement" in field_lower),
+                ("extra" in field_lower and "requirement" in field_lower),
+                ("additional" in field_lower and "instruction" in field_lower),
+                ("special" in field_lower and "instruction" in field_lower)
+            ]
+            
+            if any(forbidden_patterns):
+                fields_to_remove.append(field)
+        
+        for field in fields_to_remove:
+            logger.info(f"🚨 FILTERED OUT FORBIDDEN FIELD BY PATTERN: '{field}' from generate question response")
+            logger.info(f"🚨 Field value was: {q_dict[field]}")
+            del q_dict[field]
+        
+        logger.info(f"🔍 DEBUG GENERATE: After filtering, keys are: {list(q_dict.keys())}")
+        
+        # Add id field for frontend compatibility
+        if "_id" in q_dict:
+            q_dict["id"] = q_dict["_id"]
+        
+        # 🚨 FINAL AGGRESSIVE FILTER - REMOVE FORBIDDEN FIELDS NO MATTER WHAT 🚨
+        forbidden_fields_final = [
+            "additional_requirements",
+            "additional_design_requirements", 
+            "special_requirements",
+            "user_requirements",
+            "extra_requirements",
+            "special_instructions",
+            "user_instructions",
+            "additional_instructions"
+        ]
+        
+        for field in forbidden_fields_final:
+            if field in q_dict:
+                logger.warning(f"🚨 FINAL FILTER: Removing forbidden field '{field}' from API response")
+                del q_dict[field]
+        
+        # Also remove any field containing forbidden patterns
+        fields_to_remove_final = []
+        for field in list(q_dict.keys()):
+            field_lower = field.lower()
+            if ("additional" in field_lower and ("requirement" in field_lower or "design" in field_lower)):
+                fields_to_remove_final.append(field)
+        
+        for field in fields_to_remove_final:
+            logger.warning(f"🚨 FINAL FILTER: Removing forbidden field by pattern '{field}' from API response")
+            del q_dict[field]
+        
+        # 🚨 ABSOLUTE FINAL CHECK - REMOVE ANY FIELD WITH "additional" AND "requirement" 🚨
+        final_keys_to_remove = []
+        for key in list(q_dict.keys()):
+            if "additional" in key.lower() and "requirement" in key.lower():
+                final_keys_to_remove.append(key)
+        
+        for key in final_keys_to_remove:
+            logger.warning(f"🚨 ABSOLUTE FINAL FILTER: Removing '{key}' from API response")
+            del q_dict[key]
+        
+        # 🚨 REMOVE NULL/EMPTY ADDITIONAL_REQUIREMENTS FIELD 🚨
+        if "additional_requirements" in q_dict:
+            logger.info(f"🚨 REMOVING additional_requirements field (value: {q_dict['additional_requirements']}) from API response")
+            del q_dict["additional_requirements"]
+        
+        logger.info(f"🔍 FINAL API RESPONSE KEYS: {list(q_dict.keys())}")
+        
+        return q_dict
         
     except Exception as e:
         logger.error(f"Question generation failed: {e}")
@@ -202,10 +346,93 @@ async def get_questions(
         # Transform to dict and add id field for frontend compatibility
         result = []
         for q in questions:
-            try:
-                q_dict = q.dict()
-            except:
-                q_dict = q.model_dump()
+            q_dict = q.model_dump()
+            
+            # 🚨 COMPREHENSIVE REMOVAL OF FORBIDDEN FIELDS FROM RESPONSE 🚨
+            logger.info(f"🔍 DEBUG: Processing question with keys: {list(q_dict.keys())}")
+            
+            # 🚨 POST-PROCESS INTEGRATION OF ADDITIONAL REQUIREMENTS 🚨
+            if "additional_requirements" in q_dict and q_dict["additional_requirements"]:
+                additional_req = q_dict["additional_requirements"].strip()
+                logger.info(f"🔄 INTEGRATING ADDITIONAL REQUIREMENT IN LIST: {additional_req}")
+                
+                # Determine where to integrate based on content
+                additional_req_lower = additional_req.lower()
+                
+                if any(word in additional_req_lower for word in ["color", "pastel", "theme", "contrast", "font", "typography", "accessibility"]):
+                    # Visual/design rules → integrate into constraints
+                    if isinstance(q_dict.get("constraints"), list):
+                        if "pastel" in additional_req_lower:
+                            q_dict["constraints"].append("Color palette must use pastel tones exclusively")
+                        elif "color" in additional_req_lower:
+                            q_dict["constraints"].append(f"Color requirements: {additional_req}")
+                        else:
+                            q_dict["constraints"].append(additional_req)
+                        logger.info(f"✅ INTEGRATED INTO CONSTRAINTS: {additional_req}")
+                    
+                elif any(word in additional_req_lower for word in ["company", "working", "google", "sigmoid", "organization", "business"]):
+                    # Company/context → integrate into description
+                    if q_dict.get("description"):
+                        if "google" in additional_req_lower:
+                            q_dict["description"] += " The design should reflect Google's clean, user-focused design principles and accessibility standards."
+                        elif "sigmoid" in additional_req_lower:
+                            q_dict["description"] += " The design should reflect a professional analytics-focused environment similar to products built at Sigmoid."
+                        else:
+                            q_dict["description"] += f" {additional_req}"
+                        logger.info(f"✅ INTEGRATED INTO DESCRIPTION: {additional_req}")
+                            
+                else:
+                    # Default: add to constraints
+                    if isinstance(q_dict.get("constraints"), list):
+                        q_dict["constraints"].append(additional_req)
+                        logger.info(f"✅ INTEGRATED INTO CONSTRAINTS (DEFAULT): {additional_req}")
+                
+                # Remove the forbidden field
+                del q_dict["additional_requirements"]
+                logger.info(f"🚨 REMOVED additional_requirements field after integration")
+            
+            forbidden_fields = [
+                "additional_requirements",
+                "additional_design_requirements", 
+                "special_requirements",
+                "user_requirements",
+                "extra_requirements",
+                "special_instructions",
+                "user_instructions",
+                "additional_instructions"
+            ]
+            
+            # Remove exact matches
+            for field in forbidden_fields:
+                if field in q_dict:
+                    logger.info(f"🚨 FILTERED OUT FORBIDDEN FIELD: '{field}' from question response")
+                    logger.info(f"🚨 Field value was: {q_dict[field]}")
+                    del q_dict[field]
+                else:
+                    logger.info(f"✅ Field '{field}' not found in question")
+            
+            # Remove fields matching forbidden patterns
+            fields_to_remove = []
+            for field in q_dict.keys():
+                field_lower = field.lower()
+                forbidden_patterns = [
+                    ("additional" in field_lower and "requirement" in field_lower),
+                    ("special" in field_lower and "requirement" in field_lower),
+                    ("user" in field_lower and "requirement" in field_lower),
+                    ("extra" in field_lower and "requirement" in field_lower),
+                    ("additional" in field_lower and "instruction" in field_lower),
+                    ("special" in field_lower and "instruction" in field_lower)
+                ]
+                
+                if any(forbidden_patterns):
+                    fields_to_remove.append(field)
+            
+            for field in fields_to_remove:
+                logger.info(f"🚨 FILTERED OUT FORBIDDEN FIELD BY PATTERN: '{field}' from question response")
+                logger.info(f"🚨 Field value was: {q_dict[field]}")
+                del q_dict[field]
+            
+            logger.info(f"🔍 DEBUG: After filtering, keys are: {list(q_dict.keys())}")
             
             logger.info(f"Question dict keys: {q_dict.keys()}")
             if "_id" in q_dict:
@@ -232,7 +459,94 @@ async def get_question(question_id: str):
             raise HTTPException(status_code=404, detail="Question not found")
         
         # Transform to dict and add id field for frontend compatibility
-        q_dict = question.dict() if hasattr(question, 'dict') else question.model_dump()
+        q_dict = question.model_dump()
+        
+        # 🚨 COMPREHENSIVE REMOVAL OF FORBIDDEN FIELDS FROM RESPONSE 🚨
+        logger.info(f"🔍 DEBUG SINGLE: Processing question with keys: {list(q_dict.keys())}")
+        
+        # 🚨 POST-PROCESS INTEGRATION OF ADDITIONAL REQUIREMENTS 🚨
+        if "additional_requirements" in q_dict and q_dict["additional_requirements"]:
+            additional_req = q_dict["additional_requirements"].strip()
+            logger.info(f"🔄 INTEGRATING ADDITIONAL REQUIREMENT IN SINGLE: {additional_req}")
+            
+            # Determine where to integrate based on content
+            additional_req_lower = additional_req.lower()
+            
+            if any(word in additional_req_lower for word in ["color", "pastel", "theme", "contrast", "font", "typography", "accessibility"]):
+                # Visual/design rules → integrate into constraints
+                if isinstance(q_dict.get("constraints"), list):
+                    if "pastel" in additional_req_lower:
+                        q_dict["constraints"].append("Color palette must use pastel tones exclusively")
+                    elif "color" in additional_req_lower:
+                        q_dict["constraints"].append(f"Color requirements: {additional_req}")
+                    else:
+                        q_dict["constraints"].append(additional_req)
+                    logger.info(f"✅ INTEGRATED INTO CONSTRAINTS: {additional_req}")
+                
+            elif any(word in additional_req_lower for word in ["company", "working", "google", "sigmoid", "organization", "business"]):
+                # Company/context → integrate into description
+                if q_dict.get("description"):
+                    if "google" in additional_req_lower:
+                        q_dict["description"] += " The design should reflect Google's clean, user-focused design principles and accessibility standards."
+                    elif "sigmoid" in additional_req_lower:
+                        q_dict["description"] += " The design should reflect a professional analytics-focused environment similar to products built at Sigmoid."
+                    else:
+                        q_dict["description"] += f" {additional_req}"
+                    logger.info(f"✅ INTEGRATED INTO DESCRIPTION: {additional_req}")
+                        
+            else:
+                # Default: add to constraints
+                if isinstance(q_dict.get("constraints"), list):
+                    q_dict["constraints"].append(additional_req)
+                    logger.info(f"✅ INTEGRATED INTO CONSTRAINTS (DEFAULT): {additional_req}")
+            
+            # Remove the forbidden field
+            del q_dict["additional_requirements"]
+            logger.info(f"🚨 REMOVED additional_requirements field after integration")
+        
+        forbidden_fields = [
+            "additional_requirements",
+            "additional_design_requirements", 
+            "special_requirements",
+            "user_requirements",
+            "extra_requirements",
+            "special_instructions",
+            "user_instructions",
+            "additional_instructions"
+        ]
+        
+        # Remove exact matches
+        for field in forbidden_fields:
+            if field in q_dict:
+                logger.info(f"🚨 FILTERED OUT FORBIDDEN FIELD: '{field}' from single question response")
+                logger.info(f"🚨 Field value was: {q_dict[field]}")
+                del q_dict[field]
+            else:
+                logger.info(f"✅ Field '{field}' not found in single question")
+        
+        # Remove fields matching forbidden patterns
+        fields_to_remove = []
+        for field in q_dict.keys():
+            field_lower = field.lower()
+            forbidden_patterns = [
+                ("additional" in field_lower and "requirement" in field_lower),
+                ("special" in field_lower and "requirement" in field_lower),
+                ("user" in field_lower and "requirement" in field_lower),
+                ("extra" in field_lower and "requirement" in field_lower),
+                ("additional" in field_lower and "instruction" in field_lower),
+                ("special" in field_lower and "instruction" in field_lower)
+            ]
+            
+            if any(forbidden_patterns):
+                fields_to_remove.append(field)
+        
+        for field in fields_to_remove:
+            logger.info(f"🚨 FILTERED OUT FORBIDDEN FIELD BY PATTERN: '{field}' from single question response")
+            logger.info(f"🚨 Field value was: {q_dict[field]}")
+            del q_dict[field]
+        
+        logger.info(f"🔍 DEBUG SINGLE: After filtering, keys are: {list(q_dict.keys())}")
+        
         if "_id" in q_dict:
             q_dict["id"] = q_dict["_id"]
         
@@ -1960,3 +2274,28 @@ async def send_invitations_to_all(test_id: str):
 
 
 
+
+@router.post("/admin/cleanup-additional-requirements")
+async def cleanup_additional_requirements():
+    """🚨 ADMIN: Remove additional_requirements field from all questions"""
+    try:
+        if design_repository.db is None:
+            await design_repository.initialize()
+        
+        # Update all questions to remove the additional_requirements field
+        result = await design_repository.db.design_questions.update_many(
+            {},  # Match all documents
+            {"$unset": {"additional_requirements": ""}}  # Remove the field
+        )
+        
+        logger.info(f"🚨 CLEANUP: Removed additional_requirements from {result.modified_count} questions")
+        
+        return {
+            "success": True,
+            "message": f"Removed additional_requirements field from {result.modified_count} questions",
+            "modified_count": result.modified_count
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to cleanup additional_requirements: {e}")
+        raise HTTPException(status_code=500, detail=str(e))

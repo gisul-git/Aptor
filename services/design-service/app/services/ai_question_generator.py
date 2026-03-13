@@ -483,39 +483,92 @@ Generate 10 DIVERSE topics for {role_str} ({difficulty_str}, {experience_level})
         experience_str = experience_level if experience_level else "3-5 years"
         time_limit = scaling_config["time_minutes"]
         
-        # Build additional requirements section if provided
+        # Build additional requirements integration if provided
         additional_requirements_section = ""
         if open_requirements and open_requirements.strip():
             additional_requirements_section = f"""
 
 --------------------------------------------------
 
-ADDITIONAL REQUIREMENTS (CRITICAL - HIGHEST PRIORITY)
+🚨🚨🚨 CRITICAL INTEGRATION INSTRUCTION 🚨🚨🚨
 
-The user has provided specific additional requirements that MUST be incorporated into the design challenge:
+User provided additional instruction: "{open_requirements.strip()}"
 
-{open_requirements.strip()}
+⛔ ABSOLUTE PROHIBITION - THESE SECTIONS ARE 100% FORBIDDEN ⛔
+❌ "Additional Design Requirements" - FORBIDDEN - WILL CAUSE REJECTION
+❌ "Additional Requirements" - FORBIDDEN - WILL CAUSE REJECTION
+❌ "Special Requirements" - FORBIDDEN - WILL CAUSE REJECTION
+❌ "User Requirements" - FORBIDDEN - WILL CAUSE REJECTION
+❌ "Special Instructions" - FORBIDDEN - WILL CAUSE REJECTION
+❌ ANY section containing "Additional" + "Requirements" - FORBIDDEN - WILL CAUSE REJECTION
 
-⚠️ MANDATORY ACTIONS:
-• These requirements are MANDATORY and MUST be integrated into the appropriate sections
-• If the requirement is about colors, spacing, typography, or design style → ADD IT AS A CONSTRAINT (do NOT create separate "Additional Design Requirements" section)
-• If the requirement is about features or functionality → ADD IT TO Task Requirements or Description
-• If the requirement is about deliverables → ADD IT TO Deliverables section
-• Do NOT create a duplicate "Additional Design Requirements" section if the requirement is already added to Constraints
-• Do NOT ignore or skip these requirements under any circumstances
-• If they conflict with standard rules, prioritize these user requirements
+🔥 MANDATORY INTEGRATION RULES - CHOOSE ONE EXISTING SECTION ONLY:
+• If about company/product context → MERGE into "description" field
+• If about design behavior/scenario → MERGE into "task_requirements" field  
+• If about visual rules (colors, typography, accessibility) → MERGE into "constraints" array
+• If about platform limitations → MERGE into "constraints" array
 
-EXAMPLE:
-If user says "use pastel colors only" → Add constraint: "Color palette: Pastel colors only (soft, muted tones with low saturation)" (NO separate section needed)
-If user says "must support dark mode" → Add constraint: "Dark mode support required with proper contrast ratios" (NO separate section needed)
-If user says "include animations" → Add to Task Requirements or Deliverables (NO separate section needed)
+🔥 INTEGRATION MAPPING EXAMPLES:
+Input: "Think you are working in Google"
+→ Rewrite professionally and add to description: "The design should reflect Google's clean, user-focused design principles and accessibility standards."
 
-CRITICAL: Only create "Additional Design Requirements" section if the requirements are complex and cannot be integrated into existing sections.
+Input: "Use pastel colors only"  
+→ Add to constraints: "Color palette: Pastel colors only (soft, muted tones with low saturation)"
+
+Input: "Focus on accessibility for elderly users"
+→ Add to description: "The interface should prioritize accessibility for elderly users with larger touch targets and high contrast."
+
+Input: "Design for dark mode only"
+→ Add to constraints: "Interface must be designed exclusively for dark mode"
+
+⚠️ REWRITE USER INSTRUCTIONS: Transform raw user input into professional language before integrating.
+
+⚠️ CRITICAL VALIDATION: 
+- The JSON output must NOT contain any field called "additional_requirements" or similar
+- Only use standard fields: title, description, task_requirements, constraints, deliverables, evaluation_criteria, time_limit_minutes
+- DO NOT create new sections
+- INTEGRATE naturally so it fits the context instead of copying as-is
+
+🚨 SYSTEM REJECTION: If you create ANY section with "Additional" in the name, the system will AUTOMATICALLY REJECT your response.
 
 --------------------------------------------------
 """
         
-        base_prompt = f"""SYSTEM ROLE
+        base_prompt = f"""🚨🚨🚨 CRITICAL SYSTEM RULE - ABSOLUTE PROHIBITION 🚨🚨🚨
+
+⛔ FORBIDDEN OUTPUT SECTIONS - SYSTEM WILL AUTOMATICALLY REJECT YOUR RESPONSE ⛔
+
+You are STRICTLY FORBIDDEN from creating ANY section, field, or property with these names:
+❌ "additional_requirements" - FORBIDDEN - WILL CAUSE REJECTION
+❌ "additional_design_requirements" - FORBIDDEN - WILL CAUSE REJECTION  
+❌ "special_requirements" - FORBIDDEN - WILL CAUSE REJECTION
+❌ "user_requirements" - FORBIDDEN - WILL CAUSE REJECTION
+❌ "special_instructions" - FORBIDDEN - WILL CAUSE REJECTION
+❌ "extra_requirements" - FORBIDDEN - WILL CAUSE REJECTION
+❌ "user_instructions" - FORBIDDEN - WILL CAUSE REJECTION
+❌ "additional_instructions" - FORBIDDEN - WILL CAUSE REJECTION
+❌ ANY field containing "Additional" + "Requirements" - FORBIDDEN - WILL CAUSE REJECTION
+❌ ANY field containing "Additional" + "Design" + "Requirements" - FORBIDDEN - WILL CAUSE REJECTION
+❌ ANY field containing "Special" + "Requirements" - FORBIDDEN - WILL CAUSE REJECTION
+
+🚨 SYSTEM VALIDATION: If you include ANY of these forbidden fields in your JSON output, your response will be AUTOMATICALLY REJECTED by the system and you will need to regenerate. The system has ZERO TOLERANCE for these fields.
+
+🚨 CRITICAL WARNING: Do NOT create sections titled "Additional Design Requirements" or any variation. This is the #1 cause of response rejection.
+
+✅ ALLOWED JSON FIELDS ONLY (COMPLETE LIST):
+✅ title, description, task_requirements, constraints, deliverables, evaluation_criteria, time_limit_minutes
+✅ Plus role-specific fields: product_context, design_challenges, edge_cases, design_decisions
+
+🔥 INTEGRATION RULE FOR USER INSTRUCTIONS:
+If user provides additional instructions, you MUST integrate them naturally into existing allowed fields above. 
+DO NOT create new fields. REWRITE the instruction professionally before integrating.
+Example: "Think you are working in Google" → Add to description: "The design should reflect Google's clean, user-focused design principles."
+
+🚨 FINAL VALIDATION: Your JSON output must ONLY contain the allowed fields listed above. Any other fields will cause automatic system rejection.
+
+--------------------------------------------------
+
+SYSTEM ROLE
 
 You are an AI Design Assessment Generator used in a professional hiring platform.
 
@@ -566,7 +619,6 @@ Every generated design challenge MUST include the following sections in this exa
 2. Task Requirements ⚠️ MANDATORY
 3. Design Challenges (trade-offs and tensions)
 4. Constraints
-5. Additional Design Requirements (if user provided)
 6. Deliverables
 7. Evaluation Criteria
 
@@ -577,7 +629,6 @@ Every generated design challenge MUST include the following sections in this exa
 4. Design Challenges (trade-offs and tensions)
 5. Edge Cases to Consider
 6. Constraints
-7. Additional Design Requirements (if user provided)
 8. Deliverables
 9. Design Decisions (reasoning requirements)
 10. Evaluation Criteria
@@ -872,39 +923,6 @@ Provide a short explanation for the following:
 • How the interface scales for organizations with 1000+ users
 • How your design reduces cognitive load for administrators
 ```
-
-**5. ADDITIONAL DESIGN REQUIREMENTS SECTION (IF USER PROVIDED)**
-
-If the user provided additional requirements in the "open_requirements" field, you MUST include them as a separate section called "Additional Design Requirements".
-
-⚠️ CRITICAL RULES:
-• Do NOT skip user-provided requirements under ANY circumstances
-• They are MANDATORY and HIGHEST PRIORITY
-• Copy them EXACTLY as provided - do NOT rewrite or paraphrase
-• This section MUST appear in the output if requirements were provided
-• Place this section AFTER Constraints and BEFORE Deliverables
-
-Format:
-```
-Additional Design Requirements
-
-• [User requirement 1 - exactly as provided]
-• [User requirement 2 - exactly as provided]
-• [User requirement 3 - exactly as provided]
-```
-
-Example:
-```
-Additional Design Requirements
-
-• Use pastel color palette only
-• Ensure dark mode compatibility
-• Prioritize accessibility for visually impaired users
-```
-
-These requirements should also influence the constraints section (e.g., if user says "use pastel colors", add a color constraint).
-
-⚠️ VALIDATION: If open_requirements field is not empty, the output JSON MUST include "additional_requirements" field with the exact text.
 
 --------------------------------------------------
 
@@ -1532,7 +1550,7 @@ Required 6 + Choose 2 from:
 • Icon size: 20px or 24px
 • Border radius: 8px or 16px
 • Component spacing: 8px, 16px, or 24px padding
-• [ADD USER-PROVIDED ADDITIONAL REQUIREMENTS HERE IF ANY]
+• [INTEGRATE USER REQUIREMENTS HERE - DO NOT CREATE SEPARATE SECTION]
 
 INTERMEDIATE (10 constraints total):
 Required 6 + Choose 4 from:
@@ -1546,7 +1564,7 @@ Required 6 + Choose 4 from:
 • At least one screen should include a system state (loading, empty state, or error state)
 • Primary call-to-action buttons must be visually prominent and easily identifiable
 • Shadow system: 3 elevation levels (subtle, medium, prominent)
-• [ADD USER-PROVIDED ADDITIONAL REQUIREMENTS HERE IF ANY]
+• [INTEGRATE USER REQUIREMENTS HERE - DO NOT CREATE SEPARATE SECTION]
 
 ADVANCED (12 constraints total):
 Required 6 + Choose 6 from:
@@ -1563,7 +1581,7 @@ Required 6 + Choose 6 from:
 • Animation timing: 200-300ms transitions for micro-interactions
 • Accessibility: WCAG AA compliance for all interactive elements
 • Loading states: skeleton screens or spinners for async operations
-• [ADD USER-PROVIDED ADDITIONAL REQUIREMENTS HERE IF ANY]
+• [INTEGRATE USER REQUIREMENTS HERE - DO NOT CREATE SEPARATE SECTION]
 
 ADVANCED VISUAL DESIGNER (SENIOR 5+ YEARS) - Additional Cross-Platform Constraints:
 • Cross-platform consistency: Visual elements must adapt appropriately for print (300 DPI) and digital (72 DPI) outputs
@@ -1888,6 +1906,30 @@ For Advanced questions, if the generated description is shorter than 12 sentence
 
 --------------------------------------------------
 
+🚨🚨🚨 CRITICAL SECTION PROHIBITION RULES 🚨🚨🚨
+
+⛔ FORBIDDEN SECTIONS - DO NOT CREATE UNDER ANY CIRCUMSTANCES ⛔
+• "Additional Requirements" - FORBIDDEN - WILL CAUSE REJECTION
+• "Additional Design Requirements" - FORBIDDEN - WILL CAUSE REJECTION
+• "Special Requirements" - FORBIDDEN - WILL CAUSE REJECTION
+• "Special Instructions" - FORBIDDEN - WILL CAUSE REJECTION
+• "User Requirements" - FORBIDDEN - WILL CAUSE REJECTION
+• Any section containing the word "Additional" - FORBIDDEN - WILL CAUSE REJECTION
+
+✅ ALLOWED SECTIONS ONLY:
+• title
+• description  
+• task_requirements
+• constraints
+• deliverables
+• evaluation_criteria
+• time_limit_minutes
+• (plus role-specific sections like design_challenges, edge_cases, design_decisions)
+
+⚠️ If user provided additional requirements, they MUST be integrated into existing sections above. DO NOT create new sections.
+
+🚨 FINAL WARNING: Creating any section with "Additional" in the name will cause automatic system rejection.
+
 OUTPUT FORMAT
 
 Return ONLY JSON in this exact structure:
@@ -1916,7 +1958,6 @@ Return ONLY JSON in this exact structure:
     "task_requirements": "Design the following screens:\n\n1️⃣ [Screen name]\n[Description]\n\n2️⃣ [Screen name]\n[Description]\n\n3️⃣ [Screen name]\n[Description]",
     "design_challenges": "The solution should address the following challenges:\n\n• [Challenge 1]\n• [Challenge 2]\n• [Challenge 3]",
     "constraints": ["[Constraint 1]", "[Constraint 2]", ...],
-    "additional_requirements": "[User-provided requirements if any]",
     "deliverables": ["[Deliverable 1]", "[Deliverable 2]", ...],
     "evaluation_criteria": [
         {{
@@ -1937,7 +1978,6 @@ Return ONLY JSON in this exact structure:
     "design_challenges": "The solution should address the following challenges:\n\n• [Challenge 1 - trade-off]\n• [Challenge 2 - tension]\n• [Challenge 3 - complexity]\n• [Challenge 4 - scalability]",
     "edge_cases": "The design should handle at least two of the following situations:\n\n• [Edge case 1]\n• [Edge case 2]\n• [Edge case 3]\n• [Edge case 4]",
     "constraints": ["[Constraint 1]", "[Constraint 2]", ...],
-    "additional_requirements": "[User-provided requirements if any]",
     "deliverables": ["[Deliverable 1]", "[Deliverable 2]", "Design decision documentation", ...],
     "design_decisions": "Provide a short explanation for the following:\n\n• [Decision point 1]\n• [Decision point 2]\n• [Decision point 3]",
     "evaluation_criteria": [
@@ -1954,13 +1994,17 @@ Return ONLY JSON in this exact structure:
 • For BEGINNER: Use simple structure (no design_challenges, no product_context)
 • For INTERMEDIATE: Add design_challenges section
 • For ADVANCED + SENIOR: Add product_context, design_challenges, edge_cases, and design_decisions
-• If user provided additional requirements (open_requirements not empty), you MUST include them in "additional_requirements" field with EXACT text
+• If user provided additional requirements (open_requirements not empty), you MUST integrate them naturally into existing sections - DO NOT create "additional_requirements" field
 • DO NOT include warning text like "MANDATORY FIELD" in the actual output - that's for your reference only
 
-⚠️ CRITICAL VALIDATION RULES:
+⚠️⚠️⚠️ CRITICAL VALIDATION RULES ⚠️⚠️⚠️
 1. The "task_requirements" field MUST contain a numbered list of screens/components
-2. If open_requirements was provided, "additional_requirements" field MUST be present and contain the exact text
-3. Additional requirements should also be reflected in the constraints list
+2. If open_requirements was provided, they MUST be integrated naturally into the relevant sections (constraints, task_requirements, description, or deliverables)
+3. 🚨 FORBIDDEN FIELD CHECK: Your JSON must NOT contain any field with "additional" in the name
+4. 🚨 SECTION NAME CHECK: Your JSON must NOT contain "Additional Design Requirements" or any variation
+5. User-provided requirements should be seamlessly woven into the appropriate sections without creating separate "additional_requirements" field
+6. DO NOT create any field with "additional" in the name
+7. 🚨 FINAL PROHIBITION: If your JSON contains "Additional Design Requirements" or "additional_requirements", it will be REJECTED
 ⚠️ DO NOT leave "task_requirements" empty or null.
 ⚠️ DO NOT skip the "task_requirements" field.
 ⚠️ DO NOT include warning text like "MANDATORY FIELD" in the actual output - that's for your reference only.
@@ -2080,7 +2124,19 @@ Evaluation criteria focus: {", ".join(scaling_config["evaluation_focus"])}
 
 --------------------------------------------------
 
-Generate ONE design challenge following ALL rules above. Return ONLY the JSON object."""
+🚨🚨🚨 FINAL PROHIBITION CHECK BEFORE GENERATING 🚨🚨🚨
+
+Before you generate the JSON, remember:
+❌ DO NOT create "Additional Design Requirements" section
+❌ DO NOT create "additional_requirements" field  
+❌ DO NOT create ANY field with "Additional" in the name
+❌ If user provided requirements, INTEGRATE them into existing sections only
+
+✅ ALLOWED SECTIONS: title, description, task_requirements, constraints, deliverables, evaluation_criteria, time_limit_minutes
+
+Generate ONE design challenge following ALL rules above. Return ONLY the JSON object.
+
+🚨 SYSTEM WILL REJECT: Any JSON containing "Additional Design Requirements" or "additional_requirements" field."""
         
         return base_prompt.strip()
     
@@ -2286,6 +2342,176 @@ Generate ONE design challenge following ALL rules above. Return ONLY the JSON ob
             
             data = json.loads(response)
             
+            # 🚨 DEBUG: Log the raw AI response to see what fields it contains
+            logger.info(f"🔍 RAW AI RESPONSE KEYS: {list(data.keys())}")
+            if "additional_requirements" in data:
+                logger.warning(f"🚨 AI GENERATED FORBIDDEN FIELD: additional_requirements = {data['additional_requirements']}")
+            else:
+                logger.info(f"✅ No additional_requirements field found in AI response")
+            
+            # 🚨 IMMEDIATE REMOVAL OF FORBIDDEN FIELDS FROM AI RESPONSE 🚨
+            forbidden_ai_fields = [
+                "additional_requirements",
+                "additional_design_requirements", 
+                "special_requirements",
+                "user_requirements",
+                "extra_requirements",
+                "special_instructions",
+                "user_instructions",
+                "additional_instructions"
+            ]
+            
+            for field in forbidden_ai_fields:
+                if field in data:
+                    logger.warning(f"🚨 REMOVING FORBIDDEN FIELD FROM AI RESPONSE: '{field}' = {data[field]}")
+                    del data[field]
+            
+            # Remove any field containing forbidden patterns
+            ai_fields_to_remove = []
+            for field in list(data.keys()):
+                field_lower = field.lower()
+                if ("additional" in field_lower and ("requirement" in field_lower or "design" in field_lower)):
+                    ai_fields_to_remove.append(field)
+            
+            for field in ai_fields_to_remove:
+                logger.warning(f"🚨 REMOVING FORBIDDEN FIELD BY PATTERN FROM AI RESPONSE: '{field}' = {data[field]}")
+                del data[field]
+            
+            logger.info(f"🔍 AI RESPONSE KEYS AFTER FILTERING: {list(data.keys())}")
+            
+            # 🚨 HANDLE ADDITIONAL REQUIREMENTS INTEGRATION BEFORE REMOVAL 🚨
+            if "additional_requirements" in data and data["additional_requirements"]:
+                additional_req = data["additional_requirements"].strip()
+                logger.info(f"🔄 INTEGRATING ADDITIONAL REQUIREMENT: {additional_req}")
+                
+                # Determine where to integrate based on content
+                additional_req_lower = additional_req.lower()
+                
+                if any(word in additional_req_lower for word in ["color", "pastel", "theme", "contrast", "font", "typography", "accessibility"]):
+                    # Visual/design rules → integrate into constraints
+                    if "constraints" not in data:
+                        data["constraints"] = []
+                    if "pastel" in additional_req_lower:
+                        data["constraints"].append("Color palette: Pastel colors only (soft, muted tones with low saturation)")
+                    elif "color" in additional_req_lower:
+                        data["constraints"].append(f"Color requirements: {additional_req}")
+                    else:
+                        data["constraints"].append(additional_req)
+                    logger.info(f"✅ INTEGRATED INTO CONSTRAINTS: {additional_req}")
+                    
+                elif any(word in additional_req_lower for word in ["company", "working", "google", "sigmoid", "organization", "business"]):
+                    # Company/context → integrate into description
+                    if "description" in data:
+                        if "google" in additional_req_lower:
+                            data["description"] += " The design should reflect Google's clean, user-focused design principles and accessibility standards."
+                        elif "sigmoid" in additional_req_lower:
+                            data["description"] += " The design should reflect a professional analytics-focused environment similar to products built at Sigmoid."
+                        else:
+                            data["description"] += f" {additional_req}"
+                        logger.info(f"✅ INTEGRATED INTO DESCRIPTION: {additional_req}")
+                            
+                else:
+                    # Default: add to constraints
+                    if "constraints" not in data:
+                        data["constraints"] = []
+                    data["constraints"].append(additional_req)
+                    logger.info(f"✅ INTEGRATED INTO CONSTRAINTS (DEFAULT): {additional_req}")
+            
+            # 🚨 COMPREHENSIVE REMOVAL OF FORBIDDEN SECTIONS 🚨
+            forbidden_keys = [
+                "additional_requirements", 
+                "additional_design_requirements",
+                "special_requirements", 
+                "user_requirements",
+                "extra_requirements",
+                "special_instructions",
+                "user_instructions",
+                "additional_instructions"
+            ]
+            
+            # Remove exact matches
+            for key in forbidden_keys:
+                if key in data:
+                    logger.warning(f"🚨 REMOVED FORBIDDEN SECTION: '{key}' - Content was: {data[key]}")
+                    del data[key]
+            
+            # Remove any key containing forbidden patterns
+            keys_to_remove = []
+            for key in data.keys():
+                key_lower = key.lower()
+                # Check for various forbidden patterns
+                forbidden_patterns = [
+                    ("additional" in key_lower and "requirement" in key_lower),
+                    ("special" in key_lower and "requirement" in key_lower),
+                    ("user" in key_lower and "requirement" in key_lower),
+                    ("extra" in key_lower and "requirement" in key_lower),
+                    ("additional" in key_lower and "instruction" in key_lower),
+                    ("special" in key_lower and "instruction" in key_lower),
+                    ("additional" in key_lower and "design" in key_lower and "requirement" in key_lower)
+                ]
+                
+                if any(forbidden_patterns):
+                    keys_to_remove.append(key)
+            
+            for key in keys_to_remove:
+                logger.warning(f"🚨 REMOVED FORBIDDEN SECTION BY PATTERN: '{key}' - Content was: {data[key]}")
+                del data[key]
+            
+            # 🚨 ADDITIONAL CHECK: Look for any section that looks like "Additional Design Requirements"
+            additional_keys_to_remove = []
+            for key in data.keys():
+                if "additional" in key.lower() and ("design" in key.lower() or "requirement" in key.lower()):
+                    additional_keys_to_remove.append(key)
+            
+            for key in additional_keys_to_remove:
+                logger.warning(f"🚨 REMOVED ADDITIONAL FORBIDDEN SECTION: '{key}' - Content was: {data[key]}")
+                del data[key]
+            
+            logger.info(f"🔍 After filtering, remaining keys: {list(data.keys())}")
+            
+            # Apply neutral language post-processing to description
+            description = self._neutralize_language(data.get("description", ""))
+            
+            # 🚨 HANDLE ADDITIONAL REQUIREMENTS INTEGRATION BEFORE MODEL CREATION 🚨
+            if "additional_requirements" in data and data["additional_requirements"]:
+                additional_req = data["additional_requirements"].strip()
+                logger.info(f"🔄 INTEGRATING ADDITIONAL REQUIREMENT BEFORE MODEL: {additional_req}")
+                
+                # Determine where to integrate based on content
+                additional_req_lower = additional_req.lower()
+                
+                if any(word in additional_req_lower for word in ["color", "pastel", "theme", "contrast", "font", "typography", "accessibility"]):
+                    # Visual/design rules → integrate into constraints
+                    if "constraints" not in data:
+                        data["constraints"] = []
+                    if "pastel" in additional_req_lower:
+                        data["constraints"].append("Color palette: Pastel colors only (soft, muted tones with low saturation)")
+                    elif "color" in additional_req_lower:
+                        data["constraints"].append(f"Color requirements: {additional_req}")
+                    else:
+                        data["constraints"].append(additional_req)
+                    logger.info(f"✅ INTEGRATED INTO CONSTRAINTS BEFORE MODEL: {additional_req}")
+                    
+                elif any(word in additional_req_lower for word in ["company", "working", "google", "sigmoid", "organization", "business"]):
+                    # Company/context → integrate into description
+                    if "google" in additional_req_lower:
+                        description += " The design should reflect Google's clean, user-focused design principles and accessibility standards."
+                    elif "sigmoid" in additional_req_lower:
+                        description += " The design should reflect a professional analytics-focused environment similar to products built at Sigmoid."
+                    else:
+                        description += f" {additional_req}"
+                    logger.info(f"✅ INTEGRATED INTO DESCRIPTION BEFORE MODEL: {additional_req}")
+                        
+                else:
+                    # Default: add to constraints
+                    if "constraints" not in data:
+                        data["constraints"] = []
+                    data["constraints"].append(additional_req)
+                    logger.info(f"✅ INTEGRATED INTO CONSTRAINTS (DEFAULT) BEFORE MODEL: {additional_req}")
+                
+                # Update the description in data
+                data["description"] = description
+            
             # Apply neutral language post-processing to description
             description = self._neutralize_language(data.get("description", ""))
             
@@ -2306,9 +2532,6 @@ Generate ONE design challenge following ALL rules above. Return ONLY the JSON ob
             if edge_cases:
                 edge_cases = self._neutralize_language(edge_cases)
             
-            additional_requirements = data.get("additional_requirements", "")
-            if additional_requirements:
-                additional_requirements = self._neutralize_language(additional_requirements)
             
             design_decisions = data.get("design_decisions", "")
             if design_decisions:
@@ -2330,15 +2553,6 @@ Generate ONE design challenge following ALL rules above. Return ONLY the JSON ob
                 )
             
             logger.info(f"✅ Task Requirements validation PASSED - Length: {len(task_requirements)}")
-            
-            # CRITICAL VALIDATION: Additional Requirements must be present if user provided them
-            # Check if open_requirements was passed in the original request
-            # We need to pass this through from the generate_question call
-            # For now, log if additional_requirements is present
-            if additional_requirements:
-                logger.info(f"✅ Additional Requirements included - Length: {len(additional_requirements)}")
-            else:
-                logger.info(f"ℹ️ No additional requirements in AI response")
             
             # Also apply to constraints, deliverables, and evaluation criteria if they contain text
             constraints = [self._neutralize_language(c) if isinstance(c, str) else c for c in data.get("constraints", [])]
@@ -2377,7 +2591,33 @@ Generate ONE design challenge following ALL rules above. Return ONLY the JSON ob
             logger.info(f"🔍 task_type type: {type(task_type)}")
             logger.info(f"🔍 task_type value: {task_type.value if hasattr(task_type, 'value') else task_type}")
             
-            return DesignQuestionModel(
+            # DEBUG: Log what we're about to pass to the model
+            logger.info(f"🔍 Creating DesignQuestionModel with task_type: {task_type}")
+            logger.info(f"🔍 task_type type: {type(task_type)}")
+            logger.info(f"🔍 task_type value: {task_type.value if hasattr(task_type, 'value') else task_type}")
+            logger.info(f"🔍 Data keys before model creation: {list(data.keys())}")
+            
+            # 🚨 FINAL CHECK BEFORE MODEL CREATION - ENSURE NO FORBIDDEN FIELDS 🚨
+            final_forbidden_fields = [
+                "additional_requirements",
+                "additional_design_requirements", 
+                "special_requirements",
+                "user_requirements",
+                "extra_requirements",
+                "special_instructions",
+                "user_instructions",
+                "additional_instructions"
+            ]
+            
+            for field in final_forbidden_fields:
+                if field in data:
+                    logger.error(f"🚨 CRITICAL: FORBIDDEN FIELD FOUND BEFORE MODEL CREATION: '{field}' = {data[field]}")
+                    del data[field]
+                    logger.warning(f"🚨 REMOVED FORBIDDEN FIELD BEFORE MODEL CREATION: '{field}'")
+            
+            logger.info(f"🔍 FINAL DATA KEYS BEFORE MODEL CREATION: {list(data.keys())}")
+            
+            question_model = DesignQuestionModel(
                 role=role,
                 difficulty=difficulty,
                 experience_level=experience_level,
@@ -2391,7 +2631,6 @@ Generate ONE design challenge following ALL rules above. Return ONLY the JSON ob
                 edge_cases=edge_cases if edge_cases else None,
                 cross_channel_requirements=data.get("cross_channel_requirements"),
                 constraints=constraints,
-                additional_requirements=additional_requirements if additional_requirements else None,
                 deliverables=deliverables,
                 design_decisions=design_decisions if design_decisions else None,
                 evaluation_criteria=evaluation_criteria,
@@ -2399,6 +2638,16 @@ Generate ONE design challenge following ALL rules above. Return ONLY the JSON ob
                 recommended_time_minutes=scaling_config["recommended_time"],
                 created_by=created_by
             )
+            
+            # DEBUG: Log what the model contains after creation
+            model_dict = question_model.model_dump()
+            logger.info(f"🔍 Model keys after creation: {list(model_dict.keys())}")
+            if "additional_requirements" in model_dict:
+                logger.warning(f"🚨 Model contains additional_requirements: {model_dict['additional_requirements']}")
+            else:
+                logger.info(f"✅ Model does not contain additional_requirements")
+            
+            return question_model
             
         except Exception as e:
             logger.error(f"Failed to parse AI response: {e}")

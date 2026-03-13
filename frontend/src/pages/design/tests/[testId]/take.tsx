@@ -804,53 +804,7 @@ export default function DesignAssessmentTakePage() {
                 ))}
               </ul>
 
-              {/* Navigation Buttons */}
-              <div style={{
-                display: 'flex',
-                gap: '8px',
-                marginTop: '24px',
-                paddingTop: '16px',
-                borderTop: '1px solid #e5e7eb'
-              }}>
-                <button
-                  onClick={handlePreviousQuestion}
-                  disabled={true}
-                  style={{
-                    flex: 1,
-                    padding: '10px',
-                    background: '#F3F4F6',
-                    color: '#9ca3af',
-                    border: '1px solid #D1D5DB',
-                    borderRadius: '8px',
-                    fontSize: '14px',
-                    fontWeight: 600,
-                    cursor: 'not-allowed',
-                    opacity: 0.5
-                  }}
-                  title="Previous questions are locked"
-                >
-                  ← Previous
-                </button>
-                <button
-                  onClick={handleNextQuestion}
-                  disabled={!submittedQuestions.has(currentQuestion?._id || currentQuestion?.id) || currentQuestionIndex >= questions.length - 1}
-                  style={{
-                    flex: 1,
-                    padding: '10px',
-                    background: (!submittedQuestions.has(currentQuestion?._id || currentQuestion?.id) || currentQuestionIndex >= questions.length - 1) ? '#F3F4F6' : '#7C3AED',
-                    color: (!submittedQuestions.has(currentQuestion?._id || currentQuestion?.id) || currentQuestionIndex >= questions.length - 1) ? '#9ca3af' : 'white',
-                    border: 'none',
-                    borderRadius: '8px',
-                    fontSize: '14px',
-                    fontWeight: 600,
-                    cursor: (!submittedQuestions.has(currentQuestion?._id || currentQuestion?.id) || currentQuestionIndex >= questions.length - 1) ? 'not-allowed' : 'pointer',
-                    opacity: (!submittedQuestions.has(currentQuestion?._id || currentQuestion?.id) || currentQuestionIndex >= questions.length - 1) ? 0.5 : 1
-                  }}
-                  title={!submittedQuestions.has(currentQuestion?._id || currentQuestion?.id) ? 'Submit current question first' : ''}
-                >
-                  Next →
-                </button>
-              </div>
+
               
               <button
                 onClick={handleSubmitQuestion}

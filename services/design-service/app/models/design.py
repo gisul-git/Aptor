@@ -2,7 +2,7 @@
 Design Assessment Data Models
 """
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, validator
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 from enum import Enum
@@ -58,7 +58,6 @@ class DesignQuestionModel(BaseModel):
     edge_cases: Optional[str] = None  # System states to handle (for 8+ years)
     cross_channel_requirements: Optional[str] = None  # Cross-platform complexity (for 8+ years)
     constraints: List[str] = []
-    additional_requirements: Optional[str] = None  # User-provided requirements
     deliverables: List[str] = []
     design_decisions: Optional[str] = None  # Decision reasoning requirement (for 8+ years)
     evaluation_criteria: List[str] = []
@@ -71,6 +70,7 @@ class DesignQuestionModel(BaseModel):
     
     class Config:
         populate_by_name = True
+        extra = "forbid"  # Explicitly forbid extra fields
         json_schema_extra = {
             "example": {
                 "role": "product_designer",

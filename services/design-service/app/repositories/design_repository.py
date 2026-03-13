@@ -70,6 +70,23 @@ class DesignRepository:
                     if question_data["task_type"] == "dashboard":
                         question_data["task_type"] = "desktop_dashboard"
                 
+                # 🚨 REMOVE FORBIDDEN FIELDS FROM DATABASE DATA 🚨
+                forbidden_fields = [
+                    "additional_requirements",
+                    "additional_design_requirements", 
+                    "special_requirements",
+                    "user_requirements",
+                    "extra_requirements",
+                    "special_instructions",
+                    "user_instructions",
+                    "additional_instructions"
+                ]
+                
+                for field in forbidden_fields:
+                    if field in question_data:
+                        logger.info(f"🚨 REMOVED FORBIDDEN FIELD FROM DB: '{field}' - Value: {question_data[field]}")
+                        del question_data[field]
+                
                 return DesignQuestionModel(**question_data)
             return None
         except Exception as e:
@@ -116,6 +133,23 @@ class DesignRepository:
                 if "task_type" in question_data:
                     if question_data["task_type"] == "dashboard":
                         question_data["task_type"] = "desktop_dashboard"
+                
+                # 🚨 REMOVE FORBIDDEN FIELDS FROM DATABASE DATA 🚨
+                forbidden_fields = [
+                    "additional_requirements",
+                    "additional_design_requirements", 
+                    "special_requirements",
+                    "user_requirements",
+                    "extra_requirements",
+                    "special_instructions",
+                    "user_instructions",
+                    "additional_instructions"
+                ]
+                
+                for field in forbidden_fields:
+                    if field in question_data:
+                        logger.info(f"🚨 REMOVED FORBIDDEN FIELD FROM DB LIST: '{field}' - Value: {question_data[field]}")
+                        del question_data[field]
                 
                 try:
                     questions.append(DesignQuestionModel(**question_data))

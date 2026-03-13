@@ -878,7 +878,7 @@ export default function DesignQuestionCreatePage() {
                     marginBottom: "0.75rem",
                     fontWeight: 500
                   }}>
-                    Add any specific requirements, constraints, or context for this question
+                    Add any specific requirements, constraints, or context for this question. These will be integrated naturally into the generated challenge.
                   </p>
                   <textarea
                     value={openRequirements}
@@ -915,7 +915,7 @@ export default function DesignQuestionCreatePage() {
                       marginTop: "0.5rem",
                       fontWeight: 500
                     }}>
-                      ✓ These requirements will appear in the generated challenge
+                      ✓ These requirements will be integrated into the challenge sections
                     </p>
                   )}
                 </div>
