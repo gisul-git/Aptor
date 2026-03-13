@@ -109,6 +109,16 @@ def generate_aiml_feedback(
             tasks=tasks
         )
         
+        # Calculate component scores based on code analysis
+        analyzer = CodeAnalyzer(source_code)
+        component_scores = _calculate_component_scores_from_tasks(
+            task_evaluations=task_evaluations,
+            overall_score=overall_score,
+            source_code=source_code,
+            outputs=outputs,
+            analyzer=analyzer
+        )
+        
         # Build result dictionary
         result = {
             "overall_score": overall_score,
@@ -130,22 +140,22 @@ def generate_aiml_feedback(
                 "total": len(tasks),
                 "details": [f"Task {te['task_number']}: {te['status']}" for te in task_evaluations]
             },
-            # Component scores are now descriptive only, not separate scores
+            # Component scores with actual values
             "code_quality": {
-                "score": 0,  # Not scored separately
-                "comments": "Code quality assessed as part of task evaluation"
+                "score": component_scores["code_quality"],
+                "comments": component_scores["code_quality_comments"]
             },
             "library_usage": {
-                "score": 0,  # Not scored separately
-                "comments": "Library usage assessed as part of task evaluation"
+                "score": component_scores["library_usage"],
+                "comments": component_scores["library_usage_comments"]
             },
             "output_quality": {
-                "score": 0,  # Not scored separately
-                "comments": "Output quality assessed as part of task evaluation"
+                "score": component_scores["output_quality"],
+                "comments": component_scores["output_quality_comments"]
             },
-            "strengths": [],
-            "areas_for_improvement": [],
-            "suggestions": [],
+            "strengths": component_scores.get("strengths", []),
+            "areas_for_improvement": component_scores.get("improvements", []),
+            "suggestions": component_scores.get("suggestions", []),
             "deduction_reasons": [],
             "ai_generated": False  # Deterministic evaluation
         }
@@ -460,6 +470,451 @@ def _validate_outputs_with_test_cases(
     return {
         "overall_score": overall_score,
         "task_scores": task_scores
+    }
+
+
+def _calculate_component_scores(
+    deterministic_scores: Dict[str, Any],
+    source_code: str,
+    outputs: List[str],
+    analyzer: Optional[CodeAnalyzer] = None
+) -> Dict[str, float]:
+    """
+    Calculate component scores (code_quality, library_usage, output_quality) 
+    based on deterministic evaluation results.
+    
+    Args:
+        deterministic_scores: Dictionary with overall_score and task_scores
+        source_code: The submitted source code
+        outputs: List of output strings
+        analyzer: Optional CodeAnalyzer instance
+    
+    Returns:
+        Dictionary with code_quality, library_usage, output_quality scores
+    """
+    overall_score = deterministic_scores.get("overall_score", 0)
+    task_scores = deterministic_scores.get("task_scores", [])
+    
+    if not analyzer:
+        analyzer = CodeAnalyzer(source_code)
+    
+    # Analyze code structure
+    has_functions = 'def ' in source_code
+    has_comments = '#' in source_code
+    has_imports = len(analyzer.get_imports()) > 0
+    has_structure = has_functions or len(source_code.split('\n')) > 10
+    
+    # Code Quality Score (0-25): Based on structure, readability, best practices
+    code_quality_score = 0.0
+    if has_structure:
+        code_quality_score += 10  # Basic structure
+    if has_functions:
+        code_quality_score += 5  # Functions present
+    if has_comments:
+        code_quality_score += 5  # Comments present
+    if has_imports:
+        code_quality_score += 5  # Imports present
+    
+    # Scale to 0-25 based on overall_score (if code is good, quality should be high)
+    code_quality_score = min(25, code_quality_score * (overall_score / 100.0) * 1.2)
+    
+    # Library Usage Score (0-20): Based on appropriate library usage
+    library_usage_score = 0.0
+    imports = analyzer.get_imports()
+    function_calls = analyzer.get_function_calls()
+    
+    # Check for common AIML libraries
+    aiml_libraries = ['pandas', 'numpy', 'sklearn', 'tensorflow', 'keras', 'torch', 'matplotlib', 'seaborn']
+    library_count = sum(1 for lib in aiml_libraries if any(lib.lower() in imp.lower() for imp in imports))
+    
+    if library_count > 0:
+        library_usage_score = min(20, library_count * 5 + (len(function_calls) * 0.5))
+    
+    # Scale based on overall_score
+    library_usage_score = min(20, library_usage_score * (overall_score / 100.0) * 1.1)
+    
+    # Output Quality Score (0-15): Based on output presence and structure
+    output_quality_score = 0.0
+    combined_output = "\n".join(outputs).lower()
+    
+    if outputs and any(o.strip() for o in outputs):
+        output_quality_score += 5  # Outputs exist
+        
+        # Check for errors
+        has_errors = 'error' in combined_output or 'traceback' in combined_output or 'exception' in combined_output
+        if not has_errors:
+            output_quality_score += 5  # No errors
+        
+        # Check for meaningful data
+        has_numeric = any(char.isdigit() for char in combined_output)
+        has_structure = '[' in combined_output or '{' in combined_output or 'dataframe' in combined_output
+        
+        if has_numeric or has_structure:
+            output_quality_score += 5  # Meaningful output
+    
+    # Scale based on overall_score
+    output_quality_score = min(15, output_quality_score * (overall_score / 100.0) * 1.1)
+    
+    # Normalize to ensure component scores roughly match overall_score
+    # Component scores should sum to approximately overall_score
+    total_component_score = code_quality_score + library_usage_score + output_quality_score
+    
+    if total_component_score > 0 and overall_score > 0:
+        # Scale factor to make components sum closer to overall_score
+        scale_factor = min(1.2, overall_score / max(1, total_component_score))
+        code_quality_score = round(code_quality_score * scale_factor, 2)
+        library_usage_score = round(library_usage_score * scale_factor, 2)
+        output_quality_score = round(output_quality_score * scale_factor, 2)
+    
+    # Ensure scores are within bounds
+    code_quality_score = max(0, min(25, code_quality_score))
+    library_usage_score = max(0, min(20, library_usage_score))
+    output_quality_score = max(0, min(15, output_quality_score))
+    
+    return {
+        "code_quality": code_quality_score,
+        "library_usage": library_usage_score,
+        "output_quality": output_quality_score
+    }
+
+
+def _calculate_component_scores_from_tasks(
+    task_evaluations: List[Dict[str, Any]],
+    overall_score: float,
+    source_code: str,
+    outputs: List[str],
+    analyzer: CodeAnalyzer
+) -> Dict[str, Any]:
+    """
+    IMPROVED: Calculate component scores and feedback based on task evaluations.
+    
+    This function provides accurate, meaningful component scores that reflect
+    actual code quality, library usage, and output quality for AIML submissions.
+    
+    Returns detailed scores for code quality, library usage, and output quality
+    along with strengths, improvements, and suggestions.
+    """
+    # Analyze code structure
+    imports = analyzer.get_imports()
+    function_calls = analyzer.get_function_calls()
+    has_functions = 'def ' in source_code
+    has_comments = '#' in source_code or '"""' in source_code or "'''" in source_code
+    has_docstrings = '"""' in source_code or "'''" in source_code
+    lines = source_code.split('\n')
+    code_lines = [l for l in lines if l.strip() and not l.strip().startswith('#')]
+    blank_lines = source_code.count('\n\n')
+    
+    combined_output = "\n".join(outputs)
+    has_errors = 'error' in combined_output.lower() or 'traceback' in combined_output.lower() or 'exception' in combined_output.lower()
+    has_warnings = 'warning' in combined_output.lower()
+    
+    # Calculate task completion rate
+    completed_tasks = [te for te in task_evaluations if te["score"] >= te["max_score"] * 0.9]
+    partially_completed = [te for te in task_evaluations if 0.5 <= te["score"] / te["max_score"] < 0.9]
+    task_completion_rate = len(completed_tasks) / len(task_evaluations) if task_evaluations else 0
+    
+    # ============================================================================
+    # CODE QUALITY SCORE (0-25 points)
+    # ============================================================================
+    code_quality_score = 0.0
+    code_quality_observations = []
+    
+    # 1. Code Structure & Organization (0-10 points)
+    if len(code_lines) >= 10:
+        code_quality_score += 3
+        code_quality_observations.append("Adequate code length")
+    elif len(code_lines) >= 5:
+        code_quality_score += 2
+    
+    if has_functions:
+        code_quality_score += 3
+        code_quality_observations.append("Uses functions for modularity")
+    
+    if blank_lines >= 2:
+        code_quality_score += 2
+        code_quality_observations.append("Well-organized with logical sections")
+    elif blank_lines >= 1:
+        code_quality_score += 1
+    
+    if len(imports) > 0:
+        code_quality_score += 2
+        code_quality_observations.append("Proper imports at top")
+    
+    # 2. Documentation & Readability (0-8 points)
+    comment_count = source_code.count('#')
+    if has_docstrings:
+        code_quality_score += 4
+        code_quality_observations.append("Includes docstrings")
+    elif comment_count >= 3:
+        code_quality_score += 3
+        code_quality_observations.append("Good inline comments")
+    elif comment_count >= 1:
+        code_quality_score += 2
+        code_quality_observations.append("Some comments present")
+    
+    # Variable naming quality (simple heuristic)
+    has_descriptive_vars = any(len(word) > 3 for line in code_lines for word in line.split() if word.isidentifier())
+    if has_descriptive_vars:
+        code_quality_score += 2
+    
+    # 3. Best Practices (0-7 points)
+    # Check for error handling
+    has_try_except = 'try:' in source_code and 'except' in source_code
+    if has_try_except:
+        code_quality_score += 3
+        code_quality_observations.append("Includes error handling")
+    
+    # Check for code reusability
+    if has_functions and len([l for l in code_lines if 'def ' in l]) >= 2:
+        code_quality_score += 2
+        code_quality_observations.append("Multiple reusable functions")
+    
+    # Penalize if errors in output (indicates code quality issues)
+    if has_errors:
+        code_quality_score *= 0.6  # 40% penalty for errors
+        code_quality_observations.append("⚠️ Code produces errors")
+    
+    # Scale based on task completion (code quality should reflect actual results)
+    code_quality_score = code_quality_score * (0.5 + 0.5 * task_completion_rate)
+    code_quality_score = min(25, round(code_quality_score, 1))
+    
+    if code_quality_observations:
+        code_quality_comments = ". ".join(code_quality_observations[:3])
+    else:
+        code_quality_comments = "Basic code structure with room for improvement"
+    
+    # ============================================================================
+    # LIBRARY USAGE SCORE (0-20 points)
+    # ============================================================================
+    library_usage_score = 0.0
+    library_observations = []
+    
+    # AIML library detection with weighted importance
+    aiml_libs = {
+        'pandas': ('Data manipulation', 4),
+        'numpy': ('Numerical computing', 3),
+        'sklearn': ('Machine learning', 5),
+        'scikit-learn': ('Machine learning', 5),
+        'matplotlib': ('Visualization', 3),
+        'seaborn': ('Statistical visualization', 3),
+        'tensorflow': ('Deep learning', 5),
+        'keras': ('Neural networks', 5),
+        'torch': ('PyTorch', 5),
+        'pytorch': ('PyTorch', 5),
+        'xgboost': ('Gradient boosting', 4),
+        'lightgbm': ('Gradient boosting', 4),
+        'scipy': ('Scientific computing', 3)
+    }
+    
+    found_libs = []
+    for lib, (desc, points) in aiml_libs.items():
+        if any(lib in imp.lower() for imp in imports):
+            found_libs.append(f"{lib.capitalize()}")
+            library_usage_score += points
+            library_observations.append(f"Uses {lib.capitalize()} for {desc.lower()}")
+    
+    # Check for actual usage (not just imports)
+    # Detect ML-specific patterns
+    ml_patterns = {
+        'fit(': 'Model training',
+        'predict(': 'Model prediction',
+        'transform(': 'Data transformation',
+        'cross_val': 'Cross-validation',
+        'GridSearchCV': 'Hyperparameter tuning',
+        'train_test_split': 'Data splitting',
+        'accuracy_score': 'Model evaluation',
+        'classification_report': 'Detailed metrics',
+        'confusion_matrix': 'Confusion matrix'
+    }
+    
+    ml_usage_count = 0
+    for pattern, desc in ml_patterns.items():
+        if pattern in source_code:
+            ml_usage_count += 1
+            if ml_usage_count <= 2:  # Only add first 2 to observations
+                library_observations.append(f"Implements {desc.lower()}")
+    
+    # Bonus for ML workflow completeness
+    if ml_usage_count >= 3:
+        library_usage_score += 3
+    elif ml_usage_count >= 1:
+        library_usage_score += 1
+    
+    # Scale based on task completion
+    library_usage_score = library_usage_score * (0.4 + 0.6 * task_completion_rate)
+    library_usage_score = min(20, round(library_usage_score, 1))
+    
+    if found_libs:
+        library_usage_comments = f"Effectively uses {', '.join(found_libs[:3])}"
+        if ml_usage_count >= 2:
+            library_usage_comments += f" with {ml_usage_count} ML operations"
+    else:
+        library_usage_comments = "Limited AIML library usage detected"
+    
+    # ============================================================================
+    # OUTPUT QUALITY SCORE (0-15 points)
+    # ============================================================================
+    output_quality_score = 0.0
+    output_observations = []
+    
+    # 1. Output Presence (0-5 points)
+    if outputs and any(o.strip() for o in outputs):
+        if len(combined_output) > 100:
+            output_quality_score += 5
+            output_observations.append("Comprehensive output generated")
+        elif len(combined_output) > 20:
+            output_quality_score += 3
+            output_observations.append("Output generated")
+        else:
+            output_quality_score += 1
+    
+    # 2. Output Correctness (0-6 points)
+    if not has_errors:
+        output_quality_score += 5
+        output_observations.append("No errors in execution")
+    elif not has_warnings:
+        output_quality_score += 2
+    
+    if has_warnings and not has_errors:
+        output_quality_score += 1
+        output_observations.append("Minor warnings present")
+    
+    # 3. Output Structure & Content (0-4 points)
+    has_numeric = any(char.isdigit() for char in combined_output)
+    has_dataframe = 'dataframe' in combined_output.lower() or ('|' in combined_output and '---' in combined_output)
+    has_array = '[' in combined_output or 'array' in combined_output.lower()
+    has_metrics = any(metric in combined_output.lower() for metric in ['accuracy', 'precision', 'recall', 'f1', 'score', 'mse', 'rmse', 'r2'])
+    
+    if has_metrics:
+        output_quality_score += 2
+        output_observations.append("Includes evaluation metrics")
+    
+    if has_dataframe:
+        output_quality_score += 1
+        output_observations.append("Shows DataFrame structure")
+    elif has_array and has_numeric:
+        output_quality_score += 1
+        output_observations.append("Shows array/numeric data")
+    
+    # Check for visualization indicators
+    has_plot = 'plot' in source_code.lower() or 'plt.' in source_code or 'sns.' in source_code
+    if has_plot:
+        output_quality_score += 1
+        output_observations.append("Includes visualizations")
+    
+    # Scale based on task completion
+    output_quality_score = output_quality_score * (0.5 + 0.5 * task_completion_rate)
+    output_quality_score = min(15, round(output_quality_score, 1))
+    
+    if output_observations:
+        output_quality_comments = ". ".join(output_observations[:3])
+    else:
+        output_quality_comments = "Minimal or no output produced"
+    
+    # ============================================================================
+    # STRENGTHS (Top achievements)
+    # ============================================================================
+    strengths = []
+    
+    if len(completed_tasks) == len(task_evaluations) and len(task_evaluations) > 0:
+        strengths.append(f"✅ All {len(task_evaluations)} tasks completed successfully")
+    elif len(completed_tasks) > 0:
+        strengths.append(f"✅ {len(completed_tasks)}/{len(task_evaluations)} tasks completed correctly")
+    
+    if code_quality_score >= 18:
+        strengths.append("📝 Excellent code quality with good structure and documentation")
+    elif code_quality_score >= 12:
+        strengths.append("📝 Good code organization and readability")
+    
+    if library_usage_score >= 15:
+        strengths.append(f"🔧 Strong use of AIML libraries ({', '.join(found_libs[:2])})")
+    elif library_usage_score >= 10:
+        strengths.append("🔧 Appropriate library usage for the task")
+    
+    if not has_errors and output_quality_score >= 10:
+        strengths.append("✨ Clean execution with quality outputs")
+    
+    if ml_usage_count >= 3:
+        strengths.append("🤖 Implements complete ML workflow")
+    
+    # ============================================================================
+    # IMPROVEMENTS (Areas needing work)
+    # ============================================================================
+    improvements = []
+    
+    # Task-specific improvements
+    incomplete_tasks = [te for te in task_evaluations if te["score"] < te["max_score"] * 0.5]
+    if len(incomplete_tasks) > 0:
+        for te in incomplete_tasks[:2]:
+            task_desc = te['task_description'][:70] + "..." if len(te['task_description']) > 70 else te['task_description']
+            improvements.append(f"❌ Task {te['task_number']}: {task_desc}")
+    
+    # Code quality improvements
+    if code_quality_score < 12:
+        if not has_comments:
+            improvements.append("📝 Add comments to explain your code logic")
+        if not has_functions:
+            improvements.append("🔧 Use functions to organize code better")
+        if blank_lines < 2:
+            improvements.append("📐 Add blank lines to separate logical sections")
+    
+    # Library usage improvements
+    if library_usage_score < 10:
+        improvements.append("📚 Utilize more AIML libraries (pandas, sklearn, numpy)")
+    if ml_usage_count < 2 and 'machine learning' in str(task_evaluations).lower():
+        improvements.append("🤖 Implement complete ML workflow (train, predict, evaluate)")
+    
+    # Output improvements
+    if has_errors:
+        improvements.append("⚠️ Fix code errors to produce correct outputs")
+    if output_quality_score < 8:
+        improvements.append("📊 Generate more comprehensive outputs to demonstrate results")
+    
+    # ============================================================================
+    # SUGGESTIONS (Actionable next steps)
+    # ============================================================================
+    suggestions = []
+    
+    # Add specific suggestions from failed test cases
+    for te in task_evaluations:
+        if te["score"] < te["max_score"] * 0.8:
+            for test_result in te.get("test_results", []):
+                if not test_result.get("passed", False):
+                    feedback = test_result.get("feedback", "")
+                    if feedback and feedback not in suggestions:
+                        suggestions.append(feedback)
+                        if len(suggestions) >= 2:
+                            break
+            if len(suggestions) >= 2:
+                break
+    
+    # Add general suggestions based on component scores
+    if code_quality_score < 15 and not has_try_except:
+        suggestions.append("💡 Add try-except blocks for robust error handling")
+    
+    if library_usage_score < 12 and ml_usage_count < 2:
+        suggestions.append("💡 Use cross_val_score for model validation")
+    
+    if output_quality_score < 10 and not has_metrics:
+        suggestions.append("💡 Print evaluation metrics (accuracy, precision, recall) to show model performance")
+    
+    # Ensure we have at least one suggestion
+    if not suggestions:
+        if len(partially_completed) > 0:
+            suggestions.append("💡 Review task requirements carefully and ensure all steps are completed")
+        else:
+            suggestions.append("💡 Test your code thoroughly before submission")
+    
+    return {
+        "code_quality": int(code_quality_score),
+        "code_quality_comments": code_quality_comments,
+        "library_usage": int(library_usage_score),
+        "library_usage_comments": library_usage_comments,
+        "output_quality": int(output_quality_score),
+        "output_quality_comments": output_quality_comments,
+        "strengths": strengths[:4],  # Top 4
+        "improvements": improvements[:4],  # Top 4
+        "suggestions": suggestions[:4]  # Top 4
     }
 
 
