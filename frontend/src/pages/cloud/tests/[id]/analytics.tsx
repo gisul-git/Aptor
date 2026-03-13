@@ -14,6 +14,7 @@ import {
   useCloudTest, 
   useCloudCandidates, 
   useCloudCandidateAnalytics, 
+  type CloudCandidateAnalytics,
   useAddCloudCandidate, 
   useBulkAddCloudCandidates,
   useRemoveCloudCandidate, 
@@ -82,7 +83,7 @@ interface CandidateAnalytics {
     }>
   } | null
   question_analytics: QuestionAnalytics[]
-  activity_logs: any[]
+  activity_logs?: any[]
 }
 
 interface Candidate {
@@ -97,6 +98,46 @@ interface Candidate {
   invited?: boolean  // Added for invited status detection
   invited_at?: string  // Added for invited status detection
   status?: string // 'pending' | 'invited' | 'started' | 'completed'
+}
+
+function normalizeAnalyticsData(data: CloudCandidateAnalytics): CandidateAnalytics {
+  const questionAnalytics: QuestionAnalytics[] = Array.isArray(data.question_analytics)
+    ? data.question_analytics.map((qa) => ({
+        question_id: String(qa.question_id || ""),
+        question_title: String(qa.question_title || "Untitled Question"),
+        description: typeof qa.description === "string" ? qa.description : undefined,
+        tasks: Array.isArray(qa.tasks) ? qa.tasks.filter((task): task is string => typeof task === "string") : undefined,
+        difficulty: typeof qa.difficulty === "string" ? qa.difficulty : undefined,
+        language: typeof qa.language === "string" ? qa.language : "",
+        status: typeof qa.status === "string" ? qa.status : undefined,
+        code: typeof qa.code === "string" ? qa.code : "",
+        outputs: Array.isArray(qa.outputs) ? qa.outputs.map((output) => String(output ?? "")) : [],
+        submitted_at: typeof qa.submitted_at === "string" ? qa.submitted_at : null,
+        created_at: typeof qa.created_at === "string" ? qa.created_at : null,
+        score: typeof qa.score === "number" ? qa.score : undefined,
+        ai_feedback: qa.ai_feedback as AIFeedback | undefined,
+      }))
+    : [];
+
+  return {
+    candidate: {
+      name: data.candidate?.name || "",
+      email: data.candidate?.email || "",
+    },
+    candidateInfo: data.candidateInfo ?? null,
+    submission: data.submission
+      ? {
+          score: data.submission.score ?? 0,
+          started_at: data.submission.started_at ?? null,
+          submitted_at: data.submission.submitted_at ?? null,
+          is_completed: Boolean(data.submission.is_completed),
+          ai_feedback_status: data.submission.ai_feedback_status,
+          evaluations: data.submission.evaluations,
+        }
+      : null,
+    question_analytics: questionAnalytics,
+    activity_logs: Array.isArray(data.activity_logs) ? data.activity_logs : [],
+  }
 }
 
 export default function AnalyticsPage() {
@@ -365,7 +406,7 @@ export default function AnalyticsPage() {
       if (process.env.NODE_ENV === 'development') {
         console.log('[Cloud Analytics] 📊 Syncing analytics data')
       }
-      setAnalytics(analyticsData)
+      setAnalytics(normalizeAnalyticsData(analyticsData))
       // Fetch proctor logs when analytics data is loaded
       if (selectedCandidateUserId && analyticsData.candidate?.email) {
         fetchProctorLogs(selectedCandidateUserId)
@@ -624,10 +665,11 @@ export default function AnalyticsPage() {
     
     setSendingFeedback(userId)
     try {
-      await sendFeedbackMutation.mutateAsync({ testId: testId!, userId })
+      await sendFeedbackMutation.mutateAsync({ testId: testId!, userId, email: candidate.email })
       alert("Feedback email sent successfully!")
-    } catch (err: any) {
-      alert(err.response?.data?.detail || err.response?.data?.message || "Failed to send feedback email")
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Failed to send feedback email"
+      alert(message || "Failed to send feedback email")
     } finally {
       setSendingFeedback(null)
     }
@@ -964,7 +1006,7 @@ export default function AnalyticsPage() {
                 <div style={{ display: "flex", gap: "0.5rem" }}>
                   <input
                     type="text"
-                    value={`${typeof window !== 'undefined' ? window.location.origin : ''}/cloud/tests/${testId}/take?token=${testInfo.test_token}`}
+                    value={`${typeof window !== 'undefined' ? window.location.origin : ''}/cloud/tests/${testId}/entry?token=${testInfo.test_token}`}
                     readOnly
                     style={{
                       flex: 1,
@@ -979,7 +1021,7 @@ export default function AnalyticsPage() {
                     type="button"
                     className="btn-secondary"
                     onClick={() => {
-                      const testUrl = `${typeof window !== 'undefined' ? window.location.origin : ''}/cloud/tests/${testId}/take?token=${testInfo.test_token}`;
+                      const testUrl = `${typeof window !== 'undefined' ? window.location.origin : ''}/cloud/tests/${testId}/entry?token=${testInfo.test_token}`;
                       navigator.clipboard.writeText(testUrl);
                       setSuccessModal({
                         isOpen: true,

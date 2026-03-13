@@ -72,6 +72,7 @@ class DevOpsQuestion(DevOpsQuestionBase):
 class DevOpsAIGenerationRequest(BaseModel):
     yearsOfExperience: str = "2-4 years"
     difficulty: str = "intermediate"
+    questionCategory: str = "coding"
     topicsRequired: str = "CI/CD pipelines"
     questionCount: int = 1
     jobRole: str = "DevOps Engineer"

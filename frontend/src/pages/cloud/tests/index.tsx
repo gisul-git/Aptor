@@ -415,14 +415,14 @@ export default function CloudTestsListPage() {
                         <div style={{ display: "flex", gap: "0.5rem" }}>
                           <input
                             type="text"
-                            value={`${typeof window !== "undefined" ? window.location.origin : ""}/cloud/tests/${test.id}/take?token=${encodeURIComponent(test.test_token)}`}
+                            value={`${typeof window !== "undefined" ? window.location.origin : ""}/cloud/tests/${test.id}/entry?token=${encodeURIComponent(test.test_token)}`}
                             readOnly
                             style={{ flex: 1, padding: "0.5rem 0.75rem", border: "1px solid #D1D5DB", borderRadius: "0.375rem", backgroundColor: "#ffffff", fontSize: "0.875rem", fontFamily: "monospace", color: "#374151", outline: "none" }}
                           />
                           <button
                             type="button"
                             onClick={async () => {
-                              const link = `${window.location.origin}/cloud/tests/${test.id}/take?token=${encodeURIComponent(test.test_token || "")}`;
+                              const link = `${window.location.origin}/cloud/tests/${test.id}/entry?token=${encodeURIComponent(test.test_token || "")}`;
                               try {
                                 await navigator.clipboard.writeText(link);
                                 alert("Link copied to clipboard!");
@@ -489,6 +489,31 @@ export default function CloudTestsListPage() {
                       }}
                     >
                       <Server size={16} /> Open Test
+                    </button>
+
+                    <button
+                      onClick={() => {
+                        router.push("/cloud/assesments");
+                      }}
+                      disabled={!test.is_published}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "0.375rem",
+                        width: "100%",
+                        justifyContent: "center",
+                        padding: "0.5rem 1rem",
+                        fontSize: "0.875rem",
+                        fontWeight: 600,
+                        color: "#374151",
+                        backgroundColor: "#ffffff",
+                        border: "1px solid #D1D5DB",
+                        borderRadius: "0.5rem",
+                        cursor: !test.is_published ? "not-allowed" : "pointer",
+                        opacity: !test.is_published ? 0.5 : 1,
+                      }}
+                    >
+                      <Eye size={16} /> View
                     </button>
 
                     <button

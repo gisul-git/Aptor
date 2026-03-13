@@ -13,6 +13,9 @@ class Settings(BaseSettings):
     cloud_mongo_db: str = "cloud_db"
     openai_api_key: str = ""
     openai_model: str = "gpt-4o-mini"
+    sendgrid_api_key: str = ""
+    sendgrid_from_email: str = "noreply@aaptor.com"
+    sendgrid_from_name: str = "AI Assessment Platform"
 
     model_config = SettingsConfigDict(env_file=str(ENV_FILE_PATH), env_file_encoding="utf-8", extra="ignore")
 

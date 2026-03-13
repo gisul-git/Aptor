@@ -1636,6 +1636,8 @@ export default function PrecheckPage() {
       const targetUrl =
         ctx?.flowType === "devops"
           ? `/devops/tests/${assessmentId}/instructions?token=${encodeURIComponent(token as string)}`
+          : ctx?.flowType === "cloud"
+            ? `/cloud/tests/${assessmentId}/instructions?token=${encodeURIComponent(token as string)}`
           : `/assessment/${assessmentId}/${token}/instructions-new`;
       console.log("[PRECHECK] 🔄 Navigating after precheck completion", {
         targetUrl,

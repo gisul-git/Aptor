@@ -6,6 +6,7 @@ interface ConfirmationModalProps {
   message: string;
   confirmText?: string;
   cancelText?: string;
+  type?: 'default' | 'danger';
   onConfirm: () => void;
   onCancel: () => void;
   confirmButtonStyle?: React.CSSProperties;
@@ -18,12 +19,14 @@ export default function ConfirmationModal({
   message,
   confirmText = 'OK',
   cancelText = 'Cancel',
+  type = 'default',
   onConfirm,
   onCancel,
   confirmButtonStyle,
   isLoading = false,
 }: ConfirmationModalProps) {
   if (!isOpen) return null;
+  const isDanger = type === 'danger';
 
   return (
     <div
@@ -49,13 +52,13 @@ export default function ConfirmationModal({
           padding: '2rem',
           maxWidth: '500px',
           width: '100%',
-          border: '2px solid #ef4444',
+          border: `2px solid ${isDanger ? '#ef4444' : '#A8E8BC'}`,
           boxShadow: '0 10px 25px rgba(0, 0, 0, 0.2)',
         }}
         onClick={(e) => e.stopPropagation()}
       >
         <div style={{ marginBottom: '1.5rem' }}>
-          <h2 style={{ color: '#ef4444', marginBottom: '1rem', fontSize: '1.5rem' }}>
+          <h2 style={{ color: isDanger ? '#ef4444' : '#1E5A3B', marginBottom: '1rem', fontSize: '1.5rem' }}>
             {title}
           </h2>
           <p style={{ color: '#1E5A3B', fontSize: '1rem', lineHeight: '1.6' }}>
@@ -86,7 +89,7 @@ export default function ConfirmationModal({
             disabled={isLoading}
             style={{
               padding: '0.75rem 1.5rem',
-              backgroundColor: '#10b981',
+              backgroundColor: isDanger ? '#ef4444' : '#10b981',
               border: 'none',
               borderRadius: '0.5rem',
               color: '#ffffff',

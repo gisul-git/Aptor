@@ -1,17 +1,24 @@
 from datetime import datetime
 import csv
 import io
+import json
+import logging
 import secrets
 from typing import Any, Dict, List, Optional
+from urllib import error as urlerror
+from urllib import parse as urlparse
+from urllib import request as urlrequest
 
 from bson import ObjectId
 from fastapi import APIRouter, Body, File, HTTPException, Query, Request, UploadFile
 
+from config.settings import get_settings
 from db.mongodb import get_database
 from schemas.test import DevOpsTestCreate, DevOpsTestUpdate
 from utils.mongo import serialize_document
 
 router = APIRouter(prefix="/api/v1/devops/tests", tags=["devops-tests"])
+logger = logging.getLogger(__name__)
 
 
 def _normalize_doc(doc: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
@@ -90,6 +97,165 @@ async def _find_candidate_doc(db: Any, test_id: str, user_key: str) -> Optional[
         if doc:
             return doc
     return None
+
+
+def _extract_feedback_items(question_analytics: List[Dict[str, Any]]) -> List[str]:
+    rows: List[str] = []
+    for idx, qa in enumerate(question_analytics, start=1):
+        if not isinstance(qa, dict):
+            continue
+        title = str(qa.get("question_title") or f"Question {idx}")
+        score = qa.get("score")
+        ai_feedback = qa.get("ai_feedback")
+        if not isinstance(ai_feedback, dict):
+            continue
+
+        details: List[str] = []
+        summary = ai_feedback.get("feedback_summary")
+        if isinstance(summary, str) and summary.strip():
+            details.append(summary.strip())
+        one_liner = ai_feedback.get("one_liner")
+        if isinstance(one_liner, str) and one_liner.strip():
+            details.append(one_liner.strip())
+        suggestions = ai_feedback.get("suggestions")
+        if isinstance(suggestions, list):
+            clean_suggestions = [str(s).strip() for s in suggestions if str(s).strip()]
+            if clean_suggestions:
+                details.append(f"Suggestions: {'; '.join(clean_suggestions[:3])}")
+
+        if not details:
+            continue
+
+        score_text = ""
+        if isinstance(score, (int, float)):
+            score_text = f" (score: {score})"
+        rows.append(f"<li><strong>{title}{score_text}</strong><br>{'<br>'.join(details)}</li>")
+    return rows
+
+
+def _send_feedback_email(candidate_email: str, subject: str, html_content: str) -> None:
+    settings = get_settings()
+    if not settings.sendgrid_api_key or not settings.sendgrid_from_email:
+        raise HTTPException(status_code=500, detail="Email service is not configured")
+
+    payload = {
+        "personalizations": [{"to": [{"email": candidate_email}]}],
+        "from": {
+            "email": settings.sendgrid_from_email,
+            "name": settings.sendgrid_from_name or "AI Assessment Platform",
+        },
+        "subject": subject,
+        "content": [{"type": "text/html", "value": html_content}],
+    }
+
+    req = urlrequest.Request(
+        "https://api.sendgrid.com/v3/mail/send",
+        data=json.dumps(payload).encode("utf-8"),
+        headers={
+            "Authorization": f"Bearer {settings.sendgrid_api_key}",
+            "Content-Type": "application/json",
+        },
+        method="POST",
+    )
+
+    try:
+        with urlrequest.urlopen(req, timeout=15) as response:
+            status_code = getattr(response, "status", 202)
+            if status_code >= 400:
+                raise HTTPException(status_code=502, detail="Failed to send feedback email")
+    except urlerror.HTTPError as exc:
+        body = exc.read().decode("utf-8", errors="ignore") if hasattr(exc, "read") else ""
+        logger.error("SendGrid feedback email HTTP error (%s): %s", exc.code, body)
+        raise HTTPException(status_code=502, detail="Failed to send feedback email") from exc
+    except urlerror.URLError as exc:
+        logger.error("SendGrid feedback email network error: %s", exc)
+        raise HTTPException(status_code=502, detail="Failed to send feedback email") from exc
+
+
+def _resolve_frontend_base_url(request: Request) -> str:
+    settings = get_settings()
+    configured = str(getattr(settings, "frontend_base_url", "") or "").strip()
+    if configured:
+        return configured.rstrip("/")
+    origin = request.headers.get("origin")
+    if origin:
+        return origin.rstrip("/")
+    referer = request.headers.get("referer")
+    if referer:
+        parsed = urlparse.urlparse(referer)
+        if parsed.scheme and parsed.netloc:
+            return f"{parsed.scheme}://{parsed.netloc}"
+    return "http://localhost:3000"
+
+
+async def _ensure_test_token(db: Any, oid: ObjectId, test_doc: Dict[str, Any]) -> str:
+    existing = str(test_doc.get("test_token") or "").strip()
+    if existing:
+        return existing
+    generated = secrets.token_urlsafe(32)
+    await _update_test_doc(db, {"_id": oid}, {"test_token": generated, "updated_at": datetime.utcnow()})
+    test_doc["test_token"] = generated
+    return generated
+
+
+def _build_invitation_html(
+    test_title: str,
+    candidate_name: str,
+    candidate_email: str,
+    exam_url: str,
+    template: Dict[str, Any],
+) -> str:
+    message = str(template.get("message") or "You have been invited to take a DevOps assessment. Please click the link below to start.")
+    message = message.replace("{{candidate_name}}", candidate_name)
+    message = message.replace("{{candidate_email}}", candidate_email)
+    message = message.replace("{{exam_url}}", exam_url)
+    message = message.replace("{{company_name}}", str(template.get("companyName") or ""))
+    logo_url = str(template.get("logoUrl") or "").strip()
+    company_name = str(template.get("companyName") or "").strip()
+    footer = str(template.get("footer") or "").strip()
+    sent_by = str(template.get("sentBy") or "Aaptor")
+
+    return f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="UTF-8" />
+      <style>
+        body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #1f2937; }}
+        .container {{ max-width: 640px; margin: 0 auto; padding: 20px; }}
+        .card {{ background: #f8fafc; border: 1px solid #dbeafe; border-radius: 10px; padding: 20px; }}
+        .title {{ font-size: 24px; font-weight: 700; color: #1d4ed8; margin: 8px 0 16px; }}
+        .btn {{ display: inline-block; padding: 12px 24px; background: #2563eb; color: #ffffff; text-decoration: none; border-radius: 8px; font-weight: 600; }}
+        .meta {{ background: #ffffff; border-left: 4px solid #2563eb; padding: 12px; border-radius: 6px; margin: 16px 0; }}
+        .footer {{ margin-top: 20px; font-size: 13px; color: #64748b; }}
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        {f'<img src="{logo_url}" alt="Logo" style="max-width:180px;margin-bottom:12px;" />' if logo_url else ''}
+        {f'<h2 style="margin:0;color:#0f172a;">{company_name}</h2>' if company_name else ''}
+        <div class="card">
+          <div class="title">{test_title}</div>
+          <p>Dear {candidate_name},</p>
+          <p>{message}</p>
+          <div class="meta">
+            <p style="margin:0;"><strong>Name:</strong> {candidate_name}</p>
+            <p style="margin:0;"><strong>Email:</strong> {candidate_email}</p>
+          </div>
+          <p style="text-align:center;margin:24px 0;">
+            <a href="{exam_url}" class="btn">Start DevOps Assessment</a>
+          </p>
+          {f'<p>{footer}</p>' if footer else ''}
+          <div class="footer">Sent by {sent_by}</div>
+        </div>
+      </div>
+    </body>
+    </html>
+    """
+
+
+def _send_invitation_email(candidate_email: str, subject: str, html_content: str) -> None:
+    _send_feedback_email(candidate_email=candidate_email, subject=subject, html_content=html_content)
 
 
 async def _materialize_inline_questions(
@@ -516,6 +682,25 @@ async def send_invitation(test_id: str, request: Request, body: Dict[str, Any] =
     if not candidate:
         raise HTTPException(status_code=404, detail="Candidate not found")
 
+    candidate_name = str(candidate.get("name") or "Candidate")
+    test_token = await _ensure_test_token(db, oid, test_doc)
+    base_url = _resolve_frontend_base_url(request)
+    exam_url = (
+        f"{base_url}/devops/tests/{test_id}/entry?token={urlparse.quote(test_token)}"
+        f"&email={urlparse.quote(email)}&name={urlparse.quote(candidate_name)}"
+    )
+    template = test_doc.get("invitationTemplate")
+    template = template if isinstance(template, dict) else {}
+    subject = f"DevOps Assessment Invitation - {str(test_doc.get('title') or 'DevOps Assessment')}"
+    html_content = _build_invitation_html(
+        test_title=str(test_doc.get("title") or "DevOps Assessment"),
+        candidate_name=candidate_name,
+        candidate_email=email,
+        exam_url=exam_url,
+        template=template,
+    )
+    _send_invitation_email(candidate_email=email, subject=subject, html_content=html_content)
+
     now = datetime.utcnow()
     await db.devops_test_candidates.update_one(
         {"_id": candidate["_id"]},
@@ -525,7 +710,7 @@ async def send_invitation(test_id: str, request: Request, body: Dict[str, Any] =
 
     return {
         "success": True,
-        "message": "Invitation marked as sent",
+        "message": "Invitation sent",
         "data": {"email": email},
     }
 
@@ -541,24 +726,63 @@ async def send_invitations_to_all(test_id: str, request: Request) -> Dict[str, A
     if not test_doc:
         raise HTTPException(status_code=404, detail="Test not found")
 
+    test_token = await _ensure_test_token(db, oid, test_doc)
+    base_url = _resolve_frontend_base_url(request)
+    template = test_doc.get("invitationTemplate")
+    template = template if isinstance(template, dict) else {}
+    test_title = str(test_doc.get("title") or "DevOps Assessment")
+    subject = f"DevOps Assessment Invitation - {test_title}"
+
     now = datetime.utcnow()
     candidates = await db.devops_test_candidates.find({"test_id": test_id}).to_list(length=5000)
     if not candidates:
-        return {"success": True, "message": "No candidates to invite", "data": {"sent_count": 0}}
+        return {
+            "success": True,
+            "message": "No candidates to invite",
+            "data": {"success_count": 0, "failed_count": 0, "failed": []},
+        }
 
     sent_count = 0
+    failed: List[Dict[str, str]] = []
     for candidate in candidates:
         email = _normalize_email(candidate.get("email") or "")
         if not email:
             continue
-        await db.devops_test_candidates.update_one(
-            {"_id": candidate["_id"]},
-            {"$set": {"status": "invited", "invited": True, "invited_at": now, "updated_at": now}},
+        candidate_name = str(candidate.get("name") or "Candidate")
+        exam_url = (
+            f"{base_url}/devops/tests/{test_id}/entry?token={urlparse.quote(test_token)}"
+            f"&email={urlparse.quote(email)}&name={urlparse.quote(candidate_name)}"
         )
-        await _add_invited_email(db, oid, email)
-        sent_count += 1
+        html_content = _build_invitation_html(
+            test_title=test_title,
+            candidate_name=candidate_name,
+            candidate_email=email,
+            exam_url=exam_url,
+            template=template,
+        )
 
-    return {"success": True, "message": "Invitations marked as sent", "data": {"sent_count": sent_count}}
+        try:
+            _send_invitation_email(candidate_email=email, subject=subject, html_content=html_content)
+            await db.devops_test_candidates.update_one(
+                {"_id": candidate["_id"]},
+                {"$set": {"status": "invited", "invited": True, "invited_at": now, "updated_at": now}},
+            )
+            await _add_invited_email(db, oid, email)
+            sent_count += 1
+        except HTTPException as exc:
+            failed.append({"email": email, "error": str(exc.detail)})
+        except Exception as exc:  # pragma: no cover - defensive
+            failed.append({"email": email, "error": str(exc)})
+
+    return {
+        "success": True,
+        "message": "Invitations processed",
+        "data": {
+            "success_count": sent_count,
+            "failed_count": len(failed),
+            "failed": failed,
+        },
+    }
 
 
 @router.post("/{test_id}/verify-candidate", response_model=Dict[str, Any])
@@ -694,9 +918,44 @@ async def send_candidate_feedback(test_id: str, user_id: str, request: Request) 
     if not candidate_doc:
         raise HTTPException(status_code=404, detail="Candidate not found")
 
+    candidate = _normalize_candidate(candidate_doc) or {}
+    candidate_name = str(candidate.get("name") or "Candidate")
+    candidate_email = _normalize_email(str(candidate.get("email") or ""))
+    if not candidate_email or "@" not in candidate_email:
+        raise HTTPException(status_code=400, detail="Candidate email not found")
+
+    question_analytics = candidate.get("question_analytics")
+    question_analytics = question_analytics if isinstance(question_analytics, list) else []
+    feedback_items = _extract_feedback_items(question_analytics)
+
+    submission_score = candidate.get("submission_score", candidate.get("score", 0))
+    score_text = str(submission_score if isinstance(submission_score, (int, float)) else 0)
+    test_title = str(test_doc.get("title") or "DevOps Test")
+
+    feedback_block = (
+        f"<ol>{''.join(feedback_items)}</ol>"
+        if feedback_items
+        else "<p>No detailed AI feedback is available yet. Please contact your recruiter for details.</p>"
+    )
+    html_content = f"""
+    <div style="font-family: Arial, sans-serif; color: #0f172a; max-width: 720px; margin: 0 auto;">
+      <h2 style="color: #1d4ed8; margin-bottom: 8px;">Your DevOps Assessment Feedback</h2>
+      <p>Hello {candidate_name},</p>
+      <p>Thank you for completing <strong>{test_title}</strong>. Your current score is <strong>{score_text}</strong>.</p>
+      <h3 style="margin-top: 20px; margin-bottom: 8px;">AI Feedback Summary</h3>
+      {feedback_block}
+      <p style="margin-top: 20px;">Best regards,<br>{get_settings().sendgrid_from_name or "AI Assessment Platform"}</p>
+    </div>
+    """
+    _send_feedback_email(
+        candidate_email=candidate_email,
+        subject=f"{test_title} - AI Feedback",
+        html_content=html_content,
+    )
+
     now = datetime.utcnow()
     await db.devops_test_candidates.update_one(
         {"_id": candidate_doc["_id"]},
         {"$set": {"feedback_sent_at": now, "updated_at": now}},
     )
-    return {"success": True, "message": "Feedback marked as sent"}
+    return {"success": True, "message": "Feedback email sent successfully", "email": candidate_email}

@@ -89,11 +89,15 @@ async function resetOverWebSocket(wsUrl: string, sessionId: string, timeoutMs = 
       } else {
         payload = String(event.data ?? "");
       }
-      const isObjectPayload = typeof payload === "object" && payload !== null;
+      const payloadObject =
+        typeof payload === "object" && payload !== null
+          ? (payload as Record<string, unknown>)
+          : null;
       const ok =
-        (isObjectPayload && payload.ok === true) ||
-        (isObjectPayload && payload.success === true) ||
-        (isObjectPayload && String(payload.status || "").toLowerCase() === "success");
+        payloadObject?.ok === true ||
+        payloadObject?.success === true ||
+        (typeof payloadObject?.status === "string" &&
+          payloadObject.status.toLowerCase() === "success");
       finish(ok);
     };
 

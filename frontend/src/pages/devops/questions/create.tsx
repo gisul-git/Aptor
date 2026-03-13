@@ -4,6 +4,7 @@ import { ArrowLeft, BookOpen, Bot, PenTool, Server, Sparkles } from "lucide-reac
 import { type DevopsDifficulty } from "@/lib/devops/ai-question-generator";
 
 type QuestionMode = "ai" | "manual";
+type QuestionCategory = "coding" | "scenario";
 
 type QuestionLike = Record<string, any>;
 
@@ -45,30 +46,40 @@ function uniqueItems(items: string[]): string[] {
 }
 
 function buildMixedSuggestedTopics(
+  experienceYears: number,
   selectedDifficulty: DevopsDifficulty,
   backendTopics: string[],
 ): string[] {
-  const localPrimary = SUGGESTED_TOPICS_BY_DIFFICULTY[selectedDifficulty];
-  const primaryPool = uniqueItems([...backendTopics, ...localPrimary]);
-  const mediumAndAdvancedPool = uniqueItems([
-    ...SUGGESTED_TOPICS_BY_DIFFICULTY.intermediate,
-    ...SUGGESTED_TOPICS_BY_DIFFICULTY.advanced,
-  ]).filter((topic) => !primaryPool.includes(topic));
+  const backendClean = uniqueItems(backendTopics);
 
-  if (selectedDifficulty === "beginner") {
-    const beginnerPicks = shuffleArray(primaryPool).slice(0, 3);
-    const mixedHarderPicks = shuffleArray(mediumAndAdvancedPool).slice(0, 3);
-    return shuffleArray(uniqueItems([...beginnerPicks, ...mixedHarderPicks]));
+  // Rule:
+  // 1) Higher experience + advanced difficulty => advanced-only topics.
+  // 2) Beginner difficulty => still stronger topics, but below advanced (intermediate).
+  // 3) Intermediate => intermediate-focused.
+  let targetPool: string[] = [];
+
+  if (selectedDifficulty === "advanced" && experienceYears > 4) {
+    targetPool = uniqueItems([...backendClean, ...SUGGESTED_TOPICS_BY_DIFFICULTY.advanced]);
+    return shuffleArray(targetPool).slice(0, 6);
   }
 
-  const crossDifficultyPool = uniqueItems([
-    ...SUGGESTED_TOPICS_BY_DIFFICULTY.beginner,
-    ...mediumAndAdvancedPool,
-  ]).filter((topic) => !primaryPool.includes(topic));
+  if (selectedDifficulty === "beginner") {
+    targetPool = uniqueItems([...backendClean, ...SUGGESTED_TOPICS_BY_DIFFICULTY.intermediate]);
+    return shuffleArray(targetPool).slice(0, 6);
+  }
 
-  const primaryPicks = shuffleArray(primaryPool).slice(0, 4);
-  const crossPicks = shuffleArray(crossDifficultyPool).slice(0, 2);
-  return shuffleArray(uniqueItems([...primaryPicks, ...crossPicks]));
+  if (selectedDifficulty === "intermediate") {
+    targetPool = uniqueItems([...backendClean, ...SUGGESTED_TOPICS_BY_DIFFICULTY.intermediate]);
+    return shuffleArray(targetPool).slice(0, 6);
+  }
+
+  // advanced with <=4 years: keep it strong but not strictly advanced-only.
+  targetPool = uniqueItems([
+    ...backendClean,
+    ...SUGGESTED_TOPICS_BY_DIFFICULTY.intermediate,
+    ...SUGGESTED_TOPICS_BY_DIFFICULTY.advanced,
+  ]);
+  return shuffleArray(targetPool).slice(0, 6);
 }
 
 async function persistQuestions(questions: QuestionLike[]): Promise<QuestionLike[]> {
@@ -96,6 +107,7 @@ export default function DevOpsQuestionCreatePage() {
 
   const [experienceYears, setExperienceYears] = useState(3);
   const [difficulty, setDifficulty] = useState<DevopsDifficulty>("intermediate");
+  const [questionCategory, setQuestionCategory] = useState<QuestionCategory>("coding");
   const [topicsRequired, setTopicsRequired] = useState("CI/CD pipelines");
   const [jobRole, setJobRole] = useState("DevOps Engineer");
   const [suggestedTopics, setSuggestedTopics] = useState<string[]>(
@@ -111,6 +123,9 @@ export default function DevOpsQuestionCreatePage() {
 
   const effectiveYearsOfExperience = `${experienceYears} ${experienceYears === 1 ? "year" : "years"}`;
   const effectiveTopicsRequired = topicsRequired.trim() || "CI/CD pipelines";
+  const shouldShowQuestionCategory = experienceYears < 5;
+  const effectiveQuestionCategory: QuestionCategory =
+    experienceYears > 5 ? "scenario" : shouldShowQuestionCategory ? questionCategory : "coding";
 
   useEffect(() => {
     let mounted = true;
@@ -123,7 +138,7 @@ export default function DevOpsQuestionCreatePage() {
         const json = await response.json().catch(() => ({}));
         const topics = Array.isArray(json?.data?.topics) ? (json.data.topics as string[]) : [];
         if (mounted) {
-          setSuggestedTopics(buildMixedSuggestedTopics(difficulty, topics));
+          setSuggestedTopics(buildMixedSuggestedTopics(experienceYears, difficulty, topics));
           return;
         }
       } catch (_err) {
@@ -131,7 +146,7 @@ export default function DevOpsQuestionCreatePage() {
       }
 
       if (mounted) {
-        setSuggestedTopics(buildMixedSuggestedTopics(difficulty, []));
+        setSuggestedTopics(buildMixedSuggestedTopics(experienceYears, difficulty, []));
       }
     };
 
@@ -140,6 +155,12 @@ export default function DevOpsQuestionCreatePage() {
       mounted = false;
     };
   }, [experienceYears, difficulty]);
+
+  useEffect(() => {
+    if (!shouldShowQuestionCategory) {
+      setQuestionCategory("coding");
+    }
+  }, [shouldShowQuestionCategory]);
 
   const handleGenerateAI = async () => {
     setLoading(true);
@@ -155,6 +176,7 @@ export default function DevOpsQuestionCreatePage() {
           body: JSON.stringify({
             yearsOfExperience: effectiveYearsOfExperience,
             difficulty,
+            questionCategory: effectiveQuestionCategory,
             topicsRequired: effectiveTopicsRequired,
             questionCount: 1,
             jobRole,
@@ -183,6 +205,7 @@ export default function DevOpsQuestionCreatePage() {
         metadata: {
           yearsOfExperience: effectiveYearsOfExperience,
           difficulty,
+          questionCategory: effectiveQuestionCategory,
           topicsRequired: effectiveTopicsRequired,
           questionCount: 1,
           jobRole,
@@ -199,6 +222,7 @@ export default function DevOpsQuestionCreatePage() {
           source: "create-page",
           yearsOfExperience: effectiveYearsOfExperience,
           difficulty,
+          questionCategory: effectiveQuestionCategory,
           topicsRequired: effectiveTopicsRequired,
           questionCount: 1,
           jobRole,
@@ -339,10 +363,10 @@ export default function DevOpsQuestionCreatePage() {
                   <input
                     type="range"
                     min={0}
-                    max={15}
+                    max={10}
                     step={1}
                     value={experienceYears}
-                    onChange={(e) => setExperienceYears(Number(e.target.value || 0))}
+                    onChange={(e) => setExperienceYears(Math.min(10, Math.max(0, Number(e.target.value || 0))))}
                     style={{ flex: 1 }}
                   />
                   <span style={{ minWidth: "4.5rem", textAlign: "right", fontWeight: 600, color: "#111827" }}>
@@ -363,6 +387,19 @@ export default function DevOpsQuestionCreatePage() {
                 <input value={jobRole} onChange={(e) => setJobRole(e.target.value)} style={{ width: "100%", padding: "0.7rem", border: "1px solid #D1D5DB", borderRadius: "0.5rem" }} />
               </label>
             </div>
+            {shouldShowQuestionCategory && (
+              <label style={{ display: "block", marginTop: "1rem" }}>
+                <div style={{ fontSize: "0.875rem", fontWeight: 600, marginBottom: "0.4rem" }}>Question Category</div>
+                <select
+                  value={questionCategory}
+                  onChange={(e) => setQuestionCategory(e.target.value as QuestionCategory)}
+                  style={{ width: "100%", padding: "0.7rem", border: "1px solid #D1D5DB", borderRadius: "0.5rem" }}
+                >
+                  <option value="coding">Coding</option>
+                  <option value="scenario">Scenario</option>
+                </select>
+              </label>
+            )}
             <label style={{ display: "block", marginTop: "1rem" }}>
               <div style={{ fontSize: "0.875rem", fontWeight: 600, marginBottom: "0.4rem" }}>Topics Required</div>
               <input

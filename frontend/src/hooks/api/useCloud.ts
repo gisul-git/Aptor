@@ -213,8 +213,8 @@ export const useCloudCandidateAnalytics = (testId: string | undefined, userId: s
 
 export const useSendCloudFeedback = () => {
   return useMutation({
-    mutationFn: ({ testId, userId }: { testId: string; userId: string }) =>
-      cloudService.sendFeedback(testId, userId),
+    mutationFn: ({ testId, userId, email }: { testId: string; userId: string; email?: string }) =>
+      cloudService.sendFeedback(testId, userId, email),
   });
 };
 

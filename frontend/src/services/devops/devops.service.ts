@@ -9,6 +9,14 @@ import type { ApiResponse } from '../api/types';
  */
 
 // Types
+export interface InvitationTemplate {
+  logoUrl?: string;
+  companyName?: string;
+  message: string;
+  footer?: string;
+  sentBy?: string;
+}
+
 export interface DevOpsTest {
   id: string;
   title: string;
@@ -18,6 +26,7 @@ export interface DevOpsTest {
   createdBy: string;
   createdAt: string;
   updatedAt: string;
+  invitationTemplate?: InvitationTemplate;
 }
 
 export interface DevOpsQuestion {

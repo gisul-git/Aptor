@@ -9,6 +9,14 @@ import type { ApiResponse } from '../api/types';
  */
 
 // Types
+export interface InvitationTemplate {
+  logoUrl?: string;
+  companyName?: string;
+  message: string;
+  footer?: string;
+  sentBy?: string;
+}
+
 export interface CloudTest {
   id: string;
   title: string;
@@ -18,6 +26,7 @@ export interface CloudTest {
   createdBy: string;
   createdAt: string;
   updatedAt: string;
+  invitationTemplate?: InvitationTemplate;
 }
 
 export interface CloudQuestion {
@@ -211,9 +220,14 @@ export const cloudService = {
   /**
    * Send feedback to candidate
    */
-  sendFeedback: async (testId: string, userId: string): Promise<ApiResponse<any>> => {
+  sendFeedback: async (
+    testId: string,
+    userId: string,
+    candidateEmail?: string
+  ): Promise<ApiResponse<any>> => {
     const response = await apiClient.post<ApiResponse<any>>(
-      `/api/v1/cloud/tests/${testId}/candidates/${userId}/send-feedback`
+      `/api/v1/cloud/tests/${testId}/candidates/${encodeURIComponent(userId)}/send-feedback`,
+      candidateEmail ? { email: candidateEmail } : undefined
     );
     return response.data;
   },

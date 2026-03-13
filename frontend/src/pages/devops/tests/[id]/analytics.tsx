@@ -14,6 +14,7 @@ import {
   useDevOpsTest, 
   useDevOpsCandidates, 
   useDevOpsCandidateAnalytics, 
+  type DevOpsCandidateAnalytics,
   useAddDevOpsCandidate, 
   useBulkAddDevOpsCandidates,
   useRemoveDevOpsCandidate, 
@@ -82,7 +83,7 @@ interface CandidateAnalytics {
     }>
   } | null
   question_analytics: QuestionAnalytics[]
-  activity_logs: any[]
+  activity_logs?: any[]
 }
 
 interface Candidate {
@@ -97,6 +98,46 @@ interface Candidate {
   invited?: boolean  // Added for invited status detection
   invited_at?: string  // Added for invited status detection
   status?: string // 'pending' | 'invited' | 'started' | 'completed'
+}
+
+function normalizeAnalyticsData(data: DevOpsCandidateAnalytics): CandidateAnalytics {
+  const questionAnalytics: QuestionAnalytics[] = Array.isArray(data.question_analytics)
+    ? data.question_analytics.map((qa) => ({
+        question_id: String(qa.question_id || ""),
+        question_title: String(qa.question_title || "Untitled Question"),
+        description: typeof qa.description === "string" ? qa.description : undefined,
+        tasks: Array.isArray(qa.tasks) ? qa.tasks.filter((task): task is string => typeof task === "string") : undefined,
+        difficulty: typeof qa.difficulty === "string" ? qa.difficulty : undefined,
+        language: typeof qa.language === "string" ? qa.language : "",
+        status: typeof qa.status === "string" ? qa.status : undefined,
+        code: typeof qa.code === "string" ? qa.code : "",
+        outputs: Array.isArray(qa.outputs) ? qa.outputs.map((output) => String(output ?? "")) : [],
+        submitted_at: typeof qa.submitted_at === "string" ? qa.submitted_at : null,
+        created_at: typeof qa.created_at === "string" ? qa.created_at : null,
+        score: typeof qa.score === "number" ? qa.score : undefined,
+        ai_feedback: qa.ai_feedback as AIFeedback | undefined,
+      }))
+    : [];
+
+  return {
+    candidate: {
+      name: data.candidate?.name || "",
+      email: data.candidate?.email || "",
+    },
+    candidateInfo: data.candidateInfo ?? null,
+    submission: data.submission
+      ? {
+          score: data.submission.score ?? 0,
+          started_at: data.submission.started_at ?? null,
+          submitted_at: data.submission.submitted_at ?? null,
+          is_completed: Boolean(data.submission.is_completed),
+          ai_feedback_status: data.submission.ai_feedback_status,
+          evaluations: data.submission.evaluations,
+        }
+      : null,
+    question_analytics: questionAnalytics,
+    activity_logs: Array.isArray(data.activity_logs) ? data.activity_logs : [],
+  }
 }
 
 export default function AnalyticsPage() {
@@ -365,7 +406,7 @@ export default function AnalyticsPage() {
       if (process.env.NODE_ENV === 'development') {
         console.log('[DevOps Analytics] 📊 Syncing analytics data')
       }
-      setAnalytics(analyticsData)
+      setAnalytics(normalizeAnalyticsData(analyticsData))
       // Fetch proctor logs when analytics data is loaded
       if (selectedCandidateUserId && analyticsData.candidate?.email) {
         fetchProctorLogs(selectedCandidateUserId)

@@ -1,3 +1,4 @@
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/router";
 import Link from "next/link";
 import {
@@ -17,6 +18,31 @@ import {
 
 export default function CloudMainPage() {
   const router = useRouter();
+  const [preferredTestId, setPreferredTestId] = useState<string | null>(null);
+  const fallbackTestId = "69b3bc79b8fc84c9afcdcaa8";
+
+  useEffect(() => {
+    const queryTestId = typeof router.query.testId === "string" ? router.query.testId.trim() : "";
+    if (queryTestId) {
+      setPreferredTestId(queryTestId);
+      if (typeof window !== "undefined") {
+        sessionStorage.setItem("cloud_last_test_id", queryTestId);
+      }
+      return;
+    }
+
+    if (typeof window !== "undefined") {
+      const cached = sessionStorage.getItem("cloud_last_test_id");
+      if (cached && cached.trim()) {
+        setPreferredTestId(cached.trim());
+      }
+    }
+  }, [router.query.testId]);
+
+  const testManagementHref = useMemo(() => {
+    const targetTestId = preferredTestId || fallbackTestId;
+    return `/cloud/tests?testId=${encodeURIComponent(targetTestId)}`;
+  }, [fallbackTestId, preferredTestId]);
 
   return (
     <div style={{ backgroundColor: "#FAFCFB", minHeight: "100vh", fontFamily: "system-ui, -apple-system, sans-serif" }}>
@@ -222,7 +248,7 @@ export default function CloudMainPage() {
             </div>
           </Link>
 
-          <Link href="/cloud/assessments" style={{ textDecoration: "none" }}>
+          <Link href={testManagementHref} style={{ textDecoration: "none" }}>
             <div
               style={{
                 backgroundColor: "#ffffff",

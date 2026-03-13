@@ -402,6 +402,10 @@ async def generate_ai_questions(payload: DevOpsAIGenerationRequest) -> Dict[str,
     safe_count = 1
     fallback_topics = _get_suggested_topics(payload.yearsOfExperience, payload.difficulty)
     effective_topics_required = (payload.topicsRequired or "").strip() or ", ".join(fallback_topics)
+    requested_category = str(getattr(payload, "questionCategory", "") or "").strip().lower()
+    if requested_category not in {"coding", "scenario"}:
+        requested_category = "scenario" if _parse_years(payload.yearsOfExperience) > 4 else "coding"
+
     system_prompt = """
 You generate DevOps hands-on assessment tasks designed for controlled sandbox environments.
  
@@ -757,7 +761,7 @@ Important Output Rules
 - Only valid JSON
 """.strip()
 
-    if _parse_years(payload.yearsOfExperience) > 4:
+    if requested_category == "scenario":
         system_prompt = """
 You generate scenario-based DevOps assessment questions designed for experienced engineers.
  
@@ -785,7 +789,7 @@ All tasks must simulate realistic production engineering situations faced by sen
         user_prompt = f"""
 Act as a Senior DevOps Engineer working at a FAANG company (Google, Amazon, Meta, Apple, or Netflix).
  
-Generate scenario-based DevOps assessment questions designed for candidates with more than 4 years of DevOps experience.
+Generate scenario-based DevOps assessment questions.
  
 Examiner Inputs
  
@@ -807,7 +811,7 @@ Assessment Description: {payload.description}
  
 Candidate Experience Requirement
  
-These questions are intended for candidates with more than 4 years of experience.
+These questions are intended for scenario-style evaluation where candidates explain reasoning and solution approach.
  
 Therefore questions must:
  
@@ -1073,6 +1077,39 @@ Return STRICTLY this JSON format:
             content = payload_json["choices"][0]["message"]["content"]
             parsed = _extract_json_object(content if isinstance(content, str) else "")
             questions = _sanitize_generated_questions((parsed or {}).get("questions"), safe_count)
+            if questions and requested_category == "scenario":
+                normalized: List[Dict[str, Any]] = []
+                for q in questions:
+                    qq = dict(q)
+                    qq["kind"] = "command"
+                    qq["validationMode"] = "content"
+                    qq["starterCode"] = ""
+                    constraints = qq.get("constraints")
+                    if not isinstance(constraints, list) or not constraints:
+                        qq["constraints"] = [
+                            "Provide a clear, production-oriented explanation.",
+                            "Focus on diagnosis, reasoning, and solution approach.",
+                        ]
+                    hints = qq.get("hints")
+                    if not isinstance(hints, list) or not hints:
+                        qq["hints"] = [
+                            "Explain assumptions and trade-offs.",
+                            "Describe risks and mitigation steps.",
+                        ]
+                    normalized.append(qq)
+                questions = normalized
+            elif questions and requested_category == "coding":
+                normalized = []
+                for q in questions:
+                    qq = dict(q)
+                    if str(qq.get("validationMode") or "").lower() == "content":
+                        qq["validationMode"] = "hybrid"
+                    if str(qq.get("kind") or "").lower() == "command":
+                        starter = qq.get("starterCode")
+                        if not isinstance(starter, str) or not starter.strip():
+                            qq["starterCode"] = 'echo "your command"'
+                    normalized.append(qq)
+                questions = normalized
             if questions:
                 return {"success": True, "model": model_name, "questions": questions}
             openai_errors.append(f"{model_name}: Model returned no usable questions.")

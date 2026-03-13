@@ -48,6 +48,7 @@ interface RuntimeQuestion {
   difficulty: Difficulty;
   points: number;
   kind: QuestionKind;
+  isScenarioBased?: boolean;
   starterCode: string;
   validationMode?: "runtime" | "content" | "hybrid";
   expectedSubmissionContains?: string[];
@@ -238,10 +239,85 @@ function pickRandomizedQuestions(pool: RuntimeQuestion[], seedText: string, coun
   return ranked.slice(0, Math.min(count, ranked.length));
 }
 
+function isScenarioQuestion(raw: Record<string, unknown>): boolean {
+  if (raw.isScenarioBased === true || raw.is_scenario_based === true) {
+    return true;
+  }
+
+  const typeHints = [
+    raw.questionType,
+    raw.question_type,
+    raw.type,
+    raw.mode,
+    raw.format,
+    raw.responseType,
+    raw.validationMode,
+    raw.validation_mode,
+  ]
+    .map((value) => String(value || "").toLowerCase())
+    .join(" ");
+
+  if (
+    typeHints.includes("scenario") ||
+    typeHints.includes("case study") ||
+    typeHints.includes("case_study") ||
+    typeHints.includes("descriptive") ||
+    typeHints.includes("subjective") ||
+    typeHints.includes("content")
+  ) {
+    return true;
+  }
+
+  if (typeof raw.context === "string" || typeof raw.task === "string") {
+    return true;
+  }
+
+  const title = String(raw.title || "").toLowerCase();
+  const description = String(raw.description || "").toLowerCase();
+  if (title.includes("scenario") || description.includes("scenario")) {
+    return true;
+  }
+
+  const constraints = Array.isArray(raw.constraints)
+    ? raw.constraints.map((x) => String(x || "").toLowerCase())
+    : [];
+  const hints = Array.isArray(raw.hints) ? raw.hints.map((x) => String(x || "").toLowerCase()) : [];
+  const instructions = Array.isArray(raw.instructions)
+    ? raw.instructions.map((x) => String(x || "").toLowerCase())
+    : [];
+  const mergedText = [...constraints, ...hints, ...instructions].join(" ");
+  if (
+    mergedText.includes("explain") ||
+    mergedText.includes("reasoning") ||
+    mergedText.includes("trade-off") ||
+    mergedText.includes("tradeoff") ||
+    mergedText.includes("diagnosis")
+  ) {
+    return true;
+  }
+
+  const starterCode =
+    typeof raw.starterCode === "string"
+      ? raw.starterCode
+      : typeof raw.starter_code === "string"
+        ? raw.starter_code
+        : "";
+  if (
+    String(raw.kind || "").toLowerCase() === "command" &&
+    !starterCode.trim() &&
+    mergedText.length > 30
+  ) {
+    return true;
+  }
+
+  return false;
+}
+
 function buildRuntimeQuestions(rawQuestions: Array<Record<string, unknown>>): RuntimeQuestion[] {
   return rawQuestions.map((raw, index) => {
     const kind = pickKind(raw);
     const lintType = kind === "lint" ? normalizeLintType(raw) : undefined;
+    const scenarioBased = isScenarioQuestion(raw);
 
     const starterFromPayload =
       typeof raw.starterCode === "string"
@@ -270,10 +346,12 @@ function buildRuntimeQuestions(rawQuestions: Array<Record<string, unknown>>): Ru
       difficulty: normalizeDifficulty(raw.difficulty),
       points: typeof raw.points === "number" ? raw.points : 20,
       kind,
+      isScenarioBased: scenarioBased,
       starterCode: starterFromPayload || defaultStarter,
       validationMode: (() => {
-        const mode = String(raw.validationMode || "").toLowerCase();
+        const mode = String(raw.validationMode || raw.validation_mode || "").toLowerCase();
         if (mode === "runtime" || mode === "content" || mode === "hybrid") return mode;
+        if (scenarioBased) return "content";
         return "runtime";
       })(),
       expectedSubmissionContains: Array.isArray(raw.expectedSubmissionContains)
@@ -334,17 +412,6 @@ function formatCountdown(totalSeconds: number): string {
 
 function getExecutionSessionStorageKey(testId?: string): string {
   return `devops_exec_session_${String(testId || "assessment")}`;
-}
-
-function parseYearsOfExperience(value: unknown): number | null {
-  if (typeof value === "number" && Number.isFinite(value)) {
-    return Math.max(0, Math.floor(value));
-  }
-  if (typeof value === "string") {
-    const match = value.match(/\d+/);
-    if (match) return Math.max(0, Number(match[0]));
-  }
-  return null;
 }
 
 function evaluateSubmission(
@@ -460,7 +527,6 @@ export default function DevOpsTakePage() {
   const [aiGeneratedQuestions, setAiGeneratedQuestions] = useState<Array<Record<string, unknown>>>([]);
   const [isGeneratedLoading, setIsGeneratedLoading] = useState(false);
   const [generatedFetchError, setGeneratedFetchError] = useState<string | null>(null);
-  const [sessionExperienceYears, setSessionExperienceYears] = useState<number | null>(null);
   const [candidateSessionUserId, setCandidateSessionUserId] = useState<string | null>(null);
   const [candidateSessionEmail, setCandidateSessionEmail] = useState<string | null>(null);
   const isGeneratedRoute = testId === "ai-generated" || router.query.generated === "1";
@@ -568,44 +634,6 @@ export default function DevOpsTakePage() {
       active = false;
     };
   }, [isGeneratedRoute]);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-
-    const candidates: unknown[] = [];
-    try {
-      const rawPayload = sessionStorage.getItem("devopsAIGeneratedPayload");
-      if (rawPayload) {
-        const payload = JSON.parse(rawPayload) as { metadata?: Record<string, unknown> };
-        candidates.push(
-          payload?.metadata?.yearsOfExperience,
-          payload?.metadata?.years_of_experience,
-          payload?.metadata?.experienceYears
-        );
-      }
-    } catch {
-      // Ignore malformed session payload.
-    }
-
-    try {
-      const rawMeta = sessionStorage.getItem("devopsAIGenerationMeta");
-      if (rawMeta) {
-        const meta = JSON.parse(rawMeta) as Record<string, unknown>;
-        candidates.push(meta?.yearsOfExperience, meta?.years_of_experience, meta?.experienceYears);
-      }
-    } catch {
-      // Ignore malformed session metadata.
-    }
-
-    for (const candidate of candidates) {
-      const parsed = parseYearsOfExperience(candidate);
-      if (parsed !== null) {
-        setSessionExperienceYears(parsed);
-        return;
-      }
-    }
-    setSessionExperienceYears(null);
-  }, []);
 
   const questions = useMemo(() => {
     if (aiGeneratedQuestions.length > 0) {
@@ -896,7 +924,7 @@ export default function DevOpsTakePage() {
 
   useEffect(() => {
     let isMounted = true;
-    let initTimer: ReturnType<typeof setInterval> | null = null;
+    let initTimer: number | null = null;
 
     const setupTerminal = async () => {
       if (!terminalViewportRef.current || xtermRef.current || typeof window === "undefined") return;
@@ -958,8 +986,8 @@ export default function DevOpsTakePage() {
 
     return () => {
       isMounted = false;
-      if (initTimer) {
-        clearInterval(initTimer);
+      if (initTimer !== null) {
+        window.clearInterval(initTimer);
         initTimer = null;
       }
       if (terminalReconnectTimerRef.current) {
@@ -1384,33 +1412,9 @@ export default function DevOpsTakePage() {
     return map;
   }, [testData]);
   const defaultDurationSeconds = Math.max(60, Number((testData as any)?.duration_minutes || 10) * 60);
-  const inferredExperienceYears = useMemo(() => {
-    const test = (testData as any) || {};
-    const candidates: unknown[] = [
-      test?.yearsOfExperience,
-      test?.years_of_experience,
-      test?.experienceYears,
-      test?.metadata?.yearsOfExperience,
-      test?.metadata?.years_of_experience,
-      test?.schedule?.candidateRequirements?.yearsOfExperience,
-      test?.schedule?.candidateRequirements?.years_of_experience,
-      sessionExperienceYears,
-    ];
-
-    if (Array.isArray(test?.questions)) {
-      test.questions.forEach((q: any) => {
-        candidates.push(q?.yearsOfExperience, q?.years_of_experience, q?.experienceYears);
-      });
-    }
-
-    const parsedYears = candidates
-      .map((value) => parseYearsOfExperience(value))
-      .filter((value): value is number => value !== null);
-
-    if (parsedYears.length === 0) return null;
-    return Math.max(...parsedYears);
-  }, [testData, sessionExperienceYears]);
-  const isSeniorScenarioMode = (inferredExperienceYears ?? 0) > 4;
+  const isScenarioQuestion =
+    currentQuestion?.isScenarioBased === true ||
+    (currentQuestion?.validationMode || "runtime") === "content";
 
   useEffect(() => {
     if (!currentQuestion || submitted) return;
@@ -1583,12 +1587,12 @@ export default function DevOpsTakePage() {
             text: "Command run successful",
           });
         }
-          if (exitCodeValue !== 0 && currentQuestion.kind !== "command") {
-            nextLines.push({
-              type: "error",
-              text: `exit_code=${result.exitCode ?? "unknown"}`,
-            });
-          }
+        if (exitCodeValue !== 0) {
+          nextLines.push({
+            type: "error",
+            text: `exit_code=${result.exitCode ?? "unknown"}`,
+          });
+        }
         }
 
       const suppressSuccessReason =
@@ -1597,8 +1601,7 @@ export default function DevOpsTakePage() {
         result.engine !== "lint" &&
         typeof result.exitCode === "number" &&
         result.exitCode === 0;
-      const suppressEvaluationReasons = currentQuestion.kind === "command";
-      if (!suppressSuccessReason && !suppressEvaluationReasons) {
+      if (!suppressSuccessReason) {
         evaluation.reasons.forEach((reason) =>
           nextLines.push({
             type: evaluation.passed ? "success" : "error",
@@ -1651,12 +1654,6 @@ export default function DevOpsTakePage() {
         };
       });
     } finally {
-      if (currentQuestion.kind === "command") {
-        setEditorByQuestion((prev) => ({
-          ...prev,
-          [currentQuestion.id]: "",
-        }));
-      }
       setIsRunning(false);
     }
   };
@@ -1840,9 +1837,9 @@ export default function DevOpsTakePage() {
           >
             <div className={styles.editorBar}>
               <div className={styles.editorMeta}>
-                <span>{isSeniorScenarioMode ? "Scenario Notepad" : currentQuestion.kind === "command" ? "Shell Input" : "Workspace File"}</span>
+                <span>{isScenarioQuestion ? "Scenario Notepad" : currentQuestion.kind === "command" ? "Shell Input" : "Workspace File"}</span>
                 <span>Runs {currentAttempt?.runCount || 0}</span>
-                {currentQuestion.kind === "command" && (
+                {currentQuestion.kind === "command" && !isScenarioQuestion && (
                   <span>
                     {terminalConnectionState === "connected"
                       ? "Terminal Connected"
@@ -1854,7 +1851,7 @@ export default function DevOpsTakePage() {
               </div>
 
               <div className={styles.btnRow}>
-                {!isSeniorScenarioMode && currentQuestion.kind !== "command" && (
+                {!isScenarioQuestion && currentQuestion.kind !== "command" && (
                   <button
                     type="button"
                     className={cx(styles.btn, styles.btnRun)}
@@ -1866,7 +1863,7 @@ export default function DevOpsTakePage() {
                     {remainingSeconds <= 0 ? "Time Up" : isRunning ? "Running..." : "Run"}
                   </button>
                 )}
-                {!isSeniorScenarioMode && (
+                {!isScenarioQuestion && (
                   <button
                     type="button"
                     className={cx(styles.btn, styles.btnReset)}
@@ -1887,10 +1884,10 @@ export default function DevOpsTakePage() {
                   disabled={isRunning || isResettingSession}
                 >
                   {currentIndex < questions.length - 1
-                    ? isSeniorScenarioMode
+                    ? isScenarioQuestion
                       ? "Next Scenario"
                       : "Finish Question"
-                    : isSeniorScenarioMode
+                    : isScenarioQuestion
                       ? "Submit Assessment"
                       : "Finish Test"}
                 </button>
@@ -1898,7 +1895,7 @@ export default function DevOpsTakePage() {
             </div>
 
             <div className={styles.editorWrap}>
-              {isSeniorScenarioMode ? (
+              {isScenarioQuestion ? (
                 <div className={styles.scenarioWrap}>
                   <textarea
                     className={styles.scenarioNotepad}
@@ -1931,8 +1928,8 @@ export default function DevOpsTakePage() {
                   key={currentQuestion.id}
                   height="100%"
                   theme="vs-dark"
-                  defaultLanguage={currentQuestion.kind === "command" ? "shell" : "yaml"}
-                  language={currentQuestion.kind === "command" ? "shell" : "yaml"}
+                  defaultLanguage={currentQuestion.kind === "terraform" ? "hcl" : "yaml"}
+                  language={currentQuestion.kind === "terraform" ? "hcl" : "yaml"}
                   value={currentValue}
                   onChange={(value) =>
                     setEditorByQuestion((prev) => ({
@@ -1944,7 +1941,7 @@ export default function DevOpsTakePage() {
                     minimap: { enabled: false },
                     fontFamily: "var(--font-devops-mono)",
                     fontSize: 14,
-                    lineNumbers: currentQuestion.kind === "command" ? "off" : "on",
+                    lineNumbers: "on",
                     wordWrap: "on",
                     scrollBeyondLastLine: false,
                     automaticLayout: true,
@@ -1956,7 +1953,7 @@ export default function DevOpsTakePage() {
           </motion.section>
         </motion.section>
 
-        {!isSeniorScenarioMode && currentQuestion.kind !== "command" && (
+        {!isScenarioQuestion && currentQuestion.kind !== "command" && (
           <motion.section
             className={styles.terminalPanel}
             variants={{ hidden: { y: 18, opacity: 0 }, show: { y: 0, opacity: 1 } }}

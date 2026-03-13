@@ -468,14 +468,22 @@ export default async function handler(
           });
         }
 
+        const lintStatus = typeof data.status === "string" ? data.status : undefined;
+        const lintErrors = Array.isArray(data.errors)
+          ? data.errors.filter((item): item is string => typeof item === "string")
+          : [];
+        const lintWarnings = Array.isArray(data.warnings)
+          ? data.warnings.filter((item): item is string => typeof item === "string")
+          : [];
+
         return res.status(200).json({
           ok: true,
-          status: data.status === "passed" ? "success" : "error",
+          status: lintStatus === "passed" ? "success" : "error",
           engine: "lint",
-          lintStatus: data.status,
+          lintStatus,
           lintScore: Number(data.score ?? 0),
-          lintErrors: Array.isArray(data.errors) ? data.errors : [],
-          lintWarnings: Array.isArray(data.warnings) ? data.warnings : [],
+          lintErrors,
+          lintWarnings,
         });
       } catch {
         if (body.lintType === "github_actions") {

@@ -12,6 +12,7 @@ export interface DevOpsAIGenerationInput {
 }
 
 export interface GeneratedDevOpsQuestion {
+  [key: string]: unknown;
   id: string;
   title: string;
   description: string;
