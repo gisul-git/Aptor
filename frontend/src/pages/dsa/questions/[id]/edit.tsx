@@ -715,9 +715,6 @@ export default function QuestionEditPage() {
             <CardTitle className="flex items-center gap-2">
               <Sparkles className="w-5 h-5 text-purple-400" />
               Generate Question with AI
-              <span className="text-xs bg-purple-500/20 text-purple-400 px-2 py-0.5 rounded ml-2">
-                Powered by GPT-4
-              </span>
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">

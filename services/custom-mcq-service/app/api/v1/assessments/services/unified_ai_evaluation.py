@@ -662,10 +662,17 @@ CANDIDATE CODE:
 {source_code}
 ```
 
-LANGUAGE: {language}
+SUBMITTED LANGUAGE: {language}
 MAX MARKS: {max_marks}
 DIFFICULTY: {difficulty}
 {starter_context}{test_summary}
+
+IMPORTANT EVALUATION RULES:
+- The candidate submitted code in {language}. Evaluate it AS {language} code.
+- Do NOT claim the code is in a different language. The language tag above is authoritative.
+- Do NOT penalize for "language mismatch" unless the question explicitly required a specific language other than {language}.
+- If the question says "implement in Java" and the code is Java, do NOT say it is Python or any other language.
+- Evaluate correctness, logic, code quality, and efficiency based on {language} standards.
 
 Provide detailed evaluation including partial credit reasoning if some tests failed.
 Focus on test case pass rate, algorithm correctness, code quality, efficiency, and best practices."""

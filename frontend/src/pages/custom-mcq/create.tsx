@@ -86,6 +86,21 @@ export default function CreateCustomMCQPage({ session }: CreateCustomMCQPageProp
             setAssessmentId(assessmentIdParam);
             setIsEditingExisting(true); // Mark as editing existing assessment
             hasDeterminedEditModeRef.current = true;
+            const loadedAssessmentToken = (assessment as any).assessmentToken || null;
+
+            if (
+              typeof window !== "undefined" &&
+              loadedAssessmentToken &&
+              ((assessment as any).status === "scheduled" || (assessment as any).status === "active")
+            ) {
+              const restoredAssessmentUrl = `${window.location.origin}/custom-mcq/entry/${assessmentIdParam}?token=${loadedAssessmentToken}`;
+              setCreatedAssessmentUrl(restoredAssessmentUrl);
+              setAssessmentToken(loadedAssessmentToken);
+            } else {
+              setCreatedAssessmentUrl(null);
+              setAssessmentToken(null);
+            }
+
             // Extract schedule data if it exists
             const schedule = (assessment as any).schedule || {};
             

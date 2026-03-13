@@ -730,8 +730,8 @@ export default function CustomMCQDetailsPage({ session }: CustomMCQDetailsPagePr
               <p style={{ color: "#2D7A52", margin: 0 }}>{assessment.description}</p>
             )}
           </div>
-          <button type="button" onClick={() => router.push("/dashboard")} className="btn-secondary">
-            ← Back to Dashboard
+          <button type="button" onClick={() => router.push("/assessments")} className="btn-secondary">
+            ← Back to Assessments
           </button>
         </div>
 
@@ -880,8 +880,8 @@ export default function CustomMCQDetailsPage({ session }: CustomMCQDetailsPagePr
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "1rem" }}>
             <div>
-              <strong style={{ color: "#2D7A52" }}>Total Questions:</strong> {assessment.totalQuestions || 0}
-            </div>
+  <strong style={{ color: "#2D7A52" }}>Total Questions:</strong> {assessment.questions?.length || 0}
+</div>
             <div>
               <strong style={{ color: "#2D7A52" }}>Total Marks:</strong> {assessment.totalMarks || 0}
             </div>
@@ -1166,7 +1166,23 @@ export default function CustomMCQDetailsPage({ session }: CustomMCQDetailsPagePr
                     const proctorLabels = (userEmail && proctorLabelsByUser[userEmail]) ? proctorLabelsByUser[userEmail] : {};
                     const proctorSummary = (userEmail && proctorSummaryByUser[userEmail]) ? proctorSummaryByUser[userEmail] : null;
                     const isLoadingProctor = !!(userEmail && loadingProctorForUser[userEmail]);
-                    const hasAnswerLogs = (submission as any).answerLogs && Object.keys((submission as any).answerLogs).length > 0;
+                    // answerLogs is often empty {}; fall back to building from submissions entries
+const rawAnswerLogs = (() => {
+  const topLevel = (submission as any).answerLogs;
+  if (topLevel && Object.keys(topLevel).length > 0) return topLevel;
+  
+  // Build from submissions array - subjective questions with textAnswer
+  const entries = (submission as any).submissions || [];
+  const built: Record<string, any[]> = {};
+  entries.forEach((s: any) => {
+    if (s.questionType === "subjective" && s.textAnswer) {
+      built[s.questionId] = [{ answer: s.textAnswer, timestamp: s.submittedAt || submission.submittedAt }];
+    }
+  });
+  return Object.keys(built).length > 0 ? built : null;
+})();
+
+const hasAnswerLogs = rawAnswerLogs != null && Object.keys(rawAnswerLogs).length > 0;
                     const candidateRequirements = (submission as any).candidateRequirements || {};
                     const hasRequirements = candidateRequirements && Object.keys(candidateRequirements).length > 0;
                     // Check if there are coding submissions
@@ -1501,7 +1517,7 @@ export default function CustomMCQDetailsPage({ session }: CustomMCQDetailsPagePr
                                     >
                                       Answer Change Logs (Subjective Questions)
                                     </div>
-                                    {Object.entries((submission as any).answerLogs).map(
+                                    {Object.entries(rawAnswerLogs || {}).map(
                                       ([questionId, logs]: [string, any]) => {
                                         const question = assessment.questions?.find(
                                           (q) => q.id === questionId
