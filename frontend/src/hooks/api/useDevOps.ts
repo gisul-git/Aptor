@@ -141,6 +141,60 @@ export const useDevOpsCandidates = (testId: string | undefined) => {
   });
 };
 
+export const useAddDevOpsCandidate = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ testId, data }: { testId: string; data: { name: string; email: string } }) =>
+      devopsService.addCandidate(testId, data),
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: [...QUERY_KEYS.test(variables.testId), 'candidates'] as const });
+    },
+  });
+};
+
+export const useBulkAddDevOpsCandidates = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ testId, formData }: { testId: string; formData: FormData }) =>
+      devopsService.bulkAddCandidates(testId, formData),
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: [...QUERY_KEYS.test(variables.testId), 'candidates'] as const });
+    },
+  });
+};
+
+export const useRemoveDevOpsCandidate = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ testId, userId }: { testId: string; userId: string }) =>
+      devopsService.removeCandidate(testId, userId),
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: [...QUERY_KEYS.test(variables.testId), 'candidates'] as const });
+    },
+  });
+};
+
+export const useSendDevOpsInvitation = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ testId, email }: { testId: string; email: string }) =>
+      devopsService.sendInvitation(testId, email),
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: [...QUERY_KEYS.test(variables.testId), 'candidates'] as const });
+    },
+  });
+};
+
+export const useSendDevOpsInvitationsToAll = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (testId: string) => devopsService.sendInvitationsToAll(testId),
+    onSuccess: (_, testId) => {
+      queryClient.invalidateQueries({ queryKey: [...QUERY_KEYS.test(testId), 'candidates'] as const });
+    },
+  });
+};
+
 export const useDevOpsCandidateAnalytics = (testId: string | undefined, userId: string | undefined) => {
   return useQuery<DevOpsCandidateAnalytics>({
     queryKey: [...QUERY_KEYS.test(testId || ''), 'analytics', userId] as const,
@@ -154,6 +208,13 @@ export const useDevOpsCandidateAnalytics = (testId: string | undefined, userId: 
     enabled: !!testId && !!userId,
     staleTime: 10 * 1000,
     retry: 1,
+  });
+};
+
+export const useSendDevOpsFeedback = () => {
+  return useMutation({
+    mutationFn: ({ testId, userId }: { testId: string; userId: string }) =>
+      devopsService.sendFeedback(testId, userId),
   });
 };
 

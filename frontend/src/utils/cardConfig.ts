@@ -147,7 +147,7 @@ export function getNavigationPaths(type: AssessmentType, status: DisplayStatus, 
     paths.editPath = `/data-engineering/tests/${id}/edit`;
     paths.analyticsPath = `/data-engineering/tests/${id}/analytics`;
   } else if (type === 'cloud') {
-    paths.editPath = `/cloud/tests/${id}/edit`;
+    paths.editPath = `/cloud/tests?testId=${id}`;
     paths.analyticsPath = `/cloud/tests/${id}/analytics`;
   } else if (type === 'devops') {
     // DevOps uses the tests details page (AIML-style management UI)
@@ -172,7 +172,7 @@ export function getAssignPath(type: AssessmentType, id: string): string {
   if (type === 'custom_mcq') return `/custom-mcq/create?id=${id}`;
   if (type === 'design') return `/design/tests/${id}/edit`;
   if (type === 'data_engineering') return `/data-engineering/tests/${id}/edit`;
-  if (type === 'cloud') return `/cloud/tests/${id}/edit`;
+  if (type === 'cloud') return `/cloud/tests?testId=${id}`;
   if (type === 'devops') return `/devops/tests?testId=${id}`;
   return `/assessments/${id}/configure`;
 }

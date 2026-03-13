@@ -5,7 +5,7 @@ interface ResetRequestBody {
   sessionId?: string;
 }
 
-const COMMAND_EXECUTION_URL = "http://192.168.1.18:4040/execute";
+const COMMAND_EXECUTION_URL = "http://103.173.99.254:4040/execute";
 
 function resolveBaseFromExecuteUrl(url: string): string {
   const cleaned = String(url || "").replace(/\/+$/, "");

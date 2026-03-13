@@ -1629,20 +1629,25 @@ export default function PrecheckPage() {
       console.error("Error storing precheck completion:", error);
     }
 
-    // Route to new instructions page
+    // Route to instructions page based on gate flow
     // Use replace to avoid adding to history stack and prevent navigation conflicts
     if (router.isReady && assessmentId && token) {
-      const targetUrl = `/assessment/${assessmentId}/${token}/instructions-new`;
-      console.log("[PRECHECK] 🔄 Navigating to instructions-new", {
+      const ctx = getGateContext(assessmentId as string);
+      const targetUrl =
+        ctx?.flowType === "devops"
+          ? `/devops/tests/${assessmentId}/instructions?token=${encodeURIComponent(token as string)}`
+          : `/assessment/${assessmentId}/${token}/instructions-new`;
+      console.log("[PRECHECK] 🔄 Navigating after precheck completion", {
         targetUrl,
         assessmentId,
         token,
+        flowType: ctx?.flowType || "ai",
         routerIsReady: router.isReady,
         timestamp: new Date().toISOString(),
       });
       try {
         await router.replace(targetUrl);
-        console.log("[PRECHECK] ✅ Navigation to instructions-new completed");
+        console.log("[PRECHECK] ✅ Navigation completed");
       } catch (error: any) {
         // Ignore navigation cancellation errors (expected when navigating quickly)
         if (error?.name === "AbortError" || error?.message?.includes("Abort")) {

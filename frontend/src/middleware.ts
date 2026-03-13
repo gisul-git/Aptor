@@ -162,6 +162,15 @@ export default withAuth(
           return true; // These routes have their own token-based auth
         }
 
+        // DevOps candidate routes (use token from URL, not session)
+        // Keep analytics/admin paths protected.
+        if (
+          /^\/devops\/tests\/[^/]+$/.test(pathname) ||
+          /^\/devops\/tests\/[^/]+\/(entry|take|instructions)$/.test(pathname)
+        ) {
+          return true;
+        }
+
         // Candidate-facing API routes should remain public (token validated server-side)
         if (pathname.startsWith("/api/assessment/")) {
           return true;

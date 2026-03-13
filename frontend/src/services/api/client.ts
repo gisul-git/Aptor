@@ -164,6 +164,17 @@ apiClient.interceptors.request.use(
                              url.includes('/api/v1/custom-mcq/take/') || 
                              url.includes('/api/v1/custom-mcq/verify-candidate') ||
                              url.includes('/api/v1/custom-mcq/submit');
+    const isCloudCandidateRoute =
+      url.includes('/api/v1/cloud/tests/') &&
+      (
+        url.includes('/verify-candidate') ||
+        url.includes('/start') ||
+        url.includes('/public') ||
+        url.includes('/full') ||
+        (url.includes('/candidate') && !url.includes('/candidates')) ||
+        url.includes('/submit-answer') ||
+        url.includes('/submit')
+      );
     // DSA test routes that can be accessed by candidates (submission, start, public, question, final-submit)
     // These routes can be accessed by both candidates (no auth) and admins (with auth)
     const isDSACandidateRoute = url.includes('/api/v1/dsa/tests/') && 
@@ -213,7 +224,7 @@ apiClient.interceptors.request.use(
 
       // For candidate routes (assessment, candidate endpoints), skip auth if no token
       // For DSA candidate routes, check if we're on a candidate page - if so, skip auth
-      if (isCandidateRoute) {
+      if (isCandidateRoute || isCloudCandidateRoute) {
         // Always skip auth for candidate assessment routes
         if (config.headers) {
           delete config.headers.Authorization;
@@ -281,11 +292,22 @@ apiClient.interceptors.response.use(
                              url.includes('/api/v1/custom-mcq/take/') || 
                              url.includes('/api/v1/custom-mcq/verify-candidate') ||
                              url.includes('/api/v1/custom-mcq/submit');
+    const isCloudCandidateRoute =
+      url.includes('/api/v1/cloud/tests/') &&
+      (
+        url.includes('/verify-candidate') ||
+        url.includes('/start') ||
+        url.includes('/public') ||
+        url.includes('/full') ||
+        (url.includes('/candidate') && !url.includes('/candidates')) ||
+        url.includes('/submit-answer') ||
+        url.includes('/submit')
+      );
     const isDSACandidateRoute = url.includes('/api/v1/dsa/tests/') && 
       (url.includes('/submission') || url.includes('/start') || url.includes('/public') || url.includes('/question/') || url.includes('/final-submit'));
     
     // For auth routes and candidate assessment routes, don't try to refresh token
-    if (isCandidateRoute || isAuthRoute) {
+    if (isCandidateRoute || isCloudCandidateRoute || isAuthRoute) {
       return Promise.reject(error);
     }
     

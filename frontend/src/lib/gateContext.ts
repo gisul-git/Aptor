@@ -1,4 +1,4 @@
-export type GateFlowType = "ai" | "dsa" | "custom-mcq" | "aiml";
+export type GateFlowType = "ai" | "dsa" | "custom-mcq" | "aiml" | "devops";
 
 export interface GateContext {
   flowType: GateFlowType;

@@ -142,6 +142,10 @@ async function verifyToken(req, res, next) {
     /^\/api\/v1\/aiml\/tests\/save-reference-face$/, // AIML reference photo save
     /^\/api\/v1\/dsa\/tests\/get-reference-photo$/, // DSA reference photo retrieval
     /^\/api\/v1\/dsa\/tests\/save-reference-face$/, // DSA reference photo save
+    // DevOps candidate endpoints - accessed via test links
+    /^\/api\/v1\/devops\/tests\/[^/]+\/verify-candidate$/,
+    // Cloud candidate endpoints - accessed via test links
+    /^\/api\/v1\/cloud\/tests\/[^/]+\/verify-candidate$/,
     // AIML dataset download endpoint for candidates
     /^\/api\/v1\/aiml\/questions\/[^/]+\/dataset-download$/,
     // Custom MCQ candidate endpoints - accessed via token in URL params

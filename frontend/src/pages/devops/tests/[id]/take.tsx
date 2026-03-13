@@ -19,6 +19,7 @@ import { useFullscreenLock } from "@/hooks/proctoring/useFullscreenLock";
 import { useActivityPatternProctor } from "@/hooks/proctoring/useActivityPatternProctor";
 import { ViolationToast, pushViolationToast } from "@/components/ViolationToast";
 import type { GeneratedDevOpsPayload } from "@/lib/devops/ai-question-generator";
+import { getGateContext } from "@/lib/gateContext";
 
 const MonacoEditor = dynamic(() => import("@monaco-editor/react"), { ssr: false });
 
@@ -34,7 +35,7 @@ const monoFont = JetBrains_Mono({
   variable: "--font-devops-mono",
 });
 
-const DEVOPS_TERMINAL_WS_URL = "ws://192.168.1.18:4040/terminal";
+const DEVOPS_TERMINAL_WS_URL = "ws://103.173.99.254:4040/terminal";
 
 type QuestionKind = "command" | "terraform" | "lint";
 type Difficulty = "easy" | "medium" | "hard";
@@ -447,6 +448,8 @@ export default function DevOpsTakePage() {
   const router = useRouter();
   const { data: session } = useSession();
   const testId = typeof router.query.id === "string" ? router.query.id : undefined;
+  const token = typeof router.query.token === "string" ? router.query.token : undefined;
+  const isPreviewMode = router.query.preview === "true" || router.query.admin === "true";
   const { data: testData, isLoading, error } = useDevOpsTest(testId);
   const thumbVideoRef = useRef<HTMLVideoElement>(null);
   const terminalViewportRef = useRef<HTMLDivElement>(null);
@@ -458,7 +461,15 @@ export default function DevOpsTakePage() {
   const [isGeneratedLoading, setIsGeneratedLoading] = useState(false);
   const [generatedFetchError, setGeneratedFetchError] = useState<string | null>(null);
   const [sessionExperienceYears, setSessionExperienceYears] = useState<number | null>(null);
+  const [candidateSessionUserId, setCandidateSessionUserId] = useState<string | null>(null);
+  const [candidateSessionEmail, setCandidateSessionEmail] = useState<string | null>(null);
   const isGeneratedRoute = testId === "ai-generated" || router.query.generated === "1";
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    setCandidateSessionUserId(sessionStorage.getItem("candidateUserId"));
+    setCandidateSessionEmail(sessionStorage.getItem("candidateEmail"));
+  }, []);
 
   useEffect(() => {
     if (!isGeneratedRoute || typeof window === "undefined") return;
@@ -639,8 +650,57 @@ export default function DevOpsTakePage() {
   const currentQuestionIdRef = useRef<string>("");
   const currentQuestionKindRef = useRef<QuestionKind | "">("");
   const activeCommandQuestionIdRef = useRef<string>("");
+  const hasCandidateGateCheckedRef = useRef(false);
   const submitted = !!submission;
   const [remainingSeconds, setRemainingSeconds] = useState(0);
+
+  useEffect(() => {
+    if (!router.isReady || !testId) return;
+    if (!token || isPreviewMode) return;
+    if (hasCandidateGateCheckedRef.current) return;
+
+    const entryUrl = `/devops/tests/${testId}/entry?token=${encodeURIComponent(token)}`;
+    const instructionsUrl = `/devops/tests/${testId}/instructions?token=${encodeURIComponent(token)}`;
+
+    const candidateEmail = sessionStorage.getItem("candidateEmail");
+    const candidateName = sessionStorage.getItem("candidateName");
+
+    if (!candidateEmail || !candidateName) {
+      hasCandidateGateCheckedRef.current = true;
+      router.replace(entryUrl);
+      return;
+    }
+
+    const ctx = getGateContext(testId);
+    if (!ctx || ctx.flowType !== "devops") {
+      hasCandidateGateCheckedRef.current = true;
+      router.replace(entryUrl);
+      return;
+    }
+
+    const precheckCompleted = sessionStorage.getItem(`precheckCompleted_${testId}`);
+    if (!precheckCompleted) {
+      hasCandidateGateCheckedRef.current = true;
+      router.replace(`/precheck/${testId}/${encodeURIComponent(token)}`);
+      return;
+    }
+
+    const instructionsAcknowledged = sessionStorage.getItem(`instructionsAcknowledged_${testId}`);
+    const candidateRequirementsCompleted = sessionStorage.getItem(
+      `candidateRequirementsCompleted_${testId}`
+    );
+    const identityVerificationCompleted = sessionStorage.getItem(
+      `identityVerificationCompleted_${testId}`
+    );
+
+    if (!instructionsAcknowledged || !candidateRequirementsCompleted || !identityVerificationCompleted) {
+      hasCandidateGateCheckedRef.current = true;
+      router.replace(instructionsUrl);
+      return;
+    }
+
+    hasCandidateGateCheckedRef.current = true;
+  }, [router, testId, token, isPreviewMode]);
 
   const getViolationMessage = (eventType: string): string => {
     const messages: Record<string, string> = {
@@ -731,10 +791,10 @@ export default function DevOpsTakePage() {
 
   const proctoringUserId = useMemo(
     () =>
-      resolveUserIdForProctoring((session?.user as any)?.id || null, {
-        email: (session?.user as any)?.email || null,
+      resolveUserIdForProctoring((session?.user as any)?.id || candidateSessionUserId || null, {
+        email: (session?.user as any)?.email || candidateSessionEmail || null,
       }),
-    [session]
+    [session, candidateSessionUserId, candidateSessionEmail]
   );
 
   useEffect(() => {

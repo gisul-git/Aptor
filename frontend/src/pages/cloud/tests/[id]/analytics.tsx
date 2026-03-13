@@ -3,7 +3,7 @@ import { useRouter } from 'next/router'
 import { GetServerSideProps } from 'next'
 import { requireAuth } from '../../../../lib/auth'
 import Link from 'next/link'
-import devopsApi from '../../../../lib/devops/api'
+import cloudApi from '../../../../lib/cloud/api'
 import axios from 'axios'
 import { ArrowLeft, Lightbulb, CheckCircle2, TrendingUp, AlertTriangle, Eye, Clock, Video, Loader2, Download } from 'lucide-react'
 import { useSession } from 'next-auth/react'
@@ -11,17 +11,17 @@ import ProctorLogsReview from '../../../../components/admin/ProctorLogsReview'
 import * as XLSX from 'xlsx'
 import SuccessModal from '@/components/SuccessModal'
 import { 
-  useDevOpsTest, 
-  useDevOpsCandidates, 
-  useDevOpsCandidateAnalytics, 
-  useAddDevOpsCandidate, 
-  useBulkAddDevOpsCandidates,
-  useRemoveDevOpsCandidate, 
-  useSendDevOpsInvitation,
-  useSendDevOpsInvitationsToAll,
-  useSendDevOpsFeedback,
-  useUpdateDevOpsTest
-} from '@/hooks/api/useDevOps'
+  useCloudTest, 
+  useCloudCandidates, 
+  useCloudCandidateAnalytics, 
+  useAddCloudCandidate, 
+  useBulkAddCloudCandidates,
+  useRemoveCloudCandidate, 
+  useSendCloudInvitation,
+  useSendCloudInvitationsToAll,
+  useSendCloudFeedback,
+  useUpdateCloudTest
+} from '@/hooks/api/useCloud'
 
 interface AIFeedback {
   overall_score: number
@@ -111,11 +111,11 @@ export default function AnalyticsPage() {
   const [searchQuery, setSearchQuery] = useState<string>("")
   
   // React Query hooks
-  const { data: testInfoData, isLoading: loadingTestInfo } = useDevOpsTest(testId)
-  const { data: candidatesData, isLoading: loadingCandidates, refetch: refetchCandidates, error: candidatesError } = useDevOpsCandidates(testId)
+  const { data: testInfoData, isLoading: loadingTestInfo } = useCloudTest(testId)
+  const { data: candidatesData, isLoading: loadingCandidates, refetch: refetchCandidates, error: candidatesError } = useCloudCandidates(testId)
   // Use selectedCandidate state or URL param for analytics query
   const selectedCandidateUserId = selectedCandidate || (typeof candidateUserId === 'string' ? candidateUserId : undefined)
-  const { data: analyticsData, isLoading: loadingAnalytics, refetch: refetchAnalytics } = useDevOpsCandidateAnalytics(testId, selectedCandidateUserId)
+  const { data: analyticsData, isLoading: loadingAnalytics, refetch: refetchAnalytics } = useCloudCandidateAnalytics(testId, selectedCandidateUserId)
 
   // Debug logging for React Query data (development only, disabled by default)
   if (process.env.NODE_ENV === 'development' && false) { // Set to true for debugging
@@ -123,7 +123,7 @@ export default function AnalyticsPage() {
     const candidatesDataInfo = candidatesData 
       ? `exists (${Array.isArray(candidatesData) ? String(candidatesData?.length ?? 0) : 'not array'})`
       : 'null';
-    console.log('[DevOps Analytics] 🔍 React Query Data:', {
+    console.log('[Cloud Analytics] 🔍 React Query Data:', {
       testId,
       testInfoData: testInfoData ? 'exists' : 'null',
       candidatesData: candidatesDataInfo,
@@ -137,12 +137,12 @@ export default function AnalyticsPage() {
   }
   
   // Mutations
-  const addCandidateMutation = useAddDevOpsCandidate()
-  const removeCandidateMutation = useRemoveDevOpsCandidate()
-  const sendInvitationMutation = useSendDevOpsInvitation()
-  const sendInvitationsToAllMutation = useSendDevOpsInvitationsToAll()
-  const sendFeedbackMutation = useSendDevOpsFeedback()
-  const updateTestMutation = useUpdateDevOpsTest()
+  const addCandidateMutation = useAddCloudCandidate()
+  const removeCandidateMutation = useRemoveCloudCandidate()
+  const sendInvitationMutation = useSendCloudInvitation()
+  const sendInvitationsToAllMutation = useSendCloudInvitationsToAll()
+  const sendFeedbackMutation = useSendCloudFeedback()
+  const updateTestMutation = useUpdateCloudTest()
   const [analytics, setAnalytics] = useState<CandidateAnalytics | null>(null)
   const [loading, setLoading] = useState(true)
   const [proctorLogs, setProctorLogs] = useState<any[]>([])
@@ -155,7 +155,7 @@ export default function AnalyticsPage() {
   const [newCandidateEmail, setNewCandidateEmail] = useState("")
   const [emailError, setEmailError] = useState<string | null>(null)
   const [addingCandidate, setAddingCandidate] = useState(false)
-  const bulkAddCandidatesMutation = useBulkAddDevOpsCandidates()
+  const bulkAddCandidatesMutation = useBulkAddCloudCandidates()
   const [testInfo, setTestInfo] = useState<any>(null)
   const [successModal, setSuccessModal] = useState<{ isOpen: boolean; message: string }>({
     isOpen: false,
@@ -171,7 +171,7 @@ export default function AnalyticsPage() {
   }>({
     logoUrl: "",
     companyName: "",
-    message: "You have been invited to take an DevOps test. Please click the link below to start.",
+    message: "You have been invited to take an Cloud test. Please click the link below to start.",
     footer: "",
     sentBy: "AI Assessment Platform"
   })
@@ -183,12 +183,12 @@ export default function AnalyticsPage() {
 
   const fetchReferencePhoto = async (candidateEmail: string) => {
     if (process.env.NODE_ENV === 'development') {
-      console.log('[DevOps Analytics] 🔍 fetchReferencePhoto called:', { testId, candidateEmail })
+      console.log('[Cloud Analytics] 🔍 fetchReferencePhoto called:', { testId, candidateEmail })
     }
     
     if (!testId || typeof testId !== 'string' || !candidateEmail) {
       if (process.env.NODE_ENV === 'development') {
-        console.warn('[DevOps Analytics] ⚠️ Missing required params:', { testId, candidateEmail })
+        console.warn('[Cloud Analytics] ⚠️ Missing required params:', { testId, candidateEmail })
       }
       setReferencePhoto(null)
       return
@@ -196,24 +196,24 @@ export default function AnalyticsPage() {
 
     try {
       if (process.env.NODE_ENV === 'development') {
-        console.log('[DevOps Analytics] 📡 Fetching reference photo from API...', {
+        console.log('[Cloud Analytics] 📡 Fetching reference photo from API...', {
           assessmentId: testId,
           candidateEmail,
           endpoint: '/api/v1/candidate/get-reference-photo'
         })
       }
       
-      // For DevOps tests, pass testType=aiml to call only DevOps endpoint
+      // For Cloud tests, pass testType=aiml to call only Cloud endpoint
       const response = await axios.get(`/api/v1/candidate/get-reference-photo`, {
         params: {
           assessmentId: testId,
           candidateEmail,
-          testType: 'devops', // Specify test type to call only DevOps endpoint
+          testType: 'cloud', // Specify test type to call only Cloud endpoint
         },
       })
 
       if (process.env.NODE_ENV === 'development') {
-        console.log('[DevOps Analytics] 📥 API Response:', {
+        console.log('[Cloud Analytics] 📥 API Response:', {
           success: response.data?.success,
           hasReferenceImage: !!response.data?.data?.referenceImage,
           dataKeys: response.data?.data ? Object.keys(response.data.data) : [],
@@ -224,7 +224,7 @@ export default function AnalyticsPage() {
       // Log the assessmentId mismatch if photo not found (always log warnings)
       if (!response.data?.data?.referenceImage && response.data?.message === 'No reference photo found') {
         if (process.env.NODE_ENV === 'development') {
-          console.warn('[DevOps Analytics] ⚠️ Reference photo not found. Check if assessmentId matches:', {
+          console.warn('[Cloud Analytics] ⚠️ Reference photo not found. Check if assessmentId matches:', {
             testIdUsed: testId,
             candidateEmail,
             note: 'Photo might have been saved with a different assessmentId. Check candidate side logs for the actual assessmentId used when saving.'
@@ -234,18 +234,18 @@ export default function AnalyticsPage() {
 
       if (response.data?.success && response.data?.data?.referenceImage) {
         if (process.env.NODE_ENV === 'development') {
-          console.log('[DevOps Analytics] ✅ Reference photo fetched successfully')
+          console.log('[Cloud Analytics] ✅ Reference photo fetched successfully')
         }
         setReferencePhoto(response.data.data.referenceImage)
       } else {
         if (process.env.NODE_ENV === 'development') {
-          console.warn('[DevOps Analytics] ⚠️ No reference image in response')
+          console.warn('[Cloud Analytics] ⚠️ No reference image in response')
         }
         setReferencePhoto(null)
       }
     } catch (error: any) {
       // Always log errors
-      console.error('[DevOps Analytics] ❌ Error fetching reference photo:', {
+      console.error('[Cloud Analytics] ❌ Error fetching reference photo:', {
         error: error.message,
         response: error.response?.data,
         status: error.response?.status,
@@ -290,12 +290,12 @@ export default function AnalyticsPage() {
 
   // Removed 8-second cooldown - no longer needed as reconnection is handled properly
 
-  // Analytics are now fetched via useDevOpsCandidateAnalytics hook
+  // Analytics are now fetched via useCloudCandidateAnalytics hook
   // This function is kept for backward compatibility
   const fetchAnalytics = async (userId: string) => {
     if (!testId || !userId) return
     
-    // Data is automatically fetched via useDevOpsCandidateAnalytics hook
+    // Data is automatically fetched via useCloudCandidateAnalytics hook
     // Just trigger proctor logs fetch
     await fetchProctorLogs(userId)
     setShowProctorLogs(true)
@@ -310,7 +310,7 @@ export default function AnalyticsPage() {
         setEmailTemplate({
           logoUrl: testInfoData.invitationTemplate.logoUrl || "",
           companyName: testInfoData.invitationTemplate.companyName || "",
-          message: testInfoData.invitationTemplate.message || "You have been invited to take an DevOps test. Please click the link below to start.",
+          message: testInfoData.invitationTemplate.message || "You have been invited to take an Cloud test. Please click the link below to start.",
           footer: testInfoData.invitationTemplate.footer || "",
           sentBy: testInfoData.invitationTemplate.sentBy || "AI Assessment Platform"
         })
@@ -319,7 +319,7 @@ export default function AnalyticsPage() {
         setEmailTemplate({
           logoUrl: "",
           companyName: "",
-          message: "You have been invited to take an DevOps test. Please click the link below to start.",
+          message: "You have been invited to take an Cloud test. Please click the link below to start.",
           footer: "",
           sentBy: "AI Assessment Platform"
         })
@@ -330,7 +330,7 @@ export default function AnalyticsPage() {
   // Sync candidates data from React Query
   useEffect(() => {
     if (process.env.NODE_ENV === 'development') {
-      console.log('[DevOps Analytics] 🔄 Syncing candidates data:', {
+      console.log('[Cloud Analytics] 🔄 Syncing candidates data:', {
         candidatesData,
         isArray: Array.isArray(candidatesData),
         length: Array.isArray(candidatesData) ? candidatesData.length : 'N/A',
@@ -341,14 +341,14 @@ export default function AnalyticsPage() {
     
     if (candidatesData && Array.isArray(candidatesData)) {
       if (process.env.NODE_ENV === 'development') {
-        console.log('[DevOps Analytics] ✅ Setting candidates:', {
+        console.log('[Cloud Analytics] ✅ Setting candidates:', {
           count: candidatesData.length,
         })
       }
       setCandidates(candidatesData)
     } else {
       if (process.env.NODE_ENV === 'development') {
-        console.warn('[DevOps Analytics] ⚠️ Candidates data is not valid array:', {
+        console.warn('[Cloud Analytics] ⚠️ Candidates data is not valid array:', {
           candidatesData,
           type: typeof candidatesData,
           isArray: Array.isArray(candidatesData)
@@ -363,7 +363,7 @@ export default function AnalyticsPage() {
   useEffect(() => {
     if (analyticsData) {
       if (process.env.NODE_ENV === 'development') {
-        console.log('[DevOps Analytics] 📊 Syncing analytics data')
+        console.log('[Cloud Analytics] 📊 Syncing analytics data')
       }
       setAnalytics(analyticsData)
       // Fetch proctor logs when analytics data is loaded
@@ -374,7 +374,7 @@ export default function AnalyticsPage() {
     } else if (selectedCandidateUserId && !loadingAnalytics) {
       // Clear analytics if no data and not loading (query completed but no data)
       if (process.env.NODE_ENV === 'development') {
-        console.log('[DevOps Analytics] ⚠️ No analytics data found for candidate:', selectedCandidateUserId)
+        console.log('[Cloud Analytics] ⚠️ No analytics data found for candidate:', selectedCandidateUserId)
       }
       setAnalytics(null)
     }
@@ -406,7 +406,7 @@ export default function AnalyticsPage() {
     // Try to fetch reference photo if candidate email is available
     const candidate = candidates.find(c => c.user_id === userId)
     if (process.env.NODE_ENV === 'development') {
-      console.log('[DevOps Analytics] 👤 Candidate selected for reference photo:', {
+      console.log('[Cloud Analytics] 👤 Candidate selected for reference photo:', {
         userId,
         candidateFound: !!candidate,
         candidateEmail: candidate?.email,
@@ -416,7 +416,7 @@ export default function AnalyticsPage() {
       fetchReferencePhoto(candidate.email)
     } else {
       if (process.env.NODE_ENV === 'development') {
-        console.warn('[DevOps Analytics] ⚠️ Candidate email not found, cannot fetch reference photo')
+        console.warn('[Cloud Analytics] ⚠️ Candidate email not found, cannot fetch reference photo')
       }
     }
     // Scroll to top of analytics content when candidate is selected
@@ -480,14 +480,14 @@ export default function AnalyticsPage() {
     setAddingCandidate(true)
     
     try {
-      const response = await devopsApi.post(`/tests/${testId}/add-candidate`, {
+      const response = await cloudApi.post(`/tests/${testId}/add-candidate`, {
         name: newCandidateName.trim(),
         email: newCandidateEmail.trim(),
       })
       
       if (response.data) {
         // Refresh candidates list
-        const candidatesResponse = await devopsApi.get(`/tests/${testId}/candidates`)
+        const candidatesResponse = await cloudApi.get(`/tests/${testId}/candidates`)
         const rows = candidatesResponse.data?.data || candidatesResponse.data || []
         setCandidates(Array.isArray(rows) ? rows : [])
         
@@ -651,7 +651,7 @@ export default function AnalyticsPage() {
       // Fetch analytics for all candidates
       for (const candidate of candidates) {
         try {
-          const response = await devopsApi.get(`/tests/${testId}/candidates/${candidate.user_id}/analytics`)
+          const response = await cloudApi.get(`/tests/${testId}/candidates/${candidate.user_id}/analytics`)
           const analytics = response.data?.data || response.data
           
           // Collect all feedbacks from question_analytics
@@ -775,7 +775,7 @@ export default function AnalyticsPage() {
       XLSX.utils.book_append_sheet(workbook, worksheet, 'Results')
       
       // Generate filename with test title and date
-      const testTitle = testInfo?.title || 'DevOps_Test'
+      const testTitle = testInfo?.title || 'Cloud_Test'
       const sanitizedTitle = testTitle.replace(/[^a-z0-9]/gi, '_').substring(0, 30)
       const dateStr = new Date().toISOString().split('T')[0]
       const filename = `aiml_test_results_${sanitizedTitle}_${dateStr}.xlsx`
@@ -833,7 +833,7 @@ export default function AnalyticsPage() {
   // Calculate overall statistics
   // Removed excessive logging - only log in development if explicitly needed
   if (process.env.NODE_ENV === 'development' && false) { // Set to true for debugging
-    console.log('[DevOps Analytics] 📊 Calculating statistics:', {
+    console.log('[Cloud Analytics] 📊 Calculating statistics:', {
       candidatesLength: candidates.length,
       candidates: candidates,
       candidatesData: candidatesData,
@@ -853,7 +853,7 @@ export default function AnalyticsPage() {
   
   // Removed excessive logging - only log in development if needed
   if (process.env.NODE_ENV === 'development' && false) { // Set to true for debugging
-    console.log('[DevOps Analytics] 📊 Statistics calculated:', {
+    console.log('[Cloud Analytics] 📊 Statistics calculated:', {
       totalCandidates,
       submittedCount,
       avgScore,
@@ -886,10 +886,10 @@ export default function AnalyticsPage() {
 
         <div style={{ marginBottom: "2rem" }}>
           <h1 style={{ fontSize: "2rem", fontWeight: 700, marginBottom: "0.5rem" }}>
-            DevOps Test Analytics
+            Cloud Test Analytics
           </h1>
           <p style={{ color: "#64748b", margin: 0 }}>
-            {testInfo?.title || 'DevOps Test'} - View detailed analytics and AI feedback
+            {testInfo?.title || 'Cloud Test'} - View detailed analytics and AI feedback
           </p>
         </div>
 
@@ -912,7 +912,7 @@ export default function AnalyticsPage() {
                   className="btn-primary"
                   onClick={() => {
                     if (testId) {
-                      window.open(`/devops/tests/${testId}/take?preview=true&admin=true`, '_blank')
+                      window.open(`/cloud/tests/${testId}/take?preview=true&admin=true`, '_blank')
                     }
                   }}
                   style={{ 
@@ -964,7 +964,7 @@ export default function AnalyticsPage() {
                 <div style={{ display: "flex", gap: "0.5rem" }}>
                   <input
                     type="text"
-                    value={`${typeof window !== 'undefined' ? window.location.origin : ''}/devops/tests/${testId}/entry?token=${testInfo.test_token}`}
+                    value={`${typeof window !== 'undefined' ? window.location.origin : ''}/cloud/tests/${testId}/take?token=${testInfo.test_token}`}
                     readOnly
                     style={{
                       flex: 1,
@@ -979,7 +979,7 @@ export default function AnalyticsPage() {
                     type="button"
                     className="btn-secondary"
                     onClick={() => {
-                      const testUrl = `${typeof window !== 'undefined' ? window.location.origin : ''}/devops/tests/${testId}/entry?token=${testInfo.test_token}`;
+                      const testUrl = `${typeof window !== 'undefined' ? window.location.origin : ''}/cloud/tests/${testId}/take?token=${testInfo.test_token}`;
                       navigator.clipboard.writeText(testUrl);
                       setSuccessModal({
                         isOpen: true,
@@ -1433,7 +1433,7 @@ export default function AnalyticsPage() {
                       Overall Test Performance
                     </h2>
                     <Link
-                      href={`/devops/tests/${testId}/live-dashboard`}
+                      href={`/cloud/tests/${testId}/live-dashboard`}
                       className="btn-primary"
                       style={{
                         display: "flex",
@@ -2422,7 +2422,7 @@ export default function AnalyticsPage() {
                 <textarea
                   value={emailTemplate.message || ""}
                   onChange={(e) => setEmailTemplate({ ...emailTemplate, message: e.target.value })}
-                  placeholder="You have been invited to take an DevOps test. Please click the link below to start."
+                  placeholder="You have been invited to take an Cloud test. Please click the link below to start."
                   rows={6}
                   style={{
                     width: "100%",
@@ -2537,5 +2537,10 @@ export default function AnalyticsPage() {
 }
 
 export const getServerSideProps: GetServerSideProps = requireAuth
+
+
+
+
+
 
 

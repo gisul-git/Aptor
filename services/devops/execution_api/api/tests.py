@@ -23,6 +23,13 @@ def _normalize_doc(doc: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
         serialized["question_ids"] = [str(qid) for qid in question_ids]
     return serialized
 
+def _normalize_candidate(doc: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    serialized = serialize_document(doc)
+    if not serialized:
+        return None
+    serialized["user_id"] = str(serialized.get("user_id") or serialized.get("id") or serialized.get("email") or "")
+    return serialized
+
 
 def _get_actor_id(request: Request) -> str:
     return request.headers.get("x-user-id") or request.headers.get("x-actor-id") or "local-dev-user"
@@ -66,6 +73,23 @@ async def _add_invited_email(db: Any, test_id: ObjectId, email: str) -> None:
 
 def _normalize_email(value: str) -> str:
     return (value or "").strip().lower()
+
+async def _find_candidate_doc(db: Any, test_id: str, user_key: str) -> Optional[Dict[str, Any]]:
+    key = (user_key or "").strip()
+    if not key:
+        return None
+
+    queries: List[Dict[str, Any]] = [{"test_id": test_id, "email": _normalize_email(key)}]
+    if ObjectId.is_valid(key):
+        queries.append({"test_id": test_id, "_id": ObjectId(key)})
+    queries.append({"test_id": test_id, "user_id": key})
+    queries.append({"test_id": test_id, "id": key})
+
+    for query in queries:
+        doc = await db.devops_test_candidates.find_one(query)
+        if doc:
+            return doc
+    return None
 
 
 async def _materialize_inline_questions(
@@ -355,7 +379,7 @@ async def add_candidate(test_id: str, request: Request, body: Dict[str, Any] = B
     existing = await db.devops_test_candidates.find_one({"test_id": test_id, "email": email})
     if existing:
         await _add_invited_email(db, oid, email)
-        return {"success": True, "data": serialize_document(existing), "duplicate": True}
+        return {"success": True, "data": _normalize_candidate(existing), "duplicate": True}
 
     candidate_doc = {
         "test_id": test_id,
@@ -369,7 +393,7 @@ async def add_candidate(test_id: str, request: Request, body: Dict[str, Any] = B
     created = await db.devops_test_candidates.find_one({"_id": inserted.inserted_id})
     await _add_invited_email(db, oid, email)
 
-    return {"success": True, "data": serialize_document(created)}
+    return {"success": True, "data": _normalize_candidate(created)}
 
 
 @router.post("/{test_id}/bulk-add-candidates", response_model=Dict[str, Any])
@@ -448,4 +472,231 @@ async def get_candidates(test_id: str, request: Request) -> Dict[str, Any]:
         raise HTTPException(status_code=400, detail="Invalid test ID")
     db = get_database()
     docs = await db.devops_test_candidates.find({"test_id": test_id}).sort("created_at", -1).to_list(length=1000)
-    return {"success": True, "data": [serialize_document(d) for d in docs]}
+    normalized = [row for row in (_normalize_candidate(d) for d in docs) if row]
+    return {"success": True, "data": normalized}
+
+
+@router.delete("/{test_id}/candidates/{user_id}", response_model=Dict[str, Any])
+async def remove_candidate(test_id: str, user_id: str, request: Request) -> Dict[str, Any]:
+    if not ObjectId.is_valid(test_id):
+        raise HTTPException(status_code=400, detail="Invalid test ID")
+    db = get_database()
+    oid = ObjectId(test_id)
+    test_doc = await _find_test_doc(db, {"_id": oid})
+    if not test_doc:
+        raise HTTPException(status_code=404, detail="Test not found")
+
+    candidate_doc = await _find_candidate_doc(db, test_id, user_id)
+    if not candidate_doc:
+        raise HTTPException(status_code=404, detail="Candidate not found")
+
+    await db.devops_test_candidates.delete_one({"_id": candidate_doc["_id"]})
+    candidate_email = _normalize_email(candidate_doc.get("email") or "")
+    if candidate_email:
+        for col in _assessment_collections(db):
+            await col.update_one({"_id": oid}, {"$pull": {"invited_users": candidate_email}})
+    return {"success": True, "message": "Candidate removed"}
+
+
+@router.post("/{test_id}/send-invitation", response_model=Dict[str, Any])
+async def send_invitation(test_id: str, request: Request, body: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
+    if not ObjectId.is_valid(test_id):
+        raise HTTPException(status_code=400, detail="Invalid test ID")
+    email = _normalize_email(body.get("email") or "")
+    if not email or "@" not in email:
+        raise HTTPException(status_code=400, detail="Valid email is required")
+
+    db = get_database()
+    oid = ObjectId(test_id)
+    test_doc = await _find_test_doc(db, {"_id": oid})
+    if not test_doc:
+        raise HTTPException(status_code=404, detail="Test not found")
+
+    candidate = await db.devops_test_candidates.find_one({"test_id": test_id, "email": email})
+    if not candidate:
+        raise HTTPException(status_code=404, detail="Candidate not found")
+
+    now = datetime.utcnow()
+    await db.devops_test_candidates.update_one(
+        {"_id": candidate["_id"]},
+        {"$set": {"status": "invited", "invited": True, "invited_at": now, "updated_at": now}},
+    )
+    await _add_invited_email(db, oid, email)
+
+    return {
+        "success": True,
+        "message": "Invitation marked as sent",
+        "data": {"email": email},
+    }
+
+
+@router.post("/{test_id}/send-invitations-to-all", response_model=Dict[str, Any])
+async def send_invitations_to_all(test_id: str, request: Request) -> Dict[str, Any]:
+    if not ObjectId.is_valid(test_id):
+        raise HTTPException(status_code=400, detail="Invalid test ID")
+
+    db = get_database()
+    oid = ObjectId(test_id)
+    test_doc = await _find_test_doc(db, {"_id": oid})
+    if not test_doc:
+        raise HTTPException(status_code=404, detail="Test not found")
+
+    now = datetime.utcnow()
+    candidates = await db.devops_test_candidates.find({"test_id": test_id}).to_list(length=5000)
+    if not candidates:
+        return {"success": True, "message": "No candidates to invite", "data": {"sent_count": 0}}
+
+    sent_count = 0
+    for candidate in candidates:
+        email = _normalize_email(candidate.get("email") or "")
+        if not email:
+            continue
+        await db.devops_test_candidates.update_one(
+            {"_id": candidate["_id"]},
+            {"$set": {"status": "invited", "invited": True, "invited_at": now, "updated_at": now}},
+        )
+        await _add_invited_email(db, oid, email)
+        sent_count += 1
+
+    return {"success": True, "message": "Invitations marked as sent", "data": {"sent_count": sent_count}}
+
+
+@router.post("/{test_id}/verify-candidate", response_model=Dict[str, Any])
+async def verify_candidate(test_id: str, request: Request, body: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
+    if not ObjectId.is_valid(test_id):
+        raise HTTPException(status_code=400, detail="Invalid test ID")
+
+    token = str(body.get("token") or "").strip()
+    email = _normalize_email(body.get("email") or "")
+    name = str(body.get("name") or "").strip()
+    if not email or "@" not in email or not name:
+        raise HTTPException(status_code=400, detail="Valid email and name are required")
+
+    db = get_database()
+    oid = ObjectId(test_id)
+    test_doc = await _find_test_doc(db, {"_id": oid})
+    if not test_doc:
+        raise HTTPException(status_code=404, detail="Test not found")
+
+    test_token = str(test_doc.get("test_token") or "").strip()
+    if not token or not test_token or token != test_token:
+        raise HTTPException(status_code=403, detail="Invalid or expired test link")
+
+    candidate_doc = await db.devops_test_candidates.find_one({"test_id": test_id, "email": email})
+    if not candidate_doc:
+        raise HTTPException(status_code=403, detail="Candidate not found for this test")
+
+    candidate_name = str(candidate_doc.get("name") or "").strip().lower()
+    if candidate_name and candidate_name != name.strip().lower():
+        raise HTTPException(status_code=403, detail="Name does not match invited candidate")
+
+    now = datetime.utcnow()
+    await db.devops_test_candidates.update_one(
+        {"_id": candidate_doc["_id"]},
+        {"$set": {"status": "started", "started_at": now, "updated_at": now}},
+    )
+    normalized = _normalize_candidate(candidate_doc) or {}
+    normalized["status"] = "started"
+    normalized["started_at"] = now.isoformat()
+    return {
+        "success": True,
+        "data": {
+            "verified": True,
+            "accessMode": "invited",
+            "candidate": normalized,
+        },
+    }
+
+
+@router.get("/{test_id}/candidates/{user_id}/analytics", response_model=Dict[str, Any])
+async def get_candidate_analytics(test_id: str, user_id: str, request: Request) -> Dict[str, Any]:
+    if not ObjectId.is_valid(test_id):
+        raise HTTPException(status_code=400, detail="Invalid test ID")
+    db = get_database()
+    oid = ObjectId(test_id)
+    test_doc = await _find_test_doc(db, {"_id": oid})
+    if not test_doc:
+        raise HTTPException(status_code=404, detail="Test not found")
+
+    candidate_doc = await _find_candidate_doc(db, test_id, user_id)
+    if not candidate_doc:
+        raise HTTPException(status_code=404, detail="Candidate not found")
+
+    serialized_candidate = _normalize_candidate(candidate_doc) or {}
+    raw_score = serialized_candidate.get("submission_score", serialized_candidate.get("score"))
+    score = float(raw_score) if isinstance(raw_score, (int, float)) else 0.0
+    status = str(serialized_candidate.get("status") or "").lower()
+    submitted_at = serialized_candidate.get("submitted_at")
+    started_at = serialized_candidate.get("started_at")
+    has_submitted = bool(
+        serialized_candidate.get("has_submitted")
+        or submitted_at
+        or status in {"completed", "submitted", "evaluated"}
+        or score > 0
+    )
+
+    question_analytics = serialized_candidate.get("question_analytics")
+    if not isinstance(question_analytics, list):
+        question_analytics = []
+
+    if not question_analytics:
+        question_ids = test_doc.get("question_ids") if isinstance(test_doc.get("question_ids"), list) else []
+        object_ids = [ObjectId(qid) for qid in question_ids if ObjectId.is_valid(str(qid))]
+        qdocs: List[Dict[str, Any]] = []
+        if object_ids:
+            qdocs = await db.devops_questions.find({"_id": {"$in": object_ids}}).to_list(length=len(object_ids))
+        by_id = {str(q.get("_id")): q for q in qdocs}
+        for qid in question_ids:
+            qdoc = by_id.get(str(qid))
+            if not qdoc:
+                continue
+            question_analytics.append(
+                {
+                    "question_id": str(qdoc.get("_id")),
+                    "question_title": qdoc.get("title", "Untitled Question"),
+                    "status": "pending",
+                    "score": 0,
+                    "ai_feedback": None,
+                }
+            )
+
+    payload = {
+        "candidate": {
+            "name": serialized_candidate.get("name", "Candidate"),
+            "email": serialized_candidate.get("email", ""),
+        },
+        "candidateInfo": serialized_candidate.get("candidateInfo") if isinstance(serialized_candidate.get("candidateInfo"), dict) else None,
+        "submission": {
+            "score": score,
+            "started_at": started_at,
+            "submitted_at": submitted_at,
+            "is_completed": has_submitted,
+            "ai_feedback_status": serialized_candidate.get("ai_feedback_status", "pending"),
+            "evaluations": serialized_candidate.get("evaluations", []),
+        },
+        "question_analytics": question_analytics,
+        "activity_logs": serialized_candidate.get("activity_logs", []),
+    }
+    return {"success": True, "data": payload}
+
+
+@router.post("/{test_id}/candidates/{user_id}/send-feedback", response_model=Dict[str, Any])
+async def send_candidate_feedback(test_id: str, user_id: str, request: Request) -> Dict[str, Any]:
+    if not ObjectId.is_valid(test_id):
+        raise HTTPException(status_code=400, detail="Invalid test ID")
+    db = get_database()
+    oid = ObjectId(test_id)
+    test_doc = await _find_test_doc(db, {"_id": oid})
+    if not test_doc:
+        raise HTTPException(status_code=404, detail="Test not found")
+
+    candidate_doc = await _find_candidate_doc(db, test_id, user_id)
+    if not candidate_doc:
+        raise HTTPException(status_code=404, detail="Candidate not found")
+
+    now = datetime.utcnow()
+    await db.devops_test_candidates.update_one(
+        {"_id": candidate_doc["_id"]},
+        {"$set": {"feedback_sent_at": now, "updated_at": now}},
+    )
+    return {"success": True, "message": "Feedback marked as sent"}

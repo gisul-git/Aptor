@@ -222,7 +222,7 @@ export default function CloudMainPage() {
             </div>
           </Link>
 
-          <Link href="/cloud/tests" style={{ textDecoration: "none" }}>
+          <Link href="/cloud/assessments" style={{ textDecoration: "none" }}>
             <div
               style={{
                 backgroundColor: "#ffffff",

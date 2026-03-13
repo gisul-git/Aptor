@@ -162,7 +162,7 @@ function normalizeExecutionResponse(data: EngineLikeResponse): {
 
 const EXECUTION_API_BASE =
   process.env.DEVOPS_EXECUTION_API_URL || process.env.CLOUD_EXECUTION_API_URL || "http://127.0.0.1:8010";
-const COMMAND_EXECUTION_URL = "http://192.168.1.18:4040/execute";
+const COMMAND_EXECUTION_URL = "http://103.173.99.254:4040/execute";
 const LINT_API_BASE =
   process.env.DEVOPS_LINT_API_URL || process.env.CLOUD_LINT_API_URL || "http://127.0.0.1:8002";
 const EXECUTION_BASES = Array.from(

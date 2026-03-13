@@ -6,7 +6,7 @@ interface SubmitRequestBody {
 }
 
 const COMMAND_EXECUTION_WS_URL =
-  process.env.DEVOPS_EXECUTION_WS_URL || "ws://192.168.1.18:4040/terminal";
+  process.env.DEVOPS_EXECUTION_WS_URL || "ws://103.173.99.254:4040/terminal";
 
 function resolveBase(url: string): string {
   const normalized = String(url || "")
