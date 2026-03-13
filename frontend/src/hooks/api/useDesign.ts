@@ -4,6 +4,7 @@ import { designService, type DesignTest, type CreateDesignTestDto } from '@/serv
 const QUERY_KEYS = {
   tests: ['design', 'tests'] as const,
   test: (id: string) => ['design', 'tests', id] as const,
+  questions: ['design', 'questions'] as const,
 };
 
 export const useDesignTests = () => {
@@ -11,10 +12,16 @@ export const useDesignTests = () => {
     queryKey: QUERY_KEYS.tests,
     queryFn: async () => {
       try {
+        console.log('[useDesignTests] Fetching design tests...');
         const response = await designService.listTests();
-        return response.data || [];
+        console.log('[useDesignTests] Response:', response);
+        const data = response.data || response;
+        console.log('[useDesignTests] Data:', data);
+        const result = Array.isArray(data) ? data : [];
+        console.log('[useDesignTests] Final result:', result);
+        return result;
       } catch (error: any) {
-        console.warn('Failed to fetch Design tests:', error?.message || error);
+        console.error('[useDesignTests] Error fetching Design tests:', error);
         return [];
       }
     },
@@ -100,3 +107,36 @@ export const useCloneDesignTest = () => {
   });
 };
 
+/**
+ * Publish/unpublish Design question mutation
+ */
+export const usePublishDesignQuestion = () => {
+  const queryClient = useQueryClient();
+  
+  return useMutation({
+    mutationFn: async ({ questionId, isPublished }: { questionId: string; isPublished: boolean }) => {
+      console.log('[usePublishDesignQuestion] Mutation called:', { questionId, isPublished });
+      const result = await designService.publishQuestion(questionId, isPublished);
+      console.log('[usePublishDesignQuestion] Mutation result:', result);
+      return result;
+    },
+    onSuccess: (data, variables) => {
+      console.log('[usePublishDesignQuestion] Mutation success, invalidating queries');
+      // Invalidate queries to refetch questions
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.questions });
+    },
+    onError: (error: any) => {
+      console.error('[usePublishDesignQuestion] Mutation error:', error);
+    },
+  });
+};
+
+/**
+ * Send feedback to Design candidate mutation
+ */
+export const useSendDesignFeedback = () => {
+  return useMutation({
+    mutationFn: ({ testId, userId }: { testId: string; userId: string }) =>
+      designService.sendFeedback(testId, userId),
+  });
+};

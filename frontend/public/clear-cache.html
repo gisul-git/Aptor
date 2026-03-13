@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Clear Cache - Aptor</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            max-width: 600px;
+            margin: 50px auto;
+            padding: 20px;
+            background: linear-gradient(135deg, #C9F4D4 0%, #B0EFC0 40%, #FFFEC0 100%);
+            min-height: 100vh;
+        }
+        .container {
+            background: white;
+            padding: 40px;
+            border-radius: 16px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        h1 {
+            color: #1E5A3B;
+            margin-bottom: 20px;
+        }
+        .button {
+            background: #1E5A3B;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-size: 16px;
+            cursor: pointer;
+            margin: 10px 5px;
+            transition: all 0.2s;
+        }
+        .button:hover {
+            background: #2D7A52;
+            transform: translateY(-2px);
+        }
+        .success {
+            background: #C9F4D4;
+            color: #1E5A3B;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 20px 0;
+            display: none;
+        }
+        .info {
+            background: #E8FAF0;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 20px 0;
+            color: #1E5A3B;
+        }
+        ul {
+            text-align: left;
+            color: #2D7A52;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🧹 Clear Browser Cache</h1>
+        
+        <div class="info">
+            <strong>Why am I here?</strong><br>
+            The signin page is reloading because of cached data. This tool will help clear it.
+        </div>
+
+        <button class="button" onclick="clearAllData()">Clear All Cache & Cookies</button>
+        <button class="button" onclick="clearStorage()">Clear Storage Only</button>
+        <button class="button" onclick="goToSignin()">Go to Signin Page</button>
+
+        <div id="success" class="success">
+            ✅ Cache cleared successfully! Click "Go to Signin Page" to continue.
+        </div>
+
+        <div class="info" style="margin-top: 30px;">
+            <strong>What this does:</strong>
+            <ul>
+                <li>Clears all cookies for localhost:3002</li>
+                <li>Clears localStorage</li>
+                <li>Clears sessionStorage</li>
+                <li>Removes cached data</li>
+            </ul>
+        </div>
+    </div>
+
+    <script>
+        function clearAllData() {
+            try {
+                // Clear all cookies
+                document.cookie.split(";").forEach(function(c) { 
+                    document.cookie = c.replace(/^ +/, "").replace(/=.*/, "=;expires=" + new Date().toUTCString() + ";path=/"); 
+                });
+
+                // Clear localStorage
+                localStorage.clear();
+
+                // Clear sessionStorage
+                sessionStorage.clear();
+
+                // Clear IndexedDB
+                if (window.indexedDB) {
+                    indexedDB.databases().then(databases => {
+                        databases.forEach(db => {
+                            indexedDB.deleteDatabase(db.name);
+                        });
+                    });
+                }
+
+                // Show success message
+                document.getElementById('success').style.display = 'block';
+
+                console.log('✅ All cache and storage cleared!');
+            } catch (error) {
+                console.error('Error clearing cache:', error);
+                alert('Error clearing cache. Please use browser settings to clear manually.');
+            }
+        }
+
+        function clearStorage() {
+            try {
+                localStorage.clear();
+                sessionStorage.clear();
+                document.getElementById('success').style.display = 'block';
+                console.log('✅ Storage cleared!');
+            } catch (error) {
+                console.error('Error clearing storage:', error);
+            }
+        }
+
+        function goToSignin() {
+            window.location.href = '/auth/signin';
+        }
+
+        // Auto-clear on page load
+        window.addEventListener('load', function() {
+            console.log('🧹 Cache clearing tool loaded');
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,40 @@
+﻿{
+    "id":  "69afafee150759519a01ec8b",
+    "role":  "product_designer",
+    "difficulty":  "advanced",
+    "experience_level":  "senior",
+    "task_type":  "mobile_app",
+    "title":  "Project management collaboration app â Product Designer Challenge",
+    "description":  "A project management collaboration app helps teams manage tasks, timelines, and resources efficiently. However, users face challenges in coordinating across different teams and time zones, leading to miscommunications and project delays. The company seeks to enhance collaboration features to streamline communications, improve task visibility, and ensure project milestones are met. Users need to manage tasks, share documents, track project progress, and communicate seamlessly across devices. The design goal is to create a mobile app interface that enhances collaboration and communication within multi-stakeholder projects. The app must integrate with existing tools like calendars and file storage services, and handle edge cases such as offline access and role-based permissions. The design must also consider scalability to accommodate growing teams and project complexities.",
+    "task_requirements":  "Design the following screens:\n\n1ï¸â£ Project Dashboard\nThis screen provides an overview of all active projects.\nInclude:\nâ¢ list of projects with status indicators\nâ¢ filters for project stages and deadlines\nâ¢ quick access to recent activities and updates\nâ¢ prominent \u0027Create New Project\u0027 button\n\n2ï¸â£ Task Management Screen\nThis screen allows users to manage and assign tasks.\nInclude:\nâ¢ task list with priority and status labels\nâ¢ assignment feature to allocate tasks to team members\nâ¢ deadline setting options\nâ¢ task dependencies visualization\n\n3ï¸â£ Document Collaboration Screen\nThis screen supports document sharing and version control.\nInclude:\nâ¢ document upload and sharing capabilities\nâ¢ version history with timestamp\nâ¢ real-time editing indicators\nâ¢ comments and feedback sections\n\n4ï¸â£ Team Communication Screen\nThis screen facilitates team communication and updates.\nInclude:\nâ¢ chat interface for project-specific discussions\nâ¢ notifications for mentions and updates\nâ¢ integration with calendar for scheduling meetings\nâ¢ options for voice and video calls\n\n5ï¸â£ User Roles and Permissions Screen\nThis screen manages roles and permissions for team members.\nInclude:\nâ¢ role assignment and customization\nâ¢ permission settings for different user roles\nâ¢ audit logs for changes in roles\nâ¢ interface for adding or removing team members",
+    "constraints":  [
+                        "Canvas width: 375px mobile layout",
+                        "Grid system: 8-column grid with 16px margins and 16px gutters",
+                        "Spacing system: 8px baseline grid",
+                        "Allowed spacing values: 8px, 16px, 24px, 32px, 40px, 48px",
+                        "Minimum contrast ratio: 4.5:1 (WCAG AA)",
+                        "Minimum touch target size: 44px Ã 44px",
+                        "Typography hierarchy: minimum 4 levels",
+                        "Maximum primary colors: 3-4",
+                        "Reusable UI components must be used for repeated elements",
+                        "Accessibility: WCAG AA compliance for all interactive elements"
+                    ],
+    "deliverables":  [
+                         "5-8 high-fidelity product screens",
+                         "User journey flow diagram",
+                         "Feature prioritization rationale",
+                         "Short explanation of key product decisions"
+                     ],
+    "evaluation_criteria":  [
+                                "Product thinking - 25%",
+                                "User flow clarity - 20%",
+                                "Layout consistency - 20%",
+                                "Constraint compliance - 15%",
+                                "Interaction \u0026 usability - 20%"
+                            ],
+    "time_limit_minutes":  90,
+    "created_by":  "senior_test",
+    "created_at":  "2026-03-10T05:45:18.985000",
+    "is_published":  false,
+    "updated_at":  null
+}

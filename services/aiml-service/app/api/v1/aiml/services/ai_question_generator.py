@@ -189,10 +189,10 @@ async def generate_aiml_question(
             "Lead": "ML system architecture. Example: 'Design A/B testing framework for model deployment with rollback capability.'"
         },
         "hard": {
-            "Junior": "Complex ML pipeline, multiple models, hyperparameter tuning. Example: 'Compare 3 models, tune hyperparameters with GridSearchCV, handle class imbalance.'",
+            "Junior": "Complex ML pipeline, parameter tuning. Example: 'Compare 3 models, tune hyperparameters with GridSearchCV, handle class imbalance.'",
             "Mid": "Advanced feature engineering, business metrics, model interpretation. Example: 'Build ML pipeline with feature selection, compare models, analyze business costs.'",
             "Senior": "Production ML system with constraints, model deployment strategy. Example: 'Design end-to-end ML system with A/B testing, monitoring, and cost optimization.'",
-            "Lead": "ML architecture decisions, business impact analysis. Example: 'Design ML system architecture supporting multiple models, real-time inference, and business metrics.'"
+            "Lead": "Enterprise ML architecture, scalability considerations, business impact analysis. Example: 'Design ML system architecture supporting multiple models, real-time inference, and business metrics.'"
         }
     }
     
@@ -227,6 +227,30 @@ AIML QUESTION QUALITY STANDARDS (CRITICAL - MUST FOLLOW)
 {'=' * 80}
 
 Current Difficulty: {difficulty}
+Skill: {skill}
+
+**CRITICAL: AIML questions must reflect REAL ML workflows**
+
+{difficulty_rules}
+
+{'=' * 80}
+SKILL-SPECIFIC EVALUATION CRITERIA
+{'=' * 80}
+
+MUST include exactly 5-6 evaluation criteria that match the skill area.
+
+**Python:**
+• Code quality and structure — 20%
+• Algorithm efficiency — 20%
+• Error handling — 15%
+• Code readability — 15%
+• Test coverage — 15%
+• Documentation — 15%
+{'=' * 80}
+AIML QUESTION QUALITY STANDARDS (CRITICAL - MUST FOLLOW)
+{'=' * 80}
+
+Current Difficulty: {difficulty}
 Seniority Level: {seniority}
 
 **CRITICAL: AIML questions must reflect REAL ML workflows**
@@ -234,30 +258,6 @@ Seniority Level: {seniority}
 **{difficulty.upper()} Difficulty Rules for AIML ({seniority}):**
 
 {difficulty_rules}
-
-**FORBIDDEN (too simple for Hard, even with small datasets):**
-❌ "What is gradient descent?" (this is Easy)
-❌ "Explain the difference between supervised and unsupervised learning" (Easy/Medium)
-❌ "What does fit() do in sklearn?" (Easy)
-❌ Single model only (just Logistic Regression)
-❌ Just fit() and predict() with no analysis
-❌ Accuracy as the only metric
-❌ No hyperparameter tuning
-❌ No business context
-
-**REQUIRED for Hard (even with 40-50 rows):**
-✅ Multiple models comparison (3+ models)
-✅ Hyperparameter tuning (GridSearchCV/RandomizedSearchCV with 3+ parameters)
-✅ Cross-validation (5-fold minimum)
-✅ Business metrics (cost analysis, ROI, threshold tuning)
-✅ Feature engineering (interaction features, encoding, scaling)
-✅ Class imbalance handling (SMOTE, class_weight if applicable)
-✅ Model evaluation beyond accuracy (precision/recall/F1/AUC)
-✅ Decision threshold optimization for business goals
-
-**Examples by Difficulty (Notice: complexity, not dataset size):**
-
-**Easy (10-15 rows):**
 "Load CSV with pandas, handle missing values, split train/test (80/20), train Logistic Regression, report accuracy"
 
 **Medium (20-30 rows):**
