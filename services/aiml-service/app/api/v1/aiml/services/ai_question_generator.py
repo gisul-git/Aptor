@@ -189,10 +189,10 @@ async def generate_aiml_question(
             "Lead": "ML system architecture. Example: 'Design A/B testing framework for model deployment with rollback capability.'"
         },
         "hard": {
-            "Junior": "Complex ML pipeline, mmeter tuning. Example: 'Compare 3 models, tune hyperparameters with GridSearchCV, handle class imbalance.'",
+            "Junior": "Complex ML pipeline, parameter tuning. Example: 'Compare 3 models, tune hyperparameters with GridSearchCV, handle class imbalance.'",
             "Mid": "Advanced feature engineering, business metrics, model interpretation. Example: 'Build ML pipeline with feature selection, compare models, analyze business costs.'",
             "Senior": "Production ML system with constraints, model deployment strategy. Example: 'Design end-to-end ML system with A/B testing, monitoring, and cost optimization.'",
-          ons, business impact analysis. Example: 'Design ML system architecture supporting multiple models, real-time inference, and business metrics.'"
+            "Lead": "Enterprise ML architecture, scalability considerations, business impact analysis. Example: 'Design ML system architecture supporting multiple models, real-time inference, and business metrics.'"
         }
     }
     

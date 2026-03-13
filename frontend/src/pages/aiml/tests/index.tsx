@@ -427,7 +427,7 @@ export default function AIMLTestsListPage() {
                       onMouseEnter={(e) => { if (test.is_published) e.currentTarget.style.backgroundColor = "#084A2A" }}
                       onMouseLeave={(e) => { if (test.is_published) e.currentTarget.style.backgroundColor = "#00684A" }}
                     >
-                      <Mail size={16} /> Invite Candidates
+                      <Mail size={16} /> Add Candidates
                     </button>
                   </div>
 
