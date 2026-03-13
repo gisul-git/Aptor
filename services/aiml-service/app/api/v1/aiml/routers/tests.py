@@ -3034,44 +3034,185 @@ async def send_invitation(
     <html>
     <head>
         <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <style>
-            body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}
-            .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
-            .header {{ text-align: center; margin-bottom: 30px; }}
-            .logo {{ max-width: 200px; margin-bottom: 20px; }}
-            .content {{ background-color: #f0fdf4; padding: 20px; border-radius: 8px; margin-bottom: 20px; border: 2px solid #10b981; }}
-            .button {{ display: inline-block; padding: 12px 24px; background-color: #10b981; color: #ffffff; text-decoration: none; border-radius: 6px; margin: 20px 0; }}
-            .footer {{ text-align: center; color: #64748b; font-size: 0.875rem; margin-top: 30px; }}
-            .candidate-info {{ background-color: #ffffff; padding: 15px; border-radius: 6px; margin: 15px 0; border-left: 4px solid #10b981; }}
-            .assessment-title {{ font-size: 1.5rem; font-weight: bold; color: #10b981; margin: 15px 0; text-align: center; }}
-            .assessment-details {{ background-color: #ffffff; padding: 15px; border-radius: 6px; margin: 15px 0; border-left: 4px solid #10b981; }}
+            body {{ 
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+                line-height: 1.6; 
+                color: #374151; 
+                background-color: #f9fafb;
+                margin: 0;
+                padding: 0;
+            }}
+            .email-wrapper {{
+                background-color: #f9fafb;
+                padding: 40px 20px;
+            }}
+            .email-container {{ 
+                max-width: 600px; 
+                margin: 0 auto; 
+                background-color: #ffffff;
+                border-radius: 12px;
+                overflow: hidden;
+                box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            }}
+            .email-header {{ 
+                background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+                padding: 30px;
+                text-align: center;
+            }}
+            .email-header h1 {{
+                color: #ffffff;
+                margin: 0;
+                font-size: 28px;
+                font-weight: 700;
+                letter-spacing: -0.5px;
+            }}
+            .email-body {{ 
+                padding: 40px 30px;
+            }}
+            .greeting {{
+                font-size: 16px;
+                color: #6b7280;
+                margin-bottom: 20px;
+            }}
+            .assessment-title {{ 
+                font-size: 24px; 
+                font-weight: 700; 
+                color: #10b981; 
+                margin: 20px 0;
+                text-align: center;
+                padding: 15px;
+                background-color: #f0fdf4;
+                border-radius: 8px;
+            }}
+            .info-box {{ 
+                background-color: #f9fafb; 
+                padding: 20px; 
+                border-radius: 8px; 
+                margin: 20px 0; 
+                border-left: 4px solid #10b981;
+            }}
+            .info-box p {{
+                margin: 8px 0;
+                font-size: 14px;
+                color: #4b5563;
+            }}
+            .info-box strong {{
+                color: #1f2937;
+                font-weight: 600;
+            }}
+            .message-text {{
+                font-size: 15px;
+                color: #4b5563;
+                line-height: 1.7;
+                margin: 25px 0;
+            }}
+            .cta-container {{
+                text-align: center;
+                margin: 35px 0;
+            }}
+            .cta-button {{ 
+                display: inline-block; 
+                padding: 16px 40px; 
+                background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+                color: #ffffff !important; 
+                text-decoration: none; 
+                border-radius: 8px;
+                font-weight: 600;
+                font-size: 16px;
+                box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+                transition: transform 0.2s;
+            }}
+            .cta-button:hover {{
+                transform: translateY(-2px);
+                box-shadow: 0 6px 16px rgba(16, 185, 129, 0.4);
+            }}
+            .candidate-details {{
+                background-color: #f0fdf4;
+                padding: 20px;
+                border-radius: 8px;
+                margin: 25px 0;
+                border: 1px solid #d1fae5;
+            }}
+            .candidate-details h3 {{
+                margin: 0 0 15px 0;
+                font-size: 16px;
+                color: #065f46;
+                font-weight: 600;
+            }}
+            .candidate-details p {{
+                margin: 8px 0;
+                font-size: 14px;
+                color: #047857;
+            }}
+            .email-footer {{ 
+                background-color: #f9fafb;
+                padding: 30px;
+                text-align: center;
+                border-top: 1px solid #e5e7eb;
+            }}
+            .email-footer p {{
+                margin: 5px 0;
+                font-size: 13px;
+                color: #9ca3af;
+            }}
+            .sent-by {{
+                font-size: 14px;
+                color: #6b7280;
+                font-weight: 600;
+                margin-top: 15px;
+            }}
+            @media only screen and (max-width: 600px) {{
+                .email-body {{
+                    padding: 30px 20px;
+                }}
+                .assessment-title {{
+                    font-size: 20px;
+                }}
+                .cta-button {{
+                    padding: 14px 30px;
+                    font-size: 15px;
+                }}
+            }}
         </style>
     </head>
     <body>
-        <div class="container">
-            <div class="header">
-                {f'<img src="{logo_url}" alt="Logo" class="logo" />' if logo_url else ''}
-                {f'<h1>{company_name}</h1>' if company_name else ''}
-            </div>
-            <div class="content">
-                <p>Dear {candidate_name},</p>
-                <div class="assessment-title">{test_title}</div>
-                {f'<div class="assessment-details"><p><strong>Description:</strong> {test_description}</p></div>' if test_description else ''}
-                {f'<div class="assessment-details"><p><strong>Duration:</strong> {duration_text}</p></div>' if duration_text else ''}
-                {f'<div class="assessment-details"><p><strong>Deadline:</strong> {deadline_text}</p></div>' if deadline_text else ''}
-                <p>{email_body}</p>
-                <div class="candidate-info">
-                    <p><strong>Your Details:</strong></p>
-                    <p><strong>Name:</strong> {candidate_name}</p>
-                    <p><strong>Email:</strong> {candidate_email}</p>
+        <div class="email-wrapper">
+            <div class="email-container">
+                <div class="email-header">
+                    {f'<img src="{logo_url}" alt="Logo" style="max-width: 150px; margin-bottom: 15px;" />' if logo_url else ''}
+                    <h1>{company_name if company_name else 'Assessment Invitation'}</h1>
                 </div>
-                <div style="text-align: center;">
-                    <a href="{exam_url_with_params}" class="button">Start AIML Assessment</a>
+                
+                <div class="email-body">
+                    <p class="greeting">Dear <strong>{candidate_name}</strong>,</p>
+                    
+                    <div class="assessment-title">{test_title}</div>
+                    
+                    {f'<div class="info-box"><p><strong>Description:</strong> {test_description}</p></div>' if test_description else ''}
+                    
+                    {f'<div class="info-box"><p><strong>Duration:</strong> {duration_text}</p></div>' if duration_text else ''}
+                    
+                    {f'<div class="info-box"><p><strong>Deadline:</strong> {deadline_text}</p></div>' if deadline_text else ''}
+                    
+                    <p class="message-text">{email_body}</p>
+                    
+                    <div class="candidate-details">
+                        <h3>Your Details:</h3>
+                        <p><strong>Name:</strong> {candidate_name}</p>
+                        <p><strong>Email:</strong> {candidate_email}</p>
+                    </div>
+                    
+                    <div class="cta-container">
+                        <a href="{exam_url_with_params}" class="cta-button">Start AIML Assessment</a>
+                    </div>
                 </div>
-            </div>
-            {f'<div class="footer"><p>{footer}</p></div>' if footer else ''}
-            <div class="footer">
-                <p>Sent by {sent_by}</p>
+                
+                <div class="email-footer">
+                    {f'<p>{footer}</p>' if footer else ''}
+                    <p class="sent-by">Sent by {sent_by}</p>
+                </div>
             </div>
         </div>
     </body>
@@ -3326,44 +3467,185 @@ async def send_invitations_to_all(
             <html>
             <head>
                 <meta charset="UTF-8">
+                <meta name="viewport" content="width=device-width, initial-scale=1.0">
                 <style>
-                    body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}
-                    .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
-                    .header {{ text-align: center; margin-bottom: 30px; }}
-                    .logo {{ max-width: 200px; margin-bottom: 20px; }}
-                    .content {{ background-color: #f0fdf4; padding: 20px; border-radius: 8px; margin-bottom: 20px; border: 2px solid #10b981; }}
-                    .button {{ display: inline-block; padding: 12px 24px; background-color: #10b981; color: #ffffff; text-decoration: none; border-radius: 6px; margin: 20px 0; }}
-                    .footer {{ text-align: center; color: #64748b; font-size: 0.875rem; margin-top: 30px; }}
-                    .candidate-info {{ background-color: #ffffff; padding: 15px; border-radius: 6px; margin: 15px 0; border-left: 4px solid #10b981; }}
-                    .assessment-title {{ font-size: 1.5rem; font-weight: bold; color: #10b981; margin: 15px 0; text-align: center; }}
-                    .assessment-details {{ background-color: #ffffff; padding: 15px; border-radius: 6px; margin: 15px 0; border-left: 4px solid #10b981; }}
+                    body {{ 
+                        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+                        line-height: 1.6; 
+                        color: #374151; 
+                        background-color: #f9fafb;
+                        margin: 0;
+                        padding: 0;
+                    }}
+                    .email-wrapper {{
+                        background-color: #f9fafb;
+                        padding: 40px 20px;
+                    }}
+                    .email-container {{ 
+                        max-width: 600px; 
+                        margin: 0 auto; 
+                        background-color: #ffffff;
+                        border-radius: 12px;
+                        overflow: hidden;
+                        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+                    }}
+                    .email-header {{ 
+                        background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+                        padding: 30px;
+                        text-align: center;
+                    }}
+                    .email-header h1 {{
+                        color: #ffffff;
+                        margin: 0;
+                        font-size: 28px;
+                        font-weight: 700;
+                        letter-spacing: -0.5px;
+                    }}
+                    .email-body {{ 
+                        padding: 40px 30px;
+                    }}
+                    .greeting {{
+                        font-size: 16px;
+                        color: #6b7280;
+                        margin-bottom: 20px;
+                    }}
+                    .assessment-title {{ 
+                        font-size: 24px; 
+                        font-weight: 700; 
+                        color: #10b981; 
+                        margin: 20px 0;
+                        text-align: center;
+                        padding: 15px;
+                        background-color: #f0fdf4;
+                        border-radius: 8px;
+                    }}
+                    .info-box {{ 
+                        background-color: #f9fafb; 
+                        padding: 20px; 
+                        border-radius: 8px; 
+                        margin: 20px 0; 
+                        border-left: 4px solid #10b981;
+                    }}
+                    .info-box p {{
+                        margin: 8px 0;
+                        font-size: 14px;
+                        color: #4b5563;
+                    }}
+                    .info-box strong {{
+                        color: #1f2937;
+                        font-weight: 600;
+                    }}
+                    .message-text {{
+                        font-size: 15px;
+                        color: #4b5563;
+                        line-height: 1.7;
+                        margin: 25px 0;
+                    }}
+                    .cta-container {{
+                        text-align: center;
+                        margin: 35px 0;
+                    }}
+                    .cta-button {{ 
+                        display: inline-block; 
+                        padding: 16px 40px; 
+                        background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+                        color: #ffffff !important; 
+                        text-decoration: none; 
+                        border-radius: 8px;
+                        font-weight: 600;
+                        font-size: 16px;
+                        box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+                        transition: transform 0.2s;
+                    }}
+                    .cta-button:hover {{
+                        transform: translateY(-2px);
+                        box-shadow: 0 6px 16px rgba(16, 185, 129, 0.4);
+                    }}
+                    .candidate-details {{
+                        background-color: #f0fdf4;
+                        padding: 20px;
+                        border-radius: 8px;
+                        margin: 25px 0;
+                        border: 1px solid #d1fae5;
+                    }}
+                    .candidate-details h3 {{
+                        margin: 0 0 15px 0;
+                        font-size: 16px;
+                        color: #065f46;
+                        font-weight: 600;
+                    }}
+                    .candidate-details p {{
+                        margin: 8px 0;
+                        font-size: 14px;
+                        color: #047857;
+                    }}
+                    .email-footer {{ 
+                        background-color: #f9fafb;
+                        padding: 30px;
+                        text-align: center;
+                        border-top: 1px solid #e5e7eb;
+                    }}
+                    .email-footer p {{
+                        margin: 5px 0;
+                        font-size: 13px;
+                        color: #9ca3af;
+                    }}
+                    .sent-by {{
+                        font-size: 14px;
+                        color: #6b7280;
+                        font-weight: 600;
+                        margin-top: 15px;
+                    }}
+                    @media only screen and (max-width: 600px) {{
+                        .email-body {{
+                            padding: 30px 20px;
+                        }}
+                        .assessment-title {{
+                            font-size: 20px;
+                        }}
+                        .cta-button {{
+                            padding: 14px 30px;
+                            font-size: 15px;
+                        }}
+                    }}
                 </style>
             </head>
             <body>
-                <div class="container">
-                    <div class="header">
-                        {f'<img src="{logo_url}" alt="Logo" class="logo" />' if logo_url else ''}
-                        {f'<h1>{company_name}</h1>' if company_name else ''}
-                    </div>
-                    <div class="content">
-                        <p>Dear {candidate.get("name")},</p>
-                        <div class="assessment-title">{test_title}</div>
-                        {f'<div class="assessment-details"><p><strong>Description:</strong> {test_description}</p></div>' if test_description else ''}
-                        {f'<div class="assessment-details"><p><strong>Duration:</strong> {duration_text}</p></div>' if duration_text else ''}
-                        {f'<div class="assessment-details"><p><strong>Deadline:</strong> {deadline_text}</p></div>' if deadline_text else ''}
-                        <p>{email_body}</p>
-                        <div class="candidate-info">
-                            <p><strong>Your Details:</strong></p>
-                            <p><strong>Name:</strong> {candidate.get("name")}</p>
-                            <p><strong>Email:</strong> {candidate.get("email")}</p>
+                <div class="email-wrapper">
+                    <div class="email-container">
+                        <div class="email-header">
+                            {f'<img src="{logo_url}" alt="Logo" style="max-width: 150px; margin-bottom: 15px;" />' if logo_url else ''}
+                            <h1>{company_name if company_name else 'Assessment Invitation'}</h1>
                         </div>
-                        <div style="text-align: center;">
-                            <a href="{exam_url_with_params}" class="button">Start AIML Assessment</a>
+                        
+                        <div class="email-body">
+                            <p class="greeting">Dear <strong>{candidate.get("name")}</strong>,</p>
+                            
+                            <div class="assessment-title">{test_title}</div>
+                            
+                            {f'<div class="info-box"><p><strong>Description:</strong> {test_description}</p></div>' if test_description else ''}
+                            
+                            {f'<div class="info-box"><p><strong>Duration:</strong> {duration_text}</p></div>' if duration_text else ''}
+                            
+                            {f'<div class="info-box"><p><strong>Deadline:</strong> {deadline_text}</p></div>' if deadline_text else ''}
+                            
+                            <p class="message-text">{email_body}</p>
+                            
+                            <div class="candidate-details">
+                                <h3>Your Details:</h3>
+                                <p><strong>Name:</strong> {candidate.get("name")}</p>
+                                <p><strong>Email:</strong> {candidate.get("email")}</p>
+                            </div>
+                            
+                            <div class="cta-container">
+                                <a href="{exam_url_with_params}" class="cta-button">Start AIML Assessment</a>
+                            </div>
                         </div>
-                    </div>
-                    {f'<div class="footer"><p>{footer}</p></div>' if footer else ''}
-                    <div class="footer">
-                        <p>Sent by {sent_by}</p>
+                        
+                        <div class="email-footer">
+                            {f'<p>{footer}</p>' if footer else ''}
+                            <p class="sent-by">Sent by {sent_by}</p>
+                        </div>
                     </div>
                 </div>
             </body>
