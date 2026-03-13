@@ -44,7 +44,7 @@ export const designService = {
   listTests: async (): Promise<ApiResponse<DesignTest[]>> => {
     const response = await fetch(`${DESIGN_API_URL}/tests`);
     const data = await response.json();
-    return { data };
+    return { success: true, data };
   },
 
   /**
@@ -53,7 +53,7 @@ export const designService = {
   getTest: async (testId: string): Promise<ApiResponse<DesignTest>> => {
     const response = await fetch(`${DESIGN_API_URL}/tests/${testId}`);
     const data = await response.json();
-    return { data };
+    return { success: true, data };
   },
 
   /**
@@ -66,7 +66,7 @@ export const designService = {
       body: JSON.stringify(data),
     });
     const result = await response.json();
-    return { data: result };
+    return { success: true, data: result };
   },
 
   /**
@@ -79,7 +79,7 @@ export const designService = {
       body: JSON.stringify(data),
     });
     const result = await response.json();
-    return { data: result };
+    return { success: true, data: result };
   },
 
   /**
@@ -90,7 +90,7 @@ export const designService = {
       method: 'DELETE',
     });
     await response.json();
-    return { data: undefined };
+    return { success: true, data: undefined };
   },
 
   /**
@@ -101,7 +101,7 @@ export const designService = {
       method: 'POST',
     });
     await response.json();
-    return { data: undefined };
+    return { success: true, data: undefined };
   },
 
   /**
@@ -112,7 +112,7 @@ export const designService = {
       method: 'POST',
     });
     await response.json();
-    return { data: undefined };
+    return { success: true, data: undefined };
   },
 
   /**
@@ -128,7 +128,7 @@ export const designService = {
       body: JSON.stringify(data),
     });
     const result = await response.json();
-    return { data: result };
+    return { success: true, data: result };
   },
 
   /**
@@ -152,7 +152,7 @@ export const designService = {
     
     const result = await response.json();
     console.log('[Design Service] Success result:', result);
-    return { data: result };
+    return { success: true, data: result };
   },
 
   /**
@@ -170,7 +170,7 @@ export const designService = {
     }
     
     const result = await response.json();
-    return { data: result };
+    return { success: true, data: result };
   },
 };
 

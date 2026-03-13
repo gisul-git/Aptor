@@ -250,7 +250,8 @@ export default function DesignAdminDashboard() {
       }
     } catch (err) {
       console.error('Failed to generate question:', err);
-      alert('❌ Error generating question: ' + err.message);
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error occurred';
+      alert('❌ Error generating question: ' + errorMessage);
     }
     setLoading(false);
   };
