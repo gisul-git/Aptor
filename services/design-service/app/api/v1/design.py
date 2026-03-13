@@ -1,0 +1,1962 @@
+"""
+Design Service API Endpoints
+Complete API for AI Design Question Generator + Penpot Integration
+"""
+
+import logging
+from typing import List, Optional, Dict, Any
+from fastapi import APIRouter, HTTPException, Depends, Query, UploadFile, File, BackgroundTasks
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel
+from bson import ObjectId
+from datetime import datetime
+
+from app.models.design import (
+    DesignQuestionModel,
+    PenpotSessionModel,
+    DesignSubmissionModel,
+    DesignRole,
+    DifficultyLevel,
+    TaskType
+)
+from app.services.ai_question_generator import ai_question_generator
+from app.services.penpot_rpc import penpot_rpc_service as penpot_service
+from app.services.evaluation_engine import evaluation_engine
+from app.repositories.design_repository import design_repository
+from app.core.config import settings
+
+logger = logging.getLogger(__name__)
+
+router = APIRouter(prefix="/design", tags=["Design Assessment"])
+
+
+# Request/Response Models
+class GenerateQuestionRequest(BaseModel):
+    role: DesignRole
+    difficulty: DifficultyLevel
+    task_type: TaskType
+    topic: Optional[str] = None
+    experience_level: Optional[str] = None
+    open_requirements: Optional[str] = None
+    created_by: str = "system"
+
+
+class TopicSuggestionsRequest(BaseModel):
+    role: DesignRole
+    difficulty: DifficultyLevel
+    experience_years: int
+    task_type: TaskType
+
+
+class TopicSuggestionsResponse(BaseModel):
+    suggestions: List[str]
+
+
+class PublishStatusRequest(BaseModel):
+    is_published: bool
+
+
+class CreateTestRequest(BaseModel):
+    class Config:
+        extra = "allow"  # Allow any extra fields
+    
+    title: str
+    description: Optional[str] = None
+    question_ids: List[str] = []
+
+
+class CreateSessionRequest(BaseModel):
+    user_id: str
+    assessment_id: str
+    question_id: str
+
+
+class SubmitDesignRequest(BaseModel):
+    session_id: str
+    user_id: str
+    question_id: str
+    file_id: Optional[str] = None
+    time_taken: Optional[int] = None
+    events: Optional[List[Dict[str, Any]]] = []
+    test_id: Optional[str] = None
+
+
+class ScreenshotRequest(BaseModel):
+    session_id: str
+    timestamp: str
+    image_data: str
+
+
+class EventRequest(BaseModel):
+    session_id: str
+    type: str
+    timestamp: str
+    x: Optional[int] = None
+    y: Optional[int] = None
+    target: Optional[str] = None
+    idle_seconds: Optional[int] = None
+
+
+class EvaluationResponse(BaseModel):
+    submission_id: str
+    rule_based_score: float
+    ai_based_score: float
+    final_score: float
+    feedback: Dict[str, Any]
+
+
+# AI Question Generation Endpoints
+@router.post("/questions/suggestions", response_model=TopicSuggestionsResponse)
+async def get_topic_suggestions(request: TopicSuggestionsRequest):
+    """Get AI-generated topic suggestions based on role, difficulty, experience, and task type"""
+    try:
+        # Convert experience_years to experience_level string
+        experience_level = getExperienceLevelFromYears(request.experience_years)
+        
+        suggestions = await ai_question_generator.generate_topic_suggestions(
+            role=request.role,
+            difficulty=request.difficulty,
+            experience_level=experience_level,
+            task_type=request.task_type
+        )
+        
+        return TopicSuggestionsResponse(suggestions=suggestions)
+        
+    except Exception as e:
+        logger.error(f"Topic suggestion generation failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# Helper function to convert years to experience level
+def getExperienceLevelFromYears(years: int) -> str:
+    if years == 0:
+        return 'fresher'
+    if years <= 3:
+        return '1-3 years'
+    if years <= 5:
+        return '3-5 years'
+    return 'senior'
+
+
+@router.post("/questions/generate", response_model=DesignQuestionModel)
+async def generate_question(request: GenerateQuestionRequest):
+    """Generate AI-powered design question"""
+    try:
+        # Initialize repository if needed
+        try:
+            if design_repository.db is None:
+                await design_repository.initialize()
+        except Exception as e:
+            logger.warning(f"Database not available: {e}")
+        
+        # Generate question using AI
+        question = await ai_question_generator.generate_question(
+            role=request.role,
+            difficulty=request.difficulty,
+            task_type=request.task_type,
+            topic=request.topic,
+            experience_level=request.experience_level,
+            open_requirements=request.open_requirements,
+            created_by=request.created_by
+        )
+        
+        # Try to save to database
+        try:
+            if design_repository.db is not None:
+                question_id = await design_repository.create_question(question)
+                question.id = question_id
+                logger.info(f"Generated and saved question: {question_id}")
+            else:
+                logger.warning("Database not available, returning question without saving")
+        except Exception as e:
+            logger.warning(f"Could not save question to database: {e}")
+        
+        return question
+        
+    except Exception as e:
+        logger.error(f"Question generation failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/questions")
+async def get_questions(
+    role: Optional[DesignRole] = None,
+    difficulty: Optional[DifficultyLevel] = None,
+    task_type: Optional[TaskType] = None,
+    limit: int = Query(50, le=100),
+    skip: int = Query(0, ge=0)
+):
+    """Get design questions with filters"""
+    try:
+        if design_repository.db is None:
+            await design_repository.initialize()
+        
+        questions = await design_repository.get_questions(
+            role=role,
+            difficulty=difficulty,
+            task_type=task_type,
+            limit=limit,
+            skip=skip
+        )
+        
+        # Transform to dict and add id field for frontend compatibility
+        result = []
+        for q in questions:
+            try:
+                q_dict = q.dict()
+            except:
+                q_dict = q.model_dump()
+            
+            logger.info(f"Question dict keys: {q_dict.keys()}")
+            if "_id" in q_dict:
+                q_dict["id"] = q_dict["_id"]
+                logger.info(f"Added id field: {q_dict['id']}")
+            result.append(q_dict)
+        
+        return result
+        
+    except Exception as e:
+        logger.error(f"Failed to get questions: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/questions/{question_id}")
+async def get_question(question_id: str):
+    """Get specific design question"""
+    try:
+        if design_repository.db is None:
+            await design_repository.initialize()
+        
+        question = await design_repository.get_question(question_id)
+        if not question:
+            raise HTTPException(status_code=404, detail="Question not found")
+        
+        # Transform to dict and add id field for frontend compatibility
+        q_dict = question.dict() if hasattr(question, 'dict') else question.model_dump()
+        if "_id" in q_dict:
+            q_dict["id"] = q_dict["_id"]
+        
+        return q_dict
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get question {question_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.patch("/questions/{question_id}/publish", response_model=dict)
+async def toggle_publish_question(
+    question_id: str, 
+    is_published: bool = Query(..., description="Set publish status")
+):
+    """
+    Toggle publish status of a question
+    """
+    try:
+        # Get database connection
+        from app.db.mongo import get_database
+        db = get_database()
+        
+        # Validate ObjectId
+        if not ObjectId.is_valid(question_id):
+            raise HTTPException(status_code=400, detail="Invalid question ID")
+        
+        # Check if question exists
+        existing_question = await db.design_questions.find_one({"_id": ObjectId(question_id)})
+        if not existing_question:
+            raise HTTPException(status_code=404, detail="Question not found")
+        
+        # Update publish status
+        result = await db.design_questions.update_one(
+            {"_id": ObjectId(question_id)},
+            {"$set": {"is_published": is_published, "updated_at": datetime.utcnow()}}
+        )
+        
+        if result.matched_count == 0:
+            raise HTTPException(status_code=404, detail="Question not found")
+        
+        logger.info(f"Question {question_id} publish status updated to {is_published}")
+        
+        return {
+            "message": "Question publish status updated successfully",
+            "is_published": is_published
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to update publish status: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/questions/{question_id}")
+async def delete_question(question_id: str):
+    """Delete a design question"""
+    try:
+        if design_repository.db is None:
+            await design_repository.initialize()
+        
+        db = design_repository.db
+        result = await db.design_questions.delete_one({"_id": ObjectId(question_id)})
+        
+        if result.deleted_count == 0:
+            raise HTTPException(status_code=404, detail="Question not found")
+        
+        logger.info(f"Question {question_id} deleted successfully")
+        
+        return {"message": "Question deleted successfully"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to delete question: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.put("/questions/{question_id}")
+async def update_question(question_id: str, request: Dict[str, Any]):
+    """Update a design question"""
+    try:
+        if design_repository.db is None:
+            await design_repository.initialize()
+        
+        db = design_repository.db
+        
+        # Remove _id from update data if present
+        update_data = {k: v for k, v in request.items() if k != '_id'}
+        update_data['updated_at'] = datetime.utcnow()
+        
+        result = await db.design_questions.update_one(
+            {"_id": ObjectId(question_id)},
+            {"$set": update_data}
+        )
+        
+        if result.matched_count == 0:
+            raise HTTPException(status_code=404, detail="Question not found")
+        
+        logger.info(f"Question {question_id} updated successfully")
+        
+        return {"message": "Question updated successfully"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to update question: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# Test/Assessment Management
+@router.post("/tests/create")
+async def create_test_new(request: CreateTestRequest):
+    """Create a new design assessment/test"""
+    try:
+        if design_repository.db is None:
+            await design_repository.initialize()
+        
+        db = design_repository.db
+        
+        # Convert to dict to access all fields
+        request_dict = request.dict()
+        
+        # Extract fields from request
+        title = request.title
+        description = request.description
+        question_ids = request.question_ids
+        
+        # Validate that all questions exist
+        for question_id in question_ids:
+            question = await db.design_questions.find_one({"_id": ObjectId(question_id)})
+            if not question:
+                raise HTTPException(status_code=404, detail=f"Question {question_id} not found")
+        
+        # Extract proctoring settings from nested object or flat fields
+        proctoring_settings = request_dict.get("proctoringSettings", {})
+        ai_proctoring = proctoring_settings.get("aiProctoringEnabled", request_dict.get("aiProctoringEnabled", request_dict.get("ai_proctoring", False)))
+        face_mismatch = proctoring_settings.get("faceMismatchEnabled", request_dict.get("faceMismatchEnabled", request_dict.get("face_mismatch_detection", False)))
+        live_proctoring = proctoring_settings.get("liveProctoringEnabled", request_dict.get("liveProctoringEnabled", request_dict.get("live_proctoring", False)))
+        
+        # Extract schedule settings
+        schedule = request_dict.get("schedule", {})
+        candidate_reqs = schedule.get("candidateRequirements", {})
+        
+        # Determine duration
+        duration = request_dict.get("duration") or request_dict.get("duration_minutes") or schedule.get("duration", 60)
+        
+        # Determine exam window
+        exam_mode = request_dict.get("examMode") or request_dict.get("exam_window_type", "strict")
+        start_time = request_dict.get("start_time") or request_dict.get("startTime") or request_dict.get("exam_start_time") or schedule.get("startTime")
+        end_time = request_dict.get("end_time") or request_dict.get("endTime") or request_dict.get("exam_end_time") or schedule.get("endTime")
+        
+        # Determine candidate requirements
+        require_phone = candidate_reqs.get("requirePhone", request_dict.get("require_phone", False))
+        require_resume = candidate_reqs.get("requireResume", request_dict.get("require_resume", False))
+        require_linkedin = candidate_reqs.get("requireLinkedIn", request_dict.get("require_linkedin", False))
+        require_github = candidate_reqs.get("requireGithub", request_dict.get("require_github", False))
+        
+        # Timer mode
+        timer_mode = request_dict.get("timer_mode", "GLOBAL")
+        question_timings = request_dict.get("question_timings", [])
+        
+        # Create test document
+        test_doc = {
+            "_id": str(datetime.utcnow().timestamp()).replace(".", ""),
+            "title": title,
+            "description": description,
+            "question_ids": question_ids,
+            "duration_minutes": duration,
+            "timer_mode": timer_mode,
+            "question_timings": question_timings,
+            "proctoring_enabled": ai_proctoring or face_mismatch or live_proctoring,
+            "ai_proctoring": ai_proctoring,
+            "face_mismatch_detection": face_mismatch,
+            "live_proctoring": live_proctoring,
+            "exam_window_type": exam_mode,
+            "exam_start_time": start_time,
+            "exam_end_time": end_time,
+            "require_phone": require_phone,
+            "require_resume": require_resume,
+            "require_linkedin": require_linkedin,
+            "require_github": require_github,
+            "created_by": request_dict.get("created_by", "system"),
+            "created_at": datetime.utcnow(),
+            "updated_at": datetime.utcnow(),
+            "is_active": True
+        }
+        
+        result = await db.design_tests.insert_one(test_doc)
+        
+        logger.info(f"Created design test: {test_doc['_id']}")
+        
+        return {
+            "id": test_doc["_id"],
+            "message": "Test created successfully",
+            "test": test_doc
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to create test: {e}")
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/tests")
+async def get_tests(
+    limit: int = Query(50, le=100),
+    skip: int = Query(0, ge=0)
+):
+    """Get all design tests"""
+    try:
+        if design_repository.db is None:
+            await design_repository.initialize()
+        
+        db = design_repository.db
+        
+        tests = await db.design_tests.find(
+            {"is_active": True}
+        ).sort("created_at", -1).skip(skip).limit(limit).to_list(length=None)
+        
+        # Transform _id to id for frontend compatibility
+        for test in tests:
+            if "_id" in test:
+                test["id"] = test["_id"]
+        
+        # Return array directly for frontend compatibility
+        return tests
+        
+    except Exception as e:
+        logger.error(f"Failed to get tests: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/tests/{test_id}")
+async def get_test(test_id: str):
+    """Get specific design test"""
+    try:
+        if design_repository.db is None:
+            await design_repository.initialize()
+        
+        db = design_repository.db
+        
+        test = await db.design_tests.find_one({"_id": test_id})
+        if not test:
+            raise HTTPException(status_code=404, detail="Test not found")
+        
+        # Transform _id to id for frontend compatibility
+        if "_id" in test:
+            test["id"] = test["_id"]
+        
+        return test
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get test: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.patch("/tests/{test_id}/publish")
+@router.post("/tests/{test_id}/publish")
+async def toggle_test_publish_status(
+    test_id: str,
+    is_published: bool = Query(..., description="Publish status to set")
+):
+    """Toggle test publish status"""
+    try:
+        if design_repository.db is None:
+            await design_repository.initialize()
+        
+        db = design_repository.db
+        
+        # Generate test token if publishing
+        import secrets
+        test_token = secrets.token_urlsafe(32) if is_published else None
+        
+        update_data = {
+            "is_published": is_published,
+            "updated_at": datetime.utcnow()
+        }
+        
+        if test_token:
+            update_data["test_token"] = test_token
+        
+        result = await db.design_tests.update_one(
+            {"_id": test_id},
+            {"$set": update_data}
+        )
+        
+        if result.matched_count == 0:
+            raise HTTPException(status_code=404, detail="Test not found")
+        
+        logger.info(f"Test {test_id} publish status updated to {is_published}")
+        
+        return {
+            "message": "Publish status updated successfully",
+            "is_published": is_published,
+            "test_token": test_token
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to update publish status: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/tests/{test_id}")
+async def delete_test(test_id: str):
+    """Delete a design test"""
+    try:
+        if design_repository.db is None:
+            await design_repository.initialize()
+        
+        db = design_repository.db
+        
+        # Check if test exists
+        test = await db.design_tests.find_one({"_id": test_id})
+        if not test:
+            raise HTTPException(status_code=404, detail="Test not found")
+        
+        # Delete the test
+        result = await db.design_tests.delete_one({"_id": test_id})
+        
+        if result.deleted_count == 0:
+            raise HTTPException(status_code=404, detail="Test not found")
+        
+        logger.info(f"Test {test_id} deleted successfully")
+        
+        return {
+            "message": "Test deleted successfully",
+            "test_id": test_id
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to delete test: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# Penpot Workspace Management
+@router.post("/workspace/create", response_model=Dict[str, Any])
+async def create_workspace(request: CreateSessionRequest):
+    """Create Penpot workspace for candidate"""
+    try:
+        if design_repository.db is None:
+            await design_repository.initialize()
+        
+        # Get question details
+        question = await design_repository.get_question(request.question_id)
+        if not question:
+            raise HTTPException(status_code=404, detail="Question not found")
+        
+        # Create Penpot workspace
+        session = await penpot_service.create_candidate_workspace(
+            user_id=request.user_id,
+            assessment_id=request.assessment_id,
+            question_id=request.question_id,
+            question_title=question.title
+        )
+        
+        # Save session to database
+        session_id = await design_repository.create_session(session)
+        session.id = session_id
+        
+        return {
+            "session_id": session_id,
+            "workspace_url": session.workspace_url,
+            "session_token": session.session_token,
+            "file_id": session.file_id or "",
+            "project_id": session.project_id or "",
+            "question": question.model_dump(),
+            "time_limit_minutes": question.time_limit_minutes
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to create workspace: {e}")
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/workspace/{session_id}/status")
+async def get_workspace_status(session_id: str):
+    """Get workspace status and activity"""
+    try:
+        if design_repository.db is None:
+            await design_repository.initialize()
+        
+        session = await design_repository.get_session(session_id)
+        if not session:
+            raise HTTPException(status_code=404, detail="Session not found")
+        
+        # Get workspace status from Penpot
+        status = await penpot_service.get_workspace_status(session.session_token)
+        
+        return {
+            "session_id": session_id,
+            "user_id": session.user_id,
+            "started_at": session.started_at,
+            "ended_at": session.ended_at,
+            "workspace_status": status
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get workspace status: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/workspace/{session_id}/end")
+async def end_workspace_session(session_id: str):
+    """End workspace session"""
+    try:
+        if design_repository.db is None:
+            await design_repository.initialize()
+        
+        # End session in database
+        success = await design_repository.end_session(session_id)
+        if not success:
+            raise HTTPException(status_code=404, detail="Session not found")
+        
+        return {"message": "Session ended successfully"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to end session: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# Design Submission and Evaluation
+@router.post("/submit", response_model=Dict[str, Any])
+async def submit_design(
+    request: SubmitDesignRequest,
+    background_tasks: BackgroundTasks = BackgroundTasks()
+):
+    """Submit design for evaluation"""
+    try:
+        if design_repository.db is None:
+            await design_repository.initialize()
+        
+        # Validate session
+        session = await design_repository.get_session(request.session_id)
+        if not session:
+            raise HTTPException(status_code=404, detail="Session not found")
+        
+        # Export design data from Penpot
+        design_data = await penpot_service.export_design_data(
+            file_id=session.file_id
+        )
+        
+        # Create submission record
+        submission = DesignSubmissionModel(
+            session_id=request.session_id,
+            user_id=request.user_id,
+            question_id=request.question_id,
+            screenshot_url=f"penpot://{session.file_id}",  # Reference to Penpot file
+            design_file_url=f"penpot://{session.file_id}",
+            test_id=request.test_id
+        )
+        
+        submission_id = await design_repository.create_submission(submission)
+        
+        # Update candidate record if test_id is provided
+        if request.test_id:
+            try:
+                db = design_repository.db
+                await db.design_candidates.update_one(
+                    {"test_id": request.test_id, "email": request.user_id},
+                    {"$set": {
+                        "has_submitted": True,
+                        "submitted_at": datetime.utcnow()
+                    }}
+                )
+                logger.info(f"Updated candidate {request.user_id} for test {request.test_id}")
+            except Exception as e:
+                logger.warning(f"Could not update candidate: {e}")
+        
+        # Save events if provided
+        if request.events and len(request.events) > 0:
+            try:
+                db = design_repository.db
+                events_docs = []
+                for event in request.events:
+                    events_docs.append({
+                        "session_id": request.session_id,
+                        "type": event.get("type"),
+                        "timestamp": event.get("timestamp"),
+                        "x": event.get("x"),
+                        "y": event.get("y"),
+                        "target": event.get("target"),
+                        "idle_seconds": event.get("idle_seconds"),
+                        "created_at": datetime.utcnow()
+                    })
+                
+                if events_docs:
+                    await db.events.insert_many(events_docs)
+                    logger.info(f"🎯 Saved {len(events_docs)} events for session {request.session_id}")
+            except Exception as e:
+                logger.warning(f"Could not save events: {e}")
+        
+        # End the session
+        await design_repository.end_session(request.session_id)
+        
+        # Start background evaluation
+        background_tasks.add_task(
+            evaluate_submission_background,
+            submission_id,
+            design_data,
+            request.question_id
+        )
+        
+        return {
+            "submission_id": submission_id,
+            "message": "Design submitted successfully",
+            "evaluation_status": "processing",
+            "file_id": session.file_id
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to submit design: {e}")
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# Evaluation engine temporarily disabled - uncomment when ready
+# from app.core.evaluation_engine import DesignEvaluationEngine
+# evaluation_engine = DesignEvaluationEngine()
+
+
+async def evaluate_submission_background(
+    submission_id: str,
+    design_data: Dict[str, Any],
+    question_id: str
+):
+    """Background task for design evaluation"""
+    try:
+        # Get question data for evaluation context
+        question = await design_repository.get_question(question_id)
+        question_data = question.model_dump() if question else {}
+        
+        # Extract metrics from design data
+        metrics = design_data.get("metrics", {})
+        
+        # Get submission to find session_id
+        submission = await design_repository.get_submission(submission_id)
+        session_id = submission.session_id if submission else None
+        
+        # Get latest screenshot for AI evaluation
+        screenshot_base64 = None
+        events_data = None
+        if session_id:
+            try:
+                db = design_repository.db
+                
+                # Get latest screenshot
+                latest_screenshot = await db.screenshots.find_one(
+                    {"session_id": session_id},
+                    sort=[("created_at", -1)]
+                )
+                if latest_screenshot:
+                    screenshot_base64 = latest_screenshot.get("image_data")
+                    logger.info("📸 Found screenshot for AI evaluation")
+                
+                # Get all events for interaction analysis
+                events_cursor = db.events.find({"session_id": session_id})
+                events_list = await events_cursor.to_list(length=None)
+                
+                if events_list:
+                    # Calculate event statistics
+                    total_clicks = sum(1 for e in events_list if e.get("type") == "click")
+                    total_undo = sum(1 for e in events_list if e.get("type") == "undo")
+                    total_redo = sum(1 for e in events_list if e.get("type") == "redo")
+                    total_idle = sum(e.get("idle_seconds", 0) for e in events_list if e.get("type") == "idle")
+                    
+                    events_data = {
+                        "total_events": len(events_list),
+                        "total_clicks": total_clicks,
+                        "total_undo": total_undo,
+                        "total_redo": total_redo,
+                        "total_idle_seconds": total_idle,
+                        "events": events_list
+                    }
+                    logger.info(f"🎯 Found {len(events_list)} events for evaluation")
+                    
+            except Exception as e:
+                logger.warning(f"Could not fetch screenshot/events: {e}")
+        
+        # Run comprehensive evaluation using the evaluation engine
+        evaluation_result = await evaluation_engine.evaluate(
+            design_data=design_data,
+            question_data=question_data,
+            events_data=events_data,  # Pass events for interaction quality
+            screenshot_base64=screenshot_base64  # Pass screenshot for AI
+        )
+        
+        rule_score = evaluation_result["rule_based_score"]
+        ai_score = evaluation_result["ai_based_score"]
+        final_score = evaluation_result["final_score"]
+        feedback = evaluation_result["feedback"]
+        
+        # Update submission with scores
+        await design_repository.update_submission_scores(
+            submission_id=submission_id,
+            rule_based_score=rule_score,
+            ai_based_score=ai_score,
+            final_score=final_score,
+            feedback=feedback
+        )
+        
+        logger.info(f"✅ Completed evaluation for submission {submission_id}: {final_score}/100")
+        
+    except Exception as e:
+        logger.error(f"Background evaluation failed: {e}")
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
+
+
+@router.post("/screenshot")
+async def save_screenshot(request: ScreenshotRequest):
+    """Save screenshot for evaluation (not proctoring)"""
+    try:
+        if design_repository.db is None:
+            await design_repository.initialize()
+        
+        db = design_repository.db
+        
+        # Calculate file size
+        if request.image_data.startswith('data:image'):
+            base64_data = request.image_data.split(',')[1]
+            file_size = len(base64_data) * 3 / 4
+        else:
+            file_size = len(request.image_data) * 3 / 4
+        
+        # Save screenshot
+        screenshot_doc = {
+            "session_id": request.session_id,
+            "timestamp": request.timestamp,
+            "image_data": request.image_data,
+            "file_size": int(file_size),
+            "created_at": datetime.utcnow()
+        }
+        
+        result = await db.screenshots.insert_one(screenshot_doc)
+        
+        logger.info(f"📸 Screenshot saved for evaluation: {result.inserted_id}")
+        
+        return {
+            "id": str(result.inserted_id),
+            "message": "Screenshot saved for evaluation"
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to save screenshot: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/event")
+async def save_event(request: EventRequest):
+    """Save user interaction event for evaluation"""
+    try:
+        if design_repository.db is None:
+            await design_repository.initialize()
+        
+        db = design_repository.db
+        
+        # Save event
+        event_doc = {
+            "session_id": request.session_id,
+            "type": request.type,
+            "timestamp": request.timestamp,
+            "x": request.x,
+            "y": request.y,
+            "target": request.target,
+            "idle_seconds": request.idle_seconds,
+            "created_at": datetime.utcnow()
+        }
+        
+        result = await db.events.insert_one(event_doc)
+        
+        logger.info(f"🎯 Event saved: {request.type} for session {request.session_id}")
+        
+        return {
+            "id": str(result.inserted_id),
+            "message": "Event saved"
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to save event: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/sessions/list")
+async def list_sessions():
+    """Get list of all sessions with screenshot and event counts"""
+    try:
+        if design_repository.db is None:
+            await design_repository.initialize()
+        
+        db = design_repository.db
+        
+        # Get unique session IDs from screenshots
+        screenshot_sessions = await db.screenshots.aggregate([
+            {"$group": {"_id": "$session_id", "count": {"$sum": 1}}}
+        ]).to_list(length=None)
+        
+        # Get unique session IDs from events
+        event_sessions = await db.events.aggregate([
+            {"$group": {"_id": "$session_id", "count": {"$sum": 1}}}
+        ]).to_list(length=None)
+        
+        # Combine sessions
+        sessions_dict = {}
+        for s in screenshot_sessions:
+            sessions_dict[s["_id"]] = {
+                "session_id": s["_id"],
+                "screenshot_count": s["count"],
+                "event_count": 0
+            }
+        
+        for e in event_sessions:
+            if e["_id"] in sessions_dict:
+                sessions_dict[e["_id"]]["event_count"] = e["count"]
+            else:
+                sessions_dict[e["_id"]] = {
+                    "session_id": e["_id"],
+                    "screenshot_count": 0,
+                    "event_count": e["count"]
+                }
+        
+        sessions = list(sessions_dict.values())
+        
+        logger.info(f"📋 Found {len(sessions)} sessions")
+        
+        return {"sessions": sessions}
+        
+    except Exception as e:
+        logger.error(f"Failed to list sessions: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/sessions/{session_id}/screenshots")
+async def get_session_screenshots(session_id: str):
+    """Get all screenshots for a session"""
+    try:
+        if design_repository.db is None:
+            await design_repository.initialize()
+        
+        db = design_repository.db
+        
+        screenshots = await db.screenshots.find(
+            {"session_id": session_id}
+        ).sort("created_at", 1).to_list(length=None)
+        
+        # Convert ObjectId to string
+        for screenshot in screenshots:
+            screenshot["_id"] = str(screenshot["_id"])
+        
+        logger.info(f"📸 Retrieved {len(screenshots)} screenshots for session {session_id}")
+        
+        return {"screenshots": screenshots}
+        
+    except Exception as e:
+        logger.error(f"Failed to get screenshots: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/sessions/{session_id}/events")
+async def get_session_events(session_id: str):
+    """Get all events for a session"""
+    try:
+        if design_repository.db is None:
+            await design_repository.initialize()
+        
+        db = design_repository.db
+        
+        events = await db.events.find(
+            {"session_id": session_id}
+        ).sort("timestamp", 1).to_list(length=None)
+        
+        # Convert ObjectId to string
+        for event in events:
+            event["_id"] = str(event["_id"])
+        
+        # Calculate statistics
+        total_clicks = sum(1 for e in events if e.get("type") == "click")
+        total_undo = sum(1 for e in events if e.get("type") == "undo")
+        total_redo = sum(1 for e in events if e.get("type") == "redo")
+        total_idle_seconds = sum(e.get("idle_seconds", 0) for e in events if e.get("type") == "idle")
+        
+        stats = {
+            "total_events": len(events),
+            "total_clicks": total_clicks,
+            "total_undo": total_undo,
+            "total_redo": total_redo,
+            "total_idle_seconds": total_idle_seconds
+        }
+        
+        logger.info(f"🎯 Retrieved {len(events)} events for session {session_id}")
+        
+        return {
+            "events": events,
+            "stats": stats
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to get events: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/submissions/{submission_id}/evaluation", response_model=EvaluationResponse)
+async def get_evaluation_results(submission_id: str):
+    """Get evaluation results for submission"""
+    try:
+        if design_repository.db is None:
+            await design_repository.initialize()
+        
+        submission = await design_repository.get_submission(submission_id)
+        if not submission:
+            raise HTTPException(status_code=404, detail="Submission not found")
+        
+        return EvaluationResponse(
+            submission_id=submission_id,
+            rule_based_score=submission.rule_based_score,
+            ai_based_score=submission.ai_based_score,
+            final_score=submission.final_score,
+            feedback=submission.feedback
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get evaluation: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/submissions/user/{user_id}", response_model=List[DesignSubmissionModel])
+async def get_user_submissions(user_id: str):
+    """Get user's design submissions"""
+    try:
+        if design_repository.db is None:
+            await design_repository.initialize()
+        
+        submissions = await design_repository.get_user_submissions(user_id)
+        return submissions
+        
+    except Exception as e:
+        logger.error(f"Failed to get user submissions: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# Analytics Endpoints
+@router.get("/analytics/question/{question_id}")
+async def get_question_analytics(question_id: str):
+    """Get analytics for a specific question"""
+    try:
+        if design_repository.db is None:
+            await design_repository.initialize()
+        
+        stats = await design_repository.get_question_stats(question_id)
+        return stats
+        
+    except Exception as e:
+        logger.error(f"Failed to get question analytics: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/analytics/user/{user_id}")
+async def get_user_performance(user_id: str):
+    """Get user performance analytics"""
+    try:
+        if design_repository.db is None:
+            await design_repository.initialize()
+        
+        performance = await design_repository.get_user_performance(user_id)
+        return performance
+        
+    except Exception as e:
+        logger.error(f"Failed to get user performance: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# Health and Status
+@router.get("/admin/submissions")
+async def get_all_submissions():
+    """Get all submissions for admin panel"""
+    try:
+        if design_repository.db is None:
+            await design_repository.initialize()
+        
+        db = design_repository.db
+        
+        # Get all submissions with scores
+        submissions = await db.design_submissions.find(
+            {},
+            {
+                "_id": 1,
+                "session_id": 1,
+                "user_id": 1,
+                "question_id": 1,
+                "final_score": 1,
+                "rule_based_score": 1,
+                "ai_based_score": 1,
+                "submitted_at": 1
+            }
+        ).sort("submitted_at", -1).to_list(length=None)
+        
+        # Convert ObjectId to string
+        for submission in submissions:
+            submission["_id"] = str(submission["_id"])
+        
+        logger.info(f"📊 Retrieved {len(submissions)} submissions for admin")
+        
+        return {"submissions": submissions, "total": len(submissions)}
+        
+    except Exception as e:
+        logger.error(f"Failed to get submissions: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/admin/analytics")
+async def get_admin_analytics():
+    """Get analytics for admin dashboard - matches AIML competency flow"""
+    try:
+        if design_repository.db is None:
+            await design_repository.initialize()
+        
+        db = design_repository.db
+        
+        # Count questions
+        total_questions = await db.design_questions.count_documents({})
+        
+        # Count submissions
+        total_submissions = await db.design_submissions.count_documents({})
+        
+        # Calculate average score (only for evaluated submissions)
+        pipeline = [
+            {"$match": {"final_score": {"$exists": True, "$ne": None}}},
+            {"$group": {
+                "_id": None,
+                "avg_score": {"$avg": "$final_score"}
+            }}
+        ]
+        
+        avg_result = await db.design_submissions.aggregate(pipeline).to_list(length=1)
+        average_score = round(avg_result[0]["avg_score"], 1) if avg_result else 0.0
+        
+        # Calculate completion rate
+        completed_submissions = await db.design_submissions.count_documents({"final_score": {"$exists": True}})
+        completion_rate = round((completed_submissions / total_submissions * 100), 1) if total_submissions > 0 else 0.0
+        
+        logger.info(f"📊 Analytics: {total_questions} questions, {total_submissions} submissions, {average_score} avg score")
+        
+        return {
+            "total_questions": total_questions,
+            "total_submissions": total_submissions,
+            "average_score": average_score,
+            "completion_rate": completion_rate
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to get analytics: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/admin/stats")
+async def get_admin_stats():
+    """Get overall statistics for admin dashboard"""
+    try:
+        if design_repository.db is None:
+            await design_repository.initialize()
+        
+        db = design_repository.db
+        
+        # Count questions
+        questions_count = await db.design_questions.count_documents({})
+        
+        # Count sessions
+        sessions_count = await db.design_sessions.count_documents({})
+        
+        # Count submissions
+        submissions_count = await db.design_submissions.count_documents({})
+        
+        # Calculate average score
+        pipeline = [
+            {
+                "$group": {
+                    "_id": None,
+                    "avg_score": {"$avg": "$final_score"},
+                    "max_score": {"$max": "$final_score"},
+                    "min_score": {"$min": "$final_score"}
+                }
+            }
+        ]
+        
+        score_stats = await db.design_submissions.aggregate(pipeline).to_list(1)
+        
+        avg_score = score_stats[0]["avg_score"] if score_stats else 0
+        max_score = score_stats[0]["max_score"] if score_stats else 0
+        min_score = score_stats[0]["min_score"] if score_stats else 0
+        
+        # Calculate completion rate
+        completion_rate = (submissions_count / sessions_count * 100) if sessions_count > 0 else 0
+        
+        return {
+            "total_questions": questions_count,
+            "total_sessions": sessions_count,
+            "total_submissions": submissions_count,
+            "average_score": round(avg_score, 1),
+            "max_score": round(max_score, 1),
+            "min_score": round(min_score, 1),
+            "completion_rate": round(completion_rate, 1)
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to get admin stats: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/health")
+async def health_check():
+    """Service health check"""
+    try:
+        # Check database connection
+        if design_repository.db is None:
+            await design_repository.initialize()
+        
+        # Check AI service
+        ai_status = "healthy" if ai_question_generator.provider else "unavailable"
+        
+        # Check Penpot service
+        penpot_status = "healthy"  # Would check actual Penpot connectivity
+        
+        return {
+            "status": "healthy",
+            "timestamp": datetime.utcnow(),
+            "services": {
+                "database": "healthy",
+                "ai_service": ai_status,
+                "penpot_service": penpot_status
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"Health check failed: {e}")
+        return JSONResponse(
+            status_code=503,
+            content={"status": "unhealthy", "error": str(e)}
+        )
+
+
+# Candidate Management Endpoints
+class AddCandidateRequest(BaseModel):
+    name: str
+    email: str
+
+
+@router.post("/tests/{test_id}/add-candidate")
+@router.post("/tests/{test_id}/candidates")
+async def add_candidate(test_id: str, request: AddCandidateRequest):
+    """Add a single candidate to a test"""
+    try:
+        if design_repository.db is None:
+            await design_repository.initialize()
+        
+        db = design_repository.db
+        
+        # Check if test exists
+        test = await db.design_tests.find_one({"_id": test_id})
+        if not test:
+            raise HTTPException(status_code=404, detail="Test not found")
+        
+        # Check if candidate already exists
+        existing = await db.design_candidates.find_one({
+            "test_id": test_id,
+            "email": request.email
+        })
+        
+        if existing:
+            raise HTTPException(status_code=400, detail="Candidate already exists for this test")
+        
+        # Create candidate document
+        candidate_doc = {
+            "test_id": test_id,
+            "name": request.name,
+            "email": request.email,
+            "invited": False,
+            "invited_at": None,
+            "started_at": None,
+            "submitted_at": None,
+            "has_submitted": False,
+            "submission_score": None,
+            "created_at": datetime.utcnow(),
+            "updated_at": datetime.utcnow()
+        }
+        
+        result = await db.design_candidates.insert_one(candidate_doc)
+        
+        logger.info(f"Added candidate {request.email} to test {test_id}")
+        
+        return {
+            "message": "Candidate added successfully",
+            "candidate_id": str(result.inserted_id)
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to add candidate: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/tests/{test_id}/bulk-add-candidates")
+@router.post("/tests/{test_id}/candidates/bulk")
+async def bulk_add_candidates(test_id: str, file: UploadFile = File(...)):
+    """Bulk upload candidates from CSV file"""
+    try:
+        if design_repository.db is None:
+            await design_repository.initialize()
+        
+        db = design_repository.db
+        
+        # Check if test exists
+        test = await db.design_tests.find_one({"_id": test_id})
+        if not test:
+            raise HTTPException(status_code=404, detail="Test not found")
+        
+        # Read CSV file
+        import csv
+        import io
+        
+        contents = await file.read()
+        decoded = contents.decode('utf-8')
+        csv_reader = csv.DictReader(io.StringIO(decoded))
+        
+        success_count = 0
+        failed_count = 0
+        duplicate_count = 0
+        failed_rows = []
+        
+        for row in csv_reader:
+            try:
+                name = row.get('name', '').strip()
+                email = row.get('email', '').strip()
+                
+                if not name or not email:
+                    failed_count += 1
+                    failed_rows.append({"row": row, "reason": "Missing name or email"})
+                    continue
+                
+                # Check if candidate already exists
+                existing = await db.design_candidates.find_one({
+                    "test_id": test_id,
+                    "email": email
+                })
+                
+                if existing:
+                    duplicate_count += 1
+                    continue
+                
+                # Create candidate document
+                candidate_doc = {
+                    "test_id": test_id,
+                    "name": name,
+                    "email": email,
+                    "invited": False,
+                    "invited_at": None,
+                    "started_at": None,
+                    "submitted_at": None,
+                    "has_submitted": False,
+                    "submission_score": None,
+                    "created_at": datetime.utcnow(),
+                    "updated_at": datetime.utcnow()
+                }
+                
+                await db.design_candidates.insert_one(candidate_doc)
+                success_count += 1
+                
+            except Exception as e:
+                failed_count += 1
+                failed_rows.append({"row": row, "reason": str(e)})
+        
+        logger.info(f"Bulk upload to test {test_id}: {success_count} success, {failed_count} failed, {duplicate_count} duplicates")
+        
+        return {
+            "message": "Bulk upload completed",
+            "success_count": success_count,
+            "failed_count": failed_count,
+            "duplicate_count": duplicate_count,
+            "failed_rows": failed_rows
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to bulk upload candidates: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/tests/{test_id}/candidates")
+async def get_test_candidates(test_id: str):
+    """Get all candidates for a test"""
+    try:
+        if design_repository.db is None:
+            await design_repository.initialize()
+        
+        db = design_repository.db
+        
+        # Check if test exists
+        test = await db.design_tests.find_one({"_id": test_id})
+        if not test:
+            raise HTTPException(status_code=404, detail="Test not found")
+        
+        # Get all candidates
+        candidates = await db.design_candidates.find(
+            {"test_id": test_id}
+        ).sort("created_at", -1).to_list(length=None)
+        
+        # Convert ObjectId to string
+        for candidate in candidates:
+            candidate["_id"] = str(candidate["_id"])
+        
+        logger.info(f"Retrieved {len(candidates)} candidates for test {test_id}")
+        
+        return candidates
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get candidates: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/tests/{test_id}/candidates/{candidate_id}/analytics")
+async def get_candidate_analytics(test_id: str, candidate_id: str):
+    """Get detailed analytics for a specific candidate"""
+    try:
+        if design_repository.db is None:
+            await design_repository.initialize()
+        
+        db = design_repository.db
+        
+        # Get candidate info
+        candidate = await db.design_candidates.find_one({
+            "_id": ObjectId(candidate_id),
+            "test_id": test_id
+        })
+        
+        if not candidate:
+            raise HTTPException(status_code=404, detail="Candidate not found")
+        
+        # Get submission if exists
+        submission = await db.design_submissions.find_one({
+            "test_id": test_id,
+            "user_id": candidate.get("email")  # Using email as user_id
+        })
+        
+        # Get session if exists
+        session = await db.design_sessions.find_one({
+            "test_id": test_id,
+            "user_id": candidate.get("email")
+        })
+        
+        result = {
+            "candidate": {
+                "name": candidate.get("name"),
+                "email": candidate.get("email")
+            },
+            "submission": None
+        }
+        
+        if submission:
+            result["submission"] = {
+                "score": submission.get("final_score", 0),
+                "started_at": session.get("started_at").isoformat() if session and session.get("started_at") else None,
+                "submitted_at": submission.get("created_at").isoformat() if submission.get("created_at") else None,
+                "is_completed": True,
+                "design_url": session.get("workspace_url") if session else None,
+                "screenshots": submission.get("screenshots", []),
+                "feedback": {
+                    "overall_score": submission.get("final_score", 0),
+                    "rule_based_score": submission.get("rule_based_score", 0),
+                    "ai_based_score": submission.get("ai_based_score", 0),
+                    "feedback_summary": submission.get("feedback", "No feedback available")
+                } if submission.get("final_score") is not None else None
+            }
+        
+        logger.info(f"Retrieved analytics for candidate {candidate_id} in test {test_id}")
+        
+        return result
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get candidate analytics: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/tests/{test_id}/candidates/{candidate_id}")
+async def remove_candidate(test_id: str, candidate_id: str):
+    """Remove a candidate from a test"""
+    try:
+        if design_repository.db is None:
+            await design_repository.initialize()
+        
+        db = design_repository.db
+        
+        result = await db.design_candidates.delete_one({
+            "_id": ObjectId(candidate_id),
+            "test_id": test_id
+        })
+        
+        if result.deleted_count == 0:
+            raise HTTPException(status_code=404, detail="Candidate not found")
+        
+        logger.info(f"Removed candidate {candidate_id} from test {test_id}")
+        
+        return {"message": "Candidate removed successfully"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to remove candidate: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+
+# Email Sending Endpoints
+class SendInvitationRequest(BaseModel):
+    email: str
+
+
+@router.post("/tests/{test_id}/send-invitation")
+async def send_invitation(test_id: str, request: SendInvitationRequest):
+    """Send invitation email to a single candidate"""
+    try:
+        if design_repository.db is None:
+            await design_repository.initialize()
+        
+        db = design_repository.db
+        
+        email = request.email
+        
+        # Get test
+        test = await db.design_tests.find_one({"_id": test_id})
+        if not test:
+            raise HTTPException(status_code=404, detail="Test not found")
+        
+        if not test.get("is_published", False):
+            raise HTTPException(status_code=400, detail="Test must be published before sending invitations")
+        
+        # Get candidate
+        candidate = await db.design_candidates.find_one({
+            "test_id": test_id,
+            "email": email
+        })
+        
+        if not candidate:
+            raise HTTPException(status_code=404, detail="Candidate not found for this test")
+        
+        # Ensure test token exists
+        test_token = test.get("test_token")
+        if not test_token:
+            import secrets
+            test_token = secrets.token_urlsafe(32)
+            await db.design_tests.update_one(
+                {"_id": test_id},
+                {"$set": {"test_token": test_token}}
+            )
+        
+        # Build test URL
+        import os
+        frontend_url = os.getenv("FRONTEND_URL", "http://localhost:3000")
+        test_link = f"{frontend_url}/design/tests/{test_id}/take?token={test_token}"
+        
+        # Get candidate details
+        candidate_name = candidate.get("name", "Candidate")
+        candidate_email = candidate.get("email")
+        
+        # Add email and name to URL
+        import urllib.parse
+        encoded_email = urllib.parse.quote(candidate_email)
+        encoded_name = urllib.parse.quote(candidate_name)
+        exam_url_with_params = f"{test_link}&email={encoded_email}&name={encoded_name}"
+        
+        # Get test details
+        test_title = test.get("title", "Design Assessment")
+        test_description = test.get("description", "")
+        duration_minutes = test.get("duration_minutes", 60)
+        
+        # Format duration
+        duration_text = ""
+        if duration_minutes:
+            hours = duration_minutes // 60
+            minutes = duration_minutes % 60
+            if hours > 0:
+                duration_text = f"{hours} hour{'s' if hours > 1 else ''}"
+                if minutes > 0:
+                    duration_text += f" {minutes} minute{'s' if minutes > 1 else ''}"
+            else:
+                duration_text = f"{minutes} minute{'s' if minutes > 1 else ''}"
+        
+        # Build email HTML
+        html_content = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="UTF-8">
+            <style>
+                body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}
+                .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
+                .header {{ text-align: center; margin-bottom: 30px; }}
+                .content {{ background-color: #F9F5FF; padding: 20px; border-radius: 8px; margin-bottom: 20px; border: 2px solid #7C3AED; }}
+                .button {{ display: inline-block; padding: 12px 24px; background-color: #7C3AED; color: #ffffff; text-decoration: none; border-radius: 6px; margin: 20px 0; }}
+                .footer {{ text-align: center; color: #64748b; font-size: 0.875rem; margin-top: 30px; }}
+                .candidate-info {{ background-color: #ffffff; padding: 15px; border-radius: 6px; margin: 15px 0; border-left: 4px solid #7C3AED; }}
+                .assessment-title {{ font-size: 1.5rem; font-weight: bold; color: #7C3AED; margin: 15px 0; text-align: center; }}
+                .assessment-details {{ background-color: #ffffff; padding: 15px; border-radius: 6px; margin: 15px 0; border-left: 4px solid #7C3AED; }}
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <div class="header">
+                    <h1 style="color: #7C3AED;">Design Assessment Invitation</h1>
+                </div>
+                
+                <div class="content">
+                    <div class="candidate-info">
+                        <p><strong>Hello {candidate_name},</strong></p>
+                    </div>
+                    
+                    <p>You have been invited to take a Design competency assessment.</p>
+                    
+                    <div class="assessment-title">{test_title}</div>
+                    
+                    {f'<p style="text-align: center; color: #64748b;">{test_description}</p>' if test_description else ''}
+                    
+                    <div class="assessment-details">
+                        <p><strong>Assessment Details:</strong></p>
+                        <ul>
+                            <li><strong>Duration:</strong> {duration_text}</li>
+                            <li><strong>Type:</strong> Design Competency</li>
+                        </ul>
+                    </div>
+                    
+                    <div style="text-align: center;">
+                        <a href="{exam_url_with_params}" class="button">Start Assessment</a>
+                    </div>
+                    
+                    <p style="font-size: 0.875rem; color: #64748b; margin-top: 20px;">
+                        If the button doesn't work, copy and paste this link into your browser:<br>
+                        <a href="{exam_url_with_params}" style="color: #7C3AED; word-break: break-all;">{exam_url_with_params}</a>
+                    </p>
+                </div>
+                
+                <div class="footer">
+                    <p>This is an automated email from AAPtor Assessment Platform.</p>
+                    <p>Please do not reply to this email.</p>
+                </div>
+            </div>
+        </body>
+        </html>
+        """
+        
+        # Send email using SendGrid
+        sendgrid_api_key = settings.SENDGRID_API_KEY
+        sendgrid_from_email = settings.SENDGRID_FROM_EMAIL or "noreply@aaptor.com"
+        sendgrid_from_name = settings.SENDGRID_FROM_NAME or "Aptor Design Assessment"
+        
+        if not sendgrid_api_key:
+            logger.warning("SendGrid API key not configured, skipping email send")
+            # Update candidate as invited anyway
+            await db.design_candidates.update_one(
+                {"_id": candidate["_id"]},
+                {"$set": {"invited": True, "invited_at": datetime.utcnow()}}
+            )
+            return {"message": "Email service not configured, but candidate marked as invited"}
+        
+        from sendgrid import SendGridAPIClient
+        from sendgrid.helpers.mail import Mail
+        
+        message = Mail(
+            from_email=(sendgrid_from_email, sendgrid_from_name),
+            to_emails=candidate_email,
+            subject=f"Invitation: {test_title}",
+            html_content=html_content
+        )
+        
+        sg = SendGridAPIClient(sendgrid_api_key)
+        response = sg.send(message)
+        
+        # Update candidate as invited
+        await db.design_candidates.update_one(
+            {"_id": candidate["_id"]},
+            {"$set": {"invited": True, "invited_at": datetime.utcnow()}}
+        )
+        
+        logger.info(f"Sent invitation email to {candidate_email} for test {test_id}")
+        
+        return {
+            "message": "Invitation sent successfully",
+            "email": candidate_email,
+            "status_code": response.status_code
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to send invitation: {e}")
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/tests/{test_id}/send-invitations-to-all")
+async def send_invitations_to_all(test_id: str):
+    """Send invitation emails to all candidates for a test"""
+    try:
+        if design_repository.db is None:
+            await design_repository.initialize()
+        
+        db = design_repository.db
+        
+        # Get test
+        test = await db.design_tests.find_one({"_id": test_id})
+        if not test:
+            raise HTTPException(status_code=404, detail="Test not found")
+        
+        if not test.get("is_published", False):
+            raise HTTPException(status_code=400, detail="Test must be published before sending invitations")
+        
+        # Get all candidates
+        candidates = await db.design_candidates.find({"test_id": test_id}).to_list(length=None)
+        
+        if not candidates:
+            return {
+                "message": "No candidates to send invitations to",
+                "success_count": 0,
+                "failed_count": 0
+            }
+        
+        # Ensure test token exists
+        test_token = test.get("test_token")
+        if not test_token:
+            import secrets
+            test_token = secrets.token_urlsafe(32)
+            await db.design_tests.update_one(
+                {"_id": test_id},
+                {"$set": {"test_token": test_token}}
+            )
+        
+        # Build test URL
+        import os
+        frontend_url = os.getenv("FRONTEND_URL", "http://localhost:3000")
+        test_link = f"{frontend_url}/design/tests/{test_id}/take?token={test_token}"
+        
+        # Get test details
+        test_title = test.get("title", "Design Assessment")
+        test_description = test.get("description", "")
+        duration_minutes = test.get("duration_minutes", 60)
+        
+        # Format duration
+        duration_text = ""
+        if duration_minutes:
+            hours = duration_minutes // 60
+            minutes = duration_minutes % 60
+            if hours > 0:
+                duration_text = f"{hours} hour{'s' if hours > 1 else ''}"
+                if minutes > 0:
+                    duration_text += f" {minutes} minute{'s' if minutes > 1 else ''}"
+            else:
+                duration_text = f"{minutes} minute{'s' if minutes > 1 else ''}"
+        
+        # Check SendGrid configuration
+        sendgrid_api_key = settings.SENDGRID_API_KEY
+        sendgrid_from_email = settings.SENDGRID_FROM_EMAIL or "noreply@aaptor.com"
+        sendgrid_from_name = settings.SENDGRID_FROM_NAME or "Aptor Design Assessment"
+        
+        if not sendgrid_api_key:
+            logger.warning("SendGrid API key not configured")
+            # Mark all as invited anyway
+            await db.design_candidates.update_many(
+                {"test_id": test_id},
+                {"$set": {"invited": True, "invited_at": datetime.utcnow()}}
+            )
+            return {
+                "message": "Email service not configured, but all candidates marked as invited",
+                "success_count": len(candidates),
+                "failed_count": 0
+            }
+        
+        from sendgrid import SendGridAPIClient
+        from sendgrid.helpers.mail import Mail
+        import urllib.parse
+        
+        sg = SendGridAPIClient(sendgrid_api_key)
+        
+        success_count = 0
+        failed_count = 0
+        failed_emails = []
+        
+        for candidate in candidates:
+            try:
+                candidate_name = candidate.get("name", "Candidate")
+                candidate_email = candidate.get("email")
+                
+                # Add email and name to URL
+                encoded_email = urllib.parse.quote(candidate_email)
+                encoded_name = urllib.parse.quote(candidate_name)
+                exam_url_with_params = f"{test_link}&email={encoded_email}&name={encoded_name}"
+                
+                # Build email HTML
+                html_content = f"""
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <meta charset="UTF-8">
+                    <style>
+                        body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}
+                        .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
+                        .header {{ text-align: center; margin-bottom: 30px; }}
+                        .content {{ background-color: #F9F5FF; padding: 20px; border-radius: 8px; margin-bottom: 20px; border: 2px solid #7C3AED; }}
+                        .button {{ display: inline-block; padding: 12px 24px; background-color: #7C3AED; color: #ffffff; text-decoration: none; border-radius: 6px; margin: 20px 0; }}
+                        .footer {{ text-align: center; color: #64748b; font-size: 0.875rem; margin-top: 30px; }}
+                        .candidate-info {{ background-color: #ffffff; padding: 15px; border-radius: 6px; margin: 15px 0; border-left: 4px solid #7C3AED; }}
+                        .assessment-title {{ font-size: 1.5rem; font-weight: bold; color: #7C3AED; margin: 15px 0; text-align: center; }}
+                        .assessment-details {{ background-color: #ffffff; padding: 15px; border-radius: 6px; margin: 15px 0; border-left: 4px solid #7C3AED; }}
+                    </style>
+                </head>
+                <body>
+                    <div class="container">
+                        <div class="header">
+                            <h1 style="color: #7C3AED;">Design Assessment Invitation</h1>
+                        </div>
+                        
+                        <div class="content">
+                            <div class="candidate-info">
+                                <p><strong>Hello {candidate_name},</strong></p>
+                            </div>
+                            
+                            <p>You have been invited to take a Design competency assessment.</p>
+                            
+                            <div class="assessment-title">{test_title}</div>
+                            
+                            {f'<p style="text-align: center; color: #64748b;">{test_description}</p>' if test_description else ''}
+                            
+                            <div class="assessment-details">
+                                <p><strong>Assessment Details:</strong></p>
+                                <ul>
+                                    <li><strong>Duration:</strong> {duration_text}</li>
+                                    <li><strong>Type:</strong> Design Competency</li>
+                                </ul>
+                            </div>
+                            
+                            <div style="text-align: center;">
+                                <a href="{exam_url_with_params}" class="button">Start Assessment</a>
+                            </div>
+                            
+                            <p style="font-size: 0.875rem; color: #64748b; margin-top: 20px;">
+                                If the button doesn't work, copy and paste this link into your browser:<br>
+                                <a href="{exam_url_with_params}" style="color: #7C3AED; word-break: break-all;">{exam_url_with_params}</a>
+                            </p>
+                        </div>
+                        
+                        <div class="footer">
+                            <p>This is an automated email from AAPtor Assessment Platform.</p>
+                            <p>Please do not reply to this email.</p>
+                        </div>
+                    </div>
+                </body>
+                </html>
+                """
+                
+                message = Mail(
+                    from_email=(sendgrid_from_email, sendgrid_from_name),
+                    to_emails=candidate_email,
+                    subject=f"Invitation: {test_title}",
+                    html_content=html_content
+                )
+                
+                response = sg.send(message)
+                
+                # Update candidate as invited
+                await db.design_candidates.update_one(
+                    {"_id": candidate["_id"]},
+                    {"$set": {"invited": True, "invited_at": datetime.utcnow()}}
+                )
+                
+                success_count += 1
+                logger.info(f"Sent invitation to {candidate_email}")
+                
+            except Exception as e:
+                failed_count += 1
+                failed_emails.append(candidate.get("email"))
+                logger.error(f"Failed to send invitation to {candidate.get('email')}: {e}")
+        
+        return {
+            "message": f"Sent {success_count} invitations successfully",
+            "success_count": success_count,
+            "failed_count": failed_count,
+            "failed": failed_emails
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to send invitations: {e}")
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+

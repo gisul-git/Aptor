@@ -5,15 +5,15 @@ export default withAuth(
   function middleware(req) {
     const { pathname } = req.nextUrl;
     const token = req.nextauth.token;
-    
+
     // Skip middleware for MediaPipe assets (static files)
     if (pathname.startsWith('/mediapipe/')) {
       return NextResponse.next();
     }
-    
+
     // Role-based access control
     const userRole = (token as any)?.role;
-    
+
     // Block employees from accessing creation/management pages
     if (userRole === 'employee') {
       // Employees should only access their dashboard
@@ -21,11 +21,11 @@ export default withAuth(
         '/employee/dashboard',
         '/employee', // Allow /employee but redirect to dashboard if needed
       ];
-      
-      const isEmployeeRoute = employeeAllowedRoutes.some(route => 
+
+      const isEmployeeRoute = employeeAllowedRoutes.some(route =>
         pathname === route || pathname.startsWith(route + '/')
       );
-      
+
       // Block access to creation pages
       const blockedRoutes = [
         '/assessments/create',
@@ -38,19 +38,20 @@ export default withAuth(
         '/employee/management', // Org admin only
         '/dashboard', // Main dashboard (org admin/super admin)
       ];
-      
-      const isBlockedRoute = blockedRoutes.some(route => 
+
+      const isBlockedRoute = blockedRoutes.some(route =>
         pathname.startsWith(route)
       );
-      
+
       if (isBlockedRoute) {
         // Redirect employees to their dashboard
         return NextResponse.redirect(new URL('/employee/dashboard', req.url));
       }
-      
+
       // If not an employee route and not blocked, allow (will be handled by auth check)
+      void isEmployeeRoute;
     }
-    
+
     return NextResponse.next();
   },
   {
@@ -81,16 +82,18 @@ export default withAuth(
         ) {
           return true;
         }
-        
+
         // Always allow root route (landing page) - must be first check
         if (pathname === "/") {
           return true;
         }
-        
+
         // DEBUG: Log candidate reference photo routes
-        if (pathname.startsWith("/api/v1/candidate/get-reference-photo") ||
-            pathname.startsWith("/api/v1/candidate/save-reference-face")) {
-          console.log("[Middleware] 🔍 Candidate reference photo route detected:", {
+        if (
+          pathname.startsWith("/api/v1/candidate/get-reference-photo") ||
+          pathname.startsWith("/api/v1/candidate/save-reference-face")
+        ) {
+          console.log("[Middleware] Candidate reference photo route detected:", {
             pathname,
             hasToken: !!token,
             tokenType: token ? typeof token : 'none',
@@ -98,43 +101,52 @@ export default withAuth(
           });
           return true;
         }
-        
+
         // Skip auth for MediaPipe assets
         if (pathname.startsWith('/mediapipe/')) {
           return true;
         }
-        
+
+        // Skip auth for static HTML test files
+        if (
+          pathname === '/test-workspace.html' ||
+          pathname === '/find-extensions.html' ||
+          pathname === '/test-extension-detection.js'
+        ) {
+          return true;
+        }
+
         // Public routes that don't require authentication
         const publicRoutes = [
           "/auth/signin",
           "/auth/error",
           "/auth/signup",
-          "/auth/forgot-password",  // Forgot password page
-          "/auth/reset-password",  // Reset password page
-          "/auth/set-password",  // Employee set password page
-          "/auth/employee-login",  // Employee login page
-          "/auth/mfa",  // MFA routes - user is in the middle of login flow (setup, verify)
-          "/super-admin/mfa",  // Super admin MFA page - user is in the middle of login flow
-          "/schedule-demo",  // Schedule demo page - public landing page
-          "/thank-you",  // Thank you page after demo submission
+          "/auth/forgot-password", // Forgot password page
+          "/auth/reset-password", // Reset password page
+          "/auth/set-password", // Employee set password page
+          "/auth/employee-login", // Employee login page
+          "/auth/mfa", // MFA routes - user is in the middle of login flow (setup, verify)
+          "/super-admin/mfa", // Super admin MFA page - user is in the middle of login flow
+          "/schedule-demo", // Schedule demo page - public landing page
+          "/thank-you", // Thank you page after demo submission
           "/api/auth",
           "/api/assessment",
-          "/api/schedule-demo",  // Schedule demo API endpoint - public form submission
-          "/api/proctor",  // Proctoring API routes (validated server-side)
-          "/api/config",  // Runtime configuration API routes (used by candidate pages)
-          "/employee",  // Employee routes - handled by component with modal
+          "/api/schedule-demo", // Schedule demo API endpoint - public form submission
+          "/api/proctor", // Proctoring API routes (validated server-side)
+          "/api/config", // Runtime configuration API routes (used by candidate pages)
+          "/employee", // Employee routes - handled by component with modal
         ];
-        
+
         // Check if route is public
-        const isPublicRoute = publicRoutes.some(route => 
+        const isPublicRoute = publicRoutes.some(route =>
           pathname === route || pathname.startsWith(route + "/")
         );
-        
+
         // Allow public routes
         if (isPublicRoute) {
           return true;
         }
-        
+
         // Candidate assessment routes (use token from URL, not session)
         if (pathname.startsWith("/assessment/")) {
           return true; // These routes have their own token-based auth
@@ -156,9 +168,11 @@ export default withAuth(
         }
 
         // Custom MCQ assessment routes (use token from URL, not session)
-        if (pathname.startsWith("/custom-mcq/entry/") || 
-            pathname.startsWith("/custom-mcq/take/") ||
-            pathname.startsWith("/custom-mcq/result/")) {
+        if (
+          pathname.startsWith("/custom-mcq/entry/") ||
+          pathname.startsWith("/custom-mcq/take/") ||
+          pathname.startsWith("/custom-mcq/result/")
+        ) {
           return true; // These routes have their own token-based auth
         }
 
@@ -171,19 +185,46 @@ export default withAuth(
           return true;
         }
 
+        // Design assessment routes (for testing without auth)
+        if (
+          pathname === "/design/test-direct" ||
+          pathname === "/design/test-simple" ||
+          pathname === "/test-design" ||
+          pathname.startsWith("/design/test-direct/") ||
+          pathname.startsWith("/design/test-simple/") ||
+          pathname.startsWith("/design-assessment") ||
+          pathname.startsWith("/design/start/") ||
+          pathname.startsWith("/design/assessment/") ||
+          pathname.startsWith("/design/results/")
+        ) {
+          return true; // Public test routes
+        }
+
+        // Design admin panel (temporary - for demo, should add auth later)
+        if (pathname.startsWith("/admin/design")) {
+          return true; // Admin panel - TODO: Add proper authentication
+        }
+
+        // Design admin API routes
+        if (pathname.startsWith("/api/admin/design")) {
+          return true; // Admin API routes
+        }
+
         // Candidate-facing API routes should remain public (token validated server-side)
         if (pathname.startsWith("/api/assessment/")) {
           return true;
         }
-        
+
         // Custom MCQ API routes - public (candidates aren't logged in via NextAuth, token validated server-side)
-        if (pathname.startsWith("/api/v1/custom-mcq/verify-candidate") ||
-            pathname.startsWith("/api/v1/custom-mcq/take/") ||
-            pathname.startsWith("/api/v1/custom-mcq/submit") ||
-            pathname.startsWith("/api/custom-mcq/take/")) {
+        if (
+          pathname.startsWith("/api/v1/custom-mcq/verify-candidate") ||
+          pathname.startsWith("/api/v1/custom-mcq/take/") ||
+          pathname.startsWith("/api/v1/custom-mcq/submit") ||
+          pathname.startsWith("/api/custom-mcq/take/")
+        ) {
           return true;
         }
-        
+
         // Proctoring API routes - public (candidates aren't logged in via NextAuth)
         if (pathname.startsWith("/api/proctor/")) {
           return true;
@@ -200,7 +241,7 @@ export default withAuth(
             "/full",
             "/candidate",
             "/submit-answer",
-            "/submit"
+            "/submit",
           ];
           if (aimlCandidateEndpoints.some(endpoint => pathname.endsWith(endpoint))) {
             return true;
@@ -217,19 +258,24 @@ export default withAuth(
             "/public",
             "/submission",
             "/final-submit",
-            "/full"
+            "/full",
           ];
           // Check for /question/{id} pattern
-          if (pathname.includes("/question/") || dsaCandidateEndpoints.some(endpoint => pathname.endsWith(endpoint))) {
+          if (
+            pathname.includes("/question/") ||
+            dsaCandidateEndpoints.some(endpoint => pathname.endsWith(endpoint))
+          ) {
             return true;
           }
         }
 
         // AIML/DSA reference photo endpoints - public (candidates aren't logged in via NextAuth)
-        if (pathname === "/api/v1/aiml/tests/get-reference-photo" ||
-            pathname === "/api/v1/aiml/tests/save-reference-face" ||
-            pathname === "/api/v1/dsa/tests/get-reference-photo" ||
-            pathname === "/api/v1/dsa/tests/save-reference-face") {
+        if (
+          pathname === "/api/v1/aiml/tests/get-reference-photo" ||
+          pathname === "/api/v1/aiml/tests/save-reference-face" ||
+          pathname === "/api/v1/dsa/tests/get-reference-photo" ||
+          pathname === "/api/v1/dsa/tests/save-reference-face"
+        ) {
           return true;
         }
 
@@ -238,27 +284,6 @@ export default withAuth(
           return true;
         }
 
-  // Custom MCQ assessment routes (use token from URL, not session)
-        if (pathname.startsWith("/custom-mcq/entry/") ||
-            pathname.startsWith("/custom-mcq/take/") ||
-            pathname.startsWith("/custom-mcq/result/")) {
-          return true; // These routes have their own token-based auth
-        }
- 
-        // Candidate-facing API routes should remain public (token validated server-side)
-        if (pathname.startsWith("/api/assessment/")) {
-          return true;
-        }
-       
-        // Custom MCQ API routes - public (candidates aren't logged in via NextAuth, token validated server-side)
-        if (pathname.startsWith("/api/v1/custom-mcq/verify-candidate") ||
-            pathname.startsWith("/api/v1/custom-mcq/take/") ||
-            pathname.startsWith("/api/v1/custom-mcq/submit") ||
-            pathname.startsWith("/api/custom-mcq/take/")) {
-          return true;
-        }
-
-        
         // All other routes require authentication
         return !!token;
       },
@@ -286,9 +311,8 @@ export const config = {
      * - _next/data (static generation data files)
      * - favicon.ico (favicon file)
      * - public files (public folder)
+     * - *.html (static HTML files like test-workspace.html)
      */
-    "/((?!api/auth|api/assessment|api/proctor|api/config|api/v1|api/v1/candidate|mediapipe|_next/static|_next/image|_next/data|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|js|wasm|data|binarypb)$).*)",
+    "/((?!api/auth|api/assessment|api/proctor|api/config|api/v1|api/v1/candidate|mediapipe|_next/static|_next/image|_next/data|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|js|wasm|data|binarypb|html)$).*)",
   ],
 };
-
-

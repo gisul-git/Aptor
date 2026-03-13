@@ -22,6 +22,7 @@ const SERVICES = {
   dsa: process.env.DSA_SERVICE_URL || 'http://localhost:3004',
   devops: process.env.DEVOPS_SERVICE_URL || 'http://localhost:8000',
   proctoring: process.env.PROCTORING_SERVICE_URL || 'http://localhost:3005',
+  design: process.env.DESIGN_SERVICE_URL || 'http://localhost:3006',
   users: process.env.USER_SERVICE_URL || 'http://localhost:3006',
   superAdmin: process.env.SUPER_ADMIN_SERVICE_URL || 'http://localhost:3006',
   employee: process.env.EMPLOYEE_SERVICE_URL || 'http://localhost:4005',
@@ -416,9 +417,9 @@ const proxyOptions = {
       targetHost = 'localhost:3001';
       targetServiceUrl = SERVICES.aiAssessment;  // Data Engineering tests are handled by AI Assessment service
     } else if (path.includes('/api/v1/design')) {
-      serviceName = 'Design Service (AI Assessment)';
-      targetHost = 'localhost:3001';
-      targetServiceUrl = SERVICES.aiAssessment;  // Design tests are handled by AI Assessment service
+      serviceName = 'Design Service';
+      targetHost = 'localhost:3006';
+      targetServiceUrl = SERVICES.design;
     } else if (path.includes('/api/v1/proctor')) {
       serviceName = 'Proctoring Service';
       targetHost = 'localhost:3005';
@@ -747,12 +748,12 @@ app.use(
   })
 );
 
-// Route: Design Service (proxied to AI Assessment Service - Design tests are assessments)
+// Route: Design Service
 app.use(
   '/api/v1/design',
   createProxyMiddleware({
     ...proxyOptions,
-    target: SERVICES.aiAssessment,  // Design tests are handled by AI Assessment service
+    target: SERVICES.design,
   })
 );
 

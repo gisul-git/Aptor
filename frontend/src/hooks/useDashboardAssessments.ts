@@ -130,15 +130,10 @@ export function useDashboardAssessments(): UseDashboardAssessmentsReturn {
   }, [aimlTestsData, currentUserId]);
 
   const hasDesignAssessments = useMemo(() => {
-    if (!designTestsData || !currentUserId) return false;
-    return designTestsData.some((test: any) => {
-      const testCreatedBy = test.created_by;
-      if (!testCreatedBy) return false;
-      const testCreatedByStr = String(testCreatedBy).trim();
-      const currentUserIdStr = String(currentUserId).trim();
-      return testCreatedByStr === currentUserIdStr;
-    });
-  }, [designTestsData, currentUserId]);
+    console.log('[useDashboardAssessments] Design tests data:', designTestsData);
+    if (!designTestsData) return false;
+    return designTestsData.length > 0;
+  }, [designTestsData]);
 
   const hasDataEngineeringAssessments = useMemo(() => {
     if (!dataEngineeringTestsData || !currentUserId) return false;
@@ -309,15 +304,9 @@ export function useDashboardAssessments(): UseDashboardAssessmentsReturn {
     }
     
     // Process Design tests
-    if (designTestsData && currentUserId) {
+    if (designTestsData) {
+      console.log('[useDashboardAssessments] Processing design tests:', designTestsData);
       const designTests = designTestsData
-        .filter((test: any) => {
-          const testCreatedBy = test.created_by;
-          if (!testCreatedBy) return false;
-          const testCreatedByStr = String(testCreatedBy).trim();
-          const currentUserIdStr = String(currentUserId).trim();
-          return testCreatedByStr === currentUserIdStr;
-        })
         .map((test: any) => {
           let status = 'draft';
           if (test.pausedAt) {

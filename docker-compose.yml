@@ -22,9 +22,9 @@ services:
       - NEXT_TELEMETRY_DISABLED=1
       - NEXTAUTH_URL=${NEXTAUTH_URL:-https://qa.aaptor.com}
       - NEXTAUTH_SECRET=${NEXTAUTH_SECRET}
-      # Remove NEXT_PUBLIC_API_URL to use relative URLs (same origin)
-      # This ensures browser requests go through Next.js proxy to API Gateway
-      # - NEXT_PUBLIC_API_URL=https://qa.aaptor.com
+      # Public-facing API Gateway URL for browser requests
+      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-https://qa.aaptor.com}
+      # Internal Docker network URL for server-side requests
       - API_GATEWAY_URL=http://api-gateway:80
       - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
       - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
@@ -51,6 +51,7 @@ services:
       - AIML_SERVICE_URL=http://aiml-service:3003
       - DSA_SERVICE_URL=http://dsa-service:3004
       - PROCTORING_SERVICE_URL=http://proctoring-service:3005
+      - DESIGN_SERVICE_URL=http://design-service:3006
       - SUPER_ADMIN_SERVICE_URL=http://super-admin-service:3006
       - DEMO_SERVICE_URL=http://demo-service:3008
       - EMPLOYEE_SERVICE_URL=http://employee-service:4005
@@ -183,7 +184,40 @@ services:
       - microservices-network
     restart: unless-stopped
 
+  # Design Service
+  design-service:
+    build:
+      context: ./services/design-service
+      dockerfile: Dockerfile
+    container_name: gisul-design-service
+    ports:
+      - "3006:3006"
+    environment:
+      - PORT=3006
+      - MONGODB_URL=${MONGO_URI}
+      - MONGODB_DB_NAME=aptor_design
+      - JWT_SECRET_KEY=${JWT_SECRET}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - FRONTEND_URL=http://localhost:3000
+      - EMAIL_PROVIDER=${EMAIL_PROVIDER:-sendgrid}
+      - SENDGRID_API_KEY=${SENDGRID_API_KEY}
+      - SENDGRID_FROM_EMAIL=${SENDGRID_FROM_EMAIL}
+      - SENDGRID_FROM_NAME=${SENDGRID_FROM_NAME:-AI Assessment Platform}
+      - PENPOT_URL=http://localhost:9001
+      - PENPOT_API_URL=http://aptor-penpot-backend-1:6060
+      - PENPOT_ADMIN_EMAIL=admin@penpot.app
+      - PENPOT_ADMIN_PASSWORD=12312312
+    depends_on:
+      - redis
+    networks:
+      - microservices-network
+      - penpot
+    restart: unless-stopped
 
+  # Proctoring Service
   proctoring-service:
     image: gisul/gisul-proctoring-service:latest
     container_name: gisul-proctoring-service
@@ -271,3 +305,7 @@ volumes:
 networks:
   microservices-network:
     driver: bridge
+  penpot:
+    external: true
+    name: aptor_penpot
+
