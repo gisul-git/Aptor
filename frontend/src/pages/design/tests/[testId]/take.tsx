@@ -6,8 +6,9 @@
  * Matches AIML competency flow
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/router';
+import { PenpotEventTracker } from '../../../utils/penpotEventTracker';
 
 export default function DesignAssessmentTakePage() {
   const router = useRouter();
@@ -28,6 +29,10 @@ export default function DesignAssessmentTakePage() {
 
   const API_URL = process.env.NEXT_PUBLIC_DESIGN_SERVICE_URL || 'http://localhost:3006/api/v1/design';
 
+  // Event tracker ref
+  const eventTrackerRef = useRef<PenpotEventTracker | null>(null);
+  const penpotIframeRef = useRef<HTMLIFrameElement | null>(null);
+
   const currentQuestion = questions[currentQuestionIndex];
   const currentWorkspace = currentQuestion ? workspaces[currentQuestion._id || currentQuestion.id] : null;
 
@@ -37,6 +42,37 @@ export default function DesignAssessmentTakePage() {
     const secs = seconds % 60;
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
+
+  // Initialize event tracker when workspace is ready
+  useEffect(() => {
+    if (currentWorkspace?.session_id && penpotIframeRef.current && !eventTrackerRef.current) {
+      console.log('🎯 Initializing advanced event tracker...');
+      const tracker = new PenpotEventTracker(currentWorkspace.session_id, API_URL);
+      tracker.init(penpotIframeRef.current);
+      eventTrackerRef.current = tracker;
+    }
+
+    // Cleanup on unmount or workspace change
+    return () => {
+      if (eventTrackerRef.current) {
+        console.log('🛑 Stopping event tracker...');
+        eventTrackerRef.current.stop();
+        eventTrackerRef.current = null;
+      }
+    };
+  }, [currentWorkspace?.session_id]);
+
+  // Cleanup event tracker on page unload
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      if (eventTrackerRef.current) {
+        eventTrackerRef.current.stop();
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, []);
 
   // Auto-start assessment on page load
   useEffect(() => {
@@ -846,6 +882,7 @@ export default function DesignAssessmentTakePage() {
         }}>
           {currentWorkspace?.workspace_url ? (
             <iframe
+              ref={penpotIframeRef}
               key={currentQuestion?._id || currentQuestion?.id}
               src={currentWorkspace.workspace_url}
               style={{

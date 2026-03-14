@@ -52,6 +52,26 @@ interface SubmissionAnalytics {
       ai_based_score: number
       feedback_summary: string
     }
+    session_id?: string
+  } | null
+  event_analytics?: {
+    total_time_seconds: number
+    active_time_seconds: number
+    planning_time_seconds: number
+    execution_time_seconds: number
+    total_shapes_created: number
+    design_iterations: number
+    undo_ratio: number
+    component_reuse_score: number
+    keyboard_shortcuts_used: number
+    shortcut_proficiency: number
+    is_methodical: boolean
+    is_experimental: boolean
+    is_efficient: boolean
+    is_organized: boolean
+    design_process_score: number
+    technical_proficiency_score: number
+    efficiency_score: number
   } | null
 }
 
@@ -894,6 +914,170 @@ export default function DesignAnalyticsPage() {
                     </div>
                   </div>
                 </div>
+
+                {/* Behavior Analytics */}
+                {analytics.event_analytics && (
+                  <div style={{
+                    border: "1px solid #e2e8f0",
+                    borderRadius: "0.75rem",
+                    padding: "1.5rem",
+                    backgroundColor: "#ffffff",
+                  }}>
+                    <h2 style={{ fontSize: "1.25rem", fontWeight: 600, marginBottom: "1rem" }}>
+                      📊 Behavior Analytics
+                    </h2>
+                    
+                    {/* Overall Scores */}
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "1rem", marginBottom: "1.5rem" }}>
+                      <div style={{ padding: "1rem", backgroundColor: "#f0f9ff", borderRadius: "0.5rem", border: "1px solid #0ea5e9" }}>
+                        <div style={{ fontSize: "0.75rem", color: "#0c4a6e", marginBottom: "0.25rem", fontWeight: 600 }}>Design Process</div>
+                        <div style={{ fontSize: "1.5rem", fontWeight: 700, color: "#0284c7" }}>
+                          {analytics.event_analytics.design_process_score.toFixed(1)}
+                        </div>
+                      </div>
+                      <div style={{ padding: "1rem", backgroundColor: "#f0fdf4", borderRadius: "0.5rem", border: "1px solid #10b981" }}>
+                        <div style={{ fontSize: "0.75rem", color: "#065f46", marginBottom: "0.25rem", fontWeight: 600 }}>Technical Proficiency</div>
+                        <div style={{ fontSize: "1.5rem", fontWeight: 700, color: "#059669" }}>
+                          {analytics.event_analytics.technical_proficiency_score.toFixed(1)}
+                        </div>
+                      </div>
+                      <div style={{ padding: "1rem", backgroundColor: "#fef3c7", borderRadius: "0.5rem", border: "1px solid #f59e0b" }}>
+                        <div style={{ fontSize: "0.75rem", color: "#92400e", marginBottom: "0.25rem", fontWeight: 600 }}>Efficiency</div>
+                        <div style={{ fontSize: "1.5rem", fontWeight: 700, color: "#d97706" }}>
+                          {analytics.event_analytics.efficiency_score.toFixed(1)}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Time Metrics */}
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "1rem", marginBottom: "1.5rem" }}>
+                      <div>
+                        <div style={{ fontSize: "0.75rem", color: "#64748b", marginBottom: "0.25rem" }}>Total Time</div>
+                        <div style={{ fontSize: "1.125rem", fontWeight: 600 }}>
+                          {Math.floor(analytics.event_analytics.total_time_seconds / 60)} min
+                        </div>
+                      </div>
+                      <div>
+                        <div style={{ fontSize: "0.75rem", color: "#64748b", marginBottom: "0.25rem" }}>Planning Time</div>
+                        <div style={{ fontSize: "1.125rem", fontWeight: 600 }}>
+                          {Math.floor(analytics.event_analytics.planning_time_seconds / 60)} min
+                        </div>
+                      </div>
+                      <div>
+                        <div style={{ fontSize: "0.75rem", color: "#64748b", marginBottom: "0.25rem" }}>Execution Time</div>
+                        <div style={{ fontSize: "1.125rem", fontWeight: 600 }}>
+                          {Math.floor(analytics.event_analytics.execution_time_seconds / 60)} min
+                        </div>
+                      </div>
+                      <div>
+                        <div style={{ fontSize: "0.75rem", color: "#64748b", marginBottom: "0.25rem" }}>Active Time</div>
+                        <div style={{ fontSize: "1.125rem", fontWeight: 600 }}>
+                          {Math.floor(analytics.event_analytics.active_time_seconds / 60)} min
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Design Metrics */}
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "1rem", marginBottom: "1.5rem" }}>
+                      <div>
+                        <div style={{ fontSize: "0.75rem", color: "#64748b", marginBottom: "0.25rem" }}>Shapes Created</div>
+                        <div style={{ fontSize: "1.125rem", fontWeight: 600 }}>
+                          {analytics.event_analytics.total_shapes_created}
+                        </div>
+                      </div>
+                      <div>
+                        <div style={{ fontSize: "0.75rem", color: "#64748b", marginBottom: "0.25rem" }}>Design Iterations</div>
+                        <div style={{ fontSize: "1.125rem", fontWeight: 600 }}>
+                          {analytics.event_analytics.design_iterations}
+                        </div>
+                      </div>
+                      <div>
+                        <div style={{ fontSize: "0.75rem", color: "#64748b", marginBottom: "0.25rem" }}>Undo Ratio</div>
+                        <div style={{ fontSize: "1.125rem", fontWeight: 600 }}>
+                          {(analytics.event_analytics.undo_ratio * 100).toFixed(1)}%
+                        </div>
+                      </div>
+                      <div>
+                        <div style={{ fontSize: "0.75rem", color: "#64748b", marginBottom: "0.25rem" }}>Keyboard Shortcuts</div>
+                        <div style={{ fontSize: "1.125rem", fontWeight: 600 }}>
+                          {analytics.event_analytics.keyboard_shortcuts_used}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Behavior Profile */}
+                    <div style={{ padding: "1rem", backgroundColor: "#f0f9ff", borderRadius: "0.5rem", border: "1px solid #0ea5e9" }}>
+                      <div style={{ fontSize: "0.875rem", fontWeight: 600, color: "#0c4a6e", marginBottom: "0.75rem" }}>
+                        Behavior Profile:
+                      </div>
+                      <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+                        {analytics.event_analytics.is_methodical && (
+                          <span style={{
+                            padding: "0.375rem 0.75rem",
+                            backgroundColor: "#10b981",
+                            color: "white",
+                            borderRadius: "9999px",
+                            fontSize: "0.75rem",
+                            fontWeight: 600
+                          }}>
+                            ✓ Methodical
+                          </span>
+                        )}
+                        {analytics.event_analytics.is_efficient && (
+                          <span style={{
+                            padding: "0.375rem 0.75rem",
+                            backgroundColor: "#3b82f6",
+                            color: "white",
+                            borderRadius: "9999px",
+                            fontSize: "0.75rem",
+                            fontWeight: 600
+                          }}>
+                            ⚡ Efficient
+                          </span>
+                        )}
+                        {analytics.event_analytics.is_organized && (
+                          <span style={{
+                            padding: "0.375rem 0.75rem",
+                            backgroundColor: "#8b5cf6",
+                            color: "white",
+                            borderRadius: "9999px",
+                            fontSize: "0.75rem",
+                            fontWeight: 600
+                          }}>
+                            📋 Organized
+                          </span>
+                        )}
+                        {analytics.event_analytics.is_experimental && (
+                          <span style={{
+                            padding: "0.375rem 0.75rem",
+                            backgroundColor: "#f59e0b",
+                            color: "white",
+                            borderRadius: "9999px",
+                            fontSize: "0.75rem",
+                            fontWeight: 600
+                          }}>
+                            🧪 Experimental
+                          </span>
+                        )}
+                        {!analytics.event_analytics.is_methodical && 
+                         !analytics.event_analytics.is_efficient && 
+                         !analytics.event_analytics.is_organized && 
+                         !analytics.event_analytics.is_experimental && (
+                          <span style={{
+                            padding: "0.375rem 0.75rem",
+                            backgroundColor: "#94a3b8",
+                            color: "white",
+                            borderRadius: "9999px",
+                            fontSize: "0.75rem",
+                            fontWeight: 600
+                          }}>
+                            No distinct profile
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 {/* Design Submission */}
                 {analytics.submission.design_url && (

@@ -1096,8 +1096,10 @@ async def evaluate_submission_background(
     design_data: Dict[str, Any],
     question_id: str
 ):
-    """Background task for design evaluation"""
+    """Background task for design evaluation with advanced metrics"""
     try:
+        from app.services.advanced_evaluation import advanced_evaluation_engine
+        
         # Get question data for evaluation context
         question = await design_repository.get_question(question_id)
         question_data = question.model_dump() if question else {}
@@ -1125,42 +1127,59 @@ async def evaluate_submission_background(
                     screenshot_base64 = latest_screenshot.get("image_data")
                     logger.info("📸 Found screenshot for AI evaluation")
                 
-                # Get all events for interaction analysis
-                events_cursor = db.events.find({"session_id": session_id})
-                events_list = await events_cursor.to_list(length=None)
-                
-                if events_list:
-                    # Calculate event statistics
-                    total_clicks = sum(1 for e in events_list if e.get("type") == "click")
-                    total_undo = sum(1 for e in events_list if e.get("type") == "undo")
-                    total_redo = sum(1 for e in events_list if e.get("type") == "redo")
-                    total_idle = sum(e.get("idle_seconds", 0) for e in events_list if e.get("type") == "idle")
+                # Get event analytics for behavior analysis
+                try:
+                    analytics_response = await db.advanced_events.find(
+                        {"session_id": session_id}
+                    ).to_list(length=None)
                     
-                    events_data = {
-                        "total_events": len(events_list),
-                        "total_clicks": total_clicks,
-                        "total_undo": total_undo,
-                        "total_redo": total_redo,
-                        "total_idle_seconds": total_idle,
-                        "events": events_list
-                    }
-                    logger.info(f"🎯 Found {len(events_list)} events for evaluation")
+                    if analytics_response:
+                        from app.services.event_analytics import event_analytics_service
+                        from app.models.design_events import DesignEventModel
+                        
+                        # Convert to event models
+                        events = []
+                        for event_data in analytics_response:
+                            try:
+                                event_data.pop("_id", None)
+                                event_data.pop("created_at", None)
+                                events.append(DesignEventModel(**event_data))
+                            except:
+                                continue
+                        
+                        if events:
+                            # Compute analytics
+                            analytics = event_analytics_service.compute_analytics(session_id, events)
+                            events_data = analytics.model_dump()
+                            logger.info(f"🎯 Computed event analytics: {len(events)} events")
+                except Exception as e:
+                    logger.warning(f"Could not compute event analytics: {e}")
                     
             except Exception as e:
                 logger.warning(f"Could not fetch screenshot/events: {e}")
+        
+        # Compute advanced metrics (layout, design system, accessibility)
+        advanced_metrics = advanced_evaluation_engine.compute_advanced_metrics(
+            design_data,
+            events_data
+        )
         
         # Run comprehensive evaluation using the evaluation engine
         evaluation_result = await evaluation_engine.evaluate(
             design_data=design_data,
             question_data=question_data,
-            events_data=events_data,  # Pass events for interaction quality
-            screenshot_base64=screenshot_base64  # Pass screenshot for AI
+            events_data=events_data,
+            screenshot_base64=screenshot_base64
         )
         
         rule_score = evaluation_result["rule_based_score"]
         ai_score = evaluation_result["ai_based_score"]
         final_score = evaluation_result["final_score"]
         feedback = evaluation_result["feedback"]
+        
+        # Add advanced metrics to feedback
+        feedback["advanced_metrics"] = advanced_metrics
+        feedback["behavior_analysis"] = events_data if events_data else {}
         
         # Update submission with scores
         await design_repository.update_submission_scores(
@@ -1172,6 +1191,7 @@ async def evaluate_submission_background(
         )
         
         logger.info(f"✅ Completed evaluation for submission {submission_id}: {final_score}/100")
+        logger.info(f"📊 Advanced metrics: Layout={advanced_metrics['layout']['layout_quality_score']}, Design System={advanced_metrics['design_system']['design_system_score']}, Accessibility={advanced_metrics['accessibility']['accessibility_score']}")
         
     except Exception as e:
         logger.error(f"Background evaluation failed: {e}")
@@ -1220,7 +1240,7 @@ async def save_screenshot(request: ScreenshotRequest):
 
 @router.post("/event")
 async def save_event(request: EventRequest):
-    """Save user interaction event for evaluation"""
+    """Save user interaction event for evaluation (legacy endpoint)"""
     try:
         if design_repository.db is None:
             await design_repository.initialize()
@@ -1250,6 +1270,174 @@ async def save_event(request: EventRequest):
         
     except Exception as e:
         logger.error(f"Failed to save event: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ========================================
+# ADVANCED EVENT TRACKING ENDPOINTS
+# ========================================
+
+@router.post("/events/advanced")
+async def save_advanced_event(event: Dict[str, Any]):
+    """Save advanced design event with complete telemetry"""
+    try:
+        from app.models.design_events import DesignEventModel
+        
+        if design_repository.db is None:
+            await design_repository.initialize()
+        
+        db = design_repository.db
+        
+        # Validate and parse event
+        try:
+            event_model = DesignEventModel(**event)
+        except Exception as e:
+            logger.error(f"Invalid event data: {e}")
+            raise HTTPException(status_code=400, detail=f"Invalid event data: {e}")
+        
+        # Save to advanced_events collection
+        event_doc = event_model.model_dump()
+        result = await db.advanced_events.insert_one(event_doc)
+        
+        logger.info(f"🎯 Advanced event saved: {event_model.event_type} for session {event_model.session_id}")
+        
+        return {
+            "id": str(result.inserted_id),
+            "message": "Advanced event saved"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to save advanced event: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/events/batch")
+async def save_event_batch(batch: Dict[str, Any]):
+    """Save batch of events for performance"""
+    try:
+        from app.models.design_events import EventBatchModel, DesignEventModel
+        
+        if design_repository.db is None:
+            await design_repository.initialize()
+        
+        db = design_repository.db
+        
+        # Validate batch
+        try:
+            batch_model = EventBatchModel(**batch)
+        except Exception as e:
+            logger.error(f"Invalid batch data: {e}")
+            raise HTTPException(status_code=400, detail=f"Invalid batch data: {e}")
+        
+        # Convert events to dicts
+        event_docs = [event.model_dump() for event in batch_model.events]
+        
+        if event_docs:
+            result = await db.advanced_events.insert_many(event_docs)
+            logger.info(f"🎯 Saved batch of {len(event_docs)} events for session {batch_model.session_id}")
+            
+            return {
+                "message": f"Saved {len(event_docs)} events",
+                "count": len(event_docs),
+                "ids": [str(id) for id in result.inserted_ids]
+            }
+        else:
+            return {
+                "message": "No events to save",
+                "count": 0
+            }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to save event batch: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/events/analytics/{session_id}")
+async def get_event_analytics(session_id: str):
+    """Get computed analytics from events"""
+    try:
+        from app.services.event_analytics import event_analytics_service
+        from app.models.design_events import DesignEventModel
+        
+        if design_repository.db is None:
+            await design_repository.initialize()
+        
+        db = design_repository.db
+        
+        # Get all advanced events for session
+        events_cursor = db.advanced_events.find({"session_id": session_id})
+        events_data = await events_cursor.to_list(length=None)
+        
+        if not events_data:
+            logger.warning(f"No events found for session {session_id}")
+            return {
+                "session_id": session_id,
+                "message": "No events found",
+                "analytics": None
+            }
+        
+        # Convert to event models
+        events = []
+        for event_data in events_data:
+            try:
+                event_data.pop("_id", None)
+                event_data.pop("created_at", None)
+                events.append(DesignEventModel(**event_data))
+            except Exception as e:
+                logger.warning(f"Skipping invalid event: {e}")
+                continue
+        
+        # Compute analytics
+        analytics = event_analytics_service.compute_analytics(session_id, events)
+        
+        logger.info(f"📊 Computed analytics for session {session_id}: {len(events)} events")
+        
+        return {
+            "session_id": session_id,
+            "event_count": len(events),
+            "analytics": analytics.model_dump()
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get event analytics: {e}")
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/events/advanced/{session_id}")
+async def get_advanced_events(session_id: str, limit: int = Query(1000, le=5000)):
+    """Get advanced events for a session"""
+    try:
+        if design_repository.db is None:
+            await design_repository.initialize()
+        
+        db = design_repository.db
+        
+        events = await db.advanced_events.find(
+            {"session_id": session_id}
+        ).sort("timestamp", 1).limit(limit).to_list(length=None)
+        
+        # Convert ObjectId to string
+        for event in events:
+            event["_id"] = str(event["_id"])
+        
+        logger.info(f"📋 Retrieved {len(events)} advanced events for session {session_id}")
+        
+        return {
+            "session_id": session_id,
+            "events": events,
+            "count": len(events)
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to get advanced events: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
